@@ -1,134 +1,143 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// app/login/page.tsx
 'use client';
-
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2, Mail, Lock, LogIn } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  
+  const { login } = useAuth();
   const router = useRouter();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setLoading(true);
     setError('');
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(error.message);
-    } else {
-      router.push('/dashboard');
+    try {
+      await login(email, password);
+      // O redirecionamento é feito automaticamente pelo AuthContext
+    } catch (err: any) {
+      setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
+    } finally {
+      setLoading(false);
     }
-    
-    setIsLoading(false);
+  };
+
+  const handleInputChange = () => {
+    // Limpa erro quando usuário começa a digitar
+    if (error) setError('');
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center flex items-center justify-center gap-2">
-            <LogIn className="h-6 w-6" />
-            Entrar
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 px-4 py-8">
+      <Card className="w-full max-w-md shadow-xl border-0">
+        <CardHeader className="space-y-3 text-center pb-6">
+          <div className="mx-auto w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+            <LogIn className="w-6 h-6 text-white" />
+          </div>
+          <CardTitle className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            Entre na sua conta
           </CardTitle>
-          <CardDescription className="text-center">
-            Faça login em sua conta
+          <CardDescription className="text-slate-600 text-base">
+            Digite suas credenciais para acessar o sistema
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
-            {/* Campo Email */}
+        
+        <CardContent className="space-y-5">
+          {error && (
+            <Alert variant="destructive" className="border-red-200 bg-red-50">
+              <AlertDescription className="text-red-800">{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
-                required
-              />
+              <Label htmlFor="email" className="text-sm font-medium text-slate-700">
+                Email
+              </Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  placeholder="seu@email.com"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    handleInputChange();
+                  }}
+                  className="w-full pl-10 border-slate-300 focus:border-indigo-500"
+                />
+              </div>
             </div>
 
-            {/* Campo Senha */}
             <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
+              <Label htmlFor="password" className="text-sm font-medium text-slate-700">
+                Senha
+              </Label>
               <div className="relative">
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 <Input
                   id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Sua senha"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isLoading}
-                  className="pr-10"
+                  name="password"
+                  type="password"
                   required
+                  placeholder="Digite sua senha"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    handleInputChange();
+                  }}
+                  className="w-full pl-10 border-slate-300 focus:border-indigo-500"
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={isLoading}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </Button>
               </div>
             </div>
 
-            {/* Mensagem de Erro */}
-            {error && (
-              <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md">
-                {error}
-              </div>
-            )}
-
-            {/* Botão de Login */}
             <Button 
               type="submit" 
-              className="w-full" 
-              disabled={isLoading}
+              disabled={loading || !email || !password}
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium py-2.5 transition-all duration-200"
+              size="lg"
             >
-              {isLoading ? (
+              {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Entrando...
                 </>
               ) : (
-                'Entrar'
+                <>
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Entrar
+                </>
               )}
             </Button>
+          </form>
 
-            {/* Link para Cadastro */}
-            <div className="text-center text-sm">
+          <div className="text-center pt-4 border-t border-slate-200">
+            <p className="text-sm text-slate-600">
               Não tem uma conta?{' '}
               <a 
                 href="/signup" 
-                className="text-blue-600 hover:text-blue-800 hover:underline"
+                className="font-semibold text-indigo-600 hover:text-indigo-500 underline-offset-4 hover:underline transition-colors"
               >
-                Cadastre-se
+                Criar conta
               </a>
-            </div>
-          </form>
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
