@@ -9,14 +9,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Mail, Lock, LogIn } from 'lucide-react';
+import { Loader2, Mail, Lock, LogIn, UserPlus } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   const { login } = useAuth();
   const router = useRouter();
 
@@ -27,7 +27,8 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      // O redirecionamento é feito automaticamente pelo AuthContext
+      // 🔥 REDIRECIONAMENTO ALTERADO: Vai para página de cadastro em vez do Kanban
+      router.push('/signup');
     } catch (err: any) {
       setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
     } finally {
@@ -38,6 +39,10 @@ export default function LoginPage() {
   const handleInputChange = () => {
     // Limpa erro quando usuário começa a digitar
     if (error) setError('');
+  };
+
+  const handleCreateAccount = () => {
+    router.push('/signup');
   };
 
   return (
@@ -51,10 +56,10 @@ export default function LoginPage() {
             Entre na sua conta
           </CardTitle>
           <CardDescription className="text-slate-600 text-base">
-            Digite suas credenciais para acessar o sistema
+            Acesse o sistema para gerenciar usuários e empresas
           </CardDescription>
         </CardHeader>
-        
+
         <CardContent className="space-y-5">
           {error && (
             <Alert variant="destructive" className="border-red-200 bg-red-50">
@@ -107,8 +112,8 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={loading || !email || !password}
               className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium py-2.5 transition-all duration-200"
               size="lg"
@@ -121,23 +126,11 @@ export default function LoginPage() {
               ) : (
                 <>
                   <LogIn className="mr-2 h-4 w-4" />
-                  Entrar
+                  Entrar e Gerenciar Usuários
                 </>
               )}
             </Button>
           </form>
-
-          <div className="text-center pt-4 border-t border-slate-200">
-            <p className="text-sm text-slate-600">
-              Não tem uma conta?{' '}
-              <a 
-                href="/signup" 
-                className="font-semibold text-indigo-600 hover:text-indigo-500 underline-offset-4 hover:underline transition-colors"
-              >
-                Criar conta
-              </a>
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
