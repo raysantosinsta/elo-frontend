@@ -20,6 +20,7 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: SignupData) => Promise<void>;
+  adminSignup: (userData: SignupData) => Promise<void>; // NOVO: cadastro por admin
   logout: () => void;
   loading: boolean;
   token: string | null;
@@ -31,6 +32,7 @@ interface SignupData {
   name: string;
   companyId: string;
   contact: string;
+  role?: string; // NOVO: campo opcional para role
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -263,6 +265,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+   // 🆕 NOVO MÉTODO: Cadastro por Administrador
+  const adminSignup = async (userData: SignupData) => {
+    try {
+      console.log('👨‍💼 Tentando cadastro por admin...', userData);
+      
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Autenticação necessária');
+      }
+
+      const response = await fetch(`${API_BASE}/auth/admin/signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...userData,
+          role: userData.role || 'USER' // Define role padrão como USER
+        }),
+      });
+
+      console.log('📡 Resposta do admin signup:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Erro no cadastro admin:', response.status, errorText);
+        
+        let errorMessage = 'Cadastro falhou';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      console.log('✅ Cadastro por admin successful:', data);
+      
+      // Mostrar mensagem de sucesso
+      alert('Usuário cadastrado com sucesso!');
+      
+      return data;
+
+    } catch (error) {
+      console.error('❌ Admin signup error:', error);
+      throw error;
+    }
+  };
+
   const logout = () => {
     console.log('🚪 Fazendo logout...');
     clearAuthData();
@@ -274,6 +329,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user, 
       login, 
       signup, 
+       adminSignup, // 🔥 ADICIONADO ao contexto
       logout, 
       loading,
       token 
