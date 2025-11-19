@@ -4,7 +4,7 @@ export async function POST(request: NextRequest) {
   try {
     const userData = await request.json();
 
-    const response = await fetch(`${process.env.NESTJS_API_URL}/auth/signup`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL}/auth/signup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
