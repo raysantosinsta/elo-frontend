@@ -44,7 +44,7 @@ export default function AgendaPage() {
   const fetchAllTasks = async () => {
     setLoading(true);
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+      const API_BASE_URL = process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000';
       const response = await fetch(`${API_BASE_URL}/tasks`);
       if (!response.ok) throw new Error(`Erro: ${response.status}`);
 

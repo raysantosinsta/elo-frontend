@@ -22,6 +22,7 @@ interface AuthContextType {
   signup: (userData: SignupData) => Promise<void>;
   logout: () => void;
   loading: boolean;
+  token: string | null;
 }
 
 interface SignupData {
@@ -34,8 +35,11 @@ interface SignupData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -43,79 +47,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
-  const setAuthToken = (token: string) => {
-    // Salva no localStorage
-    localStorage.setItem('accessToken', token);
+  // 🔥 FUNÇÃO MELHORADA: Verificar se token é válido
+  const isTokenValid = (token: string): boolean => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const now = Date.now() / 1000;
+      return payload.exp > now;
+    } catch {
+      return false;
+    }
+  };
+
+  const setAuthToken = (newToken: string) => {
+    if (!isTokenValid(newToken)) {
+      console.error('❌ Token inválido');
+      clearAuthData();
+      return;
+    }
     
-    // 🔥 SALVA NO COOKIE para o middleware
-    document.cookie = `access_token=${token}; path=/; max-age=86400; SameSite=Lax`;
+    localStorage.setItem('accessToken', newToken);
+    document.cookie = `access_token=${newToken}; path=/; max-age=86400; SameSite=Lax`;
+    setToken(newToken);
   };
 
   const clearAuthData = () => {
-    // Remove do localStorage
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
-    
-    // 🔥 REMOVE DO COOKIE também
     document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
     setUser(null);
+    setToken(null);
   };
 
   const checkAuth = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      if (token) {
-        // Verificar se o token é válido
-        const isValid = await verifyToken(token);
-        if (isValid) {
-          // Buscar dados do usuário
-          const userData = await fetchUserData(token);
+      
+      if (token && isTokenValid(token)) {
+        console.log('🔍 Verificando autenticação...');
+        const userData = await fetchUserData(token);
+        if (userData) {
           setUser(userData);
+          setToken(token);
+          console.log('✅ Usuário autenticado:', userData.name);
         } else {
-          // Token inválido, limpar storage
+          console.warn('❌ Token inválido ou expirado');
           clearAuthData();
         }
+      } else {
+        console.log('ℹ️  Nenhum token válido encontrado');
+        clearAuthData();
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
+      console.error('❌ Auth check failed:', error);
       clearAuthData();
     } finally {
       setLoading(false);
     }
   };
 
-  const verifyToken = async (token: string): Promise<boolean> => {
+  // 🔥 FUNÇÃO MELHORADA: Buscar dados do usuário com melhor tratamento de erro
+  const fetchUserData = async (token: string): Promise<User | null> => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL}/auth/verify-token`, {
-        method: 'POST',
+      console.log('🔍 Buscando dados do usuário...');
+      
+      const response = await fetch(`${API_BASE}/auth/profile`, {
+        method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
-      return response.ok;
+
+      console.log('📡 Resposta do profile:', response.status);
+
+      if (response.status === 401) {
+        console.error('❌ Token expirado ou inválido (401)');
+        return null;
+      }
+
+      if (!response.ok) {
+        console.error('❌ Erro ao buscar perfil:', response.status);
+        return null;
+      }
+
+      const userData = await response.json();
+      console.log('✅ Dados do usuário recebidos:', userData);
+      
+      return userData;
     } catch (error) {
-      return false;
+      console.error('❌ Error fetching user data:', error);
+      return null;
     }
-  };
-
-  const fetchUserData = async (token: string): Promise<User> => {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL}/auth/profile`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch user data');
-    }
-
-    return response.json();
   };
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch('/api/auth/login', {
+      console.log('🔐 Tentando login...', { email, API_BASE });
+      
+      const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -123,29 +152,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ email, password }),
       });
 
+      console.log('📡 Resposta do login:', response.status);
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Login failed');
+        const errorText = await response.text();
+        console.error('❌ Erro no login:', response.status, errorText);
+        
+        let errorMessage = 'Login failed';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      console.log('✅ Login successful:', data);
 
-      // 🔥 USA A FUNÇÃO setAuthToken para salvar em ambos
-      setAuthToken(data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
+      // 🔥 CORREÇÃO: Suporta diferentes formatos de resposta
+      const accessToken = data.accessToken || data.access_token || data.token;
+      if (!accessToken) {
+        console.error('❌ Nenhum access token encontrado na resposta:', data);
+        throw new Error('No access token received');
+      }
+
+      console.log('🔑 Token recebido:', accessToken);
+      setAuthToken(accessToken);
       
-      setUser(data.user);
+      if (data.refreshToken || data.refresh_token) {
+        localStorage.setItem('refreshToken', data.refreshToken || data.refresh_token);
+      }
 
-      // ✅ REDIRECIONA PARA KANBAN APÓS LOGIN
-      router.push('/Kanban');
+      // 🔥 BUSCA OS DADOS DO USUÁRIO COM O TOKEN
+      const userData = await fetchUserData(accessToken);
+      if (userData) {
+        setUser(userData);
+        console.log('✅ Usuário definido no contexto:', userData);
+        
+        // ✅ REDIRECIONA PARA KANBAN APÓS LOGIN
+        router.push('/Kanban');
+      } else {
+        throw new Error('Failed to load user data after login');
+      }
+
     } catch (error) {
+      console.error('❌ Login error:', error);
       throw error;
     }
   };
 
   const signup = async (userData: SignupData) => {
     try {
-      const response = await fetch('/api/auth/signup', {
+      console.log('📝 Tentando cadastro...', userData);
+      
+      const response = await fetch(`${API_BASE}/auth/signup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -153,34 +216,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify(userData),
       });
 
+      console.log('📡 Resposta do signup:', response.status);
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Signup failed');
+        const errorText = await response.text();
+        console.error('❌ Erro no cadastro:', response.status, errorText);
+        
+        let errorMessage = 'Signup failed';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      console.log('✅ Cadastro successful:', data);
 
-      // 🔥 USA A FUNÇÃO setAuthToken para salvar em ambos
-      setAuthToken(data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
+      const accessToken = data.accessToken || data.access_token || data.token;
+      if (!accessToken) {
+        throw new Error('No access token received');
+      }
+
+      setAuthToken(accessToken);
       
-      setUser(data.user);
+      if (data.refreshToken || data.refresh_token) {
+        localStorage.setItem('refreshToken', data.refreshToken || data.refresh_token);
+      }
 
-      // ✅ REMOVIDO O REDIRECIONAMENTO - usuário fica na mesma página
-      // NÃO FAZ router.push() aqui - o usuário decide para onde ir
+      const newUserData = await fetchUserData(accessToken);
+      if (newUserData) {
+        setUser(newUserData);
+        console.log('✅ Usuário definido no contexto após cadastro:', newUserData);
+        
+        router.push('/Kanban');
+      } else {
+        throw new Error('Failed to load user data after signup');
+      }
 
     } catch (error) {
+      console.error('❌ Signup error:', error);
       throw error;
     }
   };
 
   const logout = () => {
+    console.log('🚪 Fazendo logout...');
     clearAuthData();
     router.push('/login');
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, loading }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      login, 
+      signup, 
+      logout, 
+      loading,
+      token 
+    }}>
       {children}
     </AuthContext.Provider>
   );
