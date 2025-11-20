@@ -39,6 +39,7 @@ import {
   Image as ImageIcon,
   Video,
   Music,
+  RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
@@ -130,36 +131,48 @@ export default function ProductKanban() {
     return null;
   };
 
-  // Função para fazer requisições autenticadas
-  // No Kanban page.tsx
-
-  // 🔥 ATUALIZE a função authFetch para incluir companyId quando necessário
+  // 🔥 FUNÇÃO authFetch MELHORADA
   const authFetch = async (url: string, options: RequestInit = {}) => {
+    const token = getAuthToken();
+
+    if (!token) {
+      console.error("❌ Nenhum token encontrado");
+      logout();
+      throw new Error("Autenticação necessária");
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...(typeof options.headers === "object" && options.headers !== null
-        ? Object.fromEntries(
-            Object.entries(options.headers as Record<string, string>).filter(
-              ([_, value]) => typeof value === "string"
-            )
-          )
-        : {}),
+      Authorization: `Bearer ${token}`,
+      ...((options.headers as Record<string, string>) || {}),
     };
 
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+    console.log(`📡 Fazendo requisição para: ${url}`);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
+
+      console.log(`📡 Resposta: ${response.status} ${response.statusText}`);
+
+      if (response.status === 401) {
+        console.warn("❌ Token expirado ou inválido (401)");
+        logout();
+        return response;
+      }
+
+      if (response.status === 404) {
+        console.warn("⚠️ Endpoint não encontrado (404)");
+        return response;
+      }
+
+      return response;
+    } catch (error) {
+      console.error("❌ Erro na requisição:", error);
+      throw error;
     }
-
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
-
-    if (response.status === 401) {
-      logout();
-    }
-
-    return response;
   };
 
   // Função para upload de arquivos
@@ -267,29 +280,62 @@ export default function ProductKanban() {
     setColumns(createdColumns);
   };
 
-  // Buscar tasks
+  // Buscar tasks - VERSÃO MELHORADA
   const fetchTasks = async () => {
     try {
       const res = await authFetch(`${API_BASE}/tasks`);
       if (!res.ok) throw new Error("Erro ao buscar tasks");
 
       const data = await res.json();
+      console.log("📦 Tasks recebidas:", data);
+
+      let tasksArray: Task[] = [];
 
       if (Array.isArray(data)) {
-        setTasks(data);
+        tasksArray = data;
       } else if (data && Array.isArray(data.tasks)) {
-        setTasks(data.tasks);
+        tasksArray = data.tasks;
       } else {
         console.warn("Dados de tasks inesperados:", data);
-        setTasks([]);
+        tasksArray = [];
       }
+
+      // 🔥 VERIFICAR SE AS TASKS TÊM OS ARQUIVOS
+      tasksArray.forEach((task) => {
+        console.log(
+          `Task ${task.id} - Imagens: ${
+            task.taskImages?.length || 0
+          }, Áudios: ${task.taskAudios?.length || 0}, Vídeos: ${
+            task.taskVideos?.length || 0
+          }`
+        );
+      });
+
+      setTasks(tasksArray);
     } catch (error) {
       console.error("Erro ao buscar tasks:", error);
       setTasks([]);
     }
   };
 
-  // Buscar usuários
+  // 🔥 NOVA FUNÇÃO: Atualizar uma task específica
+  const refreshTask = async (taskId: string) => {
+    try {
+      const response = await authFetch(`${API_BASE}/tasks/${taskId}`);
+      if (response.ok) {
+        const updatedTask = await response.json();
+        setTasks((prev) =>
+          prev.map((task) => (task.id === taskId ? updatedTask : task))
+        );
+        console.log("✅ Task atualizada:", updatedTask);
+        return updatedTask;
+      }
+    } catch (error) {
+      console.error("❌ Erro ao atualizar task:", error);
+    }
+    return null;
+  };
+
   const fetchUsers = async () => {
     if (!user?.company?.id) {
       console.warn("Usuário não autenticado ou sem empresa");
@@ -298,40 +344,92 @@ export default function ProductKanban() {
     }
 
     try {
+      console.log(`🔍 Buscando profissionais da empresa: ${user.company.id}`);
+
+      // 🔥 CORREÇÃO: Use o endpoint correto
       const res = await authFetch(
         `${API_BASE}/auth/professionals/${user.company.id}`
       );
 
+      console.log(
+        "📡 Resposta da busca por profissionais:",
+        res.status,
+        res.statusText
+      );
+
       if (!res.ok) {
-        throw new Error("Erro ao buscar profissionais");
+        // 🔥 TRATAMENTO ESPECÍFICO POR STATUS
+        if (res.status === 404) {
+          console.warn("❌ Endpoint não encontrado (404)");
+          setUsers([]);
+          return;
+        }
+
+        if (res.status === 401) {
+          console.warn("❌ Não autorizado (401) - token pode ter expirado");
+          logout(); // 🔥 FAZ LOGOUT SE NÃO AUTORIZADO
+          return;
+        }
+
+        const errorText = await res.text();
+        console.error(
+          `❌ Erro ${res.status} ao buscar profissionais:`,
+          errorText
+        );
+
+        setUsers([]);
+        return;
       }
 
       const data = await res.json();
+      console.log("✅ Profissionais recebidos:", data);
 
       if (Array.isArray(data)) {
         setUsers(data);
+        console.log(`✅ ${data.length} profissionais carregados`);
+
+        // 🔥 DEBUG: Mostrar os profissionais encontrados
+        data.forEach((prof, index) => {
+          console.log(
+            `   ${index + 1}. ${prof.name} (${prof.email}) - ${prof.role}`
+          );
+        });
       } else {
-        console.warn("Dados de profissionais inesperados:", data);
+        console.warn("⚠️ Dados de profissionais inesperados:", data);
         setUsers([]);
       }
     } catch (error) {
-      console.error("Erro ao buscar profissionais:", error);
+      console.error("❌ Erro ao buscar profissionais:", error);
       setUsers([]);
     }
   };
 
   // 🔥 ATUALIZE a função loadInitialData
   const loadInitialData = async () => {
-    if (!user) return;
+    if (!user) {
+      console.log("⏳ Aguardando usuário...");
+      return;
+    }
 
     setLoading(true);
+    console.log("🚀 Iniciando carregamento de dados...");
+    console.log("👤 Usuário:", user.name, "Empresa:", user.company?.id);
     try {
-      console.log("🚀 Carregando dados iniciais...");
-      await Promise.all([fetchColumns(), fetchTasks(), fetchUsers()]);
+      console.log("📋 Etapa 1/3: Buscando colunas...");
+      await fetchColumns();
+
+      console.log("📋 Etapa 2/3: Buscando tasks...");
+      await fetchTasks();
+
+      console.log("📋 Etapa 3/3: Buscando profissionais...");
+      await fetchUsers();
+
+      console.log("✅ Todos os dados carregados com sucesso!");
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
     } finally {
       setLoading(false);
+      console.log("🏁 Carregamento finalizado");
     }
   };
 
@@ -450,65 +548,104 @@ export default function ProductKanban() {
     }
   };
 
-  // Criar task
-  const createTask = async () => {
-    if (!taskTitle.trim()) {
-      alert("Título da tarefa é obrigatório");
-      return;
+  // Criar task - VERSÃO OTIMIZADA
+const createTask = async () => {
+  if (!taskTitle.trim()) {
+    alert("Título da tarefa é obrigatório");
+    return;
+  }
+
+  setIsSubmitting(true);
+
+  try {
+    const formData = new FormData();
+    formData.append("title", taskTitle);
+    formData.append("description", taskDescription);
+    formData.append("priority", taskPriority);
+    if (user?.company?.id) formData.append("companyId", user.company.id);
+    if (user?.id) formData.append("createdById", user.id);
+
+    if (taskColumn) formData.append("columnId", taskColumn);
+    if (taskDueDate) formData.append("dueDate", taskDueDate);
+    if (taskAssignedTo) formData.append("assignedToId", taskAssignedTo);
+
+    // 🔥 CORREÇÃO: Usar os nomes de campo que o backend espera
+    taskImages.forEach((image) => {
+      formData.append("images", image);
+    });
+    taskAudios.forEach((audio) => {
+      formData.append("audios", audio);
+    });
+    taskVideos.forEach((video) => {
+      formData.append("videos", video);
+    });
+
+    console.log("📤 Criando nova task...");
+
+    const response = await authFetchWithFiles(
+      `${API_BASE}/tasks`,
+      formData,
+      "POST"
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Erro response:", errorText);
+      throw new Error(`Erro ao criar tarefa: ${errorText}`);
     }
 
-    setIsSubmitting(true);
+    const newTask = await response.json();
+    console.log("✅ Tarefa criada com sucesso:", newTask);
 
-    try {
-      const formData = new FormData();
-      formData.append("title", taskTitle);
-      formData.append("description", taskDescription);
-      formData.append("priority", taskPriority);
+    // 🔥 SOLUÇÃO: Criar uma task otimizada com preview local imediato
+    const optimizedTask: Task = {
+      ...newTask,
+      // 🔥 ADICIONAR PREVIEW LOCAL DAS IMAGENS ENQUANTO O BACKEND PROCESSA
+      taskImages: taskImages.length > 0 ? 
+        taskImages.map((file, index) => ({
+          id: `temp-${Date.now()}-${index}`,
+          url: URL.createObjectURL(file), // 🔥 URL LOCAL PARA PREVIEW IMEDIATO
+          filename: file.name,
+          isTemp: true // 🔥 FLAG PARA IDENTIFICAR QUE É TEMPORÁRIO
+        })) : []
+    };
 
-      if (taskColumn) formData.append("columnId", taskColumn);
-      if (taskDueDate) formData.append("dueDate", taskDueDate);
-      if (taskAssignedTo) formData.append("assignedToId", taskAssignedTo);
+    // 🔥 ATUALIZAR A LISTA COM A TASK OTIMIZADA (PREVIEW IMEDIATO)
+    setTasks((prev) => [optimizedTask, ...prev]);
 
-      // Adicionar múltiplos arquivos
-      taskImages.forEach((image) => {
-        formData.append("files", image);
-      });
-      taskAudios.forEach((audio) => {
-        formData.append("files", audio);
-      });
-      taskVideos.forEach((video) => {
-        formData.append("files", video);
-      });
+    // Resetar o formulário
+    resetTaskForm();
+    setIsTaskModal(false);
 
-      console.log("📤 Criando nova task...");
+    // 🔥 BUSCAR A VERSÃO COMPLETA DO BACKEND APÓS UM DELAY
+    setTimeout(async () => {
+      try {
+        const completeTaskResponse = await authFetch(
+          `${API_BASE}/tasks/${newTask.id}`
+        );
+        if (completeTaskResponse.ok) {
+          const completeTask = await completeTaskResponse.json();
+          console.log("📦 Task completa com arquivos:", completeTask);
 
-      const response = await authFetchWithFiles(
-        `${API_BASE}/tasks`,
-        formData,
-        "POST"
-      );
-
-      if (!response.ok) {
-        throw new Error("Erro ao criar tarefa");
+          // 🔥 SUBSTITUIR A TASK TEMPORÁRIA PELA COMPLETA
+          setTasks((prev) => 
+            prev.map((task) => 
+              task.id === newTask.id ? completeTask : task
+            )
+          );
+        }
+      } catch (error) {
+        console.error("❌ Erro ao buscar task completa:", error);
       }
+    }, 2000); // 🔥 AUMENTEI O DELAY PARA 2 SEGUNDOS
 
-      const newTask = await response.json();
-
-      // Atualizar a lista de tasks
-      setTasks((prev) => [newTask, ...prev]);
-
-      // Resetar o formulário
-      resetTaskForm();
-      setIsTaskModal(false);
-
-      console.log("✅ Tarefa criada com sucesso:", newTask);
-    } catch (error) {
-      console.error("Erro ao criar tarefa:", error);
-      alert("Erro ao criar tarefa. Tente novamente.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  } catch (error) {
+    console.error("Erro ao criar tarefa:", error);
+    alert("Erro ao criar tarefa. Tente novamente.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // Abrir modal de edição
   const openEditModal = (task: Task) => {
@@ -606,7 +743,7 @@ export default function ProductKanban() {
     }
   };
 
-  // Marcar como concluída
+  // Marcar como concluída - VERSÃO CORRIGIDA
   const completeTask = async (taskId: string) => {
     try {
       const response = await authFetch(`${API_BASE}/tasks/${taskId}/complete`, {
@@ -614,10 +751,8 @@ export default function ProductKanban() {
       });
 
       if (response.ok) {
-        const updatedTask = await response.json();
-        setTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? updatedTask : t))
-        );
+        // 🔥 USAR A FUNÇÃO DE REFRESH PARA OBTER OS DADOS COMPLETOS
+        await refreshTask(taskId);
         console.log("✅ Tarefa marcada como concluída");
       }
     } catch (error) {
@@ -944,21 +1079,42 @@ export default function ProductKanban() {
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" /> Excluir
                                   </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={async () => {
+                                      await refreshTask(task.id);
+                                    }}
+                                  >
+                                    <RefreshCw className="w-4 h-4 mr-2" />{" "}
+                                    Recarregar
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
 
-                            {/* Mostrar múltiplas imagens */}
                             {task.taskImages && task.taskImages.length > 0 ? (
                               <div className="mb-3">
                                 {task.taskImages.slice(0, 1).map((image) => (
-                                  <img
-                                    key={image.id}
-                                    src={image.url}
-                                    alt={image.filename}
-                                    className="w-full h-48 object-cover rounded-md cursor-pointer"
-                                    onClick={() => openPreviewModal(task)}
-                                  />
+                                  <div key={image.id} className="relative">
+                                    <img
+                                      src={image.url}
+                                      alt={image.filename}
+                                      className="w-full h-48 object-cover rounded-md cursor-pointer"
+                                      onClick={() => openPreviewModal(task)}
+                                      onError={(e) => {
+                                        // 🔥 TRATAR ERRO DE CARREGAMENTO DE IMAGEM
+                                        console.error(
+                                          `Erro ao carregar imagem: ${image.url}`
+                                        );
+                                        e.currentTarget.src =
+                                          "/placeholder-image.jpg"; // Imagem fallback
+                                      }}
+                                    />
+                                    {/* 🔥 INDICADOR DE MÍDIA CARREGADA */}
+                                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded">
+                                      {task.taskImages.length} imagem
+                                      {task.taskImages.length > 1 ? "ns" : ""}
+                                    </div>
+                                  </div>
                                 ))}
                                 {task.taskImages.length > 1 && (
                                   <div className="text-center text-sm text-gray-500 mt-2">
@@ -971,6 +1127,7 @@ export default function ProductKanban() {
                                 className="bg-gray-200 border-2 border-dashed h-48 rounded-md mb-3 flex items-center justify-center text-gray-400 cursor-pointer"
                                 onClick={() => openPreviewModal(task)}
                               >
+                                <ImageIcon className="w-8 h-8 mr-2" />
                                 Sem imagem
                               </div>
                             )}
