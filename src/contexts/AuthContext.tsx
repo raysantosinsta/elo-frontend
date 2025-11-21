@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // contexts/AuthContext.tsx
 "use client";
 import React, { createContext, useContext, useEffect, useState } from "react";
@@ -8,12 +9,15 @@ interface User {
   email: string;
   name: string;
   role: string;
-  companyId: string;
-  company: {
+  status: string; // 🔥 NOVO: Agora é string (ATIVO/INATIVO)
+  companyId: string | null; // 🔥 ATUALIZADO: Pode ser null
+  document?: string | null; // 🔥 NOVO
+  phone: string; // 🔥 NOVO: Campo obrigatório
+  company?: {
     id: string;
     name: string;
     status: string;
-  };
+  } | null; // 🔥 ATUALIZADO: Pode ser null
 }
 
 interface AuthContextType {
@@ -26,7 +30,7 @@ interface AuthContextType {
   token: string | null;
   refreshAuthToken: () => Promise<boolean>;
   isTokenValid: (token: string) => boolean;
-  authFetch: (url: string, options?: RequestInit) => Promise<Response>; // 🔥 ADICIONADO
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
 interface SignupData {
@@ -34,7 +38,8 @@ interface SignupData {
   password: string;
   name: string;
   companyId: string;
-  contact: string;
+  phone: string; // 🔥 MUDOU: era 'contact', agora é 'phone'
+  document?: string; // 🔥 NOVO: Campo opcional
   role?: string;
 }
 
@@ -303,178 +308,218 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   // 🔑 Login
-  const login = async (email: string, password: string) => {
-    try {
-      console.log("🔐 Tentando login...", { email });
+  // Atualize a função login no AuthContext.tsx
+const login = async (email: string, password: string) => {
+  try {
+    console.log("🔐 Tentando login...", { 
+      email, 
+      passwordLength: password.length,
+      API_BASE 
+    });
 
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
+    const loginPayload = {
+      email: email.trim().toLowerCase(),
+      password: password
+    };
 
-      console.log("📡 Resposta do login:", response.status);
+    console.log("📤 Payload enviado:", loginPayload);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Erro no login:", response.status, errorText);
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(loginPayload),
+    });
 
-        let errorMessage = "Login falhou";
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
+    console.log("📡 Resposta do login:", {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
 
-        throw new Error(errorMessage);
+    const responseText = await response.text();
+    console.log("📄 Corpo da resposta:", responseText);
+
+    if (!response.ok) {
+      let errorMessage = "Login falhou";
+      try {
+        const errorData = JSON.parse(responseText);
+        errorMessage = errorData.message || errorMessage;
+        console.error("❌ Erro detalhado:", errorData);
+      } catch {
+        errorMessage = responseText || errorMessage;
+        console.error("❌ Erro texto:", responseText);
       }
 
-      const data = await response.json();
-      console.log("✅ Login successful:", data);
-
-      const accessToken = data.accessToken || data.access_token || data.token;
-      const refreshToken = data.refreshToken || data.refresh_token;
-
-      if (!accessToken) {
-        console.error("❌ Nenhum access token encontrado na resposta:", data);
-        throw new Error("No access token received");
+      // 🔥 DETALHAMENTO DOS ERROS 401
+      if (response.status === 401) {
+        console.error("🔍 Debug 401 - Possíveis causas:");
+        console.error("1. Email não existe no banco");
+        console.error("2. Senha incorreta"); 
+        console.error("3. Usuário inativo (status ≠ ATIVO)");
+        console.error("4. Problema no hash da senha");
       }
 
-      // Salvar tokens
-      const tokensSaved = setAuthToken(accessToken, refreshToken);
-      
-      if (!tokensSaved) {
-        throw new Error("Falha ao salvar tokens");
-      }
-
-      // Buscar dados do usuário
-      const userData = await fetchUserData(accessToken);
-      if (userData) {
-        setUser(userData);
-        console.log("✅ Usuário definido no contexto:", userData.name);
-        router.push("/Kanban");
-      } else {
-        throw new Error("Failed to load user data after login");
-      }
-    } catch (error) {
-      console.error("❌ Login error:", error);
-      throw error;
+      throw new Error(errorMessage);
     }
-  };
 
-  // 📝 Cadastro normal
-  const signup = async (userData: SignupData) => {
+    // Se chegou aqui, response.ok é true
+    let data;
     try {
-      console.log("📝 Tentando cadastro...", userData);
-
-      const response = await fetch(`${API_BASE}/auth/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userData),
-      });
-
-      console.log("📡 Resposta do signup:", response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Erro no cadastro:", response.status, errorText);
-
-        let errorMessage = "Cadastro falhou";
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      console.log("✅ Cadastro successful:", data);
-
-      const accessToken = data.accessToken || data.access_token || data.token;
-      const refreshToken = data.refreshToken || data.refresh_token;
-
-      if (!accessToken) {
-        throw new Error("No access token received");
-      }
-
-      // Salvar tokens
-      const tokensSaved = setAuthToken(accessToken, refreshToken);
-      
-      if (!tokensSaved) {
-        throw new Error("Falha ao salvar tokens");
-      }
-
-      const newUserData = await fetchUserData(accessToken);
-      if (newUserData) {
-        setUser(newUserData);
-        console.log("✅ Usuário definido no contexto após cadastro:", newUserData.name);
-        router.push("/Kanban");
-      } else {
-        throw new Error("Failed to load user data after signup");
-      }
-    } catch (error) {
-      console.error("❌ Signup error:", error);
-      throw error;
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error("Resposta do servidor não é JSON válido");
     }
-  };
 
-  // 👨‍💼 Cadastro por Administrador
-  const adminSignup = async (userData: SignupData) => {
-    try {
-      console.log("👨‍💼 Tentando cadastro por admin...", userData);
+    console.log("✅ Login successful - Dados recebidos:", {
+      hasAccessToken: !!data.accessToken,
+      hasUser: !!data.user,
+      userStatus: data.user?.status,
+      userRole: data.user?.role
+    });
 
-      const token = localStorage.getItem("accessToken");
-      if (!token) {
-        throw new Error("Autenticação necessária");
-      }
+    const accessToken = data.accessToken || data.access_token || data.token;
+    const refreshToken = data.refreshToken || data.refresh_token;
 
-      const response = await fetch(`${API_BASE}/auth/admin/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          ...userData,
-          role: userData.role || "USER",
-        }),
-      });
-
-      console.log("📡 Resposta do admin signup:", response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Erro no cadastro admin:", response.status, errorText);
-
-        let errorMessage = "Cadastro falhou";
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      console.log("✅ Cadastro por admin successful:", data);
-
-      alert("Usuário cadastrado com sucesso!");
-      return data;
-    } catch (error) {
-      console.error("❌ Admin signup error:", error);
-      throw error;
+    if (!accessToken) {
+      console.error("❌ Nenhum access token encontrado na resposta:", data);
+      throw new Error("No access token received");
     }
-  };
+
+    // Salvar tokens
+    const tokensSaved = setAuthToken(accessToken, refreshToken);
+    
+    if (!tokensSaved) {
+      throw new Error("Falha ao salvar tokens");
+    }
+
+    // Buscar dados do usuário
+    const userData = await fetchUserData(accessToken);
+    if (userData) {
+      setUser(userData);
+      console.log("✅ Usuário definido no contexto:", userData);
+      router.push("/Kanban");
+    } else {
+      throw new Error("Failed to load user data after login");
+    }
+  } catch (error) {
+    console.error("❌ Login error completo:", error);
+    throw error;
+  }
+};
+
+  // 📝 Cadastro normal - ATUALIZADO
+const signup = async (userData: SignupData) => {
+  try {
+    console.log("📝 Tentando cadastro...", userData);
+
+    // 🔥 CORREÇÃO: Mapear 'phone' para 'contact' se necessário
+    // Ou ajustar o backend para aceitar 'phone'
+    const payload = {
+      ...userData,
+      phone: userData.phone, // 🔥 Agora usa 'phone' em vez de 'contact'
+      document: userData.document || undefined,
+    };
+
+    const response = await fetch(`${API_BASE}/auth/admin/signup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log("📡 Resposta do signup:", response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ Erro no cadastro:", response.status, errorText);
+
+      let errorMessage = "Cadastro falhou";
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log("✅ Cadastro successful:", data);
+
+    const accessToken = data.accessToken || data.access_token || data.token;
+    const refreshToken = data.refreshToken || data.refresh_token;
+
+    if (!accessToken) {
+      throw new Error("No access token received");
+    }
+
+    // Salvar tokens
+    const tokensSaved = setAuthToken(accessToken, refreshToken);
+    
+    if (!tokensSaved) {
+      throw new Error("Falha ao salvar tokens");
+    }
+
+    const newUserData = await fetchUserData(accessToken);
+    if (newUserData) {
+      setUser(newUserData);
+      console.log("✅ Usuário definido no contexto após cadastro:", newUserData.name);
+      router.push("/Kanban");
+    } else {
+      throw new Error("Failed to load user data after signup");
+    }
+  } catch (error) {
+    console.error("❌ Signup error:", error);
+    throw error;
+  }
+};
+
+ const adminSignup = async (userData: SignupData) => {
+  try {
+    console.log("Tentando cadastro por admin...", userData);
+
+    const token = localStorage.getItem("accessToken");
+    if (!token) throw new Error("Autenticação necessária");
+
+    const payload = {
+      ...userData,
+      phone: userData.phone,
+      document: userData.document || null,
+      role: userData.role || "EMPLOYER",
+    };
+
+    // MUDANÇA AQUI ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+    const response = await fetch(`${API_BASE}/auth/admin/signup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = "Cadastro falhou";
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {}
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    alert("Usuário cadastrado com sucesso!");
+    return data;
+  } catch (error: any) {
+    console.error("Admin signup error:", error);
+    throw error;
+  }
+};
 
   // 🚪 Logout
   const logout = () => {

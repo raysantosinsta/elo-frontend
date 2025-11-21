@@ -28,7 +28,7 @@ export default function LoginPage() {
     try {
       await login(email, password);
       // 🔥 REDIRECIONAMENTO ALTERADO: Vai para página de cadastro em vez do Kanban
-      router.push('/signup');
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
     } finally {

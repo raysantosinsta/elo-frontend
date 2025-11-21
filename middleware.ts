@@ -95,9 +95,10 @@ function getToken(request: NextRequest): string | null {
   return null
 }
 
+// Atualize a função isTokenValid para verificar status ATIVO:
 async function isTokenValid(token: string): Promise<boolean> {
   try {
-    console.log('🛡️ Validando token...')
+    console.log('🛡️ Validando token...');
     
     const response = await fetch(`${process.env.NESTJS_API_URL}/auth/verify-token`, {
       method: 'POST',
@@ -105,15 +106,22 @@ async function isTokenValid(token: string): Promise<boolean> {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-    })
+    });
     
-    const isValid = response.ok
-    console.log('🛡️ Token válido?', isValid)
+    if (!response.ok) {
+      console.log('🛡️ Token inválido na verificação');
+      return false;
+    }
+
+    const result = await response.json();
+    const isValid = result.valid === true;
     
-    return isValid
+    console.log('🛡️ Token válido?', isValid);
+    
+    return isValid;
   } catch (error) {
-    console.error('🛡️ Erro ao validar token:', error)
-    return false
+    console.error('🛡️ Erro ao validar token:', error);
+    return false;
   }
 }
 

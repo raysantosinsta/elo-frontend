@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // app/admin/signup/page.tsx
 'use client';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -9,412 +10,287 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Shield, LogIn, Building, Search, Info } from 'lucide-react';
+import { Loader2, Shield, LogIn, Building, Info, UserPlus } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+
+// Schema de validação com Zod (baseado exatamente no seu Prisma schema)
+const signupSchema = z.object({
+  name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
+  email: z.string().email('Email inválido'),
+  password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
+  phone: z.string().regex(/^\(\d{2}\) \d{4,5}-\d{4}$/, 'Telefone inválido. Use (11) 99999-9999'),
+  document: z.string().optional().nullable(),
+  companyId: z.string().uuid('Selecione uma empresa válida'),
+  role: z.enum(['EMPLOYER', 'ADMIN', 'MASTER']),
+});
+
+type SignupFormData = z.infer<typeof signupSchema>;
 
 interface Company {
   id: string;
   name: string;
   email: string;
-  status: string;
+  cnpj: string;
 }
 
+
+
 export default function AdminSignupPage() {
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    name: '',
-    companyId: '',
-    contact: '',
-    role: 'USER'
-  });
+  const { adminSignup, user, token, loading: authLoading, authFetch } = useAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
-  const [error, setError] = useState('');
+  const [serverError, setServerError] = useState('');
   const [success, setSuccess] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  const { adminSignup, user, loading: authLoading, token } = useAuth();
 
-  // 🔥 CARREGAR EMPRESAS (APENAS PARA MASTER)
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+    setValue,
+    watch,
+  } = useForm<SignupFormData>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: {
+      role: 'EMPLOYER',
+    },
+  });
+
+  const selectedCompanyId = watch('companyId');
+
+  // E substitui o useEffect por:
   useEffect(() => {
-    const loadCompanies = async () => {
-      if (user?.role === 'MASTER') {
+    if (user?.role === 'MASTER' && token) {
+      const loadCompanies = async () => {
         setLoadingCompanies(true);
         try {
-          const response = await fetch('http://localhost:3000/auth/companies', {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-          
-          if (response.ok) {
-            const companiesData = await response.json();
-            setCompanies(companiesData);
-          } else {
-            console.error('Erro ao carregar empresas');
+          const API_BASE = process.env.NESTJS_API_URL || 'http://localhost:3000';
+          const res = await authFetch(`${API_BASE}/auth/companies/master`);
+
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Erro ${res.status}: ${errorText}`);
           }
-        } catch (error) {
-          console.error('Erro ao carregar empresas:', error);
+
+          const data = await res.json();
+          setCompanies(data);
+
+          if (data.length === 0) {
+            console.warn("Nenhuma empresa retornada pelo backend (mas a rota funcionou)");
+          }
+        } catch (err) {
+          console.error("Falha ao carregar empresas para MASTER:", err);
+          setServerError("Não foi possível carregar a lista de empresas.");
         } finally {
           setLoadingCompanies(false);
         }
-      }
-    };
+      };
 
-    if (user) {
       loadCompanies();
     }
-  }, [user, token]);
+  }, [user?.role, token, authFetch]);
 
-  // 🔥 DEFINIR companyId AUTOMATICAMENTE PARA ADMIN
+  // Preenche automaticamente companyId se for ADMIN
   useEffect(() => {
-    if (user?.companyId && user.role === 'ADMIN') {
-      setFormData(prev => ({
-        ...prev,
-        companyId: user.companyId
-      }));
+    if (user?.role === 'ADMIN' && user.companyId) {
+      setValue('companyId', user.companyId);
     }
-  }, [user?.companyId, user?.role]);
+  }, [user, setValue]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleRoleChange = (value: string) => {
-    setFormData({
-      ...formData,
-      role: value
-    });
-  };
-
-  const handleCompanyChange = (value: string) => {
-    setFormData({
-      ...formData,
-      companyId: value
-    });
-  };
-
-  // 🔥 FUNÇÃO DE VALIDAÇÃO
-  const validateForm = () => {
-    if (!formData.name.trim()) {
-      return 'Nome completo é obrigatório';
-    }
-    if (!formData.email.trim()) {
-      return 'Email é obrigatório';
-    }
-    if (!formData.password.trim()) {
-      return 'Senha é obrigatória';
-    }
-    if (formData.password.length < 6) {
-      return 'Senha deve ter pelo menos 6 caracteres';
-    }
-    if (!formData.contact.trim()) {
-      return 'Telefone é obrigatório';
-    }
-    if (!formData.companyId.trim()) {
-      return 'Empresa é obrigatória';
-    }
-
-    return null;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  const onSubmit = async (data: SignupFormData) => {
+    setServerError('');
     setSuccess('');
-
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
-      setLoading(false);
-      return;
-    }
-
     try {
-      await adminSignup(formData);
+      await adminSignup({
+        ...data,
+        document: data.document ?? undefined,
+      });
       setSuccess('Usuário cadastrado com sucesso!');
-      
-      // Limpar formulário mantendo a empresa selecionada
-      setFormData({
+
+      reset({
+        name: '',
         email: '',
         password: '',
-        name: '',
-        companyId: user?.role === 'ADMIN' ? user.companyId : formData.companyId,
-        contact: '',
-        role: 'USER'
+        phone: '',
+        document: '',
+        companyId: user?.role === 'ADMIN' ? (user.companyId || '') : '',
+        role: 'EMPLOYER',
       });
     } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      setServerError(err.message || 'Erro ao cadastrar usuário');
     }
+  };
+
+  // Máscara de telefone brasileira
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length <= 11) {
+      value = value.replace(/(\d{2})(\d)/, '($1) ');
+      if (value.length > 10) {
+        value = value.replace(/(\d{5})(\d)/, '$1-$1');
+      } else {
+        value = value.replace(/(\d{4})(\d)/, '$1-$1');
+      }
+    }
+    e.target.value = value;
   };
 
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
       </div>
     );
   }
 
-  if (user && !['MASTER', 'ADMIN'].includes(user.role)) {
+  if (!user || !['MASTER', 'ADMIN'].includes(user.role)) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="text-center space-y-4 max-w-md">
-          <Alert variant="destructive">
-            <AlertDescription>
-              Acesso negado. Apenas administradores podem criar usuários.
-            </AlertDescription>
-          </Alert>
-          <Link href="/login" className="block">
-            <Button className="w-full gap-2">
-              <LogIn className="h-4 w-4" />
-              Fazer Login
-            </Button>
-          </Link>
-        </div>
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <Shield className="h-12 w-12 mx-auto text-red-500 mb-4" />
+            <CardTitle>Acesso Restrito</CardTitle>
+            <CardDescription>Apenas administradores podem cadastrar usuários</CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            <Link href="/login">
+              <Button className="gap-2">
+                <LogIn className="h-4 w-4" /> Fazer Login
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-center gap-2 mb-6">
-          <Shield className="h-6 w-6 text-indigo-600" />
-          <h1 className="text-2xl font-bold text-slate-900">Cadastro de Usuários</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 px-4 py-12">
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-8">
+          <div className="flex justify-center gap-3 items-center mb-4">
+            <UserPlus className="h-10 w-10 text-indigo-600" />
+            <h1 className="text-4xl font-bold text-slate-900">Cadastro de Usuário</h1>
+          </div>
+          <p className="text-slate-600">
+            Criando novo acesso para{' '}
+            <span className="font-semibold text-indigo-600">
+              {user.role === 'MASTER' ? 'qualquer empresa' : user.company?.name}
+            </span>
+          </p>
         </div>
 
-        {/* 🔥 MENSAGEM INFORMATIVA PARA USUÁRIOS NÃO AUTENTICADOS */}
-        {!user && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <div className="flex items-start gap-3">
-              <Info className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <h3 className="font-medium text-amber-800 mb-2">
-                  Antes de cadastrar um funcionário
-                </h3>
-                <p className="text-amber-700 text-sm">
-                  É necessário que uma empresa já esteja cadastrada no sistema.
-                  <br />
-                  Caso você já tenha uma empresa criada, por favor{' '}
-                  <Link href="/login" className="font-medium underline hover:text-amber-900">
-                    faça login primeiro
-                  </Link>{' '}
-                  para então registrar novos usuários vinculados a ela.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 🔥 INFO DO USUÁRIO LOGADO */}
-        {user && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center gap-2 text-sm text-blue-800">
-              <Shield className="h-4 w-4" />
-              <span>
-                Logado como: <strong>{user.name}</strong> ({user.role})
-                {user.role === 'ADMIN' && (
-                  <span className="ml-2 text-blue-600">
-                    • Usuários serão cadastrados na sua empresa
-                  </span>
-                )}
-              </span>
-            </div>
-          </div>
-        )}
-
-        <Card className="shadow-lg">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-xl">Novo Usuário</CardTitle>
-            <CardDescription className="text-slate-600">
-              {!user 
-                ? 'Cadastre um novo usuário no sistema' 
-                : user?.role === 'MASTER' 
-                  ? 'Selecione a empresa e cadastre o usuário' 
-                  : 'Cadastre um novo usuário na sua empresa'
-              }
+        <Card className="shadow-xl border-0">
+          <CardHeader className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-lg">
+            <CardTitle className="text-2xl flex items-center gap-2">
+              <Shield className="h-6 w-6" />
+              {user.role === 'MASTER' ? 'Master' : 'Administrador'} • {user.name}
+            </CardTitle>
+            <CardDescription className="text-indigo-100">
+              Preencha os dados do novo usuário abaixo
             </CardDescription>
           </CardHeader>
-          
-          <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
+
+          <CardContent className="pt-8">
+            {serverError && (
+              <Alert variant="destructive" className="mb-6">
+                <AlertDescription>{serverError}</AlertDescription>
               </Alert>
             )}
 
             {success && (
-              <Alert className="bg-green-50 border-green-200">
-                <AlertDescription className="text-green-800">{success}</AlertDescription>
+              <Alert className="mb-6 bg-green-50 border-green-200">
+                <AlertDescription className="text-green-800 font-medium">{success}</AlertDescription>
               </Alert>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Nome */}
                 <div className="space-y-2">
-                  <Label htmlFor="name" className="text-sm font-medium">
-                    Nome Completo *
-                  </Label>
+                  <Label htmlFor="name">Nome Completo *</Label>
                   <Input
                     id="name"
-                    name="name"
-                    type="text"
-                    required
-                    placeholder="Digite o nome completo"
-                    value={formData.name}
-                    onChange={handleChange}
-                    disabled={!user} // 🔥 Desabilitar se não estiver logado
+                    placeholder="João Silva"
+                    {...register('name')}
+                    className={errors.name ? 'border-red-500' : ''}
                   />
+                  {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
                 </div>
 
+                {/* Email */}
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-medium">
-                    Email *
-                  </Label>
+                  <Label htmlFor="email">Email *</Label>
                   <Input
                     id="email"
-                    name="email"
                     type="email"
-                    required
-                    placeholder="usuario@empresa.com"
-                    value={formData.email}
-                    onChange={handleChange}
-                    disabled={!user} // 🔥 Desabilitar se não estiver logado
+                    placeholder="joao@empresa.com.br"
+                    {...register('email')}
+                    className={errors.email ? 'border-red-500' : ''}
                   />
+                  {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Senha */}
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm font-medium">
-                    Senha *
-                  </Label>
+                  <Label htmlFor="password">Senha *</Label>
                   <Input
                     id="password"
-                    name="password"
                     type="password"
-                    required
-                    placeholder="Digite a senha (mínimo 6 caracteres)"
-                    value={formData.password}
-                    onChange={handleChange}
-                    minLength={6}
-                    disabled={!user} // 🔥 Desabilitar se não estiver logado
+                    placeholder="Mínimo 6 caracteres"
+                    {...register('password')}
+                    className={errors.password ? 'border-red-500' : ''}
                   />
+                  {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
                 </div>
 
+                {/* Telefone */}
+                {/* Telefone com máscara brasileira funcionando perfeitamente */}
                 <div className="space-y-2">
-                  <Label htmlFor="contact" className="text-sm font-medium">
-                    Telefone *
-                  </Label>
+                  <Label htmlFor="phone">Telefone *</Label>
                   <Input
-                    id="contact"
-                    name="contact"
-                    type="text"
-                    required
+                    id="phone"
                     placeholder="(11) 99999-9999"
-                    value={formData.contact}
-                    onChange={handleChange}
-                    disabled={!user} // 🔥 Desabilitar se não estiver logado
+                    maxLength={15}
+                    {...register('phone', {
+                      onChange: (e) => {
+                        let valor = e.target.value.replace(/\D/g, ''); // remove tudo que não é número
+                        valor = valor.replace(/^(\d{2})(\d)/g, '($1) $2'); // coloca parênteses no DDD
+                        valor = valor.replace(/(\d)(\d{4})$/, '$1-$2'); // coloca hífen antes dos últimos 4 dígitos
+                        e.target.value = valor;
+                      },
+                    })}
+                    className={errors.phone ? 'border-red-500' : ''}
+                  />
+                  {errors.phone && <p className="text-sm text-red-500">{errors.phone.message}</p>}
+                </div>
+
+                {/* Documento (CPF/CNPJ) - opcional */}
+                <div className="space-y-2">
+                  <Label htmlFor="document">CPF ou CNPJ (opcional)</Label>
+                  <Input
+                    id="document"
+                    placeholder="000.000.000-00 ou 00.000.000/0001-00"
+                    {...register('document')}
                   />
                 </div>
-              </div>
 
-              {/* 🔥 SELEÇÃO DE EMPRESA - COMPORTAMENTO DIFERENCIADO */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Perfil */}
                 <div className="space-y-2">
-                  <Label htmlFor="company" className="text-sm font-medium">
-                    Empresa *
-                  </Label>
-                  
-                  {!user ? (
-                    // 🔥 USUÁRIO NÃO LOGADO: Mostrar mensagem
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 p-3 border border-amber-200 rounded-md bg-amber-50">
-                        <Info className="h-4 w-4 text-amber-500" />
-                        <div>
-                          <div className="font-medium text-sm text-amber-700">
-                            Faça login para selecionar uma empresa
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-xs text-amber-600">
-                        ⓘ É necessário estar logado como ADMIN ou MASTER para cadastrar usuários
-                      </p>
-                    </div>
-                  ) : user?.role === 'MASTER' ? (
-                    // 🔥 MASTER: Pode selecionar qualquer empresa
-                    <Select value={formData.companyId} onValueChange={handleCompanyChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={
-                          loadingCompanies 
-                            ? "Carregando empresas..." 
-                            : "Selecione uma empresa"
-                        } />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {companies.map((company) => (
-                          <SelectItem key={company.id} value={company.id}>
-                            <div className="flex items-center gap-2">
-                              <Building className="h-4 w-4" />
-                              <div>
-                                <div className="font-medium">{company.name}</div>
-                                <div className="text-xs text-slate-500">{company.email}</div>
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    // 🔥 ADMIN: Empresa fixa (somente leitura)
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 p-2 border border-slate-200 rounded-md bg-slate-50">
-                        <Building className="h-4 w-4 text-slate-500" />
-                        <div>
-                          <div className="font-medium text-sm">
-                            {user?.company?.name || 'Sua empresa'}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            ID: {formData.companyId}
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        ⓘ Usuário será cadastrado automaticamente na sua empresa
-                      </p>
-                    </div>
-                  )}
-                  
-                  {user?.role === 'MASTER' && companies.length === 0 && !loadingCompanies && (
-                    <p className="text-xs text-amber-600">
-                      Nenhuma empresa encontrada. Verifique se há empresas ativas no sistema.
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="role" className="text-sm font-medium">
-                    Perfil do Usuário
-                  </Label>
-                  <Select 
-                    value={formData.role} 
-                    onValueChange={handleRoleChange}
-                    disabled={!user} // 🔥 Desabilitar se não estiver logado
+                  <Label>Perfil de Acesso</Label>
+                  <Select
+                    value={watch('role')}
+                    onValueChange={(value) => setValue('role', value as any)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o perfil" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="USER">Usuário</SelectItem>
-                      {user?.role === 'MASTER' && (
+                      <SelectItem value="EMPLOYER">Funcionário</SelectItem>
+                      {user.role === 'MASTER' && (
                         <>
                           <SelectItem value="ADMIN">Administrador</SelectItem>
                           <SelectItem value="MASTER">Master</SelectItem>
@@ -422,71 +298,85 @@ export default function AdminSignupPage() {
                       )}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-slate-500">
-                    {!user 
-                      ? 'Faça login para selecionar o perfil' 
-                      : user?.role === 'ADMIN' 
-                        ? 'ADMIN só pode criar usuários com perfil USER' 
-                        : 'MASTER pode criar qualquer perfil'
-                    }
-                  </p>
                 </div>
               </div>
 
-              <Button 
-                type="submit" 
-                disabled={loading || !formData.companyId || !user} // 🔥 Desabilitar se não estiver logado
-                className="w-full bg-indigo-600 hover:bg-indigo-700"
+              {/* Seleção de Empresa */}
+              <div className="space-y-3 pt-4 border-t">
+                <Label>Empresa *</Label>
+                {user.role === 'MASTER' ? (
+                  loadingCompanies ? (
+                    <div className="flex items-center gap-2 text-slate-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Carregando empresas...
+                    </div>
+                  ) : companies.length > 0 ? (
+                    <Select
+                      value={selectedCompanyId}
+                      onValueChange={(value) => setValue('companyId', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a empresa" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {companies.map((company) => (
+                          <SelectItem key={company.id} value={company.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{company.name}</span>
+                              <span className="text-xs text-slate-500">
+                                {company.cnpj} • {company.email}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-amber-600 text-sm">Nenhuma empresa ativa encontrada.</p>
+                  )
+                ) : (
+                  <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Building className="h-8 w-8 text-indigo-600" />
+                      <div>
+                        <p className="font-medium text-indigo-900">{user.company?.name}</p>
+                        <p className="text-sm text-indigo-700">Usuário será vinculado automaticamente</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {errors.companyId && <p className="text-sm text-red-500">{errors.companyId.message}</p>}
+              </div>
+
+              <Button
+                type="submit"
+                disabled={isSubmitting || !selectedCompanyId}
+                className="w-full h-12 text-lg font-semibold bg-indigo-600 hover:bg-indigo-700"
               >
-                {!user ? (
-                  'Faça login para cadastrar usuários'
-                ) : loading ? (
+                {isSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Cadastrando...
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Cadastrando usuário...
                   </>
                 ) : (
-                  'Cadastrar Usuário'
+                  <>
+                    <UserPlus className="mr-2 h-5 w-5" />
+                    Cadastrar Usuário
+                  </>
                 )}
               </Button>
             </form>
-
-            <div className="pt-4 border-t">
-              {!user ? (
-                // 🔥 BOTÃO PRINCIPAL PARA LOGIN QUANDO NÃO ESTIVER LOGADO
-                <Link href="/login" className="w-full">
-                  <Button className="w-full gap-2 bg-green-600 hover:bg-green-700">
-                    <LogIn className="h-4 w-4" />
-                    Fazer Login para Continuar
-                  </Button>
-                </Link>
-              ) : (
-                // 🔥 BOTÃO SECUNDÁRIO QUANDO ESTIVER LOGADO
-                <Link href="/login" className="w-full">
-                  <Button variant="outline" className="w-full gap-2">
-                    <LogIn className="h-4 w-4" />
-                    Ir para Login
-                  </Button>
-                </Link>
-              )}
-            </div>
-
-            {/* 🔥 LINK PARA CRIAR CONTA SE NÃO TIVER UMA */}
-            {!user && (
-              <div className="text-center">
-                <p className="text-sm text-slate-600">
-                  Não tem uma conta?{' '}
-                  <Link 
-                    href="/signup" 
-                    className="text-indigo-600 hover:text-indigo-500 font-medium underline"
-                  >
-                    Criar nova empresa
-                  </Link>
-                </p>
-              </div>
-            )}
           </CardContent>
         </Card>
+
+        <div className="mt-8 text-center text-sm text-slate-600">
+          <p>
+            Já tem conta?{' '}
+            <Link href="/login" className="text-indigo-600 font-medium hover:underline">
+              Fazer login
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );
