@@ -190,24 +190,23 @@ export default function DashboardPage() {
 
   const isTaskOverdue = (task: Task) => {
     if (!task.dueDate) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueDate = new Date(task.dueDate);
-    dueDate.setHours(0, 0, 0, 0);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const dueStr = new Date(task.dueDate).toISOString().split('T')[0];
     const isCompleted = task.column?.title?.toLowerCase().includes('concluído') ||
       task.column?.title?.toLowerCase().includes('finalizado') ||
       task.column?.title?.toLowerCase().includes('pronto') ||
       task.completedAt;
-    return dueDate < today && !isCompleted;
+    return dueStr < todayStr && !isCompleted;
   };
 
   const isTaskDueSoon = (task: Task) => {
     if (!task.dueDate || isTaskOverdue(task)) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueDate = new Date(task.dueDate);
-    dueDate.setHours(0, 0, 0, 0);
-    const diffTime = dueDate.getTime() - today.getTime();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const dueStr = new Date(task.dueDate).toISOString().split('T')[0];
+    // Simple string compare for days diff
+    const today = new Date(todayStr);
+    const due = new Date(dueStr);
+    const diffTime = due.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays <= 3 && diffDays >= 0;
   };
@@ -284,9 +283,20 @@ export default function DashboardPage() {
     }
   };
 
-  const navigateToTaskDetails = (task: Task) => {
-    router.push(`/tasks/${task.id}`);
-  };
+  // No Dashboard, modifique a função navigateToAgenda
+const navigateToAgenda = (task: Task) => {
+  if (task.dueDate) {
+    // Formatar a data para YYYY-MM-DD
+    const focusDate = new Date(task.dueDate).toISOString().split('T')[0];
+    router.push(`/agenda?focusDate=${focusDate}&highlightTask=${task.id}`);
+  } else {
+    // Se não tem dueDate, usar a data de criação ou data atual
+    const focusDate = task.createdAt 
+      ? new Date(task.createdAt).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+    router.push(`/agenda?focusDate=${focusDate}&highlightTask=${task.id}`);
+  }
+};
 
   const navigateToKanban = () => {
     router.push('/Kanban');
@@ -595,7 +605,7 @@ export default function DashboardPage() {
                           task.priority >= 4 ? 'border-purple-200 bg-purple-50/50' :
                             'border-gray-200 bg-white'
                         }`}
-                      onClick={() => navigateToTaskDetails(task)}
+                      onClick={() => navigateToAgenda(task)}
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between mb-2">
@@ -699,7 +709,7 @@ export default function DashboardPage() {
                       key={task.id}
                       className={`flex items-start gap-3 p-3 border rounded-lg hover:shadow-md transition-all cursor-pointer group ${isTaskDueSoon(task) ? 'border-orange-200 bg-orange-50/50' : 'border-gray-200 bg-white'
                         }`}
-                      onClick={() => navigateToTaskDetails(task)}
+                      onClick={() => navigateToAgenda(task)}
                     >
                       <div className="flex-1">
                         <div className="flex items-start justify-between mb-2">

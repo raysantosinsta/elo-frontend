@@ -121,7 +121,7 @@ export default function ProductKanban() {
   const [taskAudios, setTaskAudios] = useState<File[]>([]);
   const [taskVideos, setTaskVideos] = useState<File[]>([]);
 
-  // Formulário edição - AGORA COMPLETO
+  // Formulário edição - AGORA COMPLETO com suporte a remoção e adição
   const [editTaskTitle, setEditTaskTitle] = useState("");
   const [editTaskDescription, setEditTaskDescription] = useState("");
   const [editTaskDueDate, setEditTaskDueDate] = useState("");
@@ -132,6 +132,11 @@ export default function ProductKanban() {
   const [editTaskAudios, setEditTaskAudios] = useState<File[]>([]);
   const [editTaskVideos, setEditTaskVideos] = useState<File[]>([]);
   const [editTaskStatus, setEditTaskStatus] = useState("PENDING");
+
+  // Estados para IDs removidos na edição
+  const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
+  const [removedAudioIds, setRemovedAudioIds] = useState<string[]>([]);
+  const [removedVideoIds, setRemovedVideoIds] = useState<string[]>([]);
 
   // Gravação de áudio
   const [isRecording, setIsRecording] = useState(false);
@@ -442,33 +447,58 @@ export default function ProductKanban() {
     }
   };
 
+  // Funções para remover arquivos na edição
+  const removeImage = (id: string) => {
+    setRemovedImageIds(prev => [...prev, id]);
+  };
+
+  const removeAudio = (id: string) => {
+    setRemovedAudioIds(prev => [...prev, id]);
+  };
+
+  const removeVideo = (id: string) => {
+    setRemovedVideoIds(prev => [...prev, id]);
+  };
+
   const updateTask = async () => {
     if (!editingTask || !editTaskTitle.trim()) return alert("Título obrigatório");
     setIsSubmitting(true);
 
-    const data = {
-      title: editTaskTitle,
-      description: editTaskDescription || null,
-      priority: parseInt(editTaskPriority),
-      columnId: editTaskColumn || null,
-      dueDate: editTaskDueDate || null,
-      assignedToId: editTaskAssignedTo || null,
-      status: editTaskStatus as "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED",
-    };
+    const formData = new FormData();
+    formData.append("title", editTaskTitle);
+    formData.append("description", editTaskDescription || "");
+    formData.append("priority", editTaskPriority);
+    formData.append("columnId", editTaskColumn || "");
+    formData.append("dueDate", editTaskDueDate || "");
+    formData.append("assignedToId", editTaskAssignedTo || "");
+    formData.append("status", editTaskStatus);
+
+    // Adicionar IDs removidos
+    if (removedImageIds.length > 0) {
+      formData.append("removeImageIds", JSON.stringify(removedImageIds));
+    }
+    if (removedAudioIds.length > 0) {
+      formData.append("removeAudioIds", JSON.stringify(removedAudioIds));
+    }
+    if (removedVideoIds.length > 0) {
+      formData.append("removeVideoIds", JSON.stringify(removedVideoIds));
+    }
+
+    // Adicionar novos arquivos
+    editTaskImages.forEach(f => formData.append("images", f));
+    editTaskAudios.forEach(f => formData.append("audios", f));
+    editTaskVideos.forEach(f => formData.append("videos", f));
 
     try {
-      const res = await authFetch(`${API_BASE}/tasks/${editingTask.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Erro");
+      const res = await authFetchWithFiles(`${API_BASE}/tasks/${editingTask.id}`, formData, "PUT");
+      if (!res.ok) throw new Error("Erro ao atualizar");
       const updated = await res.json();
       setTasks(prev => prev.map(t => t.id === editingTask.id ? updated : t));
       setIsEditTaskModal(false);
       setEditingTask(null);
       resetEditTaskForm();
-    } catch (err) {
-      alert("Erro ao atualizar");
+    } catch (err: any) {
+      alert(err.message || "Erro ao atualizar");
     } finally {
       setIsSubmitting(false);
     }
@@ -482,6 +512,7 @@ export default function ProductKanban() {
   const resetEditTaskForm = () => {
     setEditTaskTitle(""); setEditTaskDescription(""); setEditTaskDueDate(""); setEditTaskAssignedTo(""); setEditTaskColumn(""); 
     setEditTaskPriority("1"); setEditTaskStatus("PENDING"); setEditTaskImages([]); setEditTaskAudios([]); setEditTaskVideos([]);
+    setRemovedImageIds([]); setRemovedAudioIds([]); setRemovedVideoIds([]);
   };
 
   const openEditModal = (task: Task) => {
@@ -493,6 +524,12 @@ export default function ProductKanban() {
     setEditTaskColumn(task.columnId || "");
     setEditTaskPriority(task.priority.toString());
     setEditTaskStatus(task.status);
+    setEditTaskImages([]);
+    setEditTaskAudios([]);
+    setEditTaskVideos([]);
+    setRemovedImageIds([]);
+    setRemovedAudioIds([]);
+    setRemovedVideoIds([]);
     setIsEditTaskModal(true);
   };
 
@@ -838,7 +875,7 @@ export default function ProductKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL EDITAR TAREFA - AGORA COMPLETO */}
+      {/* MODAL EDITAR TAREFA - AGORA COMPLETO com remoção e adição */}
       <Dialog open={isEditTaskModal} onOpenChange={setIsEditTaskModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Editar Tarefa - {editingTask?.title}</DialogTitle></DialogHeader>
@@ -923,7 +960,7 @@ export default function ProductKanban() {
                 />
               </div>
 
-              {/* Imagens para edição */}
+              {/* Imagens para edição - com remoção */}
               <div>
                 <Label>Adicionar Novas Imagens</Label>
                 <Input 
@@ -934,24 +971,34 @@ export default function ProductKanban() {
                 />
                 {editingTask.taskImages && editingTask.taskImages.length > 0 && (
                   <div className="mt-2">
-                    <p className="text-sm text-gray-600 mb-2">Imagens atuais:</p>
+                    <p className="text-sm text-gray-600 mb-2">Imagens atuais (clique no ícone de lixeira para remover):</p>
                     <div className="grid grid-cols-2 gap-2">
-                      {editingTask.taskImages.map(img => (
-                        <div key={img.id} className="relative">
-                          <img 
-                            src={getImageUrl(img.url)} 
-                            alt={img.filename}
-                            className="w-full h-20 object-cover rounded"
-                          />
-                          <p className="text-xs truncate">{img.filename}</p>
-                        </div>
-                      ))}
+                      {editingTask.taskImages
+                        .filter(img => !removedImageIds.includes(img.id))
+                        .map(img => (
+                          <div key={img.id} className="relative">
+                            <img 
+                              src={getImageUrl(img.url)} 
+                              alt={img.filename}
+                              className="w-full h-20 object-cover rounded"
+                            />
+                            <p className="text-xs truncate">{img.filename}</p>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="absolute top-0 right-0 w-5 h-5 p-0"
+                              onClick={() => removeImage(img.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        ))}
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Áudio para edição */}
+              {/* Áudio para edição - com remoção */}
               <div>
                 <Label>Adicionar Novos Áudios</Label>
                 <Input 
@@ -962,19 +1009,30 @@ export default function ProductKanban() {
                 />
                 {editingTask.taskAudios && editingTask.taskAudios.length > 0 && (
                   <div className="mt-2">
-                    <p className="text-sm text-gray-600 mb-2">Áudios atuais:</p>
+                    <p className="text-sm text-gray-600 mb-2">Áudios atuais (clique no ícone de lixeira para remover):</p>
                     <div className="space-y-2">
-                      {editingTask.taskAudios.map(audio => (
-                        <div key={audio.id} className="flex items-center gap-2">
-                          <audio controls src={getImageUrl(audio.url)} className="w-full" />
-                        </div>
-                      ))}
+                      {editingTask.taskAudios
+                        .filter(audio => !removedAudioIds.includes(audio.id))
+                        .map(audio => (
+                          <div key={audio.id} className="flex items-center gap-2 relative">
+                            <audio controls src={getImageUrl(audio.url)} className="flex-1" />
+                            <p className="text-xs min-w-[120px] truncate">{audio.filename}</p>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="w-6 h-6 p-0 absolute -right-2 -top-2"
+                              onClick={() => removeAudio(audio.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        ))}
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Vídeos para edição */}
+              {/* Vídeos para edição - com remoção */}
               <div>
                 <Label>Adicionar Novos Vídeos</Label>
                 <Input 
@@ -985,14 +1043,24 @@ export default function ProductKanban() {
                 />
                 {editingTask.taskVideos && editingTask.taskVideos.length > 0 && (
                   <div className="mt-2">
-                    <p className="text-sm text-gray-600 mb-2">Vídeos atuais:</p>
+                    <p className="text-sm text-gray-600 mb-2">Vídeos atuais (clique no ícone de lixeira para remover):</p>
                     <div className="space-y-2">
-                      {editingTask.taskVideos.map(video => (
-                        <div key={video.id}>
-                          <video controls src={getImageUrl(video.url)} className="w-full max-w-md rounded" />
-                          <p className="text-xs mt-1">{video.filename}</p>
-                        </div>
-                      ))}
+                      {editingTask.taskVideos
+                        .filter(video => !removedVideoIds.includes(video.id))
+                        .map(video => (
+                          <div key={video.id} className="relative">
+                            <video controls src={getImageUrl(video.url)} className="w-full max-w-md rounded" />
+                            <p className="text-xs mt-1">{video.filename}</p>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="absolute top-0 right-0 w-5 h-5 p-0"
+                              onClick={() => removeVideo(video.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        ))}
                     </div>
                   </div>
                 )}
