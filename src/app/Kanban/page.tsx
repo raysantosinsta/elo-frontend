@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -56,6 +57,12 @@ interface Professional {
   role?: string;
 }
 
+interface TaskImage {
+  id: string;
+  url: string;
+  filename: string;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -66,7 +73,7 @@ interface Task {
   columnId?: string | null;
   assignedTo?: Professional;
   createdBy?: Professional;
-  taskImages: Array<{ id: string; url: string; filename: string }>;
+  taskImages: TaskImage[];
   taskAudios: Array<{ id: string; url: string; filename: string; duration?: number }>;
   taskVideos: Array<{ id: string; url: string; filename: string; duration?: number }>;
   createdAt: string;
@@ -114,7 +121,7 @@ export default function ProductKanban() {
   const [taskAudios, setTaskAudios] = useState<File[]>([]);
   const [taskVideos, setTaskVideos] = useState<File[]>([]);
 
-  // Formulário edição
+  // Formulário edição - AGORA COMPLETO
   const [editTaskTitle, setEditTaskTitle] = useState("");
   const [editTaskDescription, setEditTaskDescription] = useState("");
   const [editTaskDueDate, setEditTaskDueDate] = useState("");
@@ -124,6 +131,7 @@ export default function ProductKanban() {
   const [editTaskImages, setEditTaskImages] = useState<File[]>([]);
   const [editTaskAudios, setEditTaskAudios] = useState<File[]>([]);
   const [editTaskVideos, setEditTaskVideos] = useState<File[]>([]);
+  const [editTaskStatus, setEditTaskStatus] = useState("PENDING");
 
   // Gravação de áudio
   const [isRecording, setIsRecording] = useState(false);
@@ -195,7 +203,17 @@ export default function ProductKanban() {
       if (!res.ok) throw new Error("Erro tasks");
       const data = await res.json();
       const tasksArray = Array.isArray(data) ? data : data.tasks || [];
-      setTasks(tasksArray);
+      
+      // Garantir que as URLs das imagens sejam absolutas
+      const tasksWithAbsoluteUrls = tasksArray.map((task: Task) => ({
+        ...task,
+        taskImages: task.taskImages?.map((img: TaskImage) => ({
+          ...img,
+          url: img.url.startsWith('http') ? img.url : `${API_BASE}${img.url.startsWith('/') ? '' : '/'}${img.url}`
+        })) || []
+      }));
+      
+      setTasks(tasksWithAbsoluteUrls);
     } catch (err) {
       setTasks([]);
     }
@@ -225,13 +243,99 @@ export default function ProductKanban() {
     if (user) loadInitialData();
   }, [user, authLoading, router, loadInitialData]);
 
+  // ==================================== FUNÇÕES DE COLUNAS ====================================
+  const createColumn = async () => {
+    if (!colTitle.trim()) return alert("Título da coluna é obrigatório");
+    
+    try {
+      const res = await authFetch(`${API_BASE}/kanban-columns`, {
+        method: "POST",
+        body: JSON.stringify({ title: colTitle }),
+      });
+      
+      if (!res.ok) throw new Error("Erro ao criar coluna");
+      
+      const newColumn = await res.json();
+      setColumns(prev => [...prev, newColumn]);
+      setColTitle("");
+      setIsColumnModal(false);
+    } catch (err: any) {
+      alert(err.message || "Erro ao criar coluna");
+    }
+  };
+
+  const updateColumn = async () => {
+    if (!editingCol || !colTitle.trim()) return alert("Título da coluna é obrigatório");
+    
+    try {
+      const res = await authFetch(`${API_BASE}/kanban-columns/${editingCol.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ title: colTitle }),
+      });
+      
+      if (!res.ok) throw new Error("Erro ao atualizar coluna");
+      
+      const updatedColumn = await res.json();
+      setColumns(prev => prev.map(col => 
+        col.id === editingCol.id ? updatedColumn : col
+      ));
+      setColTitle("");
+      setEditingCol(null);
+      setIsColumnModal(false);
+    } catch (err: any) {
+      alert(err.message || "Erro ao atualizar coluna");
+    }
+  };
+
+  const deleteColumn = async (columnId: string) => {
+    if (!confirm("Tem certeza que deseja deletar esta coluna? As tarefas serão movidas para a coluna padrão.")) return;
+    
+    try {
+      const res = await authFetch(`${API_BASE}/kanban-columns/${columnId}`, {
+        method: "DELETE",
+      });
+      
+      if (!res.ok) throw new Error("Erro ao deletar coluna");
+      
+      // Atualizar a lista de colunas
+      setColumns(prev => prev.filter(col => col.id !== columnId));
+      
+      // Atualizar as tarefas para remover a referência à coluna deletada
+      setTasks(prev => prev.map(task => 
+        task.columnId === columnId ? { ...task, columnId: null } : task
+      ));
+    } catch (err: any) {
+      alert(err.message || "Erro ao deletar coluna");
+    }
+  };
+
+  const openEditColumnModal = (column: Column) => {
+    setEditingCol(column);
+    setColTitle(column.title);
+    setIsColumnModal(true);
+  };
+
+  const openCreateColumnModal = () => {
+    setEditingCol(null);
+    setColTitle("");
+    setIsColumnModal(true);
+  };
+
   // ==================================== FUNÇÕES AUXILIARES ====================================
   const refreshTask = useCallback(async (taskId: string) => {
     try {
       const res = await authFetch(`${API_BASE}/tasks/${taskId}`);
       if (res.ok) {
         const updated = await res.json();
-        setTasks(prev => prev.map(t => t.id === taskId ? updated : t));
+        // Garantir URLs absolutas para as imagens
+        const taskWithAbsoluteUrls = {
+          ...updated,
+          taskImages: updated.taskImages?.map((img: TaskImage) => ({
+            ...img,
+            url: img.url.startsWith('http') ? img.url : `${API_BASE}${img.url.startsWith('/') ? '' : '/'}${img.url}`
+          })) || []
+        };
+        setTasks(prev => prev.map(t => t.id === taskId ? taskWithAbsoluteUrls : t));
       }
     } catch (err) { }
   }, [authFetch]);
@@ -349,6 +453,7 @@ export default function ProductKanban() {
       columnId: editTaskColumn || null,
       dueDate: editTaskDueDate || null,
       assignedToId: editTaskAssignedTo || null,
+      status: editTaskStatus as "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED",
     };
 
     try {
@@ -361,6 +466,7 @@ export default function ProductKanban() {
       setTasks(prev => prev.map(t => t.id === editingTask.id ? updated : t));
       setIsEditTaskModal(false);
       setEditingTask(null);
+      resetEditTaskForm();
     } catch (err) {
       alert("Erro ao atualizar");
     } finally {
@@ -373,6 +479,11 @@ export default function ProductKanban() {
     setTaskImages([]); setTaskAudios([]); setTaskVideos([]); setAudioBlob(null); setRecordingTime(0);
   };
 
+  const resetEditTaskForm = () => {
+    setEditTaskTitle(""); setEditTaskDescription(""); setEditTaskDueDate(""); setEditTaskAssignedTo(""); setEditTaskColumn(""); 
+    setEditTaskPriority("1"); setEditTaskStatus("PENDING"); setEditTaskImages([]); setEditTaskAudios([]); setEditTaskVideos([]);
+  };
+
   const openEditModal = (task: Task) => {
     setEditingTask(task);
     setEditTaskTitle(task.title);
@@ -381,6 +492,7 @@ export default function ProductKanban() {
     setEditTaskAssignedTo(task.assignedTo?.id || "");
     setEditTaskColumn(task.columnId || "");
     setEditTaskPriority(task.priority.toString());
+    setEditTaskStatus(task.status);
     setIsEditTaskModal(true);
   };
 
@@ -400,6 +512,12 @@ export default function ProductKanban() {
     if (p === 1) return "bg-red-100 text-red-800 border-red-200";
     if (p === 2) return "bg-yellow-100 text-yellow-800 border-yellow-200";
     return "bg-green-100 text-green-800 border-green-200";
+  };
+
+  // Função para garantir URL absoluta da imagem
+  const getImageUrl = (url: string) => {
+    if (!url) return '';
+    return url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
   };
 
   // ==================================== RENDER TASK CARD ====================================
@@ -423,15 +541,30 @@ export default function ProductKanban() {
           </DropdownMenu>
         </div>
 
-        {task.taskImages.length > 0 ? (
+        {task.taskImages && task.taskImages.length > 0 ? (
           <div className="mb-3 relative">
-            <img src={task.taskImages[0].url} alt="img" className="w-full h-48 object-cover rounded-md cursor-pointer"
-              onClick={() => openPreviewModal(task)} />
-            {task.taskImages.length > 1 && <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">+{task.taskImages.length - 1}</div>}
+            <img
+              src={getImageUrl(task.taskImages[0].url)}
+              alt="img"
+              className="w-full h-48 object-cover rounded-md cursor-pointer"
+              onClick={() => openPreviewModal(task)}
+              onError={(e) => {
+                // Fallback em caso de erro no carregamento
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+              }}
+            />
+            {task.taskImages.length > 1 && (
+              <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                +{task.taskImages.length - 1}
+              </div>
+            )}
           </div>
         ) : (
-          <div className="bg-gray-100 border-2 border-dashed h-48 rounded-md mb-3 flex items-center justify-center text-gray-400 cursor-pointer"
-            onClick={() => openPreviewModal(task)}>
+          <div
+            className="bg-gray-100 border-2 border-dashed h-48 rounded-md mb-3 flex items-center justify-center text-gray-400 cursor-pointer"
+            onClick={() => openPreviewModal(task)}
+          >
             <ImageIcon className="w-8 h-8 mr-2" /> Sem imagem
           </div>
         )}
@@ -467,6 +600,7 @@ export default function ProductKanban() {
   if (!user) return null;
 
   const safeColumns = Array.isArray(columns) ? columns : [];
+  const tasksWithoutColumn = tasks.filter(t => !t.columnId);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -477,11 +611,16 @@ export default function ProductKanban() {
           <div className="flex gap-2">
             <Badge className="bg-white/20">{safeColumns.length} colunas</Badge>
             <Badge className="bg-white/20">{tasks.length} tarefas</Badge>
+            {tasksWithoutColumn.length > 0 && (
+              <Badge variant="destructive" className="bg-orange-500">
+                {tasksWithoutColumn.length} sem coluna
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-2"><User className="w-4 h-4" /> {user.name}</span>
-          <Button onClick={() => { setEditingCol(null); setColTitle(""); setIsColumnModal(true); }} variant="secondary" className="bg-white/20 hover:bg-white/30">
+          <Button onClick={openCreateColumnModal} variant="secondary" className="bg-white/20 hover:bg-white/30">
             <Settings className="w-4 h-4 mr-2" /> Colunas
           </Button>
           <Button onClick={() => { resetTaskForm(); setIsTaskModal(true); }} className="bg-green-600 hover:bg-green-700">
@@ -507,7 +646,27 @@ export default function ProductKanban() {
                   onDragOver={e => e.preventDefault()} onDrop={e => handleDrop(e, col.id)}>
                   <div className="bg-gray-200 rounded-t-lg px-4 py-3 flex justify-between items-center">
                     <h3 className="font-semibold">{col.title}</h3>
-                    <Badge>{tasks.filter(t => t.columnId === col.id).length}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge>{tasks.filter(t => t.columnId === col.id).length}</Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-6 w-6">
+                            <MoreVertical className="w-3 h-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem onClick={() => openEditColumnModal(col)}>
+                            <Edit className="w-4 h-4 mr-2" /> Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            className="text-red-600" 
+                            onClick={() => deleteColumn(col.id)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" /> Deletar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                   <div className="bg-gray-100 rounded-b-lg p-4 space-y-4 min-h-[600px]">
                     {tasks.filter(t => t.columnId === col.id).map(task => <TaskCard key={task.id} task={task} />)}
@@ -515,16 +674,18 @@ export default function ProductKanban() {
                 </div>
               ))}
 
-              {/* Sem coluna */}
-              <div className="w-80 flex-shrink-0"
-                onDragOver={e => e.preventDefault()} onDrop={e => handleDrop(e, null)}>
-                <div className="bg-gray-300 rounded-t-lg px-4 py-3">
-                  <h3 className="font-semibold">Sem Coluna</h3>
+              {/* Área para tarefas sem coluna - aparece apenas quando há tarefas sem coluna */}
+              {tasksWithoutColumn.length > 0 && (
+                <div className="w-80 flex-shrink-0"
+                  onDragOver={e => e.preventDefault()} onDrop={e => handleDrop(e, null)}>
+                  <div className="bg-orange-200 rounded-t-lg px-4 py-3">
+                    <h3 className="font-semibold text-orange-800">Tarefas Sem Coluna</h3>
+                  </div>
+                  <div className="bg-orange-100 rounded-b-lg p-4 space-y-4 min-h-[600px]">
+                    {tasksWithoutColumn.map(task => <TaskCard key={task.id} task={task} />)}
+                  </div>
                 </div>
-                <div className="bg-gray-200 rounded-b-lg p-4 space-y-4 min-h-[600px]">
-                  {tasks.filter(t => !t.columnId).map(task => <TaskCard key={task.id} task={task} />)}
-                </div>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -554,36 +715,53 @@ export default function ProductKanban() {
                 </div>
               </div>
 
-              {/* imagens */}
-              {previewTask.taskImages.length > 0 && (
+              {/* imagens - CORREÇÃO: removido height fixo para não cortar */}
+              {previewTask.taskImages && previewTask.taskImages.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2"><ImageIcon className="w-5 h-5" /> Imagens</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {previewTask.taskImages.map(img => (
-                      <img key={img.id} src={img.url} alt={img.filename} className="w-full h-64 object-cover rounded-lg" />
+                      <div key={img.id} className="flex flex-col items-center">
+                        <img 
+                          src={getImageUrl(img.url)} 
+                          alt={img.filename} 
+                          className="w-full max-w-md rounded-lg object-contain max-h-96"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                          }}
+                        />
+                        <p className="text-sm text-gray-600 mt-2">{img.filename}</p>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
               {/* áudios */}
-              {previewTask.taskAudios.length > 0 && (
+              {previewTask.taskAudios && previewTask.taskAudios.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2"><Music className="w-5 h-5" /> Áudios</h3>
                   <div className="space-y-3">
                     {previewTask.taskAudios.map(a => (
-                      <audio key={a.id} controls src={a.url} className="w-full" />
+                      <div key={a.id} className="flex flex-col">
+                        <audio controls src={getImageUrl(a.url)} className="w-full" />
+                        <p className="text-sm text-gray-600 mt-1">{a.filename}</p>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
               {/* vídeos */}
-              {previewTask.taskVideos.length > 0 && (
+              {previewTask.taskVideos && previewTask.taskVideos.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2"><Video className="w-5 h-5" /> Vídeos</h3>
                   {previewTask.taskVideos.map(v => (
-                    <video key={v.id} controls src={v.url} className="w-full rounded-lg" />
+                    <div key={v.id} className="flex flex-col">
+                      <video controls src={getImageUrl(v.url)} className="w-full max-w-2xl mx-auto rounded-lg" />
+                      <p className="text-sm text-gray-600 mt-2 text-center">{v.filename}</p>
+                    </div>
                   ))}
                 </div>
               )}
@@ -597,7 +775,7 @@ export default function ProductKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL NOVA TAREFA (completo com gravação, múltiplos arquivos, etc.) */}
+      {/* MODAL NOVA TAREFA */}
       <Dialog open={isTaskModal} onOpenChange={setIsTaskModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nova Tarefa</DialogTitle></DialogHeader>
@@ -660,32 +838,183 @@ export default function ProductKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL EDITAR TAREFA (simplificado mas funcional) */}
+      {/* MODAL EDITAR TAREFA - AGORA COMPLETO */}
       <Dialog open={isEditTaskModal} onOpenChange={setIsEditTaskModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Editar Tarefa</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Editar Tarefa - {editingTask?.title}</DialogTitle></DialogHeader>
           {editingTask && (
             <div className="space-y-4">
-              <div><Label>Título</Label><Input value={editTaskTitle} onChange={e => setEditTaskTitle(e.target.value)} /></div>
-              <div><Label>Descrição</Label><Textarea value={editTaskDescription} onChange={e => setEditTaskDescription(e.target.value)} /></div>
+              <div>
+                <Label>Título *</Label>
+                <Input value={editTaskTitle} onChange={e => setEditTaskTitle(e.target.value)} />
+              </div>
+              
+              <div>
+                <Label>Descrição</Label>
+                <Textarea 
+                  value={editTaskDescription} 
+                  onChange={e => setEditTaskDescription(e.target.value)} 
+                  rows={4}
+                  placeholder="Descrição da tarefa..."
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
-                <div><Label>Prioridade</Label>
-                  <select className="w-full border rounded p-2" value={editTaskPriority} onChange={e => setEditTaskPriority(e.target.value)}>
+                <div>
+                  <Label>Prioridade</Label>
+                  <select 
+                    className="w-full border rounded p-2" 
+                    value={editTaskPriority} 
+                    onChange={e => setEditTaskPriority(e.target.value)}
+                  >
                     <option value="1">1 - Alta</option>
                     <option value="2">2 - Média</option>
                     <option value="3">3 - Baixa</option>
                   </select>
                 </div>
-                <div><Label>Coluna</Label>
-                  <select className="w-full border rounded p-2" value={editTaskColumn} onChange={e => setEditTaskColumn(e.target.value)}>
+                
+                <div>
+                  <Label>Status</Label>
+                  <select 
+                    className="w-full border rounded p-2" 
+                    value={editTaskStatus} 
+                    onChange={e => setEditTaskStatus(e.target.value)}
+                  >
+                    <option value="PENDING">Pendente</option>
+                    <option value="IN_PROGRESS">Em Progresso</option>
+                    <option value="COMPLETED">Concluído</option>
+                    <option value="FAILED">Falhou</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Coluna</Label>
+                  <select 
+                    className="w-full border rounded p-2" 
+                    value={editTaskColumn} 
+                    onChange={e => setEditTaskColumn(e.target.value)}
+                  >
                     <option value="">Nenhuma</option>
                     {safeColumns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                   </select>
                 </div>
+                
+                <div>
+                  <Label>Responsável</Label>
+                  <select 
+                    className="w-full border rounded p-2" 
+                    value={editTaskAssignedTo} 
+                    onChange={e => setEditTaskAssignedTo(e.target.value)}
+                  >
+                    <option value="">Ninguém</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
               </div>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setIsEditTaskModal(false)}>Cancelar</Button>
-                <Button onClick={updateTask}>Salvar Alterações</Button>
+
+              <div>
+                <Label>Data/Hora vencimento</Label>
+                <Input 
+                  type="datetime-local" 
+                  value={editTaskDueDate} 
+                  onChange={e => setEditTaskDueDate(e.target.value)} 
+                />
+              </div>
+
+              {/* Imagens para edição */}
+              <div>
+                <Label>Adicionar Novas Imagens</Label>
+                <Input 
+                  type="file" 
+                  accept="image/*" 
+                  multiple 
+                  onChange={e => e.target.files && setEditTaskImages([...e.target.files])} 
+                />
+                {editingTask.taskImages && editingTask.taskImages.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-600 mb-2">Imagens atuais:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {editingTask.taskImages.map(img => (
+                        <div key={img.id} className="relative">
+                          <img 
+                            src={getImageUrl(img.url)} 
+                            alt={img.filename}
+                            className="w-full h-20 object-cover rounded"
+                          />
+                          <p className="text-xs truncate">{img.filename}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Áudio para edição */}
+              <div>
+                <Label>Adicionar Novos Áudios</Label>
+                <Input 
+                  type="file" 
+                  accept="audio/*" 
+                  multiple 
+                  onChange={e => e.target.files && setEditTaskAudios([...e.target.files])} 
+                />
+                {editingTask.taskAudios && editingTask.taskAudios.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-600 mb-2">Áudios atuais:</p>
+                    <div className="space-y-2">
+                      {editingTask.taskAudios.map(audio => (
+                        <div key={audio.id} className="flex items-center gap-2">
+                          <audio controls src={getImageUrl(audio.url)} className="w-full" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Vídeos para edição */}
+              <div>
+                <Label>Adicionar Novos Vídeos</Label>
+                <Input 
+                  type="file" 
+                  accept="video/*" 
+                  multiple 
+                  onChange={e => e.target.files && setEditTaskVideos([...e.target.files])} 
+                />
+                {editingTask.taskVideos && editingTask.taskVideos.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-600 mb-2">Vídeos atuais:</p>
+                    <div className="space-y-2">
+                      {editingTask.taskVideos.map(video => (
+                        <div key={video.id}>
+                          <video controls src={getImageUrl(video.url)} className="w-full max-w-md rounded" />
+                          <p className="text-xs mt-1">{video.filename}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setIsEditTaskModal(false);
+                    setEditingTask(null);
+                    resetEditTaskForm();
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={updateTask} 
+                  disabled={isSubmitting || !editTaskTitle.trim()}
+                >
+                  {isSubmitting ? "Salvando..." : "Salvar Alterações"}
+                </Button>
               </div>
             </div>
           )}
@@ -695,15 +1024,34 @@ export default function ProductKanban() {
       {/* MODAL COLUNAS */}
       <Dialog open={isColumnModal} onOpenChange={setIsColumnModal}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editingCol ? "Editar" : "Nova"} Coluna</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editingCol ? "Editar Coluna" : "Nova Coluna"}</DialogTitle>
+          </DialogHeader>
           <div className="space-y-4">
-            <Input value={colTitle} onChange={e => setColTitle(e.target.value)} placeholder="Título da coluna" />
+            <Input 
+              value={colTitle} 
+              onChange={e => setColTitle(e.target.value)} 
+              placeholder="Título da coluna" 
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  editingCol ? updateColumn() : createColumn();
+                }
+              }}
+            />
             <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setIsColumnModal(false)}>Cancelar</Button>
-              <Button onClick={async () => {
-                // implementação simples (pode melhorar depois)
+              <Button variant="outline" onClick={() => {
                 setIsColumnModal(false);
-              }}>Salvar</Button>
+                setEditingCol(null);
+                setColTitle("");
+              }}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={editingCol ? updateColumn : createColumn}
+                disabled={!colTitle.trim()}
+              >
+                {editingCol ? "Salvar Alterações" : "Criar Coluna"}
+              </Button>
             </div>
           </div>
         </DialogContent>

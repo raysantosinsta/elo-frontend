@@ -268,9 +268,8 @@ export default function AdminSignupPage() {
                   {errors.phone && <p className="text-sm text-red-500">{errors.phone.message}</p>}
                 </div>
 
-                {/* Documento (CPF/CNPJ) - opcional */}
                 <div className="space-y-2">
-                  <Label htmlFor="document">CPF ou CNPJ (opcional)</Label>
+                  <Label htmlFor="document">CPF ou CNPJ </Label>
                   <Input
                     id="document"
                     placeholder="000.000.000-00 ou 00.000.000/0001-00"

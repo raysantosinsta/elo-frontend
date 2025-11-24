@@ -1,15 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // app/login/page.tsx
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Mail, Lock, LogIn, UserPlus } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Loader2, Lock, LogIn, Mail } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -27,7 +27,6 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      // 🔥 REDIRECIONAMENTO ALTERADO: Vai para página de cadastro em vez do Kanban
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
@@ -37,13 +36,11 @@ export default function LoginPage() {
   };
 
   const handleInputChange = () => {
-    // Limpa erro quando usuário começa a digitar
+   
     if (error) setError('');
   };
 
-  const handleCreateAccount = () => {
-    router.push('/signup');
-  };
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 px-4 py-8">
