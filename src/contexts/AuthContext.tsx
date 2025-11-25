@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null); // 🔥 NOVO: Ref para o timer de refresh
 
-  // 🔥 NOVO: Função para limpar o timer anterior
+  //  Função para limpar o timer anterior
   const clearRefreshTimer = () => {
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 🔥 NOVO: Função para agendar refresh proativo (5 min antes da expiração)
+  // Função para agendar refresh proativo (5 min antes da expiração)
   const scheduleRefreshTimer = (accessToken: string) => {
     clearRefreshTimer(); // Limpa anterior
 
@@ -71,8 +71,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const parts = accessToken.split(".");
       if (parts.length !== 3) return;
 
-      const payload = JSON.parse(atob(parts[1]));
-      const now = Math.floor(Date.now() / 1000);
+      const payload = JSON.parse(atob(parts[1])); // json
+      const now = Math.floor(Date.now() / 1000); // // Timestamp atual em SEGUNDOS
       const expTime = payload.exp ? payload.exp - now : 0; // Tempo em segundos até expiração
 
       if (expTime <= 0) {
@@ -106,16 +106,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isTokenValid = (token: string): boolean => {
-    if (!token || typeof token !== "string") return false;
+    if (!token || typeof token !== "string") return false; // Se o token for vazio, null, undefined ou não for string → inválido.
 
     try {
       const parts = token.split(".");
-      if (parts.length !== 3) return false;
+      if (parts.length !== 3) return false; // Um JWT válido tem 3 partes separadas por . , Se não tiver as 3 partes → inválido.
 
-      const payload = JSON.parse(atob(parts[1]));
-      const now = Math.floor(Date.now() / 1000);
-
-      if (payload.exp && payload.exp < now) {
+      const payload = JSON.parse(atob(parts[1])); // A função atob decodifica Base64,  Depois faz JSON.parse para transformar em objeto.
+      const now = Math.floor(Date.now() / 1000); // Retorna um timestamp em segundos.
+      if (payload.exp && payload.exp < now) { // payload.exp é a data de expiração do token
         console.warn("⚠️ Token expirado");
         return false;
       }
@@ -169,8 +168,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await response.json();
-      const newAccessToken = data.accessToken || data.access_token;
-      const newRefreshToken = data.refreshToken || data.refresh_token;
+      const newAccessToken = data.accessToken // || data.access_token;
+      const newRefreshToken = data.refreshToken // || data.refresh_token;
       
       if (!newAccessToken) {
         throw new Error("Novo access token não recebido");
@@ -424,8 +423,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       userRole: data.user?.role
     });
 
-    const accessToken = data.accessToken || data.access_token || data.token;
-    const refreshToken = data.refreshToken || data.refresh_token;
+    const accessToken = data.accessToken // || data.access_token || data.token;
+    const refreshToken = data.refreshToken // || data.refresh_token;
 
     if (!accessToken) {
       console.error("❌ Nenhum access token encontrado na resposta:", data);
