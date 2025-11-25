@@ -208,7 +208,7 @@ export default function ProductKanban() {
       if (!res.ok) throw new Error("Erro tasks");
       const data = await res.json();
       const tasksArray = Array.isArray(data) ? data : data.tasks || [];
-      
+
       // Garantir que as URLs das imagens sejam absolutas
       const tasksWithAbsoluteUrls = tasksArray.map((task: Task) => ({
         ...task,
@@ -217,7 +217,7 @@ export default function ProductKanban() {
           url: img.url.startsWith('http') ? img.url : `${API_BASE}${img.url.startsWith('/') ? '' : '/'}${img.url}`
         })) || []
       }));
-      
+
       setTasks(tasksWithAbsoluteUrls);
     } catch (err) {
       setTasks([]);
@@ -251,15 +251,15 @@ export default function ProductKanban() {
   // ==================================== FUNÇÕES DE COLUNAS ====================================
   const createColumn = async () => {
     if (!colTitle.trim()) return alert("Título da coluna é obrigatório");
-    
+
     try {
       const res = await authFetch(`${API_BASE}/kanban-columns`, {
         method: "POST",
         body: JSON.stringify({ title: colTitle }),
       });
-      
+
       if (!res.ok) throw new Error("Erro ao criar coluna");
-      
+
       const newColumn = await res.json();
       setColumns(prev => [...prev, newColumn]);
       setColTitle("");
@@ -271,17 +271,17 @@ export default function ProductKanban() {
 
   const updateColumn = async () => {
     if (!editingCol || !colTitle.trim()) return alert("Título da coluna é obrigatório");
-    
+
     try {
       const res = await authFetch(`${API_BASE}/kanban-columns/${editingCol.id}`, {
         method: "PUT",
         body: JSON.stringify({ title: colTitle }),
       });
-      
+
       if (!res.ok) throw new Error("Erro ao atualizar coluna");
-      
+
       const updatedColumn = await res.json();
-      setColumns(prev => prev.map(col => 
+      setColumns(prev => prev.map(col =>
         col.id === editingCol.id ? updatedColumn : col
       ));
       setColTitle("");
@@ -294,19 +294,19 @@ export default function ProductKanban() {
 
   const deleteColumn = async (columnId: string) => {
     if (!confirm("Tem certeza que deseja deletar esta coluna? As tarefas serão movidas para a coluna padrão.")) return;
-    
+
     try {
       const res = await authFetch(`${API_BASE}/kanban-columns/${columnId}`, {
         method: "DELETE",
       });
-      
+
       if (!res.ok) throw new Error("Erro ao deletar coluna");
-      
+
       // Atualizar a lista de colunas
       setColumns(prev => prev.filter(col => col.id !== columnId));
-      
+
       // Atualizar as tarefas para remover a referência à coluna deletada
-      setTasks(prev => prev.map(task => 
+      setTasks(prev => prev.map(task =>
         task.columnId === columnId ? { ...task, columnId: null } : task
       ));
     } catch (err: any) {
@@ -510,7 +510,7 @@ export default function ProductKanban() {
   };
 
   const resetEditTaskForm = () => {
-    setEditTaskTitle(""); setEditTaskDescription(""); setEditTaskDueDate(""); setEditTaskAssignedTo(""); setEditTaskColumn(""); 
+    setEditTaskTitle(""); setEditTaskDescription(""); setEditTaskDueDate(""); setEditTaskAssignedTo(""); setEditTaskColumn("");
     setEditTaskPriority("1"); setEditTaskStatus("PENDING"); setEditTaskImages([]); setEditTaskAudios([]); setEditTaskVideos([]);
     setRemovedImageIds([]); setRemovedAudioIds([]); setRemovedVideoIds([]);
   };
@@ -586,7 +586,6 @@ export default function ProductKanban() {
               className="w-full h-48 object-cover rounded-md cursor-pointer"
               onClick={() => openPreviewModal(task)}
               onError={(e) => {
-                // Fallback em caso de erro no carregamento
                 const target = e.target as HTMLImageElement;
                 target.style.display = 'none';
               }}
@@ -609,6 +608,18 @@ export default function ProductKanban() {
         <h4 className="font-semibold text-lg cursor-pointer hover:text-purple-600 line-clamp-2"
           onClick={() => openPreviewModal(task)}>{task.title}</h4>
         {task.description && <p className="text-sm text-gray-600 line-clamp-2">{task.description}</p>}
+
+        {/* DATAS DE CRIAÇÃO E ATUALIZAÇÃO */}
+        <div className="mt-3 space-y-2 text-xs text-gray-500">
+          <div className="flex items-center gap-1">
+            <Calendar className="w-3 h-3" />
+            <span>Criado: {formatDateTime(task.createdAt)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <RefreshCw className="w-3 h-3" />
+            <span>Atualizado: {formatDateTime(task.updatedAt)}</span>
+          </div>
+        </div>
 
         {task.dueDate && (
           <div className="flex items-center gap-1 text-sm my-2">
@@ -695,8 +706,8 @@ export default function ProductKanban() {
                           <DropdownMenuItem onClick={() => openEditColumnModal(col)}>
                             <Edit className="w-4 h-4 mr-2" /> Editar
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            className="text-red-600" 
+                          <DropdownMenuItem
+                            className="text-red-600"
                             onClick={() => deleteColumn(col.id)}
                           >
                             <Trash2 className="w-4 h-4 mr-2" /> Deletar
@@ -739,16 +750,41 @@ export default function ProductKanban() {
           {previewTask && (
             <div className="space-y-6">
               {/* cabeçalho rápido */}
-              <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded">
-                <div>
-                  <Badge className={getPriorityColor(previewTask.priority)}>Prioridade {previewTask.priority}</Badge>
-                  <Badge className="ml-2" variant={previewTask.status === "COMPLETED" ? "default" : "secondary"}>
-                    {previewTask.status === "COMPLETED" ? "Concluído" : "Em progresso"}
-                  </Badge>
+             
+              {/* cabeçalho rápido */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className={getPriorityColor(previewTask.priority)}>Prioridade {previewTask.priority}</Badge>
+                    <Badge className="ml-2" variant={previewTask.status === "COMPLETED" ? "default" : "secondary"}>
+                      {previewTask.status === "COMPLETED" ? "Concluído" : "Em progresso"}
+                    </Badge>
+                  </div>
+                  <div className="text-sm space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      <strong>Criado:</strong> {formatDateTime(previewTask.createdAt)}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4" />
+                      <strong>Última atualização:</strong> {formatDateTime(previewTask.updatedAt)}
+                    </div>
+                  </div>
                 </div>
                 <div className="text-sm space-y-1">
-                  <div>Criado: {formatDateTime(previewTask.createdAt)}</div>
-                  {previewTask.dueDate && <div>Vence: {formatDateTime(previewTask.dueDate)}</div>}
+                  {previewTask.dueDate && (
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      <strong>Vence:</strong> {formatDateTime(previewTask.dueDate)}
+                      {isOverdue(previewTask.dueDate) && <Badge variant="destructive" className="ml-2 text-xs">Atrasado</Badge>}
+                    </div>
+                  )}
+                  {previewTask.completedAt && (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <strong>Concluído em:</strong> {formatDateTime(previewTask.completedAt)}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -759,9 +795,9 @@ export default function ProductKanban() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {previewTask.taskImages.map(img => (
                       <div key={img.id} className="flex flex-col items-center">
-                        <img 
-                          src={getImageUrl(img.url)} 
-                          alt={img.filename} 
+                        <img
+                          src={getImageUrl(img.url)}
+                          alt={img.filename}
                           className="w-full max-w-md rounded-lg object-contain max-h-96"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
@@ -885,12 +921,12 @@ export default function ProductKanban() {
                 <Label>Título *</Label>
                 <Input value={editTaskTitle} onChange={e => setEditTaskTitle(e.target.value)} />
               </div>
-              
+
               <div>
                 <Label>Descrição</Label>
-                <Textarea 
-                  value={editTaskDescription} 
-                  onChange={e => setEditTaskDescription(e.target.value)} 
+                <Textarea
+                  value={editTaskDescription}
+                  onChange={e => setEditTaskDescription(e.target.value)}
                   rows={4}
                   placeholder="Descrição da tarefa..."
                 />
@@ -899,9 +935,9 @@ export default function ProductKanban() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Prioridade</Label>
-                  <select 
-                    className="w-full border rounded p-2" 
-                    value={editTaskPriority} 
+                  <select
+                    className="w-full border rounded p-2"
+                    value={editTaskPriority}
                     onChange={e => setEditTaskPriority(e.target.value)}
                   >
                     <option value="1">1 - Alta</option>
@@ -909,12 +945,12 @@ export default function ProductKanban() {
                     <option value="3">3 - Baixa</option>
                   </select>
                 </div>
-                
+
                 <div>
                   <Label>Status</Label>
-                  <select 
-                    className="w-full border rounded p-2" 
-                    value={editTaskStatus} 
+                  <select
+                    className="w-full border rounded p-2"
+                    value={editTaskStatus}
                     onChange={e => setEditTaskStatus(e.target.value)}
                   >
                     <option value="PENDING">Pendente</option>
@@ -928,21 +964,21 @@ export default function ProductKanban() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Coluna</Label>
-                  <select 
-                    className="w-full border rounded p-2" 
-                    value={editTaskColumn} 
+                  <select
+                    className="w-full border rounded p-2"
+                    value={editTaskColumn}
                     onChange={e => setEditTaskColumn(e.target.value)}
                   >
                     <option value="">Nenhuma</option>
                     {safeColumns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                   </select>
                 </div>
-                
+
                 <div>
                   <Label>Responsável</Label>
-                  <select 
-                    className="w-full border rounded p-2" 
-                    value={editTaskAssignedTo} 
+                  <select
+                    className="w-full border rounded p-2"
+                    value={editTaskAssignedTo}
                     onChange={e => setEditTaskAssignedTo(e.target.value)}
                   >
                     <option value="">Ninguém</option>
@@ -953,21 +989,21 @@ export default function ProductKanban() {
 
               <div>
                 <Label>Data/Hora vencimento</Label>
-                <Input 
-                  type="datetime-local" 
-                  value={editTaskDueDate} 
-                  onChange={e => setEditTaskDueDate(e.target.value)} 
+                <Input
+                  type="datetime-local"
+                  value={editTaskDueDate}
+                  onChange={e => setEditTaskDueDate(e.target.value)}
                 />
               </div>
 
               {/* Imagens para edição - com remoção */}
               <div>
                 <Label>Adicionar Novas Imagens</Label>
-                <Input 
-                  type="file" 
-                  accept="image/*" 
-                  multiple 
-                  onChange={e => e.target.files && setEditTaskImages([...e.target.files])} 
+                <Input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={e => e.target.files && setEditTaskImages([...e.target.files])}
                 />
                 {editingTask.taskImages && editingTask.taskImages.length > 0 && (
                   <div className="mt-2">
@@ -977,8 +1013,8 @@ export default function ProductKanban() {
                         .filter(img => !removedImageIds.includes(img.id))
                         .map(img => (
                           <div key={img.id} className="relative">
-                            <img 
-                              src={getImageUrl(img.url)} 
+                            <img
+                              src={getImageUrl(img.url)}
                               alt={img.filename}
                               className="w-full h-20 object-cover rounded"
                             />
@@ -1001,11 +1037,11 @@ export default function ProductKanban() {
               {/* Áudio para edição - com remoção */}
               <div>
                 <Label>Adicionar Novos Áudios</Label>
-                <Input 
-                  type="file" 
-                  accept="audio/*" 
-                  multiple 
-                  onChange={e => e.target.files && setEditTaskAudios([...e.target.files])} 
+                <Input
+                  type="file"
+                  accept="audio/*"
+                  multiple
+                  onChange={e => e.target.files && setEditTaskAudios([...e.target.files])}
                 />
                 {editingTask.taskAudios && editingTask.taskAudios.length > 0 && (
                   <div className="mt-2">
@@ -1035,11 +1071,11 @@ export default function ProductKanban() {
               {/* Vídeos para edição - com remoção */}
               <div>
                 <Label>Adicionar Novos Vídeos</Label>
-                <Input 
-                  type="file" 
-                  accept="video/*" 
-                  multiple 
-                  onChange={e => e.target.files && setEditTaskVideos([...e.target.files])} 
+                <Input
+                  type="file"
+                  accept="video/*"
+                  multiple
+                  onChange={e => e.target.files && setEditTaskVideos([...e.target.files])}
                 />
                 {editingTask.taskVideos && editingTask.taskVideos.length > 0 && (
                   <div className="mt-2">
@@ -1067,8 +1103,8 @@ export default function ProductKanban() {
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => {
                     setIsEditTaskModal(false);
                     setEditingTask(null);
@@ -1077,8 +1113,8 @@ export default function ProductKanban() {
                 >
                   Cancelar
                 </Button>
-                <Button 
-                  onClick={updateTask} 
+                <Button
+                  onClick={updateTask}
                   disabled={isSubmitting || !editTaskTitle.trim()}
                 >
                   {isSubmitting ? "Salvando..." : "Salvar Alterações"}
@@ -1096,10 +1132,10 @@ export default function ProductKanban() {
             <DialogTitle>{editingCol ? "Editar Coluna" : "Nova Coluna"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <Input 
-              value={colTitle} 
-              onChange={e => setColTitle(e.target.value)} 
-              placeholder="Título da coluna" 
+            <Input
+              value={colTitle}
+              onChange={e => setColTitle(e.target.value)}
+              placeholder="Título da coluna"
               onKeyPress={(e) => {
                 if (e.key === 'Enter') {
                   editingCol ? updateColumn() : createColumn();
@@ -1114,7 +1150,7 @@ export default function ProductKanban() {
               }}>
                 Cancelar
               </Button>
-              <Button 
+              <Button
                 onClick={editingCol ? updateColumn : createColumn}
                 disabled={!colTitle.trim()}
               >

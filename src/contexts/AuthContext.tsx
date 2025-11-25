@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// contexts/AuthContext.tsx
 "use client";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react"; // 🔥 NOVO: useRef para timer
 import { useRouter } from "next/navigation";
 
 interface User {
@@ -9,15 +8,15 @@ interface User {
   email: string;
   name: string;
   role: string;
-  status: string; // 🔥 NOVO: Agora é string (ATIVO/INATIVO)
-  companyId: string | null; // 🔥 ATUALIZADO: Pode ser null
-  document?: string | null; // 🔥 NOVO
-  phone: string; // 🔥 NOVO: Campo obrigatório
+  status: string;
+  companyId: string | null;
+  document?: string | null;
+  phone: string;
   company?: {
     id: string;
     name: string;
     status: string;
-  } | null; // 🔥 ATUALIZADO: Pode ser null
+  } | null;
 }
 
 interface AuthContextType {
@@ -38,8 +37,8 @@ interface SignupData {
   password: string;
   name: string;
   companyId: string;
-  phone: string; // 🔥 MUDOU: era 'contact', agora é 'phone'
-  document?: string; // 🔥 NOVO: Campo opcional
+  phone: string;
+  document?: string;
   role?: string;
 }
 
@@ -53,12 +52,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null); // 🔥 NOVO: Ref para o timer de refresh
+
+  // 🔥 NOVO: Função para limpar o timer anterior
+  const clearRefreshTimer = () => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+      console.log("⏰ Timer de refresh limpo");
+    }
+  };
+
+  // 🔥 NOVO: Função para agendar refresh proativo (5 min antes da expiração)
+  const scheduleRefreshTimer = (accessToken: string) => {
+    clearRefreshTimer(); // Limpa anterior
+
+    try {
+      const parts = accessToken.split(".");
+      if (parts.length !== 3) return;
+
+      const payload = JSON.parse(atob(parts[1]));
+      const now = Math.floor(Date.now() / 1000);
+      const expTime = payload.exp ? payload.exp - now : 0; // Tempo em segundos até expiração
+
+      if (expTime <= 0) {
+        console.warn("⚠️ Token já expirado, forçando refresh imediato");
+        refreshAuthToken(); // Chama agora se já expirou
+        return;
+      }
+
+      // Agendar 5 min (300s) antes da expiração
+      const refreshInSeconds = Math.max(expTime - 300, 60); // Mínimo 1 min para evitar spam
+      const refreshInMs = refreshInSeconds * 1000;
+
+      console.log(`⏰ Agendando refresh em ${refreshInSeconds / 60} minutos (exp em ${expTime / 60} min)`);
+
+      refreshTimerRef.current = setTimeout(async () => {
+        console.log("🔄 Refresh proativo iniciado pelo timer");
+        const refreshed = await refreshAuthToken();
+        if (!refreshed) {
+          console.error("❌ Refresh proativo falhou, fazendo logout");
+          logout();
+        }
+      }, refreshInMs);
+    } catch (error) {
+      console.error("❌ Erro ao agendar timer:", error);
+    }
+  };
 
   useEffect(() => {
     initializeAuth();
+    return () => clearRefreshTimer(); // Limpa timer no unmount
   }, []);
 
-  // 🔧 Função para validar token
   const isTokenValid = (token: string): boolean => {
     if (!token || typeof token !== "string") return false;
 
@@ -80,9 +126,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 🗑️ Função para limpar dados de autenticação
   const clearAuthData = () => {
     try {
+      clearRefreshTimer(); // 🔥 NOVO: Limpa timer no logout
       setToken(null);
       setUser(null);
       
@@ -98,7 +144,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 🔄 Função para renovar token
   const refreshAuthToken = async (): Promise<boolean> => {
     try {
       const refreshToken = localStorage.getItem("refreshToken");
@@ -148,7 +193,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 💾 Função para salvar tokens
   const setAuthToken = (newToken: string, refreshToken?: string): boolean => {
     try {
       if (!isTokenValid(newToken)) {
@@ -177,6 +221,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // 🔥 NOVO: Agendar timer proativo após salvar token
+      scheduleRefreshTimer(newToken);
+
       return true;
     } catch (error) {
       console.error("❌ Erro ao salvar tokens:", error);
@@ -185,7 +232,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 🔍 Buscar dados do usuário
   const fetchUserData = async (token: string): Promise<User | null> => {
     try {
       console.log("🔍 Buscando dados do usuário...");
@@ -220,7 +266,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 🔄 Função para requisições autenticadas com fallback
   const authFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
     let accessToken = localStorage.getItem("accessToken");
     
@@ -272,7 +317,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return response;
   };
 
-  // 🔐 Inicializar autenticação
   const initializeAuth = async () => {
     try {
       setLoading(true);
@@ -281,6 +325,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (accessToken && isTokenValid(accessToken)) {
         console.log("🔄 Inicializando com token salvo...");
         setToken(accessToken);
+        
+        // 🔥 NOVO: Agendar timer aqui também (caso token seja válido)
+        scheduleRefreshTimer(accessToken);
         
         const userData = await fetchUserData(accessToken);
         if (userData) {
@@ -307,9 +354,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 🔑 Login
-  // Atualize a função login no AuthContext.tsx
-const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string) => {
   try {
     console.log("🔐 Tentando login...", { 
       email, 
@@ -521,10 +566,9 @@ const signup = async (userData: SignupData) => {
   }
 };
 
-  // 🚪 Logout
   const logout = () => {
     console.log("🚪 Fazendo logout...");
-    clearAuthData();
+    clearAuthData(); // Agora limpa o timer também
     router.push("/login");
   };
 
@@ -540,7 +584,7 @@ const signup = async (userData: SignupData) => {
         token,
         refreshAuthToken,
         isTokenValid,
-        authFetch, // 🔥 AGORA INCLUÍDO NO CONTEXTO
+        authFetch,
       }}
     >
       {children}
@@ -556,7 +600,6 @@ export function useAuth() {
   return context;
 }
 
-// 🔧 Hook auxiliar opcional para usar o authFetch
 export function useAuthFetch() {
   const { authFetch } = useAuth();
   return authFetch;
