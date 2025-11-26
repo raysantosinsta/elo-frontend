@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { AlertTriangle, Calendar, Clock, LogOut, Search, User, ArrowRight, Image, Video, Music, Users, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext'; // ajuste o caminho conforme sua estrutura
 
 // Também vamos atualizar a interface Task para tornar as propriedades opcionais
 interface Task {
@@ -80,113 +81,140 @@ export default function DashboardPage() {
   const [filter, setFilter] = useState('all');
   const [error, setError] = useState<string>('');
   const router = useRouter();
+  const { authFetch } = useAuth(); // Adicione esta linha
 
   // Verificar autenticação
   useEffect(() => {
-    const checkAuth = async () => {
-      console.log('🔐 Verificando autenticação...');
+  const checkAuth = async () => {
+    console.log('🔐 Verificando autenticação...');
 
-      const token = localStorage.getItem('accessToken');
-      console.log('📋 Token no localStorage:', token ? 'present' : 'missing');
+    const token = localStorage.getItem('accessToken');
+    console.log('📋 Token no localStorage:', token ? 'present' : 'missing');
 
-      if (!token) {
-        console.log('❌ Token não encontrado, redirecionando para login');
-        router.push('/login');
-        return;
-      }
-
-      try {
-        // Tentar carregar perfil primeiro
-        console.log('📡 Carregando perfil do usuário...');
-        const profileResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        if (profileResponse.ok) {
-          const userData = await profileResponse.json();
-          setUser(userData);
-          console.log('✅ Perfil carregado:', userData);
-        } else {
-          console.warn('⚠️ Endpoint /auth/profile não disponível');
-          setUser({
-            id: 'unknown',
-            name: 'Usuário',
-            email: 'usuario@empresa.com',
-            role: 'user',
-            status: 'active'
-          });
-        }
-
-        // Carregar tarefas
-        await fetchAllTasks(token);
-
-      } catch (error) {
-        console.error('❌ Erro na autenticação:', error);
-        localStorage.removeItem('accessToken');
-        router.push('/login');
-      }
-    };
-
-    checkAuth();
-  }, [router]);
-
-  // Buscar tarefas
-  const fetchAllTasks = async (token?: string) => {
-    const authToken = token || localStorage.getItem('accessToken');
-    if (!authToken) {
-      throw new Error('Token não disponível');
+    if (!token) {
+      console.log('❌ Token não encontrado, redirecionando para login');
+      router.push('/login');
+      return;
     }
-
-    setLoading(true);
-    setError('');
 
     try {
-      console.log('📡 Buscando tarefas...');
-      const response = await fetch(`${API_BASE_URL}/tasks`, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-        },
-      });
+      // Tentar carregar perfil primeiro
+      console.log('📡 Carregando perfil do usuário...');
+      const profileResponse = await authFetch(`${API_BASE_URL}/auth/profile`);
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Token inválido ou expirado');
-        }
-        throw new Error(`Erro ao buscar tarefas: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('✅ Tarefas carregadas:', data.length || data.tasks?.length || 0);
-
-      if (Array.isArray(data)) {
-        const tasksWithDefaults = data.map(task => ({
-          ...task,
-          taskImages: task.taskImages || [],
-          taskAudios: task.taskAudios || [],
-          taskVideos: task.taskVideos || []
-        }));
-        setAllTasks(tasksWithDefaults);
-      } else if (data.tasks && Array.isArray(data.tasks)) {
-        const tasksWithDefaults: Task[] = data.tasks.map((task: any): Task => ({
-          ...task,
-          taskImages: task.taskImages || [],
-          taskAudios: task.taskAudios || [],
-          taskVideos: task.taskVideos || []
-        }));
-        setAllTasks(tasksWithDefaults);
+      if (profileResponse.ok) {
+        const userData = await profileResponse.json();
+        setUser(userData);
+        console.log('✅ Perfil carregado:', userData);
       } else {
-        console.warn('⚠️ Formato de dados inesperado:', data);
-        setAllTasks([]);
+        console.warn('⚠️ Endpoint /auth/profile não disponível');
+        // Se não conseguir carregar perfil, usar dados básicos
+        setUser({
+          id: 'unknown',
+          name: 'Usuário',
+          email: 'usuario@empresa.com',
+          role: 'user',
+          status: 'active'
+        });
       }
-    } catch (error: any) {
-      console.error('❌ Erro ao buscar tarefas:', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
+
+      // Carregar tarefas usando authFetch
+      await fetchAllTasks();
+
+    } catch (error) {
+      console.error('❌ Erro na autenticação:', error);
+      localStorage.removeItem('accessToken');
+      router.push('/login');
     }
   };
+
+  checkAuth();
+}, [router]);
+
+  // Buscar tarefas
+ const fetchAllTasks = async () => {
+  setLoading(true);
+  setError('');
+
+  try {
+    console.log('📡 Buscando tarefas com authFetch...');
+    
+    // Use a função authFetch do contexto de autenticação
+    const response = await authFetch(`${API_BASE_URL}/tasks`);
+
+    console.log('📡 Status da resposta:', response.status);
+    
+    if (!response.ok) {
+      // Se for 404 ou 400 (sem tarefas), tratar como array vazio
+      if (response.status === 404 || response.status === 400) {
+        console.log('ℹ️ Nenhuma tarefa encontrada, inicializando com array vazio');
+        setAllTasks([]);
+        return;
+      }
+      
+      const errorText = await response.text();
+      console.error('❌ Erro detalhado:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      throw new Error(`Erro ao buscar tarefas: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Tarefas carregadas:', data.length || data.tasks?.length || 0);
+
+    // Fallback para diferentes formatos de resposta
+    let tasksArray: Task[] = [];
+
+    if (Array.isArray(data)) {
+      tasksArray = data;
+    } else if (data.tasks && Array.isArray(data.tasks)) {
+      tasksArray = data.tasks;
+    } else if (data.data && Array.isArray(data.data)) {
+      tasksArray = data.data;
+    } else {
+      console.warn('⚠️ Formato de dados inesperado, usando array vazio:', data);
+      tasksArray = [];
+    }
+
+    // Aplicar defaults para evitar undefined
+    const tasksWithDefaults = tasksArray.map(task => ({
+      ...task,
+      taskImages: task.taskImages || [],
+      taskAudios: task.taskAudios || [],
+      taskVideos: task.taskVideos || [],
+      priority: task.priority || 1,
+      title: task.title || 'Tarefa sem título',
+      createdAt: task.createdAt || new Date().toISOString()
+    }));
+
+    setAllTasks(tasksWithDefaults);
+    
+  } catch (error: any) {
+    console.error('❌ Erro ao buscar tarefas:', error);
+    
+    // Se for erro de autenticação, redirecionar para login
+    if (error.message.includes('401') || error.message.includes('Autenticação') || error.message.includes('token')) {
+      localStorage.removeItem('accessToken');
+      router.push('/login');
+      return;
+    }
+    
+    // Se for erro de rede ou outro, mostrar mensagem amigável
+    if (error.message.includes('Failed to fetch') || error.message.includes('Network')) {
+      setError('Erro de conexão. Verifique se o servidor está rodando.');
+    } else if (error.message.includes('404') || error.message.includes('400')) {
+      // Se não encontrou tarefas, inicializar com array vazio
+      console.log('ℹ️ Nenhuma tarefa encontrada, inicializando com array vazio');
+      setAllTasks([]);
+    } else {
+      setError(error.message || 'Erro ao carregar tarefas');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const isTaskOverdue = (task: Task) => {
     if (!task.dueDate) return false;

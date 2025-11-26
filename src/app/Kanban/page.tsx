@@ -189,25 +189,115 @@ export default function ProductKanban() {
     return response;
   }, [getAuthToken, logout]);
 
+  const createDefaultColumns = async () => {
+    try {
+      console.log('📝 Criando colunas padrão...');
+
+      const defaultColumns = [
+        'Sem etapa',
+        'Preenchimento Estilo',
+        'Desenvolvimento',
+        'Cad',
+        'Ficha para Engenharia',
+        'Lacre'
+      ];
+
+      const createPromises = defaultColumns.map((title, index) =>
+        authFetch(`${API_BASE}/kanban-columns`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ title }),
+        })
+      );
+
+      await Promise.all(createPromises);
+      console.log('✅ Colunas padrão criadas');
+
+      // Recarregar colunas após criação
+      await fetchColumns();
+
+    } catch (createError) {
+      console.error('❌ Erro ao criar colunas padrão:', createError);
+      // Mesmo com erro, continuar com array vazio
+      setColumns([]);
+    }
+  };
+
   // ==================================== CARREGAMENTO ====================================
   const fetchColumns = useCallback(async () => {
     try {
+      console.log('📥 Buscando colunas...');
       const res = await authFetch(`${API_BASE}/kanban-columns`);
-      if (!res.ok && res.status !== 404) throw new Error("Erro colunas");
-      const data = res.status === 404 ? [] : await res.json();
-      const sorted = (Array.isArray(data) ? data : []).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+
+      if (!res.ok) {
+        // Se for erro 400/404, tentar criar colunas padrão
+        if (res.status === 400 || res.status === 404) {
+          console.log('🔄 Nenhuma coluna encontrada, tentando criar padrão...');
+          await createDefaultColumns();
+          return;
+        }
+        throw new Error(`Erro ${res.status}: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      console.log('✅ Resposta das colunas:', data);
+
+      // Lidar com diferentes formatos de resposta
+      let columnsArray = [];
+
+      if (Array.isArray(data)) {
+        columnsArray = data;
+      } else if (data.columns && Array.isArray(data.columns)) {
+        columnsArray = data.columns;
+      } else if (data.success !== undefined && Array.isArray(data.columns)) {
+        columnsArray = data.columns;
+      } else {
+        console.warn('⚠️ Formato de resposta inesperado:', data);
+        columnsArray = [];
+      }
+
+      const sorted = columnsArray.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+      console.log(`✅ ${sorted.length} colunas carregadas`);
       setColumns(sorted);
+
     } catch (err) {
+      console.error('❌ Erro ao buscar colunas:', err);
       setColumns([]);
     }
   }, [authFetch]);
 
   const fetchTasks = useCallback(async () => {
     try {
+      console.log('📥 Buscando tarefas...');
       const res = await authFetch(`${API_BASE}/tasks`);
-      if (!res.ok) throw new Error("Erro tasks");
+
+      if (!res.ok) {
+        // Se for erro 400, pode ser que não há tarefas - retornar array vazio
+        if (res.status === 400) {
+          console.log('ℹ️ Nenhuma tarefa encontrada (400)');
+          setTasks([]);
+          return;
+        }
+        throw new Error(`Erro ${res.status}: ${res.statusText}`);
+      }
+
       const data = await res.json();
-      const tasksArray = Array.isArray(data) ? data : data.tasks || [];
+      console.log('✅ Resposta das tarefas:', data);
+
+      let tasksArray = [];
+
+      if (Array.isArray(data)) {
+        tasksArray = data;
+      } else if (data.tasks && Array.isArray(data.tasks)) {
+        tasksArray = data.tasks;
+      } else if (data.success !== undefined && Array.isArray(data.tasks)) {
+        tasksArray = data.tasks;
+      } else {
+        console.warn('⚠️ Formato de resposta inesperado:', data);
+        tasksArray = [];
+      }
 
       // Garantir que as URLs das imagens sejam absolutas
       const tasksWithAbsoluteUrls = tasksArray.map((task: Task) => ({
@@ -218,8 +308,11 @@ export default function ProductKanban() {
         })) || []
       }));
 
+      console.log(`✅ ${tasksWithAbsoluteUrls.length} tarefas carregadas`);
       setTasks(tasksWithAbsoluteUrls);
+
     } catch (err) {
+      console.error('❌ Erro ao buscar tarefas:', err);
       setTasks([]);
     }
   }, [authFetch]);
@@ -238,9 +331,23 @@ export default function ProductKanban() {
 
   const loadInitialData = useCallback(async () => {
     if (!user) return;
+
     setLoading(true);
-    await Promise.all([fetchColumns(), fetchTasks(), fetchUsers()]);
-    setLoading(false);
+    console.log('🚀 Iniciando carregamento de dados...');
+
+    try {
+      // Carregar colunas primeiro (elas são essenciais)
+      await fetchColumns();
+
+      // Depois carregar tasks e users em paralelo
+      await Promise.all([fetchTasks(), fetchUsers()]);
+
+      console.log('✅ Todos os dados carregados com sucesso');
+    } catch (error) {
+      console.error('❌ Erro no carregamento inicial:', error);
+    } finally {
+      setLoading(false);
+    }
   }, [user, fetchColumns, fetchTasks, fetchUsers]);
 
   useEffect(() => {
@@ -652,7 +759,7 @@ export default function ProductKanban() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* HEADER */}
+      {/* HEADER - ATUALIZADO */}
       <header className="bg-purple-600 text-white px-6 py-4 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold">KANBAN - {user.company?.name}</h1>
@@ -668,6 +775,18 @@ export default function ProductKanban() {
         </div>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-2"><User className="w-4 h-4" /> {user.name}</span>
+
+          {/* 🔄 Botão de recarregar */}
+          <Button
+            onClick={loadInitialData}
+            variant="secondary"
+            className="bg-white/20 hover:bg-white/30"
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Carregando...' : 'Recarregar'}
+          </Button>
+
           <Button onClick={openCreateColumnModal} variant="secondary" className="bg-white/20 hover:bg-white/30">
             <Settings className="w-4 h-4 mr-2" /> Colunas
           </Button>
@@ -750,7 +869,7 @@ export default function ProductKanban() {
           {previewTask && (
             <div className="space-y-6">
               {/* cabeçalho rápido */}
-             
+
               {/* cabeçalho rápido */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded">
                 <div className="space-y-2">
