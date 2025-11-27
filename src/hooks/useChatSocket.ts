@@ -39,7 +39,7 @@ export function useChatSocket({
   });
 
   useEffect(() => {
-    if (!socket.isConnected()) return;
+    if (!chatId || !currentUserId || !companyId || !socket.isConnected()) return;
 
     // Entrar na sala do usuário
     socket.joinUserRoom(currentUserId);
@@ -73,14 +73,12 @@ export function useChatSocket({
     socket.on("chat:message", handleNewMessage);
     socket.on("notification:new", handleUserNotification);
     socket.on("notification:mention", handleUserNotification);
-    socket.on("chat:message", handleCompanyNotification);
 
     return () => {
       // Limpar listeners específicos
       socket.off("chat:message", handleNewMessage);
       socket.off("notification:new", handleUserNotification);
       socket.off("notification:mention", handleUserNotification);
-      socket.off("chat:message", handleCompanyNotification);
     };
   }, [chatId, currentUserId, companyId, socket]);
 

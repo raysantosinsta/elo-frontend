@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChatMessage } from "@/types/chat";
 import { useChatSocket } from "@/hooks/useChatSocket";
+import { MessageCircle } from "lucide-react";
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
@@ -17,12 +18,12 @@ interface ChatMessagesProps {
 // Função para estilizar menções no texto
 const formatMessage = (text: string) => {
   const parts = text.split(/(@[^\s@]+)/g);
-  
+
   return parts.map((part, index) => {
     if (part.startsWith('@')) {
       return (
-        <span 
-          key={index} 
+        <span
+          key={index}
           className="bg-blue-100 text-blue-800 px-1 rounded mx-1 font-medium"
         >
           {part}
@@ -33,12 +34,44 @@ const formatMessage = (text: string) => {
   });
 };
 
-export function ChatMessages({ 
-  messages, 
-  currentUserId, 
-  companyId, 
+// Função para gerar cor baseada na string (nome)
+const stringToColor = (str: string) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const hue = hash % 360;
+  return `hsl(${hue}, 70%, 45%)`;
+};
+
+// Componente de Avatar Genérico
+const GenericAvatar = ({ name, className = "" }: { name: string; className?: string }) => {
+  const initials = name
+    .split(" ")
+    .map(part => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+  
+  const backgroundColor = stringToColor(name);
+
+  return (
+    <div 
+      className={`h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0 ${className}`}
+      style={{ backgroundColor }}
+    >
+      {initials}
+    </div>
+  );
+};
+
+export function ChatMessages({
+  messages,
+  currentUserId,
+  companyId,
   chatId,
-  onNewMessage 
+  onNewMessage
 }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>(messages);
@@ -57,7 +90,7 @@ export function ChatMessages({
         }
         return prev;
       });
-      
+
       // Chamar callback do parent se fornecido
       if (onNewMessage) {
         onNewMessage(newMessage);
@@ -81,15 +114,6 @@ export function ChatMessages({
     scrollToBottom();
   }, [localMessages]);
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map(part => part[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
   const isSameSender = (currentIndex: number): boolean => {
     if (currentIndex === 0) return false;
     const currentMessage = localMessages[currentIndex];
@@ -105,20 +129,17 @@ export function ChatMessages({
   };
 
   return (
-    <Card className="flex-1">
-      <CardContent 
+    <Card className="h-full flex flex-col">
+      <CardContent
         ref={containerRef}
-        className="p-4 h-full overflow-y-auto"
+        className="p-4 flex-1 overflow-y-auto h-0 min-h-0"
       >
         {localMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <div className="text-center mb-4">
-              {/* <Avatar className="h-16 w-16 mx-auto mb-2">
-                <AvatarFallback className="text-lg">
-                  💬
-                </AvatarFallback>
-              </Avatar> */}
-              <h1>ola</h1>
+              <div className="h-16 w-16 mx-auto mb-2 flex items-center justify-center rounded-full bg-muted">
+                <MessageCircle className="h-8 w-8 text-muted-foreground" />
+              </div>
               <h3 className="text-lg font-semibold">Nenhuma mensagem ainda</h3>
               <p className="text-sm">Seja o primeiro a enviar uma mensagem!</p>
             </div>
@@ -129,38 +150,33 @@ export function ChatMessages({
               const isCurrentUser = message.senderId === currentUserId;
               const sameSenderAsPrevious = isSameSender(index);
               const showAvatar = shouldShowAvatar(index);
-              
+
               return (
                 <div
                   key={message.id}
-                  className={`flex ${isCurrentUser ? "justify-end" : "justify-start"} ${
-                    sameSenderAsPrevious ? "mt-1" : "mt-4"
-                  }`}
+                  className={`flex ${isCurrentUser ? "justify-end" : "justify-start"} ${sameSenderAsPrevious ? "mt-1" : "mt-4"
+                    }`}
                 >
                   <div
-                    className={`flex gap-3 max-w-[85%] ${
-                      isCurrentUser ? "flex-row-reverse" : "flex-row"
-                    }`}
+                    className={`flex gap-3 max-w-[85%] ${isCurrentUser ? "flex-row-reverse" : "flex-row"
+                      }`}
                   >
                     {/* Avatar */}
                     {showAvatar ? (
-                    //   <Avatar className="h-8 w-8 flex-shrink-0">
-                    //     <AvatarFallback className="text-xs">
-                    //       {getInitials(message.sender.name)}
-                    //     </AvatarFallback>
-                    //   </Avatar>
-                    <h1>oi</h1>
+                      <GenericAvatar 
+                        name={message.sender.name}
+                        className={isCurrentUser ? "order-2" : "order-1"}
+                      />
                     ) : (
                       <div className="w-8 flex-shrink-0" /> // Espaço vazio para alinhar
                     )}
-                    
+
                     {/* Mensagem */}
                     <div
-                      className={`rounded-lg p-3 ${
-                        isCurrentUser
+                      className={`rounded-lg p-3 ${isCurrentUser
                           ? "bg-primary text-primary-foreground"
                           : "bg-muted"
-                      } ${!showAvatar ? "ml-11" : ""}`}
+                        } ${!showAvatar ? (isCurrentUser ? "mr-11" : "ml-11") : ""}`}
                     >
                       {/* Cabeçalho da mensagem (nome e badges) */}
                       {!sameSenderAsPrevious && (
@@ -169,16 +185,16 @@ export function ChatMessages({
                             {message.sender.name}
                           </span>
                           {message.sender.isProfessional && (
-                            <Badge 
-                              variant="secondary" 
+                            <Badge
+                              variant="secondary"
                               className="text-xs"
                             >
                               {message.sender.professionalRole || "Profissional"}
                             </Badge>
                           )}
                           {message.mentionedProfessionalId && (
-                            <Badge 
-                              variant="outline" 
+                            <Badge
+                              variant="outline"
                               className="text-xs bg-blue-50 text-blue-700 border-blue-200"
                             >
                               @Mencionado
@@ -186,16 +202,15 @@ export function ChatMessages({
                           )}
                         </div>
                       )}
-                      
+
                       {/* Conteúdo da mensagem */}
                       <div className="text-sm break-words">
                         {formatMessage(message.message)}
                       </div>
-                      
+
                       {/* Timestamp */}
-                      <div className={`text-xs mt-2 ${
-                        isCurrentUser ? "text-primary-foreground/70" : "text-muted-foreground"
-                      }`}>
+                      <div className={`text-xs mt-2 ${isCurrentUser ? "text-primary-foreground/70" : "text-muted-foreground"
+                        }`}>
                         {new Date(message.createdAt).toLocaleTimeString('pt-BR', {
                           hour: '2-digit',
                           minute: '2-digit'
@@ -206,7 +221,7 @@ export function ChatMessages({
                 </div>
               );
             })}
-            
+
             <div ref={messagesEndRef} />
           </div>
         )}

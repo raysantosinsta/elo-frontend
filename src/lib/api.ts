@@ -1,10 +1,16 @@
-import { Chat, ChatMessage, CreateChatMessageDto, User } from "@/types/chat";
+import { Chat, ChatMessage, CreateChatMessageDto, User, CreateChatDto } from "@/types/chat";
 
 const API_BASE_URL = 'http://localhost:3000';
 
+// Função auxiliar para validar UUID
+const isValidUUID = (uuid: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+};
+
 export const api = {
   // Chats
-  createChat: async (data: { companyId?: string }): Promise<Chat> => {
+  createChat: async (data: CreateChatDto): Promise<Chat> => {
     const response = await fetch(`${API_BASE_URL}/chats`, {
       method: 'POST',
       headers: {
@@ -12,12 +18,39 @@ export const api = {
       },
       body: JSON.stringify(data),
     });
+
+    if (!response.ok) {
+      throw new Error(`Erro ao criar chat: ${response.statusText}`);
+    }
+
     return response.json();
   },
 
   getChat: async (id: string): Promise<Chat> => {
     const response = await fetch(`${API_BASE_URL}/chats/${id}`);
+
+    if (!response.ok) {
+      throw new Error(`Erro ao buscar chat: ${response.statusText}`);
+    }
+
     return response.json();
+  },
+
+  getChats: async (data: { companyId: string }): Promise<Chat[]> => {
+    const response = await fetch(`${API_BASE_URL}/chats?companyId=${data.companyId}`);
+
+    if (!response.ok) {
+      throw new Error(`Erro ao buscar chats: ${response.statusText}`);
+    }
+
+    const chats = await response.json();
+
+    if (!Array.isArray(chats)) {
+      console.error("getChats retornou algo inválido:", chats);
+      return [];
+    }
+
+    return chats;
   },
 
   // Chat Messages
@@ -29,29 +62,30 @@ export const api = {
       },
       body: JSON.stringify(data),
     });
+
+    if (!response.ok) {
+      throw new Error(`Erro ao criar mensagem: ${response.statusText}`);
+    }
+
     return response.json();
   },
 
   getChatMessages: async (chatId: string): Promise<ChatMessage[]> => {
     const response = await fetch(`${API_BASE_URL}/chat-messages/chat/${chatId}`);
-    return response.json();
+
+    if (!response.ok) {
+      throw new Error(`Erro ao buscar mensagens: ${response.statusText}`);
+    }
+
+    const messages = await response.json();
+
+    if (!Array.isArray(messages)) {
+      console.error("getChatMessages retornou algo inválido:", messages);
+      return [];
+    }
+
+    return messages;
   },
 
-  // ⭐ USERS SEARCH — AGORA ADICIONADO
-  searchUsers: async (query: string): Promise<User[]> => {
-  const response = await fetch(
-    `${API_BASE_URL}/users/search?query=${encodeURIComponent(query)}`
-  );
-
-  const data = await response.json();
-
-  // Garante que SEMPRE retorna array
-  if (!Array.isArray(data)) {
-    console.error("searchUsers retornou algo inválido:", data);
-    return [];
-  }
-
-  return data;
-},
 
 };
