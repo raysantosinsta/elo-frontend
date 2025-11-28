@@ -114,6 +114,8 @@ class SocketService {
     }
   }
 
+  
+
   joinChatRoom(chatId: string) {
     if (this.socket) {
       this.socket.emit("join_chat_room", chatId);

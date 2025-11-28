@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChatMessage } from "@/types/chat";
 import { useSocket } from "./useSocket";
 
@@ -23,6 +23,7 @@ export function useChatSocket({
   onCompanyNotification,
 }: UseChatSocketProps) {
   const socket = useSocket();
+  const [isConnected, setIsConnected] = useState(socket.isConnected());
   const callbacksRef = useRef({
     onNewMessage,
     onUserNotification,
@@ -39,20 +40,28 @@ export function useChatSocket({
   });
 
   useEffect(() => {
-    if (!chatId || !currentUserId || !companyId || !socket.isConnected()) return;
+    // Observar mudanças no estado da conexão
+    const unsubscribe = socket.onConnectionChange(setIsConnected);
+    return () => unsubscribe();
+  }, [socket]);
 
-    // Entrar na sala do usuário
+  useEffect(() => {
+    if (!chatId || !currentUserId || !companyId || !isConnected) return;
+
+    console.log('🔌 Conectado. Entrando nas salas...');
+    
+    // Entrar nas salas necessárias
     socket.joinUserRoom(currentUserId);
-
-    // Entrar na sala da empresa se existir
     if (companyId) {
       socket.joinCompanyRoom(companyId);
     }
+    socket.joinChatRoom(chatId);
 
     // Listener para novas mensagens no chat
     const handleNewMessage = (message: ChatMessage) => {
       // Só processa se a mensagem for para este chat
       if (message.chatId === chatId) {
+        console.log('📥 Nova mensagem recebida no chat:', message);
         callbacksRef.current.onNewMessage?.(message);
       }
     };
@@ -60,10 +69,12 @@ export function useChatSocket({
     // Listener para notificações do usuário
     const handleUserNotification = (notification: any) => {
       callbacksRef.current.onUserNotification?.(notification);
+      console.log('🔔 Notificação de usuário recebida:', notification);
     };
 
     // Listener para notificações da empresa
     const handleCompanyNotification = (data: any) => {
+      console.log('🏢 Notificação de empresa recebida:', data);
       if (data.chatId === chatId) {
         callbacksRef.current.onCompanyNotification?.(data);
       }
@@ -76,11 +87,13 @@ export function useChatSocket({
 
     return () => {
       // Limpar listeners específicos
+      console.log('🧹 Limpando listeners do chat...');
       socket.off("chat:message", handleNewMessage);
       socket.off("notification:new", handleUserNotification);
       socket.off("notification:mention", handleUserNotification);
+      socket.leaveChatRoom(chatId);
     };
-  }, [chatId, currentUserId, companyId, socket]);
+  }, [chatId, currentUserId, companyId, socket, isConnected]);
 
   return socket;
 }

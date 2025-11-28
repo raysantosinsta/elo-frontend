@@ -1,24 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-
-import { useState, useRef, useCallback, KeyboardEvent } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { User } from "@/types/chat";
 import { api } from "@/lib/api";
-
-// Mock data and function since api.getUsersForMention doesn't exist
-const mockUsers: User[] = [
-  { id: "1", name: "Alice Johnson", email: "alice@example.com", professionalRole: "Desenvolvedora", isProfessional: true },
-  { id: "2", name: "Bob Williams", email: "bob@example.com", professionalRole: "Designer", isProfessional: true },
-  { id: "3", name: "Charlie Brown", email: "charlie@example.com", professionalRole: "Gerente de Produto", isProfessional: false },
-  { id: "4", name: "Diana Prince", email: "diana@example.com", professionalRole: "Engenheira de QA", isProfessional: true },
-  { id: "5", name: "Ethan Hunt", email: "ethan@example.com", professionalRole: "Usuário", isProfessional: false },
-];
-
-const getUsersForMention = async (query: string): Promise<User[]> => {
-  console.log("Buscando menções para:", query);
-  await new Promise(resolve => setTimeout(resolve, 200)); // Simula latência da rede
-  return mockUsers.filter(user => user.name.toLowerCase().includes(query.toLowerCase()));
-};
 
 export function useMentions() {
   const [mentionQuery, setMentionQuery] = useState("");
@@ -26,69 +9,145 @@ export function useMentions() {
   const [showMentionList, setShowMentionList] = useState(false);
   const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const mentionTriggerIndex = useRef(-1);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleInputChange = useCallback((text: string, cursorPosition: number) => {
+  const mentionTriggerIndex = useRef(-1);
+  const timeoutRef = useRef<number | null>(null);
+
+  // Cleanup do timeout
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  // CORREÇÃO no useMentions hook - melhor debounce
+const handleInputChange = useCallback(
+  (text: string, cursorPosition: number, inputElement?: HTMLInputElement) => {
     const atIndex = text.lastIndexOf("@", cursorPosition - 1);
 
-    if (atIndex !== -1 && (atIndex === 0 || text[atIndex - 1] === " ")) {
-      const query = text.substring(atIndex + 1, cursorPosition);
+    // Verificar se o @ está no início ou após espaço/nova linha
+    if (atIndex !== -1 && (atIndex === 0 || text[atIndex - 1] === " " || text[atIndex - 1] === "\n")) {
+      // Pegar apenas o texto entre o @ e o cursor (sem espaços)
+      const textAfterAt = text.substring(atIndex + 1, cursorPosition);
+      const spaceIndex = textAfterAt.indexOf(' ');
+      
+      // Se encontrou espaço, pegar apenas a primeira palavra
+      const query = spaceIndex !== -1 ? textAfterAt.substring(0, spaceIndex) : textAfterAt;
+      
+      console.log(`🔍 Detecção de menção: "${textAfterAt}" → Query: "${query}"`);
+
+      // Se a query estiver vazia ou só tiver espaço, não mostrar
+      if (!query.trim()) {
+        setShowMentionList(false);
+        return;
+      }
+
       setMentionQuery(query);
       setShowMentionList(true);
       mentionTriggerIndex.current = atIndex;
       setSelectedIndex(0);
 
-      getUsersForMention(query).then(setMentionResults);
+      // Calcular posição real se tiver o elemento
+      if (inputElement) {
+        const rect = inputElement.getBoundingClientRect();
+        const scrollX = window.scrollX || document.documentElement.scrollLeft;
+        const scrollY = window.scrollY || document.documentElement.scrollTop;
+        
+        setMentionPosition({ 
+          top: rect.bottom + scrollY, 
+          left: rect.left + scrollX 
+        });
+      }
 
-      // TODO: Calculate position based on input/cursor
-      setMentionPosition({ top: 40, left: 0 });
+      // 🔥 MELHORIA: Debounce mais eficiente
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+      setIsLoading(true);
+      timeoutRef.current = window.setTimeout(() => {
+        api.getUsersForMention(query)
+          .then((users) => {
+            console.log(`✅ ${users.length} usuários encontrados para "${query}"`);
+            setMentionResults(users);
+            setIsLoading(false);
+            
+            // 🔥 CORREÇÃO: Se não há resultados, fechar a lista
+            if (users.length === 0) {
+              setShowMentionList(false);
+            }
+          })
+          .catch((error) => {
+            console.error('❌ Erro na busca de menções:', error);
+            setIsLoading(false);
+            setMentionResults([]);
+            setShowMentionList(false);
+          });
+      }, 300);
     } else {
       setShowMentionList(false);
     }
-  }, []);
+  },
+  []
+);
 
   const closeMentionList = useCallback(() => {
     setShowMentionList(false);
+    setSelectedIndex(0);
   }, []);
 
-  const insertMention = useCallback((text: string, user: User, cursorPosition: number) => {
-    const start = mentionTriggerIndex.current;
-    const end = cursorPosition;
+  const insertMention = useCallback(
+    (text: string, user: User, cursorPosition: number) => {
+      const start = mentionTriggerIndex.current;
+      const end = cursorPosition;
 
-    const newText = `${text.substring(0, start)}@${user.name} ${text.substring(end)}`;
-    const newCursorPosition = start + user.name.length + 2;
+      const beforeMention = text.substring(0, start);
+      const afterMention = text.substring(end);
+      
+      // Substituir apenas a query pela menção completa
+      const newText = `${beforeMention}@${user.name} ${afterMention}`;
+      const newCursorPosition = start + user.name.length + 2; // +2 para "@" e espaço
 
-    return {
-      newText,
-      newCursorPosition,
-      mentionedUserId: user.id,
-    };
-  }, []);
+      console.log(`📝 Inserindo menção: @${user.name}`, {
+        start, end, newCursorPosition
+      });
 
-  const handleKeyDown = useCallback((
-    e: KeyboardEvent<HTMLInputElement>,
-    onSelect: (user: User) => void
-  ) => {
-    if (!showMentionList) return;
+      return {
+        newText,
+        newCursorPosition,
+        mentionedUserId: user.id,
+      };
+    },
+    []
+  );
 
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIndex(prevIndex =>
-        Math.min(prevIndex + 1, mentionResults.length - 1)
-      );
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIndex(prevIndex => Math.max(prevIndex - 1, 0));
-    } else if (e.key === "Enter" && selectedIndex >= 0) {
-      e.preventDefault();
-      if (mentionResults[selectedIndex]) {
-        onSelect(mentionResults[selectedIndex]);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>, onSelect: (user: User) => void) => {
+      if (!showMentionList || mentionResults.length === 0) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prevIndex) =>
+          Math.min(prevIndex + 1, mentionResults.length - 1)
+        );
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((prevIndex) => Math.max(prevIndex - 1, 0));
+      } else if (e.key === "Enter" && selectedIndex >= 0) {
+        e.preventDefault();
+        if (mentionResults[selectedIndex]) {
+          onSelect(mentionResults[selectedIndex]);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        closeMentionList();
+      } else if (e.key === "Backspace" && mentionQuery === "") {
+        closeMentionList();
       }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      closeMentionList();
-    }
-  }, [showMentionList, mentionResults, closeMentionList, selectedIndex]);
+    },
+    [showMentionList, mentionResults, selectedIndex, mentionQuery, closeMentionList]
+  );
 
   return {
     mentionQuery,
@@ -96,6 +155,7 @@ export function useMentions() {
     showMentionList,
     mentionPosition,
     selectedIndex,
+    isLoading,
     handleInputChange,
     insertMention,
     closeMentionList,

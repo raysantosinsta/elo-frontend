@@ -41,6 +41,9 @@ export interface CreateChatMessageDto {
   mentionedProfessionalId?: string;
 }
 
+
+
+// types/chat.ts - Adicionar tipos faltantes
 export interface User {
   id: string;
   name: string;
@@ -48,4 +51,29 @@ export interface User {
   phone?: string;
   professionalRole?: string;
   isProfessional: boolean;
+  company?: {
+    id: string;
+    name: string;
+  };
 }
+
+export interface MentionResult {
+  users: User[];
+  query: string;
+  position: number;
+}
+
+// hooks/useMentions.ts - Adicionar tipo de retorno
+interface UseMentionsReturn {
+  mentionQuery: string;
+  mentionResults: User[];
+  showMentionList: boolean;
+  mentionPosition: { top: number; left: number };
+  selectedIndex: number;
+  handleInputChange: (text: string, cursorPosition: number, inputElement?: HTMLInputElement) => void;
+  insertMention: (text: string, user: User, cursorPosition: number) => { newText: string; newCursorPosition: number };
+  closeMentionList: () => void;
+  handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, onSelect: (user: User) => void) => void;
+}
+
+export type { UseMentionsReturn };
