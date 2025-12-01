@@ -6,6 +6,7 @@ import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/app-layout";
 import { Toaster } from "sonner";
+import { RealtimeTaskProvider } from "@/contexts/RealtimeTaskContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,8 +31,12 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider>
-          <Toaster position="top-right" richColors />
-          <AppLayout>{children}</AppLayout>
+          <RealtimeTaskProvider>
+
+            <AppLayout>{children}</AppLayout>
+            <Toaster position="top-right" richColors />
+          </RealtimeTaskProvider>
+
         </AuthProvider>
       </body>
     </html>

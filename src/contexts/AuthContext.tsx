@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
+
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
@@ -12,19 +13,24 @@ interface User {
   companyId: string | null;
   document?: string | null;
   phone: string;
-  company?: {
-    id: string;
-    name: string;
-    status: string;
-  } | null;
+  company?: { id: string; name: string; status: string } | null;
   createdAt?: string;
+}
+
+interface JwtPayload {
+  sub: string;
+  email: string;
+  role: string;
+  companyId: string;
+  exp: number;
+  iat: number;
 }
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (userData: SignupData) => Promise<void>;
-  adminSignup: (userData: SignupData) => Promise<void>;
+  signup: (userData: any) => Promise<void>;
+  adminSignup: (userData: any) => Promise<void>;
   logout: () => void;
   loading: boolean;
   token: string | null;
@@ -33,20 +39,8 @@ interface AuthContextType {
   authFetch: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
-interface SignupData {
-  email: string;
-  password: string;
-  name: string;
-  companyId: string;
-  phone: string;
-  document?: string;
-  role?: string;
-}
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -55,30 +49,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Limpa timer antigo
   const clearRefreshTimer = () => {
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = null;
-    }
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
   };
 
-  // Agenda refresh 5 minutos antes da expiração
   const scheduleRefreshTimer = (accessToken: string) => {
     clearRefreshTimer();
-
     try {
-      const payload = JSON.parse(atob(accessToken.split(".")[1]));
+      const payload: JwtPayload = JSON.parse(atob(accessToken.split(".")[1]));
       const now = Math.floor(Date.now() / 1000);
-      const expiresIn = payload.exp ? payload.exp - now : 0;
+      const expiresIn = payload.exp - now;
+      if (expiresIn <= 0) return;
 
-      if (expiresIn <= 0) {
-        refreshAuthToken();
-        return;
-      }
-
-      const refreshIn = Math.max(expiresIn - 300, 60) * 1000; // 5 min antes, mínimo 1 min
-
+      const refreshIn = Math.max(expiresIn - 300, 60) * 1000;
       refreshTimerRef.current = setTimeout(async () => {
         const success = await refreshAuthToken();
         if (!success) logout();
@@ -88,19 +71,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Verifica se token é válido (não expirado)
   const isTokenValid = (token: string): boolean => {
     if (!token) return false;
     try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      const now = Math.floor(Date.now() / 1000);
-      return payload.exp > now;
+      const payload: JwtPayload = JSON.parse(atob(token.split(".")[1]));
+      return payload.exp > Math.floor(Date.now() / 1000);
     } catch {
       return false;
     }
   };
 
-  // Limpa tudo (logout, refresh de página, etc.)
   const clearAuthData = () => {
     clearRefreshTimer();
     setToken(null);
@@ -111,7 +91,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     document.cookie = "refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   };
 
-  // Salva tokens + agenda refresh automático
   const setAuthToken = (newToken: string, refreshToken?: string): boolean => {
     if (!isTokenValid(newToken)) {
       clearAuthData();
@@ -120,18 +99,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setToken(newToken);
     localStorage.setItem("accessToken", newToken);
-    document.cookie = `access_token=${newToken}; path=/; max-age=86400; SameSite=Lax`;
+    // 7 dias de cookie (mesmo tempo do refresh)
+    document.cookie = `access_token=${newToken}; path=/; max-age=604800; SameSite=Lax; Secure`;
 
     if (refreshToken && isTokenValid(refreshToken)) {
       localStorage.setItem("refreshToken", refreshToken);
-      document.cookie = `refresh_token=${refreshToken}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `refresh_token=${refreshToken}; path=/; max-age=604800; SameSite=Lax; Secure`;
     }
 
     scheduleRefreshTimer(newToken);
     return true;
   };
 
-  // Refresh do token
   const refreshAuthToken = async (): Promise<boolean> => {
     const refreshToken = localStorage.getItem("refreshToken");
     if (!refreshToken || !isTokenValid(refreshToken)) {
@@ -147,24 +126,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!res.ok) throw new Error("Refresh failed");
-
       const data = await res.json();
-      const success = setAuthToken(data.accessToken, data.refreshToken);
-      return success;
+      return setAuthToken(data.accessToken, data.refreshToken);
     } catch (err) {
-      console.error("Refresh token falhou:", err);
+      console.error("Refresh falhou:", err);
       clearAuthData();
       return false;
     }
   };
 
-  // authFetch com retry automático em caso de 401
   const authFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
     let accessToken = localStorage.getItem("accessToken");
-
     if (!accessToken || !isTokenValid(accessToken)) {
-      const refreshed = await refreshAuthToken();
-      if (!refreshed) throw new Error("Sessão expirada");
+      const ok = await refreshAuthToken();
+      if (!ok) throw new Error("Sessão expirada");
       accessToken = localStorage.getItem("accessToken");
     }
 
@@ -177,121 +152,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let response = await fetch(url, { ...options, headers });
 
     if (response.status === 401) {
-      const refreshed = await refreshAuthToken();
-      if (!refreshed) {
+      const ok = await refreshAuthToken();
+      if (!ok) {
         logout();
         throw new Error("Sessão expirada");
       }
-      const newToken = localStorage.getItem("accessToken");
       response = await fetch(url, {
         ...options,
-        headers: { ...headers, Authorization: `Bearer ${newToken}` },
+        headers: { ...headers, Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
       });
     }
-
     return response;
   };
 
-  // LOGIN ATUALIZADO (sem fetchUserData!)
   const login = async (email: string, password: string) => {
-    try {
-      console.log("Tentando login...", { email, passwordLength: password.length });
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+    });
 
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password,
-        }),
-      });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || "Erro no login");
 
-      const text = await response.text();
-      console.log("Resposta login:", response.status, text);
-
-      if (!response.ok) {
-        let msg = "Credenciais inválidas";
-        try {
-          const err = JSON.parse(text);
-          msg = err.message || msg;
-        } catch { }
-        throw new Error(msg);
-      }
-
-      const data = JSON.parse(text);
-
-      const accessToken = data.accessToken;
-      const refreshToken = data.refreshToken;
-      const userFromLogin = data.user;
-
-      if (!accessToken || !userFromLogin) {
-        throw new Error("Resposta incompleta do servidor");
-      }
-
-      // Salva tokens
-      setAuthToken(accessToken, refreshToken);
-
-      // Define usuário direto (sem chamada extra!)
-      setUser(userFromLogin);
-      console.log("Login sucesso! Usuário:", userFromLogin.name || userFromLogin.email);
-
-      router.push("/Kanban");
-    } catch (error: any) {
-      console.error("Erro no login:", error);
-      throw error;
-    }
+    setAuthToken(data.accessToken, data.refreshToken);
+    setUser(data.user);
+    router.push("/Kanban");
   };
-
-  // Resto das funções (signup, adminSignup, logout)
-  const signup = async (userData: SignupData) => { /* ... teu código atual ... */ };
-  const adminSignup = async (userData: SignupData) => { /* ... teu código atual ... */ };
 
   const logout = () => {
     clearAuthData();
     router.push("/login");
   };
 
-  // Inicialização na carga da página
+  // INICIALIZAÇÃO PERFEITA
   useEffect(() => {
     const init = async () => {
-      setLoading(true);
       const savedToken = localStorage.getItem("accessToken");
 
-      if (savedToken && isTokenValid(savedToken)) {
-        setToken(savedToken);
-        scheduleRefreshTimer(savedToken);
-
-        // TENTA buscar o profile, mas NUNCA limpa o token se falhar!
-        try {
-          const res = await fetch(`${API_BASE}/auth/profile`, {
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${savedToken}`
-            },
-          });
-
-          if (res.ok) {
-            const userData = await res.json();
-            setUser(userData);
-            console.log("Usuário restaurado do /profile");
-          } else {
-            console.warn("Não foi possível carregar perfil, mas token continua válido");
-            // NÃO faz clearAuthData() aqui!
-          }
-        } catch (err) {
-          console.warn("Erro ao carregar perfil (rede/offline?), mas token ainda é válido", err);
-          // NÃO limpa o token!
-        }
-      } else {
-        console.log("Nenhum token válido encontrado");
+      if (!savedToken || !isTokenValid(savedToken)) {
         clearAuthData();
+        setLoading(false);
+        return;
       }
 
-      setLoading(false);
+      setToken(savedToken);
+      scheduleRefreshTimer(savedToken);
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/profile`, {
+          headers: {
+            Authorization: `Bearer ${savedToken}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (res.ok) {
+          setUser(await res.json());
+        }
+      } catch (err) {
+        console.warn("Erro ao carregar perfil (rede?)", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     init();
-    return () => clearRefreshTimer();
   }, []);
 
   return (
@@ -299,8 +225,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         login,
-        signup,
-        adminSignup,
+        signup: async () => {},
+        adminSignup: async () => {},
         logout,
         loading,
         token,
@@ -314,13 +240,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth deve estar dentro de AuthProvider");
   return context;
-}
+};
 
-export function useAuthFetch() {
-  const { authFetch } = useAuth();
-  return authFetch;
-}
+export const useAuthFetch = () => useAuth().authFetch;
