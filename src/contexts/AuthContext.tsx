@@ -214,7 +214,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const err = JSON.parse(text);
           msg = err.message || msg;
-        } catch {}
+        } catch { }
         throw new Error(msg);
       }
 
@@ -256,26 +256,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const init = async () => {
       setLoading(true);
       const savedToken = localStorage.getItem("accessToken");
+
       if (savedToken && isTokenValid(savedToken)) {
         setToken(savedToken);
         scheduleRefreshTimer(savedToken);
 
+        // TENTA buscar o profile, mas NUNCA limpa o token se falhar!
         try {
           const res = await fetch(`${API_BASE}/auth/profile`, {
-            headers: { Authorization: `Bearer ${savedToken}` },
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${savedToken}`
+            },
           });
+
           if (res.ok) {
             const userData = await res.json();
             setUser(userData);
+            console.log("Usuário restaurado do /profile");
           } else {
-            clearAuthData();
+            console.warn("Não foi possível carregar perfil, mas token continua válido");
+            // NÃO faz clearAuthData() aqui!
           }
-        } catch {
-          clearAuthData();
+        } catch (err) {
+          console.warn("Erro ao carregar perfil (rede/offline?), mas token ainda é válido", err);
+          // NÃO limpa o token!
         }
+      } else {
+        console.log("Nenhum token válido encontrado");
+        clearAuthData();
       }
+
       setLoading(false);
     };
+
     init();
     return () => clearRefreshTimer();
   }, []);
