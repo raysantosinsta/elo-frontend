@@ -28,6 +28,7 @@ interface JwtPayload {
 
 interface AuthContextType {
   user: User | null;
+  isAuthenticated: boolean; // ← Adicione esta linha
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: any) => Promise<void>;
   adminSignup: (userData: any) => Promise<void>;
@@ -224,9 +225,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        isAuthenticated: !!user, // ← Adicione esta linha
         login,
-        signup: async () => {},
-        adminSignup: async () => {},
+        signup: async () => { },
+        adminSignup: async () => { },
         logout,
         loading,
         token,

@@ -1,12 +1,12 @@
 // app/layout.tsx
+import { AppLayout } from "@/components/app-layout";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import "leaflet/dist/leaflet.css";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { AppLayout } from "@/components/app-layout";
 import { Toaster } from "sonner";
-import { RealtimeTaskProvider } from "@/contexts/RealtimeTaskContext";
+import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,12 +31,10 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider>
-          <RealtimeTaskProvider>
-
+          <WebSocketProvider>
             <AppLayout>{children}</AppLayout>
-            <Toaster position="top-right" richColors />
-          </RealtimeTaskProvider>
-
+            <Toaster position="top-right" richColors closeButton />
+          </WebSocketProvider>
         </AuthProvider>
       </body>
     </html>

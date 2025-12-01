@@ -67,7 +67,7 @@ export default function AdminSignupPage() {
       const loadCompanies = async () => {
         setLoadingCompanies(true);
         try {
-          const API_BASE = process.env.NESTJS_API_URL || 'http://localhost:3000';
+          const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000';
           const res = await authFetch(`${API_BASE}/auth/companies/master`);
 
           if (!res.ok) {

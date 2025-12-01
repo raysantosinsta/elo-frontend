@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // components/layout/sidebar.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
@@ -15,13 +16,32 @@ import {
   HelpCircle,
   ChevronLeft,
   ChevronRight,
-  Home
+  Home,
+  Bell,
+  Check,
+  X,
+  CheckCheck,
+  Wifi,
+  WifiOff,
+  AlertCircle,
+  Clock,
+  DollarSign,
+  MessageSquare,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+import { useNotifications } from "@/hooks/useNotifications";
 
 interface SidebarProps {
   className?: string;
@@ -32,19 +52,16 @@ const menuItems = [
     title: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
-    badge: "3",
   },
   {
     title: "Kanban",
     href: "/Kanban",
     icon: KanbanSquare,
-    badge: "12",
   },
   {
     title: "Tarefas",
     href: "/tasks",
     icon: FileText,
-    badge: "5",
   },
   {
     title: "Calendário",
@@ -79,10 +96,89 @@ const secondaryItems = [
 export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const { user } = useAuth();
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    error,
+    refresh,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications();
 
   const toggleSidebar = () => {
     setCollapsed(!collapsed);
   };
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case "TASK_ASSIGNED":
+        return <FileText className="w-4 h-4 text-blue-500" />;
+      case "TASK_COMPLETED":
+        return <Check className="w-4 h-4 text-green-500" />;
+      case "TASK_OVERDUE":
+        return <Clock className="w-4 h-4 text-red-500" />;
+      case "BUDGET_APPROVED":
+      case "BUDGET_REJECTED":
+      case "BUDGET_PENDING_APPROVAL":
+        return <DollarSign className="w-4 h-4 text-purple-500" />;
+      case "NEW_MESSAGE":
+        return <MessageSquare className="w-4 h-4 text-yellow-500" />;
+      case "SYSTEM_ALERT":
+        return <AlertCircle className="w-4 h-4 text-orange-500" />;
+      default:
+        return <Bell className="w-4 h-4 text-gray-500" />;
+    }
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return "Agora mesmo";
+    if (diffMins < 60) return `${diffMins} min atrás`;
+    if (diffHours < 24) return `${diffHours}h atrás`;
+    if (diffDays < 7) return `${diffDays}d atrás`;
+    return date.toLocaleDateString('pt-BR');
+  };
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    const success = await markAsRead(notificationId);
+    if (success) {
+      toast.success("Notificação marcada como lida");
+    } else {
+      toast.error("Erro ao marcar como lida");
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    const success = await markAllAsRead();
+    if (success) {
+      toast.success("Todas as notificações foram marcadas como lidas");
+    } else {
+      toast.error("Erro ao marcar todas como lidas");
+    }
+  };
+
+  const handleRefresh = async () => {
+    await refresh();
+    toast.info("Notificações atualizadas");
+  };
+
+  // Log para debug
+  useEffect(() => {
+    console.log("🔔 Estado das notificações:", {
+      total: notifications.length,
+      unread: unreadCount,
+      loading,
+      error,
+    });
+  }, [notifications, unreadCount, loading, error]);
 
   return (
     <div
@@ -102,18 +198,192 @@ export function Sidebar({ className }: SidebarProps) {
             <span className="font-bold text-lg">Highlander</span>
           </div>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleSidebar}
-          className="h-8 w-8"
-        >
-          {collapsed ? (
-            <ChevronRight className="w-4 h-4" />
-          ) : (
-            <ChevronLeft className="w-4 h-4" />
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Notifications Bell */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 relative"
+                onClick={() => console.log("Notificações clicadas:", notifications)}
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent 
+              className="w-96 p-0" 
+              align="start"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+            >
+              <div className="flex items-center justify-between p-4 border-b">
+                <div>
+                  <h3 className="font-semibold">Notificações</h3>
+                  <p className="text-xs text-gray-500">
+                    {loading ? "Carregando..." : 
+                     error ? "Erro ao carregar" :
+                     `${unreadCount} não lida${unreadCount !== 1 ? 's' : ''} de ${notifications.length}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={handleRefresh}
+                    title="Atualizar"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                  </Button>
+                  {unreadCount > 0 && notifications.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleMarkAllAsRead}
+                      className="h-8 text-xs"
+                      disabled={loading}
+                    >
+                      <CheckCheck className="w-3 h-3 mr-1" />
+                      Marcar todas
+                    </Button>
+                  )}
+                </div>
+              </div>
+              
+              {error ? (
+                <div className="p-8 text-center">
+                  <AlertCircle className="w-12 h-12 text-red-300 mx-auto mb-3" />
+                  <p className="text-sm text-red-600">{error}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={handleRefresh}
+                  >
+                    Tentar novamente
+                  </Button>
+                </div>
+              ) : loading ? (
+                <div className="p-8 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                  <p className="mt-2 text-sm text-gray-500">Carregando notificações...</p>
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Bell className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">Nenhuma notificação</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Novas notificações aparecerão aqui
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <ScrollArea className="h-[400px]">
+                    <div className="p-2">
+                      {notifications.map((notification: any, index: any) => (
+                        <div
+                          key={notification.id || `notification-${index}`}
+                          className={cn(
+                            "flex items-start p-3 rounded-lg transition-colors mb-2 border",
+                            !notification.isRead 
+                              ? "bg-blue-50 border-blue-200 hover:bg-blue-100" 
+                              : "border-gray-100 hover:bg-gray-50"
+                          )}
+                        >
+                          <div className="flex-shrink-0 mt-0.5 mr-3">
+                            {getNotificationIcon(notification.type)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-start">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {notification.title || 'Sem título'}
+                              </p>
+                              {!notification.isRead && (
+                                <span className="inline-block w-2 h-2 bg-blue-500 rounded-full ml-2 flex-shrink-0"></span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {notification.message || 'Sem mensagem'}
+                            </p>
+                            
+                            <div className="flex items-center justify-between mt-2">
+                              <span className="text-xs text-gray-500">
+                                {formatTimeAgo(notification.createdAt)}
+                              </span>
+                              
+                              {notification.task && (
+                                <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded truncate max-w-[120px]">
+                                  {notification.task.title}
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div className="flex justify-end gap-2 mt-2">
+                              {!notification.isRead && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs"
+                                  onClick={() => handleMarkAsRead(notification.id)}
+                                >
+                                  Marcar como lida
+                                </Button>
+                              )}
+                              
+                              {notification.task?.id && (
+                                <Link href={`/tasks/${notification.task.id}`}>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-xs"
+                                  >
+                                    Ver tarefa
+                                  </Button>
+                                </Link>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                  
+                  <div className="p-3 border-t">
+                    <Link href="/notifications">
+                      <Button
+                        variant="outline"
+                        className="w-full text-sm"
+                        size="sm"
+                      >
+                        <Bell className="w-3 h-3 mr-2" />
+                        Ver todas as notificações
+                      </Button>
+                    </Link>
+                  </div>
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          {/* Toggle Sidebar Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className="h-8 w-8"
+          >
+            {collapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -131,19 +401,12 @@ export function Sidebar({ className }: SidebarProps) {
                     isActive
                       ? "bg-accent text-accent-foreground"
                       : "transparent",
-                    collapsed ? "justify-center" : "justify-between"
+                    collapsed ? "justify-center" : "justify-start"
                   )}
+                  title={collapsed ? item.title : undefined}
                 >
-                  <div className="flex items-center">
-                    <Icon className={cn("w-4 h-4", collapsed ? "mr-0" : "mr-3")} />
-                    {!collapsed && <span>{item.title}</span>}
-                  </div>
-                  
-                  {!collapsed && item.badge && (
-                    <Badge variant="secondary" className="ml-auto">
-                      {item.badge}
-                    </Badge>
-                  )}
+                  <Icon className={cn("w-4 h-4", collapsed ? "mr-0" : "mr-3")} />
+                  {!collapsed && <span>{item.title}</span>}
                 </div>
               </Link>
             );
@@ -167,6 +430,7 @@ export function Sidebar({ className }: SidebarProps) {
                       : "transparent",
                     collapsed ? "justify-center" : "justify-start"
                   )}
+                  title={collapsed ? item.title : undefined}
                 >
                   <Icon className={cn("w-4 h-4", collapsed ? "mr-0" : "mr-3")} />
                   {!collapsed && <span>{item.title}</span>}
@@ -178,15 +442,18 @@ export function Sidebar({ className }: SidebarProps) {
       </ScrollArea>
 
       {/* User Profile */}
-      {!collapsed && (
+      {!collapsed && user && (
         <div className="p-4 border-t">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-              <span className="text-white text-xs font-bold">H</span>
+              <span className="text-white text-xs font-bold">
+                {user.name?.charAt(0).toUpperCase() || 'U'}
+              </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">Highlander Team</p>
-              <p className="text-xs text-muted-foreground truncate">admin@highlander.com</p>
+              <p className="text-sm font-medium truncate">{user.name}</p>
+              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+              <p className="text-xs text-gray-500 capitalize">{user.role.toLowerCase()}</p>
             </div>
           </div>
         </div>

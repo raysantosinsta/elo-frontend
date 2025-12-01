@@ -71,7 +71,7 @@ interface UserData {
   };
 }
 
-const API_BASE_URL = process.env.NESTJS_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000';
 
 export default function DashboardPage() {
   const [user, setUser] = useState<UserData | null>(null);

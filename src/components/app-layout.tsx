@@ -1,3 +1,4 @@
+// components/app-layout.tsx
 "use client";
 
 import { Sidebar } from "./sidebar";
@@ -8,10 +9,10 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-    const { isAuthenticated, isLoading } = useAuth();
+    const { user, loading } = useAuth(); // Use user em vez de isAuthenticated
 
     // Mostrar loading enquanto verifica autenticação
-    if (isLoading) {
+    if (loading) {
         return (
             <div className="flex h-screen items-center justify-center bg-background">
                 <div className="text-center">
@@ -22,8 +23,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         );
     }
 
-    // Se não está autenticado, mostra apenas o conteúdo sem sidebar
-    if (!isAuthenticated) {
+    // Se não tem usuário (não está autenticado), mostra apenas o conteúdo sem sidebar
+    if (!user) {
         return (
             <div className="min-h-screen bg-background">
                 {children}
@@ -31,7 +32,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         );
     }
 
-    // Se está autenticado, mostra layout completo com sidebar
+    // Se tem usuário (está autenticado), mostra layout completo com sidebar
     return (
         <div className="flex h-screen bg-background">
             {/* Sidebar - só aparece quando autenticado */}
