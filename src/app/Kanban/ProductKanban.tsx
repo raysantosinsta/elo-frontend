@@ -28,6 +28,7 @@ import {
   Eye,
   Image as ImageIcon,
   LogOut,
+  Menu,
   Mic,
   MoreVertical,
   Music,
@@ -38,6 +39,7 @@ import {
   Trash2,
   User,
   Video,
+  X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -102,6 +104,7 @@ export default function ProductKanban() {
   const [columns, setColumns] = useState<Column[]>([]);
   const [users, setUsers] = useState<Professional[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Modais
   const [isColumnModal, setIsColumnModal] = useState(false);
@@ -125,7 +128,7 @@ export default function ProductKanban() {
   const [taskAudios, setTaskAudios] = useState<File[]>([]);
   const [taskVideos, setTaskVideos] = useState<File[]>([]);
 
-  // Formulário edição - AGORA COMPLETO com suporte a remoção e adição
+  // Formulário edição
   const [editTaskTitle, setEditTaskTitle] = useState("");
   const [editTaskDescription, setEditTaskDescription] = useState("");
   const [editTaskDueDate, setEditTaskDueDate] = useState("");
@@ -221,11 +224,9 @@ export default function ProductKanban() {
       await Promise.all(createPromises);
       console.log("✅ Colunas padrão criadas");
 
-      // Recarregar colunas após criação
       await fetchColumns();
     } catch (createError) {
       console.error("❌ Erro ao criar colunas padrão:", createError);
-      // Mesmo com erro, continuar com array vazio
       setColumns([]);
     }
   };
@@ -237,7 +238,6 @@ export default function ProductKanban() {
       const res = await authFetch(`${API_BASE}/kanban-columns`);
 
       if (!res.ok) {
-        // Se for erro 400/404, tentar criar colunas padrão
         if (res.status === 400 || res.status === 404) {
           console.log("🔄 Nenhuma coluna encontrada, tentando criar padrão...");
           await createDefaultColumns();
@@ -249,7 +249,6 @@ export default function ProductKanban() {
       const data = await res.json();
       console.log("✅ Resposta das colunas:", data);
 
-      // Lidar com diferentes formatos de resposta
       let columnsArray = [];
 
       if (Array.isArray(data)) {
@@ -280,7 +279,6 @@ export default function ProductKanban() {
       const res = await authFetch(`${API_BASE}/tasks`);
 
       if (!res.ok) {
-        // Se for erro 400, pode ser que não há tarefas - retornar array vazio
         if (res.status === 400) {
           console.log("ℹ️ Nenhuma tarefa encontrada (400)");
           setTasks([]);
@@ -305,18 +303,6 @@ export default function ProductKanban() {
         tasksArray = [];
       }
 
-      // Garantir que as URLs das imagens sejam absolutas
-      // const tasksWithAbsoluteUrls = tasksArray.map((task: Task) => ({
-      //   ...task,
-      //   taskImages: task.taskImages?.map((img: TaskImage) => ({
-      //     ...img,
-      //     url: img.url.startsWith('http') ? img.url : `${API_BASE}${img.url.startsWith('/') ? '' : '/'}${img.url}`
-      //   })) || []
-      // }));
-
-      // console.log(`✅ ${tasksWithAbsoluteUrls.length} tarefas carregadas`);
-      // setTasks(tasksWithAbsoluteUrls);
-      // Deixa exatamente como veio do backend (já vem com publicUrl!)
       setTasks(tasksArray);
     } catch (err) {
       console.error("❌ Erro ao buscar tarefas:", err);
@@ -345,12 +331,8 @@ export default function ProductKanban() {
     console.log("🚀 Iniciando carregamento de dados...");
 
     try {
-      // Carregar colunas primeiro (elas são essenciais)
       await fetchColumns();
-
-      // Depois carregar tasks e users em paralelo
       await Promise.all([fetchTasks(), fetchUsers()]);
-
       console.log("✅ Todos os dados carregados com sucesso");
     } catch (error) {
       console.error("❌ Erro no carregamento inicial:", error);
@@ -359,19 +341,6 @@ export default function ProductKanban() {
     }
   }, [user, fetchColumns, fetchTasks, fetchUsers]);
 
-  // useEffect(() => {
-  //   if (authLoading) return; // ainda carregando → não faz nada
-
-  //   if (!user) {
-  //     // Só redireciona quando tiver certeza que NÃO está logado
-  //     console.log("Usuário não autenticado → redirecionando para /login");
-  //     router.push("/login");
-  //   } else {
-  //     // Usuário autenticado → carrega os dados
-  //     console.log("Usuário autenticado → carregando dados do Kanban");
-  //     loadInitialData();
-  //   }
-  // }, [user, authLoading, router, loadInitialData]);
   useEffect(() => {
     if (user) {
       loadInitialData();
@@ -441,10 +410,7 @@ export default function ProductKanban() {
 
       if (!res.ok) throw new Error("Erro ao deletar coluna");
 
-      // Atualizar a lista de colunas
       setColumns((prev) => prev.filter((col) => col.id !== columnId));
-
-      // Atualizar as tarefas para remover a referência à coluna deletada
       setTasks((prev) =>
         prev.map((task) =>
           task.columnId === columnId ? { ...task, columnId: null } : task
@@ -474,7 +440,6 @@ export default function ProductKanban() {
         const res = await authFetch(`${API_BASE}/tasks/${taskId}`);
         if (res.ok) {
           const updated = await res.json();
-          // Garantir URLs absolutas para as imagens
           const taskWithAbsoluteUrls = {
             ...updated,
             taskImages:
@@ -626,7 +591,6 @@ export default function ProductKanban() {
     }
   };
 
-  // Funções para remover arquivos na edição
   const removeImage = (id: string) => {
     setRemovedImageIds((prev) => [...prev, id]);
   };
@@ -653,7 +617,6 @@ export default function ProductKanban() {
     formData.append("assignedToId", editTaskAssignedTo || "");
     formData.append("status", editTaskStatus);
 
-    // Adicionar IDs removidos
     if (removedImageIds.length > 0) {
       formData.append("removeImageIds", JSON.stringify(removedImageIds));
     }
@@ -664,7 +627,6 @@ export default function ProductKanban() {
       formData.append("removeVideoIds", JSON.stringify(removedVideoIds));
     }
 
-    // Adicionar novos arquivos
     editTaskImages.forEach((f) => formData.append("images", f));
     editTaskAudios.forEach((f) => formData.append("audios", f));
     editTaskVideos.forEach((f) => formData.append("videos", f));
@@ -763,35 +725,27 @@ export default function ProductKanban() {
     return "bg-green-100 text-green-800 border-green-200";
   };
 
-  // Função para garantir URL absoluta da imagem
-  // const getImageUrl = (url: string) => {
-  //   if (!url) return "";
-  //   return url.startsWith("http")
-  //     ? url
-  //     : `${API_BASE}${url.startsWith("/") ? "" : "/"}${url}`;
-  // };
-  // A URL já vem 100% correta do Supabase → não precisa fazer nada
-const getImageUrl = (url: string) => url || '';
+  const getImageUrl = (url: string) => url || '';
 
   // ==================================== RENDER TASK CARD ====================================
   const TaskCard = ({ task }: { task: Task }) => (
     <Card
       draggable
       onDragStart={(e) => e.dataTransfer.setData("taskId", task.id)}
-      className="bg-white shadow-md hover:shadow-xl cursor-grab active:cursor-grabbing transition-all"
+      className="bg-white shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing transition-all"
     >
       <CardContent className="p-3">
         <div className="flex justify-between items-start mb-2">
-          <Badge className={`${getPriorityColor(task.priority)} border`}>
-            Prio: {task.priority}
+          <Badge className={`${getPriorityColor(task.priority)} border text-xs`}>
+            P{task.priority}
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-6 w-6">
-                <MoreVertical className="w-4 h-4" />
+                <MoreVertical className="w-3 h-3" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
+            <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => openPreviewModal(task)}>
                 <Eye className="w-4 h-4 mr-2" /> Visualizar
               </DropdownMenuItem>
@@ -821,7 +775,7 @@ const getImageUrl = (url: string) => url || '';
             <img
               src={task.taskImages[0].url}
               alt="img"
-              className="w-full h-48 object-cover rounded-md cursor-pointer"
+              className="w-full h-32 object-cover rounded-md cursor-pointer"
               onClick={() => openPreviewModal(task)}
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
@@ -836,52 +790,40 @@ const getImageUrl = (url: string) => url || '';
           </div>
         ) : (
           <div
-            className="bg-gray-100 border-2 border-dashed h-48 rounded-md mb-3 flex items-center justify-center text-gray-400 cursor-pointer"
+            className="bg-gray-100 border border-dashed h-32 rounded-md mb-3 flex items-center justify-center text-gray-400 cursor-pointer"
             onClick={() => openPreviewModal(task)}
           >
-            <ImageIcon className="w-8 h-8 mr-2" /> Sem imagem
+            <ImageIcon className="w-6 h-6" />
           </div>
         )}
 
         <h4
-          className="font-semibold text-lg cursor-pointer hover:text-purple-600 line-clamp-2"
+          className="font-semibold text-sm cursor-pointer hover:text-purple-600 line-clamp-2 mb-1"
           onClick={() => openPreviewModal(task)}
         >
           {task.title}
         </h4>
         {task.description && (
-          <p className="text-sm text-gray-600 line-clamp-2">
+          <p className="text-xs text-gray-600 line-clamp-2 mb-2">
             {task.description}
           </p>
         )}
 
-        {/* DATAS DE CRIAÇÃO E ATUALIZAÇÃO */}
-        <div className="mt-3 space-y-2 text-xs text-gray-500">
-          <div className="flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            <span>Criado: {formatDateTime(task.createdAt)}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <RefreshCw className="w-3 h-3" />
-            <span>Atualizado: {formatDateTime(task.updatedAt)}</span>
-          </div>
-        </div>
-
         {task.dueDate && (
-          <div className="flex items-center gap-1 text-sm my-2">
-            <Clock className="w-4 h-4" />
+          <div className="flex items-center gap-1 text-xs mb-2">
+            <Clock className="w-3 h-3" />
             <span className={isOverdue(task.dueDate) ? "text-red-600" : ""}>
-              {formatDateTime(task.dueDate)}
+              {new Date(task.dueDate).toLocaleDateString('pt-BR')}
             </span>
             {isOverdue(task.dueDate) && (
-              <Badge variant="destructive" className="ml-2 text-xs">
-                Atrasado
+              <Badge variant="destructive" className="ml-1 text-xs px-1">
+                !
               </Badge>
             )}
           </div>
         )}
 
-        <div className="flex justify-between items-center mt-3">
+        <div className="flex justify-between items-center">
           <Badge
             variant={
               task.status === "COMPLETED"
@@ -890,16 +832,17 @@ const getImageUrl = (url: string) => url || '';
                 ? "secondary"
                 : "outline"
             }
+            className="text-xs"
           >
             {task.status === "COMPLETED"
-              ? "Concluído"
+              ? "✓"
               : task.status === "IN_PROGRESS"
-              ? "Em progresso"
-              : "Pendente"}
+              ? "↻"
+              : "○"}
           </Badge>
           {task.assignedTo && (
-            <div className="flex items-center gap-2 bg-purple-100 px-3 py-1 rounded-full text-xs">
-              <User className="w-3 h-3" /> {task.assignedTo.name}
+            <div className="flex items-center gap-1 bg-purple-50 px-2 py-0.5 rounded-full text-xs">
+              <User className="w-3 h-3" /> <span className="truncate max-w-[60px]">{task.assignedTo.name.split(' ')[0]}</span>
             </div>
           )}
         </div>
@@ -908,7 +851,6 @@ const getImageUrl = (url: string) => url || '';
   );
 
   // ==================================== RENDER PRINCIPAL ====================================
-  // Enquanto estiver carregando (authLoading = true), mostra um loader bonito
   if (authLoading || loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
@@ -920,9 +862,8 @@ const getImageUrl = (url: string) => url || '';
     );
   }
 
-  // Só chega aqui se authLoading = false E user !== null → 100% seguro
   if (!user) {
-    return null; // o useEffect já vai redirecionar
+    return null;
   }
 
   const safeColumns = Array.isArray(columns) ? columns : [];
@@ -930,96 +871,148 @@ const getImageUrl = (url: string) => url || '';
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* HEADER - ATUALIZADO */}
-      <header className="bg-purple-600 text-white px-6 py-4 flex justify-between items-center shadow-lg">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold">KANBAN - {user.company?.name}</h1>
+      {/* HEADER - RESPONSIVO */}
+      <header className="bg-purple-600 text-white px-4 py-3 shadow-lg">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden text-white hover:bg-white/20"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </Button>
+            <div>
+              <h1 className="text-lg font-bold truncate">KANBAN</h1>
+              <p className="text-xs text-white/80 truncate">{user.company?.name}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={openCreateColumnModal}
+              variant="secondary"
+              className="hidden sm:flex bg-white/20 hover:bg-white/30 text-xs px-2"
+              size="sm"
+            >
+              <Settings className="w-3 h-3 mr-1" /> Colunas
+            </Button>
+            <Button
+              onClick={() => {
+                resetTaskForm();
+                setIsTaskModal(true);
+              }}
+              className="bg-green-600 hover:bg-green-700 text-xs px-2"
+              size="sm"
+            >
+              <Plus className="w-3 h-3 mr-1" /> Nova
+            </Button>
+          </div>
+        </div>
+
+        {/* MOBILE MENU */}
+        {isMobileMenuOpen && (
+          <div className="mt-4 p-4 bg-purple-700 rounded-lg space-y-3">
+            <div className="flex items-center gap-3">
+              <User className="w-4 h-4" />
+              <span className="text-sm">{user.name}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Badge className="bg-white/20 text-xs">{safeColumns.length} colunas</Badge>
+              <Badge className="bg-white/20 text-xs">{tasks.length} tarefas</Badge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={loadInitialData}
+                variant="secondary"
+                className="bg-white/20 hover:bg-white/30 text-xs flex-1"
+                disabled={loading}
+                size="sm"
+              >
+                <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
+                {loading ? "Carregando..." : "Atualizar"}
+              </Button>
+              <Button
+                onClick={openCreateColumnModal}
+                variant="secondary"
+                className="bg-white/20 hover:bg-white/30 text-xs flex-1"
+                size="sm"
+              >
+                <Settings className="w-3 h-3 mr-1" /> Colunas
+              </Button>
+              <Button
+                onClick={logout}
+                className="bg-red-600 hover:bg-red-700 text-xs flex-1"
+                size="sm"
+              >
+                <LogOut className="w-3 h-3 mr-1" /> Sair
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* DESKTOP INFO BAR */}
+        <div className="hidden md:flex items-center gap-4 mt-3">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4" />
+            <span className="text-sm">{user.name}</span>
+          </div>
           <div className="flex gap-2">
-            <Badge className="bg-white/20">{safeColumns.length} colunas</Badge>
-            <Badge className="bg-white/20">{tasks.length} tarefas</Badge>
+            <Badge className="bg-white/20 text-xs">{safeColumns.length} colunas</Badge>
+            <Badge className="bg-white/20 text-xs">{tasks.length} tarefas</Badge>
             {tasksWithoutColumn.length > 0 && (
-              <Badge variant="destructive" className="bg-orange-500">
+              <Badge variant="destructive" className="bg-orange-500 text-xs">
                 {tasksWithoutColumn.length} sem coluna
               </Badge>
             )}
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-2">
-            <User className="w-4 h-4" /> {user.name}
-          </span>
-
-          {/* 🔄 Botão de recarregar */}
           <Button
             onClick={loadInitialData}
             variant="secondary"
-            className="bg-white/20 hover:bg-white/30"
+            className="bg-white/20 hover:bg-white/30 text-xs ml-auto"
             disabled={loading}
+            size="sm"
           >
-            <RefreshCw
-              className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             {loading ? "Carregando..." : "Recarregar"}
           </Button>
-
-          <Button
-            onClick={openCreateColumnModal}
-            variant="secondary"
-            className="bg-white/20 hover:bg-white/30"
-          >
-            <Settings className="w-4 h-4 mr-2" /> Colunas
-          </Button>
-          <Button
-            onClick={() => {
-              resetTaskForm();
-              setIsTaskModal(true);
-            }}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            <Plus className="w-4 h-4 mr-2" /> Nova Tarefa
-          </Button>
-          <Button onClick={logout} className="bg-red-600 hover:bg-red-700">
-            <LogOut className="w-4 h-4 mr-2" /> Sair
+          <Button onClick={logout} className="bg-red-600 hover:bg-red-700 text-xs" size="sm">
+            <LogOut className="w-3 h-3 mr-1" /> Sair
           </Button>
         </div>
       </header>
 
-      {/* CONTEÚDO */}
-      <div className="p-6">
+      {/* CONTEÚDO - HORIZONTAL SCROLL PARA MOBILE */}
+      <div className="p-2 md:p-4">
         {loading ? (
-          <div className="flex justify-center h-96 items-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-purple-600" />
+          <div className="flex justify-center h-64 items-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-4 border-purple-600" />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <div className="flex gap-6 p-6 min-w-max">
+          <div className="overflow-x-auto pb-4">
+            <div className="flex gap-3 md:gap-6 p-2 md:p-4 min-w-max">
               {safeColumns.map((col) => (
                 <div
                   key={col.id}
-                  className="w-80 flex-shrink-0"
+                  className="w-72 md:w-80 flex-shrink-0"
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => handleDrop(e, col.id)}
                 >
-                  <div className="bg-gray-200 rounded-t-lg px-4 py-3 flex justify-between items-center">
-                    <h3 className="font-semibold">{col.title}</h3>
+                  <div className="bg-gray-200 rounded-t-lg px-3 py-2 flex justify-between items-center">
+                    <h3 className="font-semibold text-sm truncate">{col.title}</h3>
                     <div className="flex items-center gap-2">
-                      <Badge>
+                      <Badge className="text-xs">
                         {tasks.filter((t) => t.columnId === col.id).length}
                       </Badge>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                          >
+                          <Button variant="ghost" size="icon" className="h-5 w-5">
                             <MoreVertical className="w-3 h-3" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          <DropdownMenuItem
-                            onClick={() => openEditColumnModal(col)}
-                          >
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditColumnModal(col)}>
                             <Edit className="w-4 h-4 mr-2" /> Editar
                           </DropdownMenuItem>
                           <DropdownMenuItem
@@ -1032,7 +1025,7 @@ const getImageUrl = (url: string) => url || '';
                       </DropdownMenu>
                     </div>
                   </div>
-                  <div className="bg-gray-100 rounded-b-lg p-4 space-y-4 min-h-[600px]">
+                  <div className="bg-gray-100 rounded-b-lg p-2 md:p-4 space-y-3 md:space-y-4 min-h-[500px] md:min-h-[600px]">
                     {tasks
                       .filter((t) => t.columnId === col.id)
                       .map((task) => (
@@ -1042,19 +1035,19 @@ const getImageUrl = (url: string) => url || '';
                 </div>
               ))}
 
-              {/* Área para tarefas sem coluna - aparece apenas quando há tarefas sem coluna */}
+              {/* Área para tarefas sem coluna */}
               {tasksWithoutColumn.length > 0 && (
                 <div
-                  className="w-80 flex-shrink-0"
+                  className="w-72 md:w-80 flex-shrink-0"
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => handleDrop(e, null)}
                 >
-                  <div className="bg-orange-200 rounded-t-lg px-4 py-3">
-                    <h3 className="font-semibold text-orange-800">
-                      Tarefas Sem Coluna
+                  <div className="bg-orange-200 rounded-t-lg px-3 py-2">
+                    <h3 className="font-semibold text-orange-800 text-sm truncate">
+                      Sem Coluna
                     </h3>
                   </div>
-                  <div className="bg-orange-100 rounded-b-lg p-4 space-y-4 min-h-[600px]">
+                  <div className="bg-orange-100 rounded-b-lg p-2 md:p-4 space-y-3 md:space-y-4 min-h-[500px] md:min-h-[600px]">
                     {tasksWithoutColumn.map((task) => (
                       <TaskCard key={task.id} task={task} />
                     ))}
@@ -1066,29 +1059,25 @@ const getImageUrl = (url: string) => url || '';
         )}
       </div>
 
-      {/* ====================== TODOS OS MODAIS COMPLETOS ====================== */}
+      {/* ====================== MODAIS RESPONSIVOS ====================== */}
 
       {/* MODAL PREVIEW */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] max-h-[85vh] overflow-y-auto p-4 md:p-6">
           <DialogHeader>
-            <DialogTitle>
-              Visualização Completa - {previewTask?.title}
+            <DialogTitle className="text-lg md:text-xl">
+              {previewTask?.title}
             </DialogTitle>
           </DialogHeader>
           {previewTask && (
-            <div className="space-y-6">
-              {/* cabeçalho rápido */}
-
-              {/* cabeçalho rápido */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded">
+            <div className="space-y-4 md:space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 bg-gray-50 p-3 md:p-4 rounded">
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge className={getPriorityColor(previewTask.priority)}>
-                      Prioridade {previewTask.priority}
+                      P{previewTask.priority}
                     </Badge>
                     <Badge
-                      className="ml-2"
                       variant={
                         previewTask.status === "COMPLETED"
                           ? "default"
@@ -1096,29 +1085,22 @@ const getImageUrl = (url: string) => url || '';
                       }
                     >
                       {previewTask.status === "COMPLETED"
-                        ? "Concluído"
-                        : "Em progresso"}
+                        ? "✓ Concluído"
+                        : "○ Pendente"}
                     </Badge>
                   </div>
-                  <div className="text-sm space-y-1">
+                  <div className="text-xs md:text-sm space-y-1">
                     <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      <strong>Criado:</strong>{" "}
-                      {formatDateTime(previewTask.createdAt)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <RefreshCw className="w-4 h-4" />
-                      <strong>Última atualização:</strong>{" "}
-                      {formatDateTime(previewTask.updatedAt)}
+                      <Calendar className="w-3 h-3 md:w-4 md:h-4" />
+                      <strong>Criado:</strong> {formatDateTime(previewTask.createdAt)}
                     </div>
                   </div>
                 </div>
-                <div className="text-sm space-y-1">
+                <div className="text-xs md:text-sm space-y-1">
                   {previewTask.dueDate && (
                     <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      <strong>Vence:</strong>{" "}
-                      {formatDateTime(previewTask.dueDate)}
+                      <Clock className="w-3 h-3 md:w-4 md:h-4" />
+                      <strong>Vence:</strong> {formatDateTime(previewTask.dueDate)}
                       {isOverdue(previewTask.dueDate) && (
                         <Badge variant="destructive" className="ml-2 text-xs">
                           Atrasado
@@ -1126,35 +1108,28 @@ const getImageUrl = (url: string) => url || '';
                       )}
                     </div>
                   )}
-                  {previewTask.completedAt && (
-                    <div className="flex items-center gap-2 text-green-600">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <strong>Concluído em:</strong>{" "}
-                      {formatDateTime(previewTask.completedAt)}
-                    </div>
-                  )}
                 </div>
               </div>
 
-              {/* imagens - CORREÇÃO: removido height fixo para não cortar */}
+              {/* imagens */}
               {previewTask.taskImages && previewTask.taskImages.length > 0 && (
                 <div>
-                  <h3 className="font-semibold mb-3 flex items-center gap-2">
-                    <ImageIcon className="w-5 h-5" /> Imagens
+                  <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm md:text-base">
+                    <ImageIcon className="w-4 h-4 md:w-5 md:h-5" /> Imagens
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-3">
                     {previewTask.taskImages.map((img) => (
                       <div key={img.id} className="flex flex-col items-center">
                         <img
                           src={img.url}
                           alt={img.filename}
-                          className="w-full max-w-md rounded-lg object-contain max-h-96"
+                          className="w-full rounded-lg object-contain max-h-64 md:max-h-96"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
                             target.style.display = "none";
                           }}
                         />
-                        <p className="text-sm text-gray-600 mt-2">
+                        <p className="text-xs text-gray-600 mt-2 truncate max-w-full">
                           {img.filename}
                         </p>
                       </div>
@@ -1166,18 +1141,14 @@ const getImageUrl = (url: string) => url || '';
               {/* áudios */}
               {previewTask.taskAudios && previewTask.taskAudios.length > 0 && (
                 <div>
-                  <h3 className="font-semibold mb-3 flex items-center gap-2">
-                    <Music className="w-5 h-5" /> Áudios
+                  <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm md:text-base">
+                    <Music className="w-4 h-4 md:w-5 md:h-5" /> Áudios
                   </h3>
                   <div className="space-y-3">
                     {previewTask.taskAudios.map((a) => (
                       <div key={a.id} className="flex flex-col">
-                        <audio
-                          controls
-                          src={getImageUrl(a.url)}
-                          className="w-full"
-                        />
-                        <p className="text-sm text-gray-600 mt-1">
+                        <audio controls src={getImageUrl(a.url)} className="w-full" />
+                        <p className="text-xs text-gray-600 mt-1 truncate">
                           {a.filename}
                         </p>
                       </div>
@@ -1189,17 +1160,17 @@ const getImageUrl = (url: string) => url || '';
               {/* vídeos */}
               {previewTask.taskVideos && previewTask.taskVideos.length > 0 && (
                 <div>
-                  <h3 className="font-semibold mb-3 flex items-center gap-2">
-                    <Video className="w-5 h-5" /> Vídeos
+                  <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm md:text-base">
+                    <Video className="w-4 h-4 md:w-5 md:h-5" /> Vídeos
                   </h3>
                   {previewTask.taskVideos.map((v) => (
                     <div key={v.id} className="flex flex-col">
                       <video
                         controls
                         src={getImageUrl(v.url)}
-                        className="w-full max-w-2xl mx-auto rounded-lg"
+                        className="w-full rounded-lg"
                       />
-                      <p className="text-sm text-gray-600 mt-2 text-center">
+                      <p className="text-xs text-gray-600 mt-2 text-center truncate">
                         {v.filename}
                       </p>
                     </div>
@@ -1207,10 +1178,12 @@ const getImageUrl = (url: string) => url || '';
                 </div>
               )}
 
-              <div className="flex justify-end gap-3">
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
                 <Button
                   variant="outline"
                   onClick={() => setIsPreviewModal(false)}
+                  size="sm"
+                  className="w-full sm:w-auto"
                 >
                   Fechar
                 </Button>
@@ -1219,6 +1192,8 @@ const getImageUrl = (url: string) => url || '';
                     setIsPreviewModal(false);
                     openEditModal(previewTask);
                   }}
+                  size="sm"
+                  className="w-full sm:w-auto"
                 >
                   Editar
                 </Button>
@@ -1228,34 +1203,36 @@ const getImageUrl = (url: string) => url || '';
         </DialogContent>
       </Dialog>
 
-      {/* MODAL NOVA TAREFA */}
+      {/* MODAL NOVA TAREFA - OTIMIZADO PARA MOBILE */}
       <Dialog open={isTaskModal} onOpenChange={setIsTaskModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] max-h-[85vh] overflow-y-auto p-4">
           <DialogHeader>
-            <DialogTitle>Nova Tarefa</DialogTitle>
+            <DialogTitle className="text-lg">Nova Tarefa</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Título *</Label>
+              <Label className="text-sm">Título *</Label>
               <Input
                 value={taskTitle}
                 onChange={(e) => setTaskTitle(e.target.value)}
+                className="text-sm"
               />
             </div>
             <div>
-              <Label>Descrição</Label>
+              <Label className="text-sm">Descrição</Label>
               <Textarea
                 value={taskDescription}
                 onChange={(e) => setTaskDescription(e.target.value)}
-                rows={3}
+                rows={2}
+                className="text-sm resize-none"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Prioridade</Label>
+                <Label className="text-sm">Prioridade</Label>
                 <select
-                  className="w-full border rounded p-2"
+                  className="w-full border rounded p-2 text-sm"
                   value={taskPriority}
                   onChange={(e) => setTaskPriority(e.target.value)}
                 >
@@ -1265,9 +1242,9 @@ const getImageUrl = (url: string) => url || '';
                 </select>
               </div>
               <div>
-                <Label>Coluna</Label>
+                <Label className="text-sm">Coluna</Label>
                 <select
-                  className="w-full border rounded p-2"
+                  className="w-full border rounded p-2 text-sm"
                   value={taskColumn}
                   onChange={(e) => setTaskColumn(e.target.value)}
                 >
@@ -1281,19 +1258,20 @@ const getImageUrl = (url: string) => url || '';
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label>Data/Hora vencimento</Label>
+                <Label className="text-sm">Vencimento</Label>
                 <Input
                   type="datetime-local"
                   value={taskDueDate}
                   onChange={(e) => setTaskDueDate(e.target.value)}
+                  className="text-sm"
                 />
               </div>
               <div>
-                <Label>Responsável</Label>
+                <Label className="text-sm">Responsável</Label>
                 <select
-                  className="w-full border rounded p-2"
+                  className="w-full border rounded p-2 text-sm"
                   value={taskAssignedTo}
                   onChange={(e) => setTaskAssignedTo(e.target.value)}
                 >
@@ -1307,127 +1285,136 @@ const getImageUrl = (url: string) => url || '';
               </div>
             </div>
 
-            {/* Imagens */}
-            <div>
-              <Label>Imagens</Label>
-              <Input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(e) =>
-                  e.target.files && setTaskImages([...e.target.files])
-                }
-              />
-            </div>
-
-            {/* Áudio com gravação */}
-            <div>
-              <Label>Áudio</Label>
-              <div className="flex items-center gap-3 my-2">
-                <Button
-                  variant={isRecording ? "destructive" : "outline"}
-                  onClick={isRecording ? stopRecording : startRecording}
-                >
-                  {isRecording ? (
-                    <>
-                      <Square className="w-4 h-4 mr-2" /> Parar
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="w-4 h-4 mr-2" /> Gravar
-                    </>
-                  )}
-                </Button>
-                {isRecording && (
-                  <span>
-                    {String(Math.floor(recordingTime / 60)).padStart(2, "0")}:
-                    {String(recordingTime % 60).padStart(2, "0")}
-                  </span>
-                )}
-              </div>
-              {audioBlob && (
-                <audio
-                  controls
-                  src={URL.createObjectURL(audioBlob)}
-                  className="w-full"
+            {/* Uploads simplificados */}
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" /> Imagens
+                </Label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) =>
+                    e.target.files && setTaskImages([...e.target.files])
+                  }
+                  className="text-sm"
                 />
-              )}
-              <Input
-                type="file"
-                accept="audio/*"
-                multiple
-                onChange={(e) =>
-                  e.target.files &&
-                  setTaskAudios((prev) => [...prev, ...e.target.files!])
-                }
-              />
+              </div>
+
+              <div>
+                <Label className="text-sm flex items-center gap-2">
+                  <Mic className="w-4 h-4" /> Áudio
+                </Label>
+                <div className="flex items-center gap-2 my-2">
+                  <Button
+                    variant={isRecording ? "destructive" : "outline"}
+                    onClick={isRecording ? stopRecording : startRecording}
+                    size="sm"
+                    className="text-xs"
+                  >
+                    {isRecording ? (
+                      <>
+                        <Square className="w-3 h-3 mr-1" /> Parar
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-3 h-3 mr-1" /> Gravar
+                      </>
+                    )}
+                  </Button>
+                  {isRecording && (
+                    <span className="text-sm">
+                      {String(Math.floor(recordingTime / 60)).padStart(2, "0")}:
+                      {String(recordingTime % 60).padStart(2, "0")}
+                    </span>
+                  )}
+                </div>
+                <Input
+                  type="file"
+                  accept="audio/*"
+                  multiple
+                  onChange={(e) =>
+                    e.target.files &&
+                    setTaskAudios((prev) => [...prev, ...e.target.files!])
+                  }
+                  className="text-sm"
+                />
+              </div>
+
+              <div>
+                <Label className="text-sm flex items-center gap-2">
+                  <Video className="w-4 h-4" /> Vídeos
+                </Label>
+                <Input
+                  type="file"
+                  accept="video/*"
+                  multiple
+                  onChange={(e) =>
+                    e.target.files && setTaskVideos([...e.target.files])
+                  }
+                  className="text-sm"
+                />
+              </div>
             </div>
 
-            {/* Vídeos */}
-            <div>
-              <Label>Vídeos</Label>
-              <Input
-                type="file"
-                accept="video/*"
-                multiple
-                onChange={(e) =>
-                  e.target.files && setTaskVideos([...e.target.files])
-                }
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
               <Button
                 variant="outline"
                 onClick={() => {
                   setIsTaskModal(false);
                   resetTaskForm();
                 }}
+                size="sm"
+                className="w-full sm:w-auto"
               >
                 Cancelar
               </Button>
               <Button
                 onClick={createTask}
                 disabled={isSubmitting || !taskTitle.trim()}
+                size="sm"
+                className="w-full sm:w-auto"
               >
-                {isSubmitting ? "Criando..." : "Criar Tarefa"}
+                {isSubmitting ? "Criando..." : "Criar"}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* MODAL EDITAR TAREFA - AGORA COMPLETO com remoção e adição */}
+      {/* MODAL EDITAR TAREFA - RESPONSIVO */}
       <Dialog open={isEditTaskModal} onOpenChange={setIsEditTaskModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] max-h-[85vh] overflow-y-auto p-4">
           <DialogHeader>
-            <DialogTitle>Editar Tarefa - {editingTask?.title}</DialogTitle>
+            <DialogTitle className="text-lg">Editar Tarefa</DialogTitle>
           </DialogHeader>
           {editingTask && (
             <div className="space-y-4">
               <div>
-                <Label>Título *</Label>
+                <Label className="text-sm">Título *</Label>
                 <Input
                   value={editTaskTitle}
                   onChange={(e) => setEditTaskTitle(e.target.value)}
+                  className="text-sm"
                 />
               </div>
 
               <div>
-                <Label>Descrição</Label>
+                <Label className="text-sm">Descrição</Label>
                 <Textarea
                   value={editTaskDescription}
                   onChange={(e) => setEditTaskDescription(e.target.value)}
-                  rows={4}
-                  placeholder="Descrição da tarefa..."
+                  rows={2}
+                  className="text-sm resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Prioridade</Label>
+                  <Label className="text-sm">Prioridade</Label>
                   <select
-                    className="w-full border rounded p-2"
+                    className="w-full border rounded p-2 text-sm"
                     value={editTaskPriority}
                     onChange={(e) => setEditTaskPriority(e.target.value)}
                   >
@@ -1438,9 +1425,9 @@ const getImageUrl = (url: string) => url || '';
                 </div>
 
                 <div>
-                  <Label>Status</Label>
+                  <Label className="text-sm">Status</Label>
                   <select
-                    className="w-full border rounded p-2"
+                    className="w-full border rounded p-2 text-sm"
                     value={editTaskStatus}
                     onChange={(e) => setEditTaskStatus(e.target.value)}
                   >
@@ -1452,11 +1439,11 @@ const getImageUrl = (url: string) => url || '';
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <Label>Coluna</Label>
+                  <Label className="text-sm">Coluna</Label>
                   <select
-                    className="w-full border rounded p-2"
+                    className="w-full border rounded p-2 text-sm"
                     value={editTaskColumn}
                     onChange={(e) => setEditTaskColumn(e.target.value)}
                   >
@@ -1470,9 +1457,9 @@ const getImageUrl = (url: string) => url || '';
                 </div>
 
                 <div>
-                  <Label>Responsável</Label>
+                  <Label className="text-sm">Responsável</Label>
                   <select
-                    className="w-full border rounded p-2"
+                    className="w-full border rounded p-2 text-sm"
                     value={editTaskAssignedTo}
                     onChange={(e) => setEditTaskAssignedTo(e.target.value)}
                   >
@@ -1487,154 +1474,58 @@ const getImageUrl = (url: string) => url || '';
               </div>
 
               <div>
-                <Label>Data/Hora vencimento</Label>
+                <Label className="text-sm">Vencimento</Label>
                 <Input
                   type="datetime-local"
                   value={editTaskDueDate}
                   onChange={(e) => setEditTaskDueDate(e.target.value)}
+                  className="text-sm"
                 />
               </div>
 
-              {/* Imagens para edição - com remoção */}
-              <div>
-                <Label>Adicionar Novas Imagens</Label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) =>
-                    e.target.files && setEditTaskImages([...e.target.files])
-                  }
-                />
-                {editingTask.taskImages &&
-                  editingTask.taskImages.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-sm text-gray-600 mb-2">
-                        Imagens atuais (clique no ícone de lixeira para
-                        remover):
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {editingTask.taskImages
-                          .filter((img) => !removedImageIds.includes(img.id))
-                          .map((img) => (
-                            <div key={img.id} className="relative">
-                              <img
-                                src={img.url}
-                                alt={img.filename}
-                                className="w-full h-20 object-cover rounded"
-                              />
-                              <p className="text-xs truncate">{img.filename}</p>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="absolute top-0 right-0 w-5 h-5 p-0"
-                                onClick={() => removeImage(img.id)}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
+              {/* Uploads simplificados */}
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-sm">Imagens</Label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) =>
+                      e.target.files && setEditTaskImages([...e.target.files])
+                    }
+                    className="text-sm"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-sm">Áudios</Label>
+                  <Input
+                    type="file"
+                    accept="audio/*"
+                    multiple
+                    onChange={(e) =>
+                      e.target.files && setEditTaskAudios([...e.target.files])
+                    }
+                    className="text-sm"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-sm">Vídeos</Label>
+                  <Input
+                    type="file"
+                    accept="video/*"
+                    multiple
+                    onChange={(e) =>
+                      e.target.files && setEditTaskVideos([...e.target.files])
+                    }
+                    className="text-sm"
+                  />
+                </div>
               </div>
 
-              {/* Áudio para edição - com remoção */}
-              <div>
-                <Label>Adicionar Novos Áudios</Label>
-                <Input
-                  type="file"
-                  accept="audio/*"
-                  multiple
-                  onChange={(e) =>
-                    e.target.files && setEditTaskAudios([...e.target.files])
-                  }
-                />
-                {editingTask.taskAudios &&
-                  editingTask.taskAudios.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-sm text-gray-600 mb-2">
-                        Áudios atuais (clique no ícone de lixeira para remover):
-                      </p>
-                      <div className="space-y-2">
-                        {editingTask.taskAudios
-                          .filter(
-                            (audio) => !removedAudioIds.includes(audio.id)
-                          )
-                          .map((audio) => (
-                            <div
-                              key={audio.id}
-                              className="flex items-center gap-2 relative"
-                            >
-                              <audio
-                                controls
-                                src={getImageUrl(audio.url)}
-                                className="flex-1"
-                              />
-                              <p className="text-xs min-w-[120px] truncate">
-                                {audio.filename}
-                              </p>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="w-6 h-6 p-0 absolute -right-2 -top-2"
-                                onClick={() => removeAudio(audio.id)}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-              </div>
-
-              {/* Vídeos para edição - com remoção */}
-              <div>
-                <Label>Adicionar Novos Vídeos</Label>
-                <Input
-                  type="file"
-                  accept="video/*"
-                  multiple
-                  onChange={(e) =>
-                    e.target.files && setEditTaskVideos([...e.target.files])
-                  }
-                />
-                {editingTask.taskVideos &&
-                  editingTask.taskVideos.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-sm text-gray-600 mb-2">
-                        Vídeos atuais (clique no ícone de lixeira para remover):
-                      </p>
-                      <div className="space-y-2">
-                        {editingTask.taskVideos
-                          .filter(
-                            (video) => !removedVideoIds.includes(video.id)
-                          )
-                          .map((video) => (
-                            <div key={video.id} className="relative">
-                              <video
-                                controls
-                                src={getImageUrl(video.url)}
-                                className="w-full max-w-md rounded"
-                              />
-                              <p className="text-xs mt-1">{video.filename}</p>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="absolute top-0 right-0 w-5 h-5 p-0"
-                                onClick={() => removeVideo(video.id)}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1642,14 +1533,18 @@ const getImageUrl = (url: string) => url || '';
                     setEditingTask(null);
                     resetEditTaskForm();
                   }}
+                  size="sm"
+                  className="w-full sm:w-auto"
                 >
                   Cancelar
                 </Button>
                 <Button
                   onClick={updateTask}
                   disabled={isSubmitting || !editTaskTitle.trim()}
+                  size="sm"
+                  className="w-full sm:w-auto"
                 >
-                  {isSubmitting ? "Salvando..." : "Salvar Alterações"}
+                  {isSubmitting ? "Salvando..." : "Salvar"}
                 </Button>
               </div>
             </div>
@@ -1659,9 +1554,9 @@ const getImageUrl = (url: string) => url || '';
 
       {/* MODAL COLUNAS */}
       <Dialog open={isColumnModal} onOpenChange={setIsColumnModal}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] p-4">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-lg">
               {editingCol ? "Editar Coluna" : "Nova Coluna"}
             </DialogTitle>
           </DialogHeader>
@@ -1670,13 +1565,9 @@ const getImageUrl = (url: string) => url || '';
               value={colTitle}
               onChange={(e) => setColTitle(e.target.value)}
               placeholder="Título da coluna"
-              onKeyPress={(e) => {
-                if (e.key === "Enter") {
-                  editingCol ? updateColumn() : createColumn();
-                }
-              }}
+              className="text-sm"
             />
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-col sm:flex-row justify-end gap-2">
               <Button
                 variant="outline"
                 onClick={() => {
@@ -1684,14 +1575,18 @@ const getImageUrl = (url: string) => url || '';
                   setEditingCol(null);
                   setColTitle("");
                 }}
+                size="sm"
+                className="w-full sm:w-auto"
               >
                 Cancelar
               </Button>
               <Button
                 onClick={editingCol ? updateColumn : createColumn}
                 disabled={!colTitle.trim()}
+                size="sm"
+                className="w-full sm:w-auto"
               >
-                {editingCol ? "Salvar Alterações" : "Criar Coluna"}
+                {editingCol ? "Salvar" : "Criar"}
               </Button>
             </div>
           </div>
