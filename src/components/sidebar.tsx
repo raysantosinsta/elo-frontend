@@ -30,6 +30,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   RefreshCw,
+  User,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -66,12 +67,16 @@ const menuItems = [
     href: "/agenda",
     icon: Calendar,
   },
-  // Removido: Relatórios
-  // {
-  //   title: "Relatórios",
-  //   href: "/reports",
-  //   icon: BarChart3,
-  // },
+  {
+    title: "Relatórios Profissionais",
+    href: "/professionals/report",
+    icon: BarChart3, // Usando o ícone de gráficos que já está importado
+  },
+  {
+    title: "Gerenciar Profissionais",
+    href: "signup",
+    icon: User,
+  }
 ];
 
 // Removidos todos os itens da secondaryItems

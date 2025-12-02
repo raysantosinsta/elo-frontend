@@ -131,7 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("❌ Refresh falhou:", res.status, errorText);
         throw new Error(`Refresh failed: ${res.status} ${errorText}`);
       }
-      
+
       const data = await res.json();
       console.log("✅ Refresh bem-sucedido, novo token obtido");
       return setAuthToken(data.accessToken, data.refreshToken);
@@ -143,11 +143,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const authFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
-    console.log(`🔗 [AUTH FETCH] Iniciando requisição para: ${url}`);
-    
+    console.log(`🔗 [AUTH FETCH] URL: ${url}`);
+    console.log(`🔗 [AUTH FETCH] Método: ${options.method || 'GET'}`);
+
     let accessToken = localStorage.getItem("accessToken");
     console.log(`🔑 [AUTH FETCH] Token atual: ${accessToken ? "Presente" : "Ausente"}`);
-    
+
     if (!accessToken || !isTokenValid(accessToken)) {
       console.log("🔄 [AUTH FETCH] Token inválido ou ausente, tentando refresh...");
       const ok = await refreshAuthToken();
@@ -170,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     let response: Response;
-    
+
     try {
       response = await fetch(url, { ...options, headers });
       console.log(`📥 [AUTH FETCH] Resposta recebida:`, {
@@ -193,20 +194,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout();
         throw new Error("Sessão expirada. Faça login novamente.");
       }
-      
+
       // Tenta novamente com novo token
       const newAccessToken = localStorage.getItem("accessToken");
       const newHeaders = {
         ...headers,
         Authorization: `Bearer ${newAccessToken}`,
       };
-      
+
       console.log("🔄 [AUTH FETCH] Tentando requisição novamente com novo token...");
       response = await fetch(url, {
         ...options,
         headers: newHeaders,
       });
-      
+
       console.log(`📥 [AUTH FETCH] Segunda resposta:`, {
         status: response.status,
         statusText: response.statusText,
@@ -217,7 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Se ainda não está ok após refresh, lança erro
     if (!response.ok) {
       console.error(`❌ [AUTH FETCH] Requisição falhou com status ${response.status}`);
-      
+
       // Tenta obter a mensagem de erro do backend
       let errorMessage = `Erro ${response.status}: ${response.statusText}`;
       try {
@@ -233,7 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Ignora erro ao tentar ler texto
         }
       }
-      
+
       throw new Error(errorMessage);
     }
 
@@ -243,7 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     console.log(`🔐 [LOGIN] Tentando login para: ${email}`);
-    
+
     const response = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -256,7 +257,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     const data = await response.json();
-    
+
     if (!response.ok) {
       console.error(`❌ [LOGIN] Falha no login:`, data);
       throw new Error(data.message || "Erro no login");
@@ -264,7 +265,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     console.log(`✅ [LOGIN] Login bem-sucedido para: ${data.user.email}`);
     console.log(`🎫 [LOGIN] Token recebido: ${data.accessToken ? "Sim" : "Não"}`);
-    
+
     setAuthToken(data.accessToken, data.refreshToken);
     setUser(data.user);
     router.push("/Kanban");
@@ -280,7 +281,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const init = async () => {
       console.log("🔄 [AUTH] Inicializando contexto de autenticação...");
-      
+
       const savedToken = localStorage.getItem("accessToken");
       console.log(`🔑 [AUTH] Token salvo encontrado: ${savedToken ? "Sim" : "Não"}`);
 
