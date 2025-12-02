@@ -28,7 +28,7 @@ interface JwtPayload {
 
 interface AuthContextType {
   user: User | null;
-  isAuthenticated: boolean; // ← Adicione esta linha
+  isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: any) => Promise<void>;
   adminSignup: (userData: any) => Promise<void>;
@@ -126,22 +126,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ refreshToken }),
       });
 
-      if (!res.ok) throw new Error("Refresh failed");
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("❌ Refresh falhou:", res.status, errorText);
+        throw new Error(`Refresh failed: ${res.status} ${errorText}`);
+      }
+      
       const data = await res.json();
+      console.log("✅ Refresh bem-sucedido, novo token obtido");
       return setAuthToken(data.accessToken, data.refreshToken);
-    } catch (err) {
-      console.error("Refresh falhou:", err);
+    } catch (err: any) {
+      console.error("❌ Refresh falhou com erro:", err);
       clearAuthData();
       return false;
     }
   };
 
   const authFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    console.log(`🔗 [AUTH FETCH] Iniciando requisição para: ${url}`);
+    
     let accessToken = localStorage.getItem("accessToken");
+    console.log(`🔑 [AUTH FETCH] Token atual: ${accessToken ? "Presente" : "Ausente"}`);
+    
     if (!accessToken || !isTokenValid(accessToken)) {
+      console.log("🔄 [AUTH FETCH] Token inválido ou ausente, tentando refresh...");
       const ok = await refreshAuthToken();
-      if (!ok) throw new Error("Sessão expirada");
+      if (!ok) {
+        console.log("❌ [AUTH FETCH] Refresh falhou, sessão expirada");
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
       accessToken = localStorage.getItem("accessToken");
+      console.log(`✅ [AUTH FETCH] Novo token obtido: ${accessToken ? "Sim" : "Não"}`);
     }
 
     const headers = {
@@ -150,38 +165,113 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...options.headers,
     };
 
-    let response = await fetch(url, { ...options, headers });
+    console.log(`📤 [AUTH FETCH] Enviando requisição com headers:`, {
+      Authorization: `Bearer ${accessToken ? `${accessToken.substring(0, 20)}...` : 'null'}`,
+    });
 
+    let response: Response;
+    
+    try {
+      response = await fetch(url, { ...options, headers });
+      console.log(`📥 [AUTH FETCH] Resposta recebida:`, {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        url: response.url,
+      });
+    } catch (networkError: any) {
+      console.error("🌐 [AUTH FETCH] Erro de rede:", networkError);
+      throw new Error(`Erro de conexão: ${networkError.message}`);
+    }
+
+    // Se for 401, tenta refresh uma vez
     if (response.status === 401) {
+      console.log("🔒 [AUTH FETCH] Status 401 (Não autorizado), tentando refresh...");
       const ok = await refreshAuthToken();
       if (!ok) {
+        console.log("❌ [AUTH FETCH] Refresh falhou após 401, fazendo logout");
         logout();
-        throw new Error("Sessão expirada");
+        throw new Error("Sessão expirada. Faça login novamente.");
       }
+      
+      // Tenta novamente com novo token
+      const newAccessToken = localStorage.getItem("accessToken");
+      const newHeaders = {
+        ...headers,
+        Authorization: `Bearer ${newAccessToken}`,
+      };
+      
+      console.log("🔄 [AUTH FETCH] Tentando requisição novamente com novo token...");
       response = await fetch(url, {
         ...options,
-        headers: { ...headers, Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
+        headers: newHeaders,
+      });
+      
+      console.log(`📥 [AUTH FETCH] Segunda resposta:`, {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
       });
     }
+
+    // Se ainda não está ok após refresh, lança erro
+    if (!response.ok) {
+      console.error(`❌ [AUTH FETCH] Requisição falhou com status ${response.status}`);
+      
+      // Tenta obter a mensagem de erro do backend
+      let errorMessage = `Erro ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+        console.error("📄 [AUTH FETCH] Detalhes do erro:", errorData);
+      } catch {
+        // Se não conseguir parsear como JSON, tenta texto
+        try {
+          const errorText = await response.text();
+          errorMessage = `Erro ${response.status}: ${errorText}`;
+        } catch {
+          // Ignora erro ao tentar ler texto
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    console.log(`✅ [AUTH FETCH] Requisição bem-sucedida para ${url}`);
     return response;
   };
 
   const login = async (email: string, password: string) => {
+    console.log(`🔐 [LOGIN] Tentando login para: ${email}`);
+    
     const response = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
     });
 
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || "Erro no login");
+    console.log(`📥 [LOGIN] Resposta recebida:`, {
+      status: response.status,
+      ok: response.ok,
+    });
 
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error(`❌ [LOGIN] Falha no login:`, data);
+      throw new Error(data.message || "Erro no login");
+    }
+
+    console.log(`✅ [LOGIN] Login bem-sucedido para: ${data.user.email}`);
+    console.log(`🎫 [LOGIN] Token recebido: ${data.accessToken ? "Sim" : "Não"}`);
+    
     setAuthToken(data.accessToken, data.refreshToken);
     setUser(data.user);
     router.push("/Kanban");
   };
 
   const logout = () => {
+    console.log("🚪 [LOGOUT] Fazendo logout");
     clearAuthData();
     router.push("/login");
   };
@@ -189,18 +279,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // INICIALIZAÇÃO PERFEITA
   useEffect(() => {
     const init = async () => {
+      console.log("🔄 [AUTH] Inicializando contexto de autenticação...");
+      
       const savedToken = localStorage.getItem("accessToken");
+      console.log(`🔑 [AUTH] Token salvo encontrado: ${savedToken ? "Sim" : "Não"}`);
 
       if (!savedToken || !isTokenValid(savedToken)) {
+        console.log("❌ [AUTH] Token inválido ou expirado, limpando dados");
         clearAuthData();
         setLoading(false);
         return;
       }
 
+      console.log("✅ [AUTH] Token válido, configurando...");
       setToken(savedToken);
       scheduleRefreshTimer(savedToken);
 
       try {
+        console.log("👤 [AUTH] Buscando perfil do usuário...");
         const res = await fetch(`${API_BASE}/auth/profile`, {
           headers: {
             Authorization: `Bearer ${savedToken}`,
@@ -208,13 +304,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
         });
 
+        console.log(`📥 [AUTH] Resposta do perfil:`, {
+          status: res.status,
+          ok: res.ok,
+        });
+
         if (res.ok) {
-          setUser(await res.json());
+          const userData = await res.json();
+          console.log(`✅ [AUTH] Perfil carregado: ${userData.name} (${userData.email})`);
+          setUser(userData);
+        } else {
+          console.error(`❌ [AUTH] Erro ao carregar perfil: ${res.status}`);
+          // Se não conseguir carregar perfil, limpa os dados
+          clearAuthData();
         }
       } catch (err) {
-        console.warn("Erro ao carregar perfil (rede?)", err);
+        console.warn("⚠️ [AUTH] Erro de rede ao carregar perfil:", err);
+        // Continua mesmo com erro de rede, o usuário pode tentar novamente
       } finally {
         setLoading(false);
+        console.log("✅ [AUTH] Inicialização concluída");
       }
     };
 
@@ -225,7 +334,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: !!user, // ← Adicione esta linha
+        isAuthenticated: !!user,
         login,
         signup: async () => { },
         adminSignup: async () => { },

@@ -2,46 +2,39 @@
 // components/layout/sidebar.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Settings,
-  FileText,
-  KanbanSquare,
-  Calendar,
-  BarChart3,
-  HelpCircle,
-  ChevronLeft,
-  ChevronRight,
-  Home,
-  Bell,
-  Check,
-  X,
-  CheckCheck,
-  Wifi,
-  WifiOff,
-  AlertCircle,
-  Clock,
-  DollarSign,
-  MessageSquare,
-  RefreshCw
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
 import { useNotifications } from "@/hooks/useNotifications";
+import { cn } from "@/lib/utils";
+import {
+  AlertCircle,
+  BarChart3,
+  Bell,
+  Calendar,
+  Check,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  DollarSign,
+  FileText,
+  Home,
+  KanbanSquare,
+  LayoutDashboard,
+  MessageSquare,
+  RefreshCw,
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface SidebarProps {
   className?: string;
@@ -64,34 +57,41 @@ const menuItems = [
     icon: FileText,
   },
   {
+    title: "Chats",
+    href: "/chats",
+    icon: MessageSquare,
+  },
+  {
     title: "Calendário",
     href: "/agenda",
     icon: Calendar,
   },
-  {
-    title: "Relatórios",
-    href: "/reports",
-    icon: BarChart3,
-  },
+  // Removido: Relatórios
+  // {
+  //   title: "Relatórios",
+  //   href: "/reports",
+  //   icon: BarChart3,
+  // },
 ];
 
-const secondaryItems = [
-  {
-    title: "Equipe",
-    href: "/team",
-    icon: Users,
-  },
-  {
-    title: "Configurações",
-    href: "/settings",
-    icon: Settings,
-  },
-  {
-    title: "Ajuda",
-    href: "/help",
-    icon: HelpCircle,
-  },
-];
+// Removidos todos os itens da secondaryItems
+// const secondaryItems = [
+//   {
+//     title: "Equipe",
+//     href: "/team",
+//     icon: Users,
+//   },
+//   {
+//     title: "Configurações",
+//     href: "/settings",
+//     icon: Settings,
+//   },
+//   {
+//     title: "Ajuda",
+//     href: "/help",
+//     icon: HelpCircle,
+//   },
+// ];
 
 export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
@@ -336,7 +336,7 @@ export function Sidebar({ className }: SidebarProps) {
                               )}
                               
                               {notification.task?.id && (
-                                <Link href={`/tasks/${notification.task.id}`}>
+                                <Link href={`/Kanban?highlight=${notification.task.id}`}>
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -346,25 +346,24 @@ export function Sidebar({ className }: SidebarProps) {
                                   </Button>
                                 </Link>
                               )}
+                              
+                              {notification.type === "NEW_MESSAGE" && (
+                                <Link href="/chats">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-xs"
+                                  >
+                                    Ir para Chats
+                                  </Button>
+                                </Link>
+                              )}
                             </div>
                           </div>
                         </div>
                       ))}
                     </div>
                   </ScrollArea>
-                  
-                  <div className="p-3 border-t">
-                    <Link href="/notifications">
-                      <Button
-                        variant="outline"
-                        className="w-full text-sm"
-                        size="sm"
-                      >
-                        <Bell className="w-3 h-3 mr-2" />
-                        Ver todas as notificações
-                      </Button>
-                    </Link>
-                  </div>
                 </>
               )}
             </PopoverContent>
@@ -391,7 +390,7 @@ export function Sidebar({ className }: SidebarProps) {
         <div className="space-y-1 py-4">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
             return (
               <Link key={item.href} href={item.href}>
@@ -413,12 +412,13 @@ export function Sidebar({ className }: SidebarProps) {
           })}
         </div>
 
-        <Separator className="my-2" />
+        {/* Removido: Separator e secondaryItems */}
+        {/* <Separator className="my-2" />
 
         <div className="space-y-1 py-2">
           {secondaryItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
             return (
               <Link key={item.href} href={item.href}>
@@ -438,7 +438,7 @@ export function Sidebar({ className }: SidebarProps) {
               </Link>
             );
           })}
-        </div>
+        </div> */}
       </ScrollArea>
 
       {/* User Profile */}
