@@ -1,22 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/admin/signup/page.tsx
 'use client';
 
-import { useAuth } from '@/contexts/AuthContext';
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Shield, LogIn, Building, Info, UserPlus } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useForm } from 'react-hook-form';
+import { useAuth } from '@/contexts/AuthContext';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Building, Loader2, LogIn, Shield, UserPlus } from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 
-// Schema de validação com Zod (baseado exatamente no seu Prisma schema)
 const signupSchema = z.object({
   name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   email: z.string().email('Email inválido'),
@@ -36,10 +34,10 @@ interface Company {
   cnpj: string;
 }
 
-
-
 export default function AdminSignupPage() {
-  const { adminSignup, user, token, loading: authLoading, authFetch } = useAuth();
+  // ATENÇÃO: Removemos 'adminSignup' e pegamos 'authFetch'
+  const { user, token, loading: authLoading, authFetch } = useAuth();
+  
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [serverError, setServerError] = useState('');
@@ -60,14 +58,15 @@ export default function AdminSignupPage() {
   });
 
   const selectedCompanyId = watch('companyId');
+  const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000';
 
-  // E substitui o useEffect por:
+  // Buscar empresas se for MASTER
   useEffect(() => {
     if (user?.role === 'MASTER' && token) {
       const loadCompanies = async () => {
         setLoadingCompanies(true);
         try {
-          const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000';
+          // Usa authFetch para já ir autenticado
           const res = await authFetch(`${API_BASE}/auth/companies/master`);
 
           if (!res.ok) {
@@ -77,10 +76,6 @@ export default function AdminSignupPage() {
 
           const data = await res.json();
           setCompanies(data);
-
-          if (data.length === 0) {
-            console.warn("Nenhuma empresa retornada pelo backend (mas a rota funcionou)");
-          }
         } catch (err) {
           console.error("Falha ao carregar empresas para MASTER:", err);
           setServerError("Não foi possível carregar a lista de empresas.");
@@ -88,12 +83,11 @@ export default function AdminSignupPage() {
           setLoadingCompanies(false);
         }
       };
-
       loadCompanies();
     }
   }, [user?.role, token, authFetch]);
 
-  // Preenche automaticamente companyId se for ADMIN
+  // Preenche companyId se for ADMIN
   useEffect(() => {
     if (user?.role === 'ADMIN' && user.companyId) {
       setValue('companyId', user.companyId);
@@ -103,13 +97,32 @@ export default function AdminSignupPage() {
   const onSubmit = async (data: SignupFormData) => {
     setServerError('');
     setSuccess('');
+    
     try {
-      await adminSignup({
-        ...data,
-        document: data.document ?? undefined,
+      // AQUISIÇÃO DIRETA AO CONTROLLER DE USUÁRIOS
+      const response = await authFetch(`${API_BASE}/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...data,
+          // Garante que campos opcionais/defaults vão corretamente
+          document: data.document || null,
+          isProfessional: false, // Default
+          status: 'ACTIVE'       // Default
+        }),
       });
+
+      if (!response.ok) {
+        // Tenta pegar mensagem de erro do backend
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Erro ${response.status}: Falha ao criar usuário`);
+      }
+
       setSuccess('Usuário cadastrado com sucesso!');
 
+      // Limpa o formulário mantendo a empresa se for Admin
       reset({
         name: '',
         email: '',
@@ -119,12 +132,14 @@ export default function AdminSignupPage() {
         companyId: user?.role === 'ADMIN' ? (user.companyId || '') : '',
         role: 'EMPLOYER',
       });
+
     } catch (err: any) {
+      console.error(err);
       setServerError(err.message || 'Erro ao cadastrar usuário');
     }
   };
 
-  // Máscara de telefone brasileira
+  // Máscara de telefone
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, '');
     if (value.length <= 11) {
@@ -209,81 +224,53 @@ export default function AdminSignupPage() {
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Nome */}
+                {/* Campos do formulário (Nome, Email, Senha, Telefone) mantidos iguais */}
                 <div className="space-y-2">
                   <Label htmlFor="name">Nome Completo *</Label>
-                  <Input
-                    id="name"
-                    placeholder="João Silva"
-                    {...register('name')}
-                    className={errors.name ? 'border-red-500' : ''}
-                  />
+                  <Input id="name" placeholder="João Silva" {...register('name')} className={errors.name ? 'border-red-500' : ''} />
                   {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
                 </div>
 
-                {/* Email */}
                 <div className="space-y-2">
                   <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="joao@empresa.com.br"
-                    {...register('email')}
-                    className={errors.email ? 'border-red-500' : ''}
-                  />
+                  <Input id="email" type="email" placeholder="joao@empresa.com.br" {...register('email')} className={errors.email ? 'border-red-500' : ''} />
                   {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
                 </div>
 
-                {/* Senha */}
                 <div className="space-y-2">
                   <Label htmlFor="password">Senha *</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Mínimo 6 caracteres"
-                    {...register('password')}
-                    className={errors.password ? 'border-red-500' : ''}
-                  />
+                  <Input id="password" type="password" placeholder="Mínimo 6 caracteres" {...register('password')} className={errors.password ? 'border-red-500' : ''} />
                   {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
                 </div>
 
-                {/* Telefone */}
-                {/* Telefone com máscara brasileira funcionando perfeitamente */}
                 <div className="space-y-2">
                   <Label htmlFor="phone">Telefone *</Label>
-                  <Input
-                    id="phone"
-                    placeholder="(11) 99999-9999"
-                    maxLength={15}
+                  <Input 
+                    id="phone" 
+                    placeholder="(11) 99999-9999" 
+                    maxLength={15} 
                     {...register('phone', {
                       onChange: (e) => {
-                        let valor = e.target.value.replace(/\D/g, ''); // remove tudo que não é número
-                        valor = valor.replace(/^(\d{2})(\d)/g, '($1) $2'); // coloca parênteses no DDD
-                        valor = valor.replace(/(\d)(\d{4})$/, '$1-$2'); // coloca hífen antes dos últimos 4 dígitos
+                        let valor = e.target.value.replace(/\D/g, '');
+                        valor = valor.replace(/^(\d{2})(\d)/g, '($1) $2');
+                        valor = valor.replace(/(\d)(\d{4})$/, '$1-$2');
                         e.target.value = valor;
                       },
                     })}
-                    className={errors.phone ? 'border-red-500' : ''}
+                    className={errors.phone ? 'border-red-500' : ''} 
                   />
                   {errors.phone && <p className="text-sm text-red-500">{errors.phone.message}</p>}
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="document">CPF ou CNPJ </Label>
-                  <Input
-                    id="document"
-                    placeholder="000.000.000-00 ou 00.000.000/0001-00"
-                    {...register('document')}
-                  />
+                  <Input id="document" placeholder="000.000.000-00" {...register('document')} />
                 </div>
 
                 {/* Perfil */}
                 <div className="space-y-2">
                   <Label>Perfil de Acesso</Label>
-                  <Select
-                    value={watch('role')}
-                    onValueChange={(value) => setValue('role', value as any)}
-                  >
+                  <Select value={watch('role')} onValueChange={(value) => setValue('role', value as any)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o perfil" />
                     </SelectTrigger>
@@ -310,10 +297,7 @@ export default function AdminSignupPage() {
                       Carregando empresas...
                     </div>
                   ) : companies.length > 0 ? (
-                    <Select
-                      value={selectedCompanyId}
-                      onValueChange={(value) => setValue('companyId', value)}
-                    >
+                    <Select value={selectedCompanyId} onValueChange={(value) => setValue('companyId', value)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione a empresa" />
                       </SelectTrigger>
@@ -322,9 +306,7 @@ export default function AdminSignupPage() {
                           <SelectItem key={company.id} value={company.id}>
                             <div className="flex flex-col">
                               <span className="font-medium">{company.name}</span>
-                              <span className="text-xs text-slate-500">
-                                {company.cnpj} • {company.email}
-                              </span>
+                              <span className="text-xs text-slate-500">{company.cnpj}</span>
                             </div>
                           </SelectItem>
                         ))}
@@ -347,11 +329,7 @@ export default function AdminSignupPage() {
                 {errors.companyId && <p className="text-sm text-red-500">{errors.companyId.message}</p>}
               </div>
 
-              <Button
-                type="submit"
-                disabled={isSubmitting || !selectedCompanyId}
-                className="w-full h-12 text-lg font-semibold bg-indigo-600 hover:bg-indigo-700"
-              >
+              <Button type="submit" disabled={isSubmitting || !selectedCompanyId} className="w-full h-12 text-lg font-semibold bg-indigo-600 hover:bg-indigo-700">
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -367,15 +345,6 @@ export default function AdminSignupPage() {
             </form>
           </CardContent>
         </Card>
-
-        <div className="mt-8 text-center text-sm text-slate-600">
-          <p>
-            Já tem conta?{' '}
-            <Link href="/login" className="text-indigo-600 font-medium hover:underline">
-              Fazer login
-            </Link>
-          </p>
-        </div>
       </div>
     </div>
   );

@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useLayoutEffect } from "react";
 import { useRouter } from "next/navigation";
+import axios, { AxiosInstance, AxiosError } from "axios";
 
+// --- Interfaces ---
 interface User {
   id: string;
   email: string;
@@ -17,314 +19,200 @@ interface User {
   createdAt?: string;
 }
 
-interface JwtPayload {
-  sub: string;
-  email: string;
-  role: string;
-  companyId: string;
-  exp: number;
-  iat: number;
-}
-
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (userData: any) => Promise<void>;
-  adminSignup: (userData: any) => Promise<void>;
   logout: () => void;
   loading: boolean;
   token: string | null;
-  refreshAuthToken: () => Promise<boolean>;
-  isTokenValid: (token: string) => boolean;
+  // Mantemos authFetch para compatibilidade com seus componentes existentes
   authFetch: (url: string, options?: RequestInit) => Promise<Response>;
+  // Expomos a instância do axios para novos desenvolvimentos
+  api: AxiosInstance;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+
+// --- Configuração da Instância do Axios ---
+export const api = axios.create({
+  baseURL: API_BASE,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const clearRefreshTimer = () => {
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-  };
-
-  const scheduleRefreshTimer = (accessToken: string) => {
-    clearRefreshTimer();
-    try {
-      const payload: JwtPayload = JSON.parse(atob(accessToken.split(".")[1]));
-      const now = Math.floor(Date.now() / 1000);
-      const expiresIn = payload.exp - now;
-      if (expiresIn <= 0) return;
-
-      const refreshIn = Math.max(expiresIn - 300, 60) * 1000;
-      refreshTimerRef.current = setTimeout(async () => {
-        const success = await refreshAuthToken();
-        if (!success) logout();
-      }, refreshIn);
-    } catch (e) {
-      console.error("Erro ao agendar refresh:", e);
-    }
-  };
-
-  const isTokenValid = (token: string): boolean => {
-    if (!token) return false;
-    try {
-      const payload: JwtPayload = JSON.parse(atob(token.split(".")[1]));
-      return payload.exp > Math.floor(Date.now() / 1000);
-    } catch {
-      return false;
-    }
-  };
-
+  // Função auxiliar para limpar dados
   const clearAuthData = () => {
-    clearRefreshTimer();
     setToken(null);
     setUser(null);
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    document.cookie = "refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-  };
-
-  const setAuthToken = (newToken: string, refreshToken?: string): boolean => {
-    if (!isTokenValid(newToken)) {
-      clearAuthData();
-      return false;
-    }
-
-    setToken(newToken);
-    localStorage.setItem("accessToken", newToken);
-    // 7 dias de cookie (mesmo tempo do refresh)
-    document.cookie = `access_token=${newToken}; path=/; max-age=604800; SameSite=Lax; Secure`;
-
-    if (refreshToken && isTokenValid(refreshToken)) {
-      localStorage.setItem("refreshToken", refreshToken);
-      document.cookie = `refresh_token=${refreshToken}; path=/; max-age=604800; SameSite=Lax; Secure`;
-    }
-
-    scheduleRefreshTimer(newToken);
-    return true;
-  };
-
-  const refreshAuthToken = async (): Promise<boolean> => {
-    const refreshToken = localStorage.getItem("refreshToken");
-    if (!refreshToken || !isTokenValid(refreshToken)) {
-      clearAuthData();
-      return false;
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("❌ Refresh falhou:", res.status, errorText);
-        throw new Error(`Refresh failed: ${res.status} ${errorText}`);
-      }
-
-      const data = await res.json();
-      console.log("✅ Refresh bem-sucedido, novo token obtido");
-      return setAuthToken(data.accessToken, data.refreshToken);
-    } catch (err: any) {
-      console.error("❌ Refresh falhou com erro:", err);
-      clearAuthData();
-      return false;
-    }
-  };
-
-  const authFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
-    console.log(`🔗 [AUTH FETCH] URL: ${url}`);
-    console.log(`🔗 [AUTH FETCH] Método: ${options.method || 'GET'}`);
-
-    let accessToken = localStorage.getItem("accessToken");
-    console.log(`🔑 [AUTH FETCH] Token atual: ${accessToken ? "Presente" : "Ausente"}`);
-
-    if (!accessToken || !isTokenValid(accessToken)) {
-      console.log("🔄 [AUTH FETCH] Token inválido ou ausente, tentando refresh...");
-      const ok = await refreshAuthToken();
-      if (!ok) {
-        console.log("❌ [AUTH FETCH] Refresh falhou, sessão expirada");
-        throw new Error("Sessão expirada. Faça login novamente.");
-      }
-      accessToken = localStorage.getItem("accessToken");
-      console.log(`✅ [AUTH FETCH] Novo token obtido: ${accessToken ? "Sim" : "Não"}`);
-    }
-
-    const headers = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      ...options.headers,
-    };
-
-    console.log(`📤 [AUTH FETCH] Enviando requisição com headers:`, {
-      Authorization: `Bearer ${accessToken ? `${accessToken.substring(0, 20)}...` : 'null'}`,
-    });
-
-    let response: Response;
-
-    try {
-      response = await fetch(url, { ...options, headers });
-      console.log(`📥 [AUTH FETCH] Resposta recebida:`, {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        url: response.url,
-      });
-    } catch (networkError: any) {
-      console.error("🌐 [AUTH FETCH] Erro de rede:", networkError);
-      throw new Error(`Erro de conexão: ${networkError.message}`);
-    }
-
-    // Se for 401, tenta refresh uma vez
-    if (response.status === 401) {
-      console.log("🔒 [AUTH FETCH] Status 401 (Não autorizado), tentando refresh...");
-      const ok = await refreshAuthToken();
-      if (!ok) {
-        console.log("❌ [AUTH FETCH] Refresh falhou após 401, fazendo logout");
-        logout();
-        throw new Error("Sessão expirada. Faça login novamente.");
-      }
-
-      // Tenta novamente com novo token
-      const newAccessToken = localStorage.getItem("accessToken");
-      const newHeaders = {
-        ...headers,
-        Authorization: `Bearer ${newAccessToken}`,
-      };
-
-      console.log("🔄 [AUTH FETCH] Tentando requisição novamente com novo token...");
-      response = await fetch(url, {
-        ...options,
-        headers: newHeaders,
-      });
-
-      console.log(`📥 [AUTH FETCH] Segunda resposta:`, {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-      });
-    }
-
-    // Se ainda não está ok após refresh, lança erro
-    if (!response.ok) {
-      console.error(`❌ [AUTH FETCH] Requisição falhou com status ${response.status}`);
-
-      // Tenta obter a mensagem de erro do backend
-      let errorMessage = `Erro ${response.status}: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorMessage;
-        console.error("📄 [AUTH FETCH] Detalhes do erro:", errorData);
-      } catch {
-        // Se não conseguir parsear como JSON, tenta texto
-        try {
-          const errorText = await response.text();
-          errorMessage = `Erro ${response.status}: ${errorText}`;
-        } catch {
-          // Ignora erro ao tentar ler texto
-        }
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    console.log(`✅ [AUTH FETCH] Requisição bem-sucedida para ${url}`);
-    return response;
-  };
-
-  const login = async (email: string, password: string) => {
-    console.log(`🔐 [LOGIN] Tentando login para: ${email}`);
-
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
-    });
-
-    console.log(`📥 [LOGIN] Resposta recebida:`, {
-      status: response.status,
-      ok: response.ok,
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error(`❌ [LOGIN] Falha no login:`, data);
-      throw new Error(data.message || "Erro no login");
-    }
-
-    console.log(`✅ [LOGIN] Login bem-sucedido para: ${data.user.email}`);
-    console.log(`🎫 [LOGIN] Token recebido: ${data.accessToken ? "Sim" : "Não"}`);
-
-    setAuthToken(data.accessToken, data.refreshToken);
-    setUser(data.user);
-    router.push("/Kanban");
+    
+    // Remove o header de autorização padrão
+    delete api.defaults.headers.common["Authorization"];
   };
 
   const logout = () => {
-    console.log("🚪 [LOGOUT] Fazendo logout");
     clearAuthData();
     router.push("/login");
   };
 
-  // INICIALIZAÇÃO PERFEITA
+  // --- Configuração dos Interceptors do Axios ---
+  // Isso substitui toda aquela lógica manual de refresh token que existia no authFetch antigo
+  useLayoutEffect(() => {
+    // 1. Interceptor de Requisição: Injeta o token automaticamente
+    const reqInterceptor = api.interceptors.request.use(
+      (config) => {
+        const accessToken = localStorage.getItem("accessToken");
+        if (accessToken) {
+          config.headers.Authorization = `Bearer ${accessToken}`;
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    // 2. Interceptor de Resposta: Trata erro 401 e faz Refresh Token
+    const resInterceptor = api.interceptors.response.use(
+      (response) => response,
+      async (error: AxiosError) => {
+        const originalRequest = error.config as any;
+
+        // Se der erro 401 (Não autorizado) e ainda não tentamos reenviar
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          originalRequest._retry = true;
+
+          try {
+            const refreshToken = localStorage.getItem("refreshToken");
+            if (!refreshToken) {
+              throw new Error("Sem refresh token");
+            }
+
+            // Tenta obter novo token
+            const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
+
+            // Salva novos tokens
+            localStorage.setItem("accessToken", data.accessToken);
+            localStorage.setItem("refreshToken", data.refreshToken); // Opcional se o back renovar o refresh também
+            
+            // Atualiza o header da requisição original e refaz a chamada
+            api.defaults.headers.common["Authorization"] = `Bearer ${data.accessToken}`;
+            originalRequest.headers["Authorization"] = `Bearer ${data.accessToken}`;
+            
+            return api(originalRequest);
+          } catch (refreshError) {
+            // Se o refresh falhar, desloga o usuário
+            logout();
+            return Promise.reject(refreshError);
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    // Cleanup dos interceptors
+    return () => {
+      api.interceptors.request.eject(reqInterceptor);
+      api.interceptors.response.eject(resInterceptor);
+    };
+  }, []);
+
+  // --- Função de Login com Axios ---
+  const login = async (email: string, password: string) => {
+    try {
+      // Chamada direta usando a instância do axios
+      const response = await api.post("/auth/login", {
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      const { accessToken, refreshToken, user } = response.data;
+
+      // Salva dados
+      localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem("refreshToken", refreshToken);
+      api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+
+      setToken(accessToken);
+      setUser(user);
+      router.push("/Kanban");
+    } catch (error: any) {
+      // Tratamento de erro do Axios
+      const message = error.response?.data?.message || "Erro ao realizar login";
+      console.error("Erro no login:", message);
+      throw new Error(message);
+    }
+  };
+
+  // --- Compatibilidade com código antigo (authFetch) ---
+  // Esta função simula o comportamento do fetch antigo usando nossa instância axios
+  // para que você não precise refatorar todas as páginas agora.
+  const authFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    try {
+      const fullUrl = url.startsWith("http") ? url : `${API_BASE}${url}`;
+      
+      const config = {
+        method: options.method || "GET",
+        headers: options.headers as any,
+        data: options.body ? JSON.parse(options.body as string) : undefined,
+      };
+
+      const response = await api(fullUrl, config);
+
+      // Retorna um objeto que imita a resposta do fetch nativo
+      return {
+        ok: true,
+        status: response.status,
+        statusText: response.statusText,
+        json: async () => response.data,
+        text: async () => JSON.stringify(response.data),
+        headers: new Headers(response.headers as any),
+      } as unknown as Response;
+
+    } catch (error: any) {
+      // Se o axios der erro, retornamos uma estrutura similar ao fetch com ok: false
+      if (error.response) {
+        return {
+          ok: false,
+          status: error.response.status,
+          statusText: error.response.statusText,
+          json: async () => error.response.data,
+          text: async () => JSON.stringify(error.response.data),
+        } as unknown as Response;
+      }
+      throw error;
+    }
+  };
+
+  // Inicialização (Load Profile)
   useEffect(() => {
     const init = async () => {
-      console.log("🔄 [AUTH] Inicializando contexto de autenticação...");
-
       const savedToken = localStorage.getItem("accessToken");
-      console.log(`🔑 [AUTH] Token salvo encontrado: ${savedToken ? "Sim" : "Não"}`);
-
-      if (!savedToken || !isTokenValid(savedToken)) {
-        console.log("❌ [AUTH] Token inválido ou expirado, limpando dados");
-        clearAuthData();
+      if (!savedToken) {
         setLoading(false);
         return;
       }
 
-      console.log("✅ [AUTH] Token válido, configurando...");
       setToken(savedToken);
-      scheduleRefreshTimer(savedToken);
+      api.defaults.headers.common["Authorization"] = `Bearer ${savedToken}`;
 
       try {
-        console.log("👤 [AUTH] Buscando perfil do usuário...");
-        const res = await fetch(`${API_BASE}/auth/profile`, {
-          headers: {
-            Authorization: `Bearer ${savedToken}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        console.log(`📥 [AUTH] Resposta do perfil:`, {
-          status: res.status,
-          ok: res.ok,
-        });
-
-        if (res.ok) {
-          const userData = await res.json();
-          console.log(`✅ [AUTH] Perfil carregado: ${userData.name} (${userData.email})`);
-          setUser(userData);
-        } else {
-          console.error(`❌ [AUTH] Erro ao carregar perfil: ${res.status}`);
-          // Se não conseguir carregar perfil, limpa os dados
-          clearAuthData();
-        }
-      } catch (err) {
-        console.warn("⚠️ [AUTH] Erro de rede ao carregar perfil:", err);
-        // Continua mesmo com erro de rede, o usuário pode tentar novamente
+        const { data } = await api.get("/auth/profile");
+        setUser(data);
+      } catch (error) {
+        console.error("Erro ao carregar perfil:", error);
+        clearAuthData();
       } finally {
         setLoading(false);
-        console.log("✅ [AUTH] Inicialização concluída");
       }
     };
 
@@ -337,14 +225,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         isAuthenticated: !!user,
         login,
-        signup: async () => { },
-        adminSignup: async () => { },
         logout,
         loading,
         token,
-        refreshAuthToken,
-        isTokenValid,
-        authFetch,
+        authFetch, // Mantido para compatibilidade
+        api,       // Nova forma recomendada de fazer requisições
       }}
     >
       {children}
@@ -358,4 +243,7 @@ export const useAuth = () => {
   return context;
 };
 
+// Hook auxiliar para pegar o authFetch (compatibilidade)
 export const useAuthFetch = () => useAuth().authFetch;
+// Hook auxiliar para pegar a instância do axios (recomendado para novos códigos)
+export const useApi = () => useAuth().api;
