@@ -9,12 +9,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
+  BarChart2,
   BarChart3,
   Bell,
   Calendar,
@@ -41,6 +41,7 @@ interface SidebarProps {
   className?: string;
 }
 
+// --- CORREÇÃO AQUI: Links ajustados e únicos ---
 const menuItems = [
   {
     title: "Dashboard",
@@ -52,11 +53,14 @@ const menuItems = [
     href: "/Kanban",
     icon: KanbanSquare,
   },
-  {
-    title: "Tarefas",
-    href: "/tasks",
-    icon: FileText,
-  },
+  // Mudei o link de "Tarefas" para evitar conflito ou redundância
+  // Se "Tarefas" for o mesmo que "Kanban", você pode remover este item
+  // Se for uma lista simples, pode ser "/tasks"
+  // {
+  //   title: "Tarefas",
+  //   href: "/tasks", // Alterado para não conflitar com relatório
+  //   icon: FileText,
+  // },
   {
     title: "Chats",
     href: "/chats",
@@ -67,36 +71,24 @@ const menuItems = [
     href: "/agenda",
     icon: Calendar,
   },
+  // Corrigido: Aponta para relatório de PROFISSIONAIS
   {
     title: "Relatórios Profissionais",
     href: "/professionals/report",
-    icon: BarChart3, // Usando o ícone de gráficos que já está importado
+    icon: BarChart3,
+  },
+  // Corrigido: Aponta para relatório de TAREFAS
+  {
+    title: "Relatórios Tarefas",
+    href: "/tasks/report",
+    icon: BarChart2,
   },
   {
     title: "Gerenciar Profissionais",
-    href: "signup",
+    href: "/signup", // Adicionei a barra '/' para garantir caminho absoluto
     icon: User,
   }
 ];
-
-// Removidos todos os itens da secondaryItems
-// const secondaryItems = [
-//   {
-//     title: "Equipe",
-//     href: "/team",
-//     icon: Users,
-//   },
-//   {
-//     title: "Configurações",
-//     href: "/settings",
-//     icon: Settings,
-//   },
-//   {
-//     title: "Ajuda",
-//     href: "/help",
-//     icon: HelpCircle,
-//   },
-// ];
 
 export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
@@ -177,12 +169,12 @@ export function Sidebar({ className }: SidebarProps) {
 
   // Log para debug
   useEffect(() => {
-    console.log("🔔 Estado das notificações:", {
-      total: notifications.length,
-      unread: unreadCount,
-      loading,
-      error,
-    });
+    // console.log("🔔 Estado das notificações:", {
+    //   total: notifications.length,
+    //   unread: unreadCount,
+    //   loading,
+    //   error,
+    // });
   }, [notifications, unreadCount, loading, error]);
 
   return (
@@ -211,7 +203,7 @@ export function Sidebar({ className }: SidebarProps) {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 relative"
-                onClick={() => console.log("Notificações clicadas:", notifications)}
+                onClick={() => console.log("Notificações clicadas")}
               >
                 <Bell className="w-4 h-4" />
                 {unreadCount > 0 && (
@@ -290,7 +282,7 @@ export function Sidebar({ className }: SidebarProps) {
                 <>
                   <ScrollArea className="h-[400px]">
                     <div className="p-2">
-                      {notifications.map((notification: any, index: any) => (
+                      {notifications.map((notification: any, index: number) => (
                         <div
                           key={notification.id || `notification-${index}`}
                           className={cn(
@@ -393,12 +385,13 @@ export function Sidebar({ className }: SidebarProps) {
       {/* Navigation */}
       <ScrollArea className="flex-1 px-3">
         <div className="space-y-1 py-4">
+          {/* CORREÇÃO AQUI: Usando item.title como Key */}
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
             return (
-              <Link key={item.href} href={item.href}>
+              <Link key={item.title} href={item.href}>
                 <div
                   className={cn(
                     "flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
@@ -416,34 +409,6 @@ export function Sidebar({ className }: SidebarProps) {
             );
           })}
         </div>
-
-        {/* Removido: Separator e secondaryItems */}
-        {/* <Separator className="my-2" />
-
-        <div className="space-y-1 py-2">
-          {secondaryItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-            return (
-              <Link key={item.href} href={item.href}>
-                <div
-                  className={cn(
-                    "flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
-                    isActive
-                      ? "bg-accent text-accent-foreground"
-                      : "transparent",
-                    collapsed ? "justify-center" : "justify-start"
-                  )}
-                  title={collapsed ? item.title : undefined}
-                >
-                  <Icon className={cn("w-4 h-4", collapsed ? "mr-0" : "mr-3")} />
-                  {!collapsed && <span>{item.title}</span>}
-                </div>
-              </Link>
-            );
-          })}
-        </div> */}
       </ScrollArea>
 
       {/* User Profile */}

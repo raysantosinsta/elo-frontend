@@ -23,7 +23,6 @@ import {
   EyeIcon,
   FilterIcon,
   LayoutListIcon,
-  UserIcon
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -41,7 +40,7 @@ import {
   YAxis
 } from 'recharts';
 
-// Tipagem baseada no seu Prisma Schema
+// Interfaces
 interface TaskReportItem {
   id: string;
   title: string;
@@ -65,7 +64,7 @@ interface TaskReportSummary {
   pendingTasks: number;
   overdueTasks: number;
   completionRate: number;
-  avgCompletionTime: string; // ex: "2 dias"
+  avgCompletionTime: string;
   byStatus: Array<{ name: string; value: number; color: string }>;
   byPriority: Array<{ name: string; value: number }>;
 }
@@ -90,7 +89,7 @@ export default function TasksReportPage() {
   // Verificar permissão
   useEffect(() => {
     if (user && !['MASTER', 'ADMIN'].includes(user.role)) {
-      router.push('/unauthorized');
+      // router.push('/unauthorized'); // Descomente se tiver a página
     }
   }, [user, router]);
 
@@ -110,9 +109,11 @@ export default function TasksReportPage() {
 
   const fetchCompanies = async () => {
     try {
-      const response = await authFetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL}/auth/companies/master`);
-      const data = await response.json();
-      setCompanies(data);
+      const response = await authFetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000'}/auth/companies/master`);
+      if(response.ok) {
+        const data = await response.json();
+        setCompanies(data);
+      }
     } catch (error) {
       console.error('Erro ao buscar empresas:', error);
     }
@@ -128,15 +129,16 @@ export default function TasksReportPage() {
       if (startDate) params.append("startDate", startDate.toISOString());
       if (endDate) params.append("endDate", endDate.toISOString());
 
-      // NOTA: Você precisará criar este endpoint no backend (código abaixo)
-      const response = await authFetch(
-        `${process.env.NEXT_PUBLIC_NESTJS_API_URL}/tasks/reports`
-      );
+      const url = `${process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000'}/reports-tasks/tasks?${params.toString()}`;
+      
+      const response = await authFetch(url);
       
       if (response.ok) {
         const data = await response.json();
         setTasks(data.tasks);
         setSummary(data.summary);
+      } else {
+        console.error("Falha ao buscar relatório", response.status);
       }
     } catch (error) {
       console.error("Erro ao buscar relatório de tarefas:", error);
@@ -149,25 +151,28 @@ export default function TasksReportPage() {
     setExporting(true);
     try {
       const params = new URLSearchParams();
-      // ... mesmos parâmetros do fetchReport
-      if (companyId) params.append('companyId', companyId);
+      if (companyId && companyId !== "all") params.append("companyId", companyId);
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (startDate) params.append('startDate', startDate.toISOString());
       if (endDate) params.append('endDate', endDate.toISOString());
 
       const response = await authFetch(
-        `${process.env.NEXT_PUBLIC_NESTJS_API_URL}/tasks/reports`
+        `${process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000'}/reports-tasks/tasks/export?${params.toString()}`
       );
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `relatorio-tarefas-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `relatorio-tarefas-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        alert("Erro ao exportar");
+      }
     } catch (error) {
       console.error('Erro ao exportar:', error);
     } finally {
@@ -382,11 +387,62 @@ export default function TasksReportPage() {
       </Card>
 
       {/* Conteúdo Principal */}
-      <Tabs defaultValue="list" className="space-y-4">
+      <Tabs defaultValue="charts" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="list">Lista Detalhada</TabsTrigger>
           <TabsTrigger value="charts">Gráficos e Métricas</TabsTrigger>
+          <TabsTrigger value="list">Lista Detalhada</TabsTrigger>
         </TabsList>
+
+        {/* TAB: GRÁFICOS */}
+        <TabsContent value="charts">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Gráfico de Status */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Distribuição por Status</CardTitle>
+              </CardHeader>
+              <CardContent className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={summary?.byStatus || []}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {summary?.byStatus.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Gráfico de Prioridade */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Distribuição por Prioridade</CardTitle>
+              </CardHeader>
+              <CardContent className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={summary?.byPriority || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="value" name="Quantidade" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
         {/* TAB: LISTA */}
         <TabsContent value="list">
@@ -464,57 +520,6 @@ export default function TasksReportPage() {
               </Table>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        {/* TAB: GRÁFICOS */}
-        <TabsContent value="charts">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Gráfico de Status */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Distribuição por Status</CardTitle>
-              </CardHeader>
-              <CardContent className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={summary?.byStatus || []}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {summary?.byStatus.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Gráfico de Prioridade */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Distribuição por Prioridade</CardTitle>
-              </CardHeader>
-              <CardContent className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={summary?.byPriority || []}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="value" name="Quantidade" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
       </Tabs>
     </div>
