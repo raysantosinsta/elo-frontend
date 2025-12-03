@@ -16,6 +16,7 @@ import {
   AlertCircle,
   BarChart2,
   BarChart3,
+  BarChart,
   Bell,
   Calendar,
   Check,
@@ -27,6 +28,8 @@ import {
   FileText,
   Home,
   KanbanSquare,
+  KanbanSquareDashed,
+
   LayoutDashboard,
   MessageSquare,
   RefreshCw,
@@ -49,9 +52,14 @@ const menuItems = [
     icon: LayoutDashboard,
   },
   {
-    title: "Kanban",
+    title: "Kanban Profissional",
     href: "/Kanban",
     icon: KanbanSquare,
+  },
+  {
+    title: "Kanban Produto",
+    href: "/kanban-flow",
+    icon: KanbanSquareDashed,
   },
   // Mudei o link de "Tarefas" para evitar conflito ou redundância
   // Se "Tarefas" for o mesmo que "Kanban", você pode remover este item
@@ -82,6 +90,11 @@ const menuItems = [
     title: "Relatórios Tarefas",
     href: "/tasks/report",
     icon: BarChart2,
+  },
+  {
+    title: "Relatórios produtos",
+    href: "/product/report",
+    icon: BarChart,
   },
   {
     title: "Gerenciar Profissionais",
