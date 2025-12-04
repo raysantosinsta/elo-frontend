@@ -1,24 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChatMessage } from "@/types/chat";
-import { useChatSocket } from "@/hooks/useChatSocket";
 import { MessageCircle } from "lucide-react";
 
-interface ChatMessagesProps {
-  messages: ChatMessage[];
-  currentUserId: string;
-  companyId?: string;
-  chatId: string;
-  onNewMessage?: (message: ChatMessage) => void;
-}
-
-// Função para estilizar menções no texto
+// --- Funções Auxiliares ---
 const formatMessage = (text: string) => {
   const parts = text.split(/(@[^\s@]+)/g);
-
   return parts.map((part, index) => {
     if (part.startsWith('@')) {
       return (
@@ -34,27 +24,18 @@ const formatMessage = (text: string) => {
   });
 };
 
-// Função para gerar cor baseada na string (nome)
 const stringToColor = (str: string) => {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
-  
   const hue = hash % 360;
   return `hsl(${hue}, 70%, 45%)`;
 };
 
-// Componente de Avatar Genérico
 const GenericAvatar = ({ name, className = "" }: { name: string; className?: string }) => {
-  const initials = name
-    .split(" ")
-    .map(part => part[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-  
-  const backgroundColor = stringToColor(name);
+  const initials = name ? name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2) : "??";
+  const backgroundColor = stringToColor(name || "");
 
   return (
     <div 
@@ -66,75 +47,56 @@ const GenericAvatar = ({ name, className = "" }: { name: string; className?: str
   );
 };
 
+// --- Componente Principal ---
+
+interface ChatMessagesProps {
+  messages: ChatMessage[];
+  currentUserId: string;
+}
+
 export function ChatMessages({
   messages,
   currentUserId,
-  companyId,
-  chatId,
-  onNewMessage
 }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [localMessages, setLocalMessages] = useState<ChatMessage[]>(messages);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Usar WebSocket para receber mensagens em tempo real
-  useChatSocket({
-    chatId,
-    currentUserId,
-    companyId,
-    onNewMessage: (newMessage: ChatMessage) => {
-      setLocalMessages(prev => {
-        // Evitar duplicatas
-        if (!prev.find(msg => msg.id === newMessage.id)) {
-          return [...prev, newMessage];
-        }
-        return prev;
-      });
-
-      // Chamar callback do parent se fornecido
-      if (onNewMessage) {
-        onNewMessage(newMessage);
-      }
-    },
-    onUserNotification: (notification) => {
-      console.log("Nova notificação:", notification);
-    }
-  });
-
-  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
-  };
-
-  useEffect(() => {
-    setLocalMessages(messages);
+  
+  // 🔥 CORREÇÃO CRÍTICA: Filtra IDs duplicados antes de renderizar
+  // Isso resolve o erro "two children with the same key"
+  const uniqueMessages = useMemo(() => {
+    const seen = new Set();
+    const safeMessages = Array.isArray(messages) ? messages : [];
+    
+    return safeMessages.filter(msg => {
+      if (!msg.id) return false; // Proteção contra mensagens sem ID
+      const duplicate = seen.has(msg.id);
+      seen.add(msg.id);
+      return !duplicate;
+    });
   }, [messages]);
 
+  // Scroll automático usando a lista filtrada
   useEffect(() => {
-    // Scroll para baixo quando novas mensagens chegarem
-    scrollToBottom();
-  }, [localMessages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [uniqueMessages]); 
 
   const isSameSender = (currentIndex: number): boolean => {
     if (currentIndex === 0) return false;
-    const currentMessage = localMessages[currentIndex];
-    const previousMessage = localMessages[currentIndex - 1];
+    const currentMessage = uniqueMessages[currentIndex];
+    const previousMessage = uniqueMessages[currentIndex - 1];
     return currentMessage.senderId === previousMessage.senderId;
   };
 
   const shouldShowAvatar = (currentIndex: number): boolean => {
-    if (currentIndex === localMessages.length - 1) return true;
-    const currentMessage = localMessages[currentIndex];
-    const nextMessage = localMessages[currentIndex + 1];
+    if (currentIndex === uniqueMessages.length - 1) return true;
+    const currentMessage = uniqueMessages[currentIndex];
+    const nextMessage = uniqueMessages[currentIndex + 1];
     return currentMessage.senderId !== nextMessage.senderId;
   };
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardContent
-        ref={containerRef}
-        className="p-4 flex-1 overflow-y-auto h-0 min-h-0"
-      >
-        {localMessages.length === 0 ? (
+    <Card className="h-full flex flex-col border-0 shadow-none"> 
+      <CardContent className="p-4 flex-1 overflow-y-auto h-0 min-h-0">
+        {uniqueMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <div className="text-center mb-4">
               <div className="h-16 w-16 mx-auto mb-2 flex items-center justify-center rounded-full bg-muted">
@@ -146,82 +108,44 @@ export function ChatMessages({
           </div>
         ) : (
           <div className="space-y-2">
-            {localMessages.map((message, index) => {
+            {uniqueMessages.map((message, index) => {
               const isCurrentUser = message.senderId === currentUserId;
               const sameSenderAsPrevious = isSameSender(index);
               const showAvatar = shouldShowAvatar(index);
 
               return (
                 <div
-                  key={message.id}
-                  className={`flex ${isCurrentUser ? "justify-end" : "justify-start"} ${sameSenderAsPrevious ? "mt-1" : "mt-4"
-                    }`}
+                  key={message.id} // Agora garantimos que este ID é único
+                  className={`flex ${isCurrentUser ? "justify-end" : "justify-start"} ${sameSenderAsPrevious ? "mt-1" : "mt-4"}`}
                 >
-                  <div
-                    className={`flex gap-3 max-w-[85%] ${isCurrentUser ? "flex-row-reverse" : "flex-row"
-                      }`}
-                  >
-                    {/* Avatar */}
+                  <div className={`flex gap-3 max-w-[85%] ${isCurrentUser ? "flex-row-reverse" : "flex-row"}`}>
                     {showAvatar ? (
                       <GenericAvatar 
-                        name={message.sender.name}
+                        name={message.sender?.name || "Usuário"}
                         className={isCurrentUser ? "order-2" : "order-1"}
                       />
                     ) : (
-                      <div className="w-8 flex-shrink-0" /> // Espaço vazio para alinhar
+                      <div className="w-8 flex-shrink-0" />
                     )}
 
-                    {/* Mensagem */}
-                    <div
-                      className={`rounded-lg p-3 ${isCurrentUser
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
-                        } ${!showAvatar ? (isCurrentUser ? "mr-11" : "ml-11") : ""}`}
-                    >
-                      {/* Cabeçalho da mensagem (nome e badges) */}
-                      {!sameSenderAsPrevious && (
+                    <div className={`rounded-lg p-3 shadow-sm ${isCurrentUser ? "bg-primary text-primary-foreground" : "bg-muted"} ${!showAvatar ? (isCurrentUser ? "mr-11" : "ml-11") : ""}`}>
+                      {!sameSenderAsPrevious && !isCurrentUser && (
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium">
-                            {message.sender.name}
-                          </span>
-                          {message.sender.isProfessional && (
-                            <Badge
-                              variant="secondary"
-                              className="text-xs"
-                            >
-                              {message.sender.professionalRole || "Profissional"}
-                            </Badge>
-                          )}
-                          {message.mentionedProfessionalId && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs bg-blue-50 text-blue-700 border-blue-200"
-                            >
-                              @Mencionado
-                            </Badge>
+                          <span className="text-sm font-bold opacity-90">{message.sender?.name}</span>
+                          {message.sender?.isProfessional && (
+                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{message.sender.professionalRole || "Pro"}</Badge>
                           )}
                         </div>
                       )}
-
-                      {/* Conteúdo da mensagem */}
-                      <div className="text-sm break-words">
-                        {formatMessage(message.message)}
-                      </div>
-
-                      {/* Timestamp */}
-                      <div className={`text-xs mt-2 ${isCurrentUser ? "text-primary-foreground/70" : "text-muted-foreground"
-                        }`}>
-                        {new Date(message.createdAt).toLocaleTimeString('pt-BR', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
+                      <div className="text-sm break-words leading-relaxed">{formatMessage(message.message)}</div>
+                      <div className={`text-[10px] mt-1 text-right ${isCurrentUser ? "text-primary-foreground/70" : "text-muted-foreground/80"}`}>
+                        {new Date(message.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
                   </div>
                 </div>
               );
             })}
-
             <div ref={messagesEndRef} />
           </div>
         )}

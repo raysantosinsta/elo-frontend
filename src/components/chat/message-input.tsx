@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { User } from "@/types/chat";
 import { Send } from "lucide-react";
-import { useMentions } from "@/hooks/useMentions";
+import { useMentions } from "@/hooks/use-app-features";
 
 interface MessageInputProps {
   onSendMessage: (message: string, mentionedUserId?: string) => void;
@@ -21,40 +21,38 @@ interface MentionListProps {
 }
 
 function MentionList({ users, onSelect, selectedIndex, position, isLoading }: MentionListProps) {
+  // Se não estiver carregando e não tiver usuários, não renderiza
   if (!isLoading && users.length === 0) return null;
 
   return (
     <div 
       className="fixed bg-background border rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto min-w-64"
+      // Ajuste visual: renderiza a lista subindo a partir da posição (estilo tooltip de chat)
       style={{ 
-        top: `${position.top}px`, 
+        bottom: `calc(100vh - ${position.top}px)`, 
         left: `${position.left}px`,
-        transform: 'translateY(8px)'
       }}
     >
       {isLoading ? (
-        <div className="p-3 text-sm text-muted-foreground">Carregando usuários...</div>
+        <div className="p-3 text-sm text-muted-foreground">Carregando...</div>
       ) : (
         users.map((user, index) => (
           <button
             key={user.id}
             type="button"
-            className={`w-full text-left p-2 hover:bg-muted rounded-lg flex items-center gap-2 ${
+            className={`w-full text-left p-2 hover:bg-muted/50 rounded-lg flex items-center gap-2 transition-colors ${
               index === selectedIndex ? 'bg-muted' : ''
             }`}
             onClick={() => onSelect(user)}
+            // Previne perder o foco do input ao clicar
+            onMouseDown={(e) => e.preventDefault()} 
           >
-            <div className="flex-1">
-              <div className="font-medium">{user.name}</div>
-              <div className="text-xs text-muted-foreground">
-                {user.email} • {user.phone}
+            <div className="flex-1 overflow-hidden">
+              <div className="font-medium truncate">{user.name}</div>
+              <div className="text-xs text-muted-foreground truncate">
+                {user.email}
               </div>
             </div>
-            {user.isProfessional && (
-              <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded">
-                {user.professionalRole || 'Profissional'}
-              </span>
-            )}
           </button>
         ))
       )}
@@ -66,16 +64,20 @@ export function MessageInput({ onSendMessage, disabled = false }: MessageInputPr
   const [message, setMessage] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // Ref para armazenar usuários que foram selecionados durante a digitação
+  // Isso resolve o problema de 'results' estar vazio na hora do envio
+  const confirmedMentions = useRef<User[]>([]);
+
   const {
-    mentionResults,
-    showMentionList,
-    mentionPosition,
-    selectedIndex,
+    results,          // Nome corrigido (vem do hook)
+    showList,         // Nome corrigido
+    position,         // Nome corrigido
+    selectedIndex,    // Agora existe no hook atualizado
     isLoading,
     handleInputChange,
     insertMention,
-    closeMentionList,
-    handleKeyDown
+    handleKeyDown,    // Agora existe no hook atualizado
+    close
   } = useMentions();
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,23 +91,28 @@ export function MessageInput({ onSendMessage, disabled = false }: MessageInputPr
   const handleSelectUser = (user: User) => {
     if (!inputRef.current) return;
 
+    // 1. Guarda o usuário na lista de confirmados
+    confirmedMentions.current.push(user);
+
+    // 2. Insere o texto
     const cursorPosition = inputRef.current.selectionStart || 0;
-    const { newText, newCursorPosition } = insertMention(message, user, cursorPosition);
+    const { text, cursor } = insertMention(message, user, cursorPosition);
     
-    setMessage(newText);
-    closeMentionList();
+    setMessage(text);
+    close();
     
+    // 3. Devolve o foco e ajusta o cursor
     setTimeout(() => {
       if (inputRef.current) {
         inputRef.current.focus();
-        inputRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
+        inputRef.current.setSelectionRange(cursor, cursor);
       }
     }, 0);
   };
 
-
+  // Wrapper para lidar com navegação na lista vs envio de mensagem
   const handleKeyDownWrapper = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (showMentionList) {
+    if (showList) {
       handleKeyDown(e, handleSelectUser);
       return;
     }
@@ -116,87 +123,79 @@ export function MessageInput({ onSendMessage, disabled = false }: MessageInputPr
     }
   };
 
- 
+  const getMentionedUserId = (finalMessage: string): string | undefined => {
+    if (confirmedMentions.current.length === 0) return undefined;
 
-// CORREÇÃO na função extractMentionedUserId
-const extractMentionedUserId = (finalMessage: string, availableUsers: User[]): string | undefined => {
-  if (!availableUsers || availableUsers.length === 0) {
-    console.log('🔍 Nenhum usuário disponível para verificar a menção.');
-    return undefined;
-  }
+    // Procura nos usuários confirmados se algum ainda está presente no texto final
+    // Ex: O usuário pode ter selecionado "@Joao", mas depois apagou e escreveu "@Pedro" manualmente
+    const foundUser = confirmedMentions.current.find(user => 
+      finalMessage.includes(`@${user.name}`)
+    );
 
-  // Encontra o primeiro usuário disponível cujo nome está na mensagem após um '@'
-  const mentionedUser = availableUsers.find(user => 
-    finalMessage.includes(`@${user.name}`)
-  );
+    return foundUser?.id;
+  };
 
-  if (mentionedUser) {
-    console.log(`✅ Usuário encontrado para menção: ${mentionedUser.name} (${mentionedUser.id})`);
-    return mentionedUser.id;
-  }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!message.trim() || disabled) return;
 
-  console.log(`❌ Nenhuma menção correspondente encontrada na mensagem para os usuários disponíveis.`);
-  return undefined;
-};
+    // Busca o ID com base no histórico de seleções + texto atual
+    const mentionedUserId = getMentionedUserId(message);
+    
+    onSendMessage(message.trim(), mentionedUserId);
+    
+    // Limpeza
+    setMessage("");
+    confirmedMentions.current = []; // Limpa histórico de menções
+    close();
+  };
 
-// ATUALIZAR o handleSubmit para passar os mentionResults
-const handleSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (!message.trim() || disabled) return;
-
-  // 🔥 CORREÇÃO: Passar os mentionResults disponíveis
-  const mentionedUserId = extractMentionedUserId(message, mentionResults);
-  
-  console.log(`📤 Enviando mensagem: "${message}"`, mentionedUserId ? `Menção: ${mentionedUserId}` : 'Sem menção');
-
-  onSendMessage(message.trim(), mentionedUserId);
-  setMessage("");
-  closeMentionList();
-};
-
-  // Fechar menções ao clicar fora
+  // Fecha lista ao clicar fora
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      // Se clicar fora do input E fora da lista (a lista é portal ou fixed, mas o clique fecha)
       if (inputRef.current && !inputRef.current.contains(e.target as Node)) {
-        closeMentionList();
+        close();
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [closeMentionList]);
+  }, [close]);
 
   return (
-    <div className="relative">
-      <form onSubmit={handleSubmit} className="flex gap-2">
+    <div className="relative w-full">
+        {showList && (
+            <MentionList
+              users={results}
+              onSelect={handleSelectUser}
+              selectedIndex={selectedIndex}
+              position={position}
+              isLoading={isLoading}
+            />
+        )}
+      
+      <form onSubmit={handleSubmit} className="flex gap-2 items-center">
         <div className="relative flex-1">
           <Input
             ref={inputRef}
             type="text"
-            placeholder="Digite sua mensagem... Use @ para mencionar"
+            placeholder="Digite sua mensagem... (@ para mencionar)"
             value={message}
             onChange={handleInput}
             onKeyDown={handleKeyDownWrapper}
             disabled={disabled}
-            className="pr-4"
+            className="pr-4 w-full"
+            autoComplete="off"
           />
-          
-          {showMentionList && (
-            <MentionList
-              users={mentionResults}
-              onSelect={handleSelectUser}
-              selectedIndex={selectedIndex}
-              position={mentionPosition}
-              isLoading={isLoading}
-            />
-          )}
         </div>
         
         <Button 
           type="submit" 
           disabled={disabled || !message.trim()}
           size="icon"
+          className="shrink-0"
         >
           <Send className="h-4 w-4" />
         </Button>

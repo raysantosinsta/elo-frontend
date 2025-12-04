@@ -12,12 +12,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Users, Calendar, Badge } from "lucide-react";
 import Link from "next/link";
-import { useChatSocket } from "@/hooks/useChatSocket";
+import { useChatSocket } from "@/hooks/use-app-features";
 
 export default function ChatPage() {
   const params = useParams();
   const chatId = params.id as string;
-  
+
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +45,7 @@ export default function ChatPage() {
 
   const loadChatData = useCallback(async () => {
     if (!currentUserId || !companyId || !chatId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
@@ -93,17 +93,25 @@ export default function ChatPage() {
     }
   }, [currentUserId]);
 
-  const handleSendMessage = async (messageText: string, mentionedUserId?: string) => {
+ const handleSendMessage = async (messageText: string, mentionedUserId?: string) => {
     if (!messageText.trim() || !currentUserId) return;
 
     setSending(true);
     try {
-      await api.createMessage({
+      // 1. Envia para a API
+      const newMessage = await api.createMessage({
         chatId,
         senderId: currentUserId,
         message: messageText,
         mentionedProfessionalId: mentionedUserId,
       });
+
+      console.log("✅ API retornou a mensagem criada:", newMessage);
+
+      // 2. 🔥 A MÁGICA É AQUI: Adiciona a mensagem na lista MANUALMENTE
+      // Não espere o socket. Se a API devolveu 200, a mensagem existe.
+      setMessages((prev) => [...prev, newMessage]); 
+
       toast.success("Mensagem enviada!");
     } catch (error) {
       console.error("Erro ao enviar mensagem:", error);
@@ -190,7 +198,7 @@ export default function ChatPage() {
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          
+
           <div>
             <h1 className="text-2xl font-bold">
               Chat {chatId.slice(0, 8)}...
@@ -211,7 +219,7 @@ export default function ChatPage() {
             <div className="h-2 w-2 rounded-full bg-green-600" />
             <span className="hidden sm:inline">Conectado</span>
           </div>
-          
+
           {chat?.companyId && (
             <Badge>
               Empresa: {chat.companyId.slice(0, 8)}...
@@ -219,21 +227,19 @@ export default function ChatPage() {
           )}
         </div>
       </div>
-      
+
       {/* Área de Mensagens - Esta é a parte principal que deve crescer e fazer scroll */}
       <div className="flex-1 min-h-0 py-4">
-        <ChatMessages 
-          messages={messages} 
+        <ChatMessages
+          messages={messages}
           currentUserId={currentUserId}
-          companyId={companyId}
-          chatId={chatId}
-          onNewMessage={handleNewMessage}
+        // Removemos onNewMessage, companyId e chatId pois o componente visual não precisa mais deles
         />
       </div>
-      
+
       {/* Input de Mensagem - Fica fixo na parte inferior */}
       <div className="p-4 border-t bg-background shrink-0">
-        <MessageInput 
+        <MessageInput
           onSendMessage={handleSendMessage}
           disabled={sending}
         />
