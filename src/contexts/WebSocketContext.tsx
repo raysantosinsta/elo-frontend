@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // contexts/WebSocketContext.tsx
 "use client";
 
@@ -6,13 +7,13 @@ import { io, Socket } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 import { toast } from "sonner";
 
-interface NotificationPayload {
-  title: string;
-  message: string;
-  type: string;
-  taskId?: string;
-  createdAt?: string;
-}
+// interface NotificationPayload {
+//   title: string;
+//   message: string;
+//   type: string;
+//   taskId?: string;
+//   createdAt?: string;
+// }
 
 const WebSocketContext = createContext<Socket | null>(null);
 

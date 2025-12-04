@@ -20,7 +20,6 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider>
-           {/* Removemos o AppLayout e o WebSocketProvider daqui */}
            {children}
            <Toaster position="top-right" richColors closeButton />
         </AuthProvider>
