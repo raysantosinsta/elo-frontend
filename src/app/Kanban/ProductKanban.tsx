@@ -200,8 +200,30 @@ export default function ProductKanban() {
 
   const createDefaultColumns = async () => {
     try {
-      console.log("📝 Criando colunas padrão...");
+      console.log("📝 Verificando se colunas padrão já existem...");
 
+      // Primeiro, buscar colunas existentes
+      const existingRes = await authFetch(`${API_BASE}/kanban-columns`);
+      if (existingRes.ok) {
+        const existingData = await existingRes.json();
+        let existingColumns = [];
+
+        if (Array.isArray(existingData)) {
+          existingColumns = existingData;
+        } else if (
+          existingData.columns &&
+          Array.isArray(existingData.columns)
+        ) {
+          existingColumns = existingData.columns;
+        }
+
+        if (existingColumns.length > 0) {
+          console.log("✅ Colunas já existem, não criando novamente");
+          return;
+        }
+      }
+
+      console.log("📝 Criando colunas padrão...");
       const defaultColumns = [
         "Sem etapa",
         "Preenchimento Estilo",
@@ -260,6 +282,13 @@ export default function ProductKanban() {
       } else {
         console.warn("⚠️ Formato de resposta inesperado:", data);
         columnsArray = [];
+      }
+
+      // VERIFICAÇÃO CRÍTICA: Se já tem colunas, não cria novas
+      if (columnsArray.length === 0) {
+        console.log("🔄 Nenhuma coluna encontrada, criando padrão...");
+        await createDefaultColumns();
+        return;
       }
 
       const sorted = columnsArray.sort(
@@ -725,7 +754,7 @@ export default function ProductKanban() {
     return "bg-green-100 text-green-800 border-green-200";
   };
 
-  const getImageUrl = (url: string) => url || '';
+  const getImageUrl = (url: string) => url || "";
 
   // ==================================== RENDER TASK CARD ====================================
   const TaskCard = ({ task }: { task: Task }) => (
@@ -736,7 +765,9 @@ export default function ProductKanban() {
     >
       <CardContent className="p-3">
         <div className="flex justify-between items-start mb-2">
-          <Badge className={`${getPriorityColor(task.priority)} border text-xs`}>
+          <Badge
+            className={`${getPriorityColor(task.priority)} border text-xs`}
+          >
             P{task.priority}
           </Badge>
           <DropdownMenu>
@@ -813,7 +844,7 @@ export default function ProductKanban() {
           <div className="flex items-center gap-1 text-xs mb-2">
             <Clock className="w-3 h-3" />
             <span className={isOverdue(task.dueDate) ? "text-red-600" : ""}>
-              {new Date(task.dueDate).toLocaleDateString('pt-BR')}
+              {new Date(task.dueDate).toLocaleDateString("pt-BR")}
             </span>
             {isOverdue(task.dueDate) && (
               <Badge variant="destructive" className="ml-1 text-xs px-1">
@@ -842,7 +873,10 @@ export default function ProductKanban() {
           </Badge>
           {task.assignedTo && (
             <div className="flex items-center gap-1 bg-purple-50 px-2 py-0.5 rounded-full text-xs">
-              <User className="w-3 h-3" /> <span className="truncate max-w-[60px]">{task.assignedTo.name.split(' ')[0]}</span>
+              <User className="w-3 h-3" />{" "}
+              <span className="truncate max-w-[60px]">
+                {task.assignedTo.name.split(" ")[0]}
+              </span>
             </div>
           )}
         </div>
@@ -881,14 +915,20 @@ export default function ProductKanban() {
               className="md:hidden text-white hover:bg-white/20"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             >
-              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {isMobileMenuOpen ? (
+                <X className="w-5 h-5" />
+              ) : (
+                <Menu className="w-5 h-5" />
+              )}
             </Button>
             <div>
               <h1 className="text-lg font-bold truncate">KANBAN</h1>
-              <p className="text-xs text-white/80 truncate">{user.company?.name}</p>
+              <p className="text-xs text-white/80 truncate">
+                {user.company?.name}
+              </p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <Button
               onClick={openCreateColumnModal}
@@ -919,8 +959,12 @@ export default function ProductKanban() {
               <span className="text-sm">{user.name}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Badge className="bg-white/20 text-xs">{safeColumns.length} colunas</Badge>
-              <Badge className="bg-white/20 text-xs">{tasks.length} tarefas</Badge>
+              <Badge className="bg-white/20 text-xs">
+                {safeColumns.length} colunas
+              </Badge>
+              <Badge className="bg-white/20 text-xs">
+                {tasks.length} tarefas
+              </Badge>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -930,7 +974,9 @@ export default function ProductKanban() {
                 disabled={loading}
                 size="sm"
               >
-                <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`}
+                />
                 {loading ? "Carregando..." : "Atualizar"}
               </Button>
               <Button
@@ -959,8 +1005,12 @@ export default function ProductKanban() {
             <span className="text-sm">{user.name}</span>
           </div>
           <div className="flex gap-2">
-            <Badge className="bg-white/20 text-xs">{safeColumns.length} colunas</Badge>
-            <Badge className="bg-white/20 text-xs">{tasks.length} tarefas</Badge>
+            <Badge className="bg-white/20 text-xs">
+              {safeColumns.length} colunas
+            </Badge>
+            <Badge className="bg-white/20 text-xs">
+              {tasks.length} tarefas
+            </Badge>
             {tasksWithoutColumn.length > 0 && (
               <Badge variant="destructive" className="bg-orange-500 text-xs">
                 {tasksWithoutColumn.length} sem coluna
@@ -974,10 +1024,16 @@ export default function ProductKanban() {
             disabled={loading}
             size="sm"
           >
-            <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`}
+            />
             {loading ? "Carregando..." : "Recarregar"}
           </Button>
-          <Button onClick={logout} className="bg-red-600 hover:bg-red-700 text-xs" size="sm">
+          <Button
+            onClick={logout}
+            className="bg-red-600 hover:bg-red-700 text-xs"
+            size="sm"
+          >
             <LogOut className="w-3 h-3 mr-1" /> Sair
           </Button>
         </div>
@@ -1000,19 +1056,27 @@ export default function ProductKanban() {
                   onDrop={(e) => handleDrop(e, col.id)}
                 >
                   <div className="bg-gray-200 rounded-t-lg px-3 py-2 flex justify-between items-center">
-                    <h3 className="font-semibold text-sm truncate">{col.title}</h3>
+                    <h3 className="font-semibold text-sm truncate">
+                      {col.title}
+                    </h3>
                     <div className="flex items-center gap-2">
                       <Badge className="text-xs">
                         {tasks.filter((t) => t.columnId === col.id).length}
                       </Badge>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-5 w-5">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                          >
                             <MoreVertical className="w-3 h-3" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditColumnModal(col)}>
+                          <DropdownMenuItem
+                            onClick={() => openEditColumnModal(col)}
+                          >
                             <Edit className="w-4 h-4 mr-2" /> Editar
                           </DropdownMenuItem>
                           <DropdownMenuItem
@@ -1092,7 +1156,8 @@ export default function ProductKanban() {
                   <div className="text-xs md:text-sm space-y-1">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-3 h-3 md:w-4 md:h-4" />
-                      <strong>Criado:</strong> {formatDateTime(previewTask.createdAt)}
+                      <strong>Criado:</strong>{" "}
+                      {formatDateTime(previewTask.createdAt)}
                     </div>
                   </div>
                 </div>
@@ -1100,7 +1165,8 @@ export default function ProductKanban() {
                   {previewTask.dueDate && (
                     <div className="flex items-center gap-2">
                       <Clock className="w-3 h-3 md:w-4 md:h-4" />
-                      <strong>Vence:</strong> {formatDateTime(previewTask.dueDate)}
+                      <strong>Vence:</strong>{" "}
+                      {formatDateTime(previewTask.dueDate)}
                       {isOverdue(previewTask.dueDate) && (
                         <Badge variant="destructive" className="ml-2 text-xs">
                           Atrasado
@@ -1147,7 +1213,11 @@ export default function ProductKanban() {
                   <div className="space-y-3">
                     {previewTask.taskAudios.map((a) => (
                       <div key={a.id} className="flex flex-col">
-                        <audio controls src={getImageUrl(a.url)} className="w-full" />
+                        <audio
+                          controls
+                          src={getImageUrl(a.url)}
+                          className="w-full"
+                        />
                         <p className="text-xs text-gray-600 mt-1 truncate">
                           {a.filename}
                         </p>
