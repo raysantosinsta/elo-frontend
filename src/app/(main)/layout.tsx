@@ -1,7 +1,7 @@
 "use client";
 
+import { Header } from "@/components/header";
 import { Sidebar } from "@/components/sidebar";
-import { Header } from "@/components/header"; // <--- Importando o Header
 import { useAuth } from "@/contexts/AuthContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import { useRouter } from "next/navigation";
@@ -46,7 +46,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <div className="flex flex-1 flex-col overflow-hidden">
           
           {/* Header (Fixo no topo da área de conteúdo) */}
-          <Header onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+          <Header />
 
           {/* Conteúdo Principal (Scrollável) */}
           <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-muted/10">
