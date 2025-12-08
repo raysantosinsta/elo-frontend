@@ -1036,116 +1036,138 @@ export default function ProductKanban() {
 
       {/* BOARD CONTENT */}
       <main className="flex-1 overflow-x-auto overflow-y-hidden p-4 md:p-6">
-        <div className="flex gap-4 min-w-max h-full items-start">
-          {safeColumns.map((col) => (
-            <div
-              key={col.id}
-              className="w-80 flex-shrink-0 flex flex-col max-h-[calc(100vh-140px)] rounded-xl bg-white border border-[#95A5A6]/20 shadow-sm"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleDrop(e, col.id)}
+        {safeColumns.length === 0 ? (
+          // --- ESTADO VAZIO (ZERO STATE) ---
+          <div className="h-full flex flex-col items-center justify-center text-center space-y-4 animate-in fade-in zoom-in duration-300">
+            <div className="bg-white p-6 rounded-full shadow-sm border border-[#95A5A6]/20">
+              <Layout className="w-12 h-12 text-[#95A5A6]" />
+            </div>
+            <div className="max-w-md space-y-2">
+              <h3 className="text-xl font-bold text-[#2D3436]">
+                Nenhuma coluna encontrada
+              </h3>
+              <p className="text-[#95A5A6]">
+                Seu quadro ainda está vazio. Crie a primeira coluna para começar a organizar o fluxo de produtos.
+              </p>
+            </div>
+            <Button
+              onClick={openCreateColumnModal}
+              className="bg-[#D35400] hover:bg-[#A04000] text-white px-8 shadow-lg hover:shadow-xl transition-all"
             >
-              {/* Header da Coluna */}
-              <div className="px-4 py-3 border-b border-[#95A5A6]/10 flex justify-between items-center bg-[#FAFAFA] rounded-t-xl">
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <span className="w-2 h-2 rounded-full bg-[#2C3E50]"></span>
-                  <h3 className="font-bold text-[#2D3436] text-sm truncate uppercase tracking-wider">
-                    {col.title}
-                  </h3>
+              <Plus className="w-4 h-4 mr-2" />
+              Criar Primeira Coluna
+            </Button>
+          </div>
+        ) : (
+          // --- CONTEÚDO NORMAL DO KANBAN ---
+          <div className="flex gap-4 min-w-max h-full items-start">
+            {safeColumns.map((col) => (
+              <div
+                key={col.id}
+                className="w-80 flex-shrink-0 flex flex-col max-h-[calc(100vh-140px)] rounded-xl bg-white border border-[#95A5A6]/20 shadow-sm"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => handleDrop(e, col.id)}
+              >
+                {/* Header da Coluna */}
+                <div className="px-4 py-3 border-b border-[#95A5A6]/10 flex justify-between items-center bg-[#FAFAFA] rounded-t-xl">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="w-2 h-2 rounded-full bg-[#2C3E50]"></span>
+                    <h3 className="font-bold text-[#2D3436] text-sm truncate uppercase tracking-wider">
+                      {col.title}
+                    </h3>
+                    <Badge
+                      variant="secondary"
+                      className="bg-[#F5F0E6] text-[#2D3436] text-[10px] font-bold h-5 min-w-[20px] justify-center"
+                    >
+                      {tasks.filter((t) => t.columnId === col.id).length}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-[#95A5A6] hover:bg-[#F5F0E6] hover:text-[#D35400]"
+                      onClick={() => openCreateTaskInColumn(col.id)}
+                      title="Adicionar tarefa nesta coluna"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </Button>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-[#95A5A6] hover:bg-[#F5F0E6]"
+                        >
+                          <MoreVertical className="w-3.5 h-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditColumnModal(col)}>
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-red-600 cursor-pointer"
+                          onClick={() => onRequestDeleteColumn(col.id)}
+                        >
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                {/* Corpo da Coluna */}
+                <div className="p-3 overflow-y-auto flex-1 space-y-3 bg-[#FAFAFA]/50 custom-scrollbar">
+                  {tasks
+                    .filter((t) => t.columnId === col.id)
+                    .map((task) => (
+                      <TaskCard key={task.id} task={task} />
+                    ))}
+
+                  {tasks.filter((t) => t.columnId === col.id).length === 0 && (
+                    <div className="h-24 flex items-center justify-center border-2 border-dashed border-[#95A5A6]/10 rounded-lg">
+                      <p className="text-xs text-[#95A5A6]/50 font-medium">
+                        Vazio
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* Coluna "Sem Etapa" (Fallback) - Só mostra se houver tarefas órfãs E já houver colunas criadas, ou se quiser manter sempre visível remova a condição safeColumns.length > 0 do pai se preferir */}
+            {tasksWithoutColumn.length > 0 && (
+              <div
+                className="w-80 flex-shrink-0 flex flex-col max-h-[calc(100vh-140px)] rounded-xl bg-orange-50 border border-orange-100 shadow-sm"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => handleDrop(e, null)}
+              >
+                <div className="px-4 py-3 border-b border-orange-200 bg-orange-100/50 rounded-t-xl flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-orange-600" />
+                    <h3 className="font-bold text-orange-800 text-sm uppercase">
+                      Não Classificado
+                    </h3>
+                  </div>
                   <Badge
-                    variant="secondary"
-                    className="bg-[#F5F0E6] text-[#2D3436] text-[10px] font-bold h-5 min-w-[20px] justify-center"
+                    variant="outline"
+                    className="border-orange-200 text-orange-700 bg-white"
                   >
-                    {tasks.filter((t) => t.columnId === col.id).length}
+                    {tasksWithoutColumn.length}
                   </Badge>
                 </div>
-
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-[#95A5A6] hover:bg-[#F5F0E6] hover:text-[#D35400]"
-                    onClick={() => openCreateTaskInColumn(col.id)}
-                    title="Adicionar tarefa nesta coluna"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </Button>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-[#95A5A6] hover:bg-[#F5F0E6]"
-                      >
-                        <MoreVertical className="w-3.5 h-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => openEditColumnModal(col)}
-                      >
-                        Editar
-                      </DropdownMenuItem>
-                      {/* AÇÃO DE EXCLUSÃO ATUALIZADA */}
-                      <DropdownMenuItem
-                        className="text-red-600 cursor-pointer"
-                        onClick={() => onRequestDeleteColumn(col.id)}
-                      >
-                        Excluir
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-
-              {/* Corpo da Coluna */}
-              <div className="p-3 overflow-y-auto flex-1 space-y-3 bg-[#FAFAFA]/50 custom-scrollbar">
-                {tasks
-                  .filter((t) => t.columnId === col.id)
-                  .map((task) => (
+                <div className="p-3 overflow-y-auto flex-1 space-y-3">
+                  {tasksWithoutColumn.map((task) => (
                     <TaskCard key={task.id} task={task} />
                   ))}
-
-                {tasks.filter((t) => t.columnId === col.id).length === 0 && (
-                  <div className="h-24 flex items-center justify-center border-2 border-dashed border-[#95A5A6]/10 rounded-lg">
-                    <p className="text-xs text-[#95A5A6]/50 font-medium">
-                      Vazio
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {/* Coluna "Sem Etapa" (Fallback) */}
-          {tasksWithoutColumn.length > 0 && (
-            <div
-              className="w-80 flex-shrink-0 flex flex-col max-h-[calc(100vh-140px)] rounded-xl bg-orange-50 border border-orange-100 shadow-sm"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleDrop(e, null)}
-            >
-              <div className="px-4 py-3 border-b border-orange-200 bg-orange-100/50 rounded-t-xl flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-orange-600" />
-                  <h3 className="font-bold text-orange-800 text-sm uppercase">
-                    Não Classificado
-                  </h3>
                 </div>
-                <Badge
-                  variant="outline"
-                  className="border-orange-200 text-orange-700 bg-white"
-                >
-                  {tasksWithoutColumn.length}
-                </Badge>
               </div>
-              <div className="p-3 overflow-y-auto flex-1 space-y-3">
-                {tasksWithoutColumn.map((task) => (
-                  <TaskCard key={task.id} task={task} />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* --- DIALOGS --- */}
