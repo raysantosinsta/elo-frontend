@@ -56,7 +56,7 @@ import { toast } from "sonner";
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL;
 
 // --- INTERFACES ---
 interface Professional {
