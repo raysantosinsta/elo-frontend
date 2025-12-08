@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { socketService } from "@/hooks/use-app-features"; // Ou onde estiver seu socketService
+import { socketService } from "@/hooks/socket";
 import { useCallback } from "react";
 import { toast } from "sonner";
 
