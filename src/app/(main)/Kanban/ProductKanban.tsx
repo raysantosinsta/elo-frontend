@@ -32,16 +32,12 @@ import {
   Clock,
   Edit,
   Eye,
-  // FileAudio, // (Não utilizado no momento, mas mantido imports)
-  // FileVideo,
-  Image as ImageIcon,
+  ImageIcon,
   Layout,
-  // LogOut,
   Menu,
   Mic,
   MoreVertical,
   MoreHorizontal,
-  // Music,
   Plus,
   RefreshCw,
   Settings,
@@ -51,16 +47,12 @@ import {
   Video,
   X,
   Flag,
-  // MessageSquare,
-  // Link as LinkIcon,
   FileText,
   Paperclip,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-
-// --- IMPORTAÇÃO DO NOVO COMPONENTE ---
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
@@ -234,20 +226,17 @@ export default function ProductKanban() {
       const res = await authFetch(`${API_BASE}/kanban-columns`);
 
       if (!res.ok) {
-        // Se der erro, apenas logamos. O backend deve garantir a criação.
         console.error(`Erro ao buscar colunas: ${res.status}`);
         return;
       }
 
       const data = await res.json();
-
-      // O backend agora retorna { success: true, columns: [...] }
       let columnsArray: Column[] = [];
 
       if (Array.isArray(data)) {
-        columnsArray = data; // Compatibilidade legada
+        columnsArray = data;
       } else if (data.columns && Array.isArray(data.columns)) {
-        columnsArray = data.columns; // Novo formato padrão
+        columnsArray = data.columns;
       }
 
       if (columnsArray.length > 0) {
@@ -255,8 +244,6 @@ export default function ProductKanban() {
           columnsArray.sort((a, b) => (a.order || 0) - (b.order || 0))
         );
       } else {
-        // Se veio vazio, o backend provavelmente falhou em criar as padrões ou é uma empresa nova sem trigger.
-        // Podemos tentar forçar um refresh ou apenas mostrar vazio.
         setColumns([]);
       }
     } catch (err) {
@@ -277,12 +264,9 @@ export default function ProductKanban() {
       }
       const data = await res.json();
       let tasksArray = [];
-      // O Backend retorna { data: [...], meta: ... }, então precisamos ler data.data
       if (data.data && Array.isArray(data.data)) {
         tasksArray = data.data;
-      }
-      // Fallbacks para formatos antigos ou outros endpoints
-      else if (Array.isArray(data)) {
+      } else if (Array.isArray(data)) {
         tasksArray = data;
       } else if (data.tasks && Array.isArray(data.tasks)) {
         tasksArray = data.tasks;
@@ -369,9 +353,6 @@ export default function ProductKanban() {
     }
   };
 
-  // --- NOVA LÓGICA DE EXCLUSÃO (SUBSTITUINDO DELETE DIRETO) ---
-
-  // 1. Solicitar exclusão de coluna
   const onRequestDeleteColumn = (columnId: string) => {
     const hasTasks = tasks.some((t) => t.columnId === columnId);
     if (hasTasks) {
@@ -384,13 +365,11 @@ export default function ProductKanban() {
     setDeleteModalOpen(true);
   };
 
-  // 2. Solicitar exclusão de tarefa
   const onRequestDeleteTask = (taskId: string) => {
     setItemToDelete({ type: "task", id: taskId });
     setDeleteModalOpen(true);
   };
 
-  // 3. Confirmar Exclusão
   const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
     setIsDeleting(true);
@@ -413,7 +392,6 @@ export default function ProductKanban() {
         });
         setTasks((prev) => prev.filter((t) => t.id !== itemToDelete.id));
         toast.success("Tarefa excluída");
-        // Fechar modal de preview se estiver aberto na tarefa deletada
         if (isPreviewModal && previewTask?.id === itemToDelete.id) {
           setIsPreviewModal(false);
         }
@@ -431,12 +409,14 @@ export default function ProductKanban() {
     setEditingCol(column);
     setColTitle(column.title);
     setIsColumnModal(true);
+    setIsMobileMenuOpen(false); // Fechar menu mobile
   };
 
   const openCreateColumnModal = () => {
     setEditingCol(null);
     setColTitle("");
     setIsColumnModal(true);
+    setIsMobileMenuOpen(false); // Fechar menu mobile
   };
 
   // --- CRUD TAREFAS ---
@@ -465,21 +445,6 @@ export default function ProductKanban() {
       } catch (err) {}
     },
     [authFetch]
-  );
-
-  const completeTask = useCallback(
-    async (taskId: string) => {
-      try {
-        await authFetch(`${API_BASE}/tasks/${taskId}/complete`, {
-          method: "PATCH",
-        });
-        await refreshTask(taskId);
-        toast.success("Tarefa concluída!");
-      } catch (e) {
-        toast.error("Erro ao concluir tarefa");
-      }
-    },
-    [authFetch, refreshTask]
   );
 
   const handleDrop = useCallback(
@@ -546,7 +511,6 @@ export default function ProductKanban() {
     return () => clearInterval(i);
   }, [isRecording]);
 
-  // --- GERENCIAMENTO DE ARQUIVOS LOCAIS ---
   const removeNewFile = (
     index: number,
     type: "image" | "audio" | "video",
@@ -695,6 +659,7 @@ export default function ProductKanban() {
     setEditTaskPriority(task.priority.toString());
     setEditTaskStatus(task.status);
     setIsEditTaskModal(true);
+    setIsMobileMenuOpen(false);
   };
 
   const openPreviewModal = (task: Task) => {
@@ -706,6 +671,7 @@ export default function ProductKanban() {
     resetTaskForm();
     setTaskColumn(columnId);
     setIsTaskModal(true);
+    setIsMobileMenuOpen(false);
   };
 
   // --- UTILS UI ---
@@ -729,7 +695,6 @@ export default function ProductKanban() {
     return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
   };
 
-  // Helper de Cores
   const getStatusConfig = (status: string) => {
     switch (status) {
       case "PENDING":
@@ -773,18 +738,11 @@ export default function ProductKanban() {
     return { label: "Low", style: "bg-indigo-100 text-indigo-700" };
   };
 
-  // --- COMPONENTS ---
-  // --- COMPONENTS ---
   const TaskCard = ({ task }: { task: Task }) => {
-  // PROTEÇÃO: Garante que sejam arrays antes de usar
     const images = task.taskImages || [];
     const audios = task.taskAudios || [];
     const videos = task.taskVideos || [];
-
-    const statusConfig = getStatusConfig(task.status);
     const priorityConfig = getPriorityConfig(task.priority);
-    
-    // Use as variáveis protegidas agora
     const filesCount = images.length + audios.length + videos.length;
     const coverImage = images.length > 0 ? images[0] : null;
 
@@ -795,19 +753,18 @@ export default function ProductKanban() {
         className="bg-white shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing transition-all border border-slate-200 rounded-2xl group relative overflow-hidden"
       >
         <CardContent className="p-5 flex flex-col gap-4">
-          {/* Header: Menu */}
           <div className="flex justify-end items-start h-6">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 text-slate-400 hover:text-slate-600 -mr-2"
+                  className="h-6 w-6 text-slate-400 hover:text-slate-600 -mr-2 touch-action-manipulation"
                 >
                   <MoreHorizontal className="w-5 h-5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuContent align="end" className="w-40 z-50">
                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => openPreviewModal(task)}>
@@ -827,7 +784,6 @@ export default function ProductKanban() {
             </DropdownMenu>
           </div>
 
-          {/* Title & Description */}
           <div>
             <h3
               className="font-bold text-slate-900 text-[15px] leading-tight mb-1.5 cursor-pointer hover:text-indigo-600 transition-colors"
@@ -840,7 +796,6 @@ export default function ProductKanban() {
             </p>
           </div>
 
-          {/* --- NOVO: CAPA DA IMAGEM --- */}
           {coverImage && (
             <div
               className="relative w-full h-32 rounded-lg overflow-hidden cursor-pointer group-hover:opacity-90 transition-opacity mt-1"
@@ -851,17 +806,14 @@ export default function ProductKanban() {
                 alt="Task Cover"
                 className="w-full h-full object-cover"
               />
-              {/* Badge indicando se tem mais fotos */}
               {images.length > 1 && (
-                <div className="...">
+                <div className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded-full">
                   +{images.length - 1}
                 </div>
               )}
             </div>
           )}
-          {/* --------------------------- */}
 
-          {/* Assignees */}
           <div className="flex items-center justify-between py-1">
             <span className="text-slate-500 text-xs font-medium">
               Assignees :
@@ -885,7 +837,6 @@ export default function ProductKanban() {
             </div>
           </div>
 
-          {/* Date & Priority */}
           <div className="flex items-center justify-between">
             <div
               className={cn(
@@ -910,7 +861,6 @@ export default function ProductKanban() {
             </div>
           </div>
 
-          {/* Footer Separator & Meta */}
           <div className="pt-3 mt-1 border-t border-slate-100 flex items-center gap-4">
             <div
               className="flex items-center gap-1.5 text-slate-400 text-xs font-medium hover:text-slate-600 transition-colors cursor-pointer"
@@ -943,8 +893,8 @@ export default function ProductKanban() {
   const tasksWithoutColumn = tasks.filter((t) => !t.columnId);
 
   return (
-    // Fundo Bege Suave (#F5F0E6)
-    <div className="min-h-screen bg-[#F5F0E6] flex flex-col font-sans">
+    // FIX 1: Alterado para min-h-[100dvh] para corrigir problemas em mobile browsers
+    <div className="min-h-[100dvh] bg-[#F5F0E6] flex flex-col font-sans">
       {/* HEADER */}
       <header className="bg-[#2C3E50] text-white px-4 py-3 shadow-md border-b border-[#2C3E50] z-20">
         <div className="flex justify-between items-center max-w-[1920px] mx-auto w-full">
@@ -952,7 +902,7 @@ export default function ProductKanban() {
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden text-white hover:bg-white/10"
+              className="md:hidden text-white hover:bg-white/10 touch-action-manipulation"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             >
               {isMobileMenuOpen ? <X /> : <Menu />}
@@ -993,8 +943,9 @@ export default function ProductKanban() {
               onClick={() => {
                 resetTaskForm();
                 setIsTaskModal(true);
+                setIsMobileMenuOpen(false);
               }}
-              className="bg-[#D35400] hover:bg-[#A04000] text-white text-xs h-9 font-semibold shadow-lg hover:shadow-xl transition-all"
+              className="bg-[#D35400] hover:bg-[#A04000] text-white text-xs h-9 font-semibold shadow-lg hover:shadow-xl transition-all touch-action-manipulation"
             >
               <Plus className="w-4 h-4 mr-1.5" /> Nova Tarefa
             </Button>
@@ -1007,7 +958,10 @@ export default function ProductKanban() {
             <div className="grid grid-cols-2 gap-2">
               <Button
                 variant="ghost"
-                onClick={loadInitialData}
+                onClick={() => {
+                  loadInitialData();
+                  setIsMobileMenuOpen(false);
+                }}
                 className="justify-start text-white hover:bg-white/10"
               >
                 <RefreshCw className="w-4 h-4 mr-2" /> Atualizar
@@ -1037,7 +991,6 @@ export default function ProductKanban() {
       {/* BOARD CONTENT */}
       <main className="flex-1 overflow-x-auto overflow-y-hidden p-4 md:p-6">
         {safeColumns.length === 0 ? (
-          // --- ESTADO VAZIO (ZERO STATE) ---
           <div className="h-full flex flex-col items-center justify-center text-center space-y-4 animate-in fade-in zoom-in duration-300">
             <div className="bg-white p-6 rounded-full shadow-sm border border-[#95A5A6]/20">
               <Layout className="w-12 h-12 text-[#95A5A6]" />
@@ -1047,19 +1000,19 @@ export default function ProductKanban() {
                 Nenhuma coluna encontrada
               </h3>
               <p className="text-[#95A5A6]">
-                Seu quadro ainda está vazio. Crie a primeira coluna para começar a organizar o fluxo de produtos.
+                Seu quadro ainda está vazio. Crie a primeira coluna para começar a
+                organizar o fluxo de produtos.
               </p>
             </div>
             <Button
               onClick={openCreateColumnModal}
-              className="bg-[#D35400] hover:bg-[#A04000] text-white px-8 shadow-lg hover:shadow-xl transition-all"
+              className="bg-[#D35400] hover:bg-[#A04000] text-white px-8 shadow-lg hover:shadow-xl transition-all touch-action-manipulation"
             >
               <Plus className="w-4 h-4 mr-2" />
               Criar Primeira Coluna
             </Button>
           </div>
         ) : (
-          // --- CONTEÚDO NORMAL DO KANBAN ---
           <div className="flex gap-4 min-w-max h-full items-start">
             {safeColumns.map((col) => (
               <div
@@ -1068,7 +1021,6 @@ export default function ProductKanban() {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleDrop(e, col.id)}
               >
-                {/* Header da Coluna */}
                 <div className="px-4 py-3 border-b border-[#95A5A6]/10 flex justify-between items-center bg-[#FAFAFA] rounded-t-xl">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <span className="w-2 h-2 rounded-full bg-[#2C3E50]"></span>
@@ -1087,7 +1039,7 @@ export default function ProductKanban() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 text-[#95A5A6] hover:bg-[#F5F0E6] hover:text-[#D35400]"
+                      className="h-6 w-6 text-[#95A5A6] hover:bg-[#F5F0E6] hover:text-[#D35400] touch-action-manipulation"
                       onClick={() => openCreateTaskInColumn(col.id)}
                       title="Adicionar tarefa nesta coluna"
                     >
@@ -1099,13 +1051,15 @@ export default function ProductKanban() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-6 w-6 text-[#95A5A6] hover:bg-[#F5F0E6]"
+                          className="h-6 w-6 text-[#95A5A6] hover:bg-[#F5F0E6] touch-action-manipulation"
                         >
                           <MoreVertical className="w-3.5 h-3.5" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEditColumnModal(col)}>
+                      <DropdownMenuContent align="end" className="z-50">
+                        <DropdownMenuItem
+                          onClick={() => openEditColumnModal(col)}
+                        >
                           Editar
                         </DropdownMenuItem>
                         <DropdownMenuItem
@@ -1119,7 +1073,6 @@ export default function ProductKanban() {
                   </div>
                 </div>
 
-                {/* Corpo da Coluna */}
                 <div className="p-3 overflow-y-auto flex-1 space-y-3 bg-[#FAFAFA]/50 custom-scrollbar">
                   {tasks
                     .filter((t) => t.columnId === col.id)
@@ -1138,7 +1091,6 @@ export default function ProductKanban() {
               </div>
             ))}
 
-            {/* Coluna "Sem Etapa" (Fallback) - Só mostra se houver tarefas órfãs E já houver colunas criadas, ou se quiser manter sempre visível remova a condição safeColumns.length > 0 do pai se preferir */}
             {tasksWithoutColumn.length > 0 && (
               <div
                 className="w-80 flex-shrink-0 flex flex-col max-h-[calc(100vh-140px)] rounded-xl bg-orange-50 border border-orange-100 shadow-sm"
@@ -1172,7 +1124,7 @@ export default function ProductKanban() {
 
       {/* --- DIALOGS --- */}
 
-      {/* 1. Modal Nova/Edit Tarefa */}
+      {/* 1. Modal Nova/Edit Tarefa - FIX: Envolvido em FORM para funcionar submit mobile */}
       <Dialog
         open={isTaskModal || isEditTaskModal}
         onOpenChange={(open) => {
@@ -1183,166 +1135,185 @@ export default function ProductKanban() {
         }}
       >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white border-0 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-[#2D3436] flex items-center gap-2">
-              {isEditTaskModal ? (
-                <Edit className="w-5 h-5 text-[#2C3E50]" />
-              ) : (
-                <Plus className="w-5 h-5 text-[#D35400]" />
-              )}
-              {isEditTaskModal ? "Editar Tarefa" : "Nova Tarefa"}
-            </DialogTitle>
-          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (isEditTaskModal) updateTask();
+              else createTask();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-[#2D3436] flex items-center gap-2">
+                {isEditTaskModal ? (
+                  <Edit className="w-5 h-5 text-[#2C3E50]" />
+                ) : (
+                  <Plus className="w-5 h-5 text-[#D35400]" />
+                )}
+                {isEditTaskModal ? "Editar Tarefa" : "Nova Tarefa"}
+              </DialogTitle>
+            </DialogHeader>
 
-          <div className="grid gap-6 py-4">
-            {/* Título e Descrição */}
-            <div className="space-y-4">
-              <div className="grid gap-2">
-                <Label htmlFor="title" className="text-[#2D3436]">
-                  Título da Tarefa <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="title"
-                  placeholder="Ex: Refatorar Homepage"
-                  value={isEditTaskModal ? editTaskTitle : taskTitle}
-                  onChange={(e) =>
-                    isEditTaskModal
-                      ? setEditTaskTitle(e.target.value)
-                      : setTaskTitle(e.target.value)
-                  }
-                  className="border-[#95A5A6]/30 focus:border-[#2C3E50] focus:ring-[#2C3E50]"
-                />
+            <div className="grid gap-6 py-4">
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="title" className="text-[#2D3436]">
+                    Título da Tarefa <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="title"
+                    placeholder="Ex: Refatorar Homepage"
+                    value={isEditTaskModal ? editTaskTitle : taskTitle}
+                    onChange={(e) =>
+                      isEditTaskModal
+                        ? setEditTaskTitle(e.target.value)
+                        : setTaskTitle(e.target.value)
+                    }
+                    className="border-[#95A5A6]/30 focus:border-[#2C3E50] focus:ring-[#2C3E50]"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="desc" className="text-[#2D3436]">
+                    Descrição
+                  </Label>
+                  <Textarea
+                    id="desc"
+                    placeholder="Detalhes da tarefa..."
+                    value={
+                      isEditTaskModal
+                        ? editTaskDescription
+                        : taskDescription
+                    }
+                    onChange={(e) =>
+                      isEditTaskModal
+                        ? setEditTaskDescription(e.target.value)
+                        : setTaskDescription(e.target.value)
+                    }
+                    className="min-h-[100px] border-[#95A5A6]/30 resize-none focus:border-[#2C3E50] focus:ring-[#2C3E50]"
+                  />
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="desc" className="text-[#2D3436]">
-                  Descrição
-                </Label>
-                <Textarea
-                  id="desc"
-                  placeholder="Detalhes da tarefa..."
-                  value={
-                    isEditTaskModal ? editTaskDescription : taskDescription
-                  }
-                  onChange={(e) =>
-                    isEditTaskModal
-                      ? setEditTaskDescription(e.target.value)
-                      : setTaskDescription(e.target.value)
-                  }
-                  className="min-h-[100px] border-[#95A5A6]/30 resize-none focus:border-[#2C3E50] focus:ring-[#2C3E50]"
-                />
-              </div>
-            </div>
 
-            {/* Metadados (Grid 2 colunas) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label className="text-[#2D3436]">Prioridade</Label>
-                <select
-                  className="flex h-10 w-full rounded-md border border-[#95A5A6]/30 bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[#2C3E50] focus:border-transparent"
-                  value={isEditTaskModal ? editTaskPriority : taskPriority}
-                  onChange={(e) =>
-                    isEditTaskModal
-                      ? setEditTaskPriority(e.target.value)
-                      : setTaskPriority(e.target.value)
-                  }
-                >
-                  <option value="1">Alta (Urgente)</option>
-                  <option value="2">Média (Normal)</option>
-                  <option value="3">Baixa (Rotina)</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label className="text-[#2D3436]">Prioridade</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-[#95A5A6]/30 bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[#2C3E50] focus:border-transparent"
+                    value={
+                      isEditTaskModal ? editTaskPriority : taskPriority
+                    }
+                    onChange={(e) =>
+                      isEditTaskModal
+                        ? setEditTaskPriority(e.target.value)
+                        : setTaskPriority(e.target.value)
+                    }
+                  >
+                    <option value="1">Alta (Urgente)</option>
+                    <option value="2">Média (Normal)</option>
+                    <option value="3">Baixa (Rotina)</option>
+                  </select>
+                </div>
+                <div className="grid gap-2">
+                  <Label className="text-[#2D3436]">Coluna / Status</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-[#95A5A6]/30 bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-[#2C3E50]"
+                    value={isEditTaskModal ? editTaskColumn : taskColumn}
+                    onChange={(e) =>
+                      isEditTaskModal
+                        ? setEditTaskColumn(e.target.value)
+                        : setTaskColumn(e.target.value)
+                    }
+                  >
+                    <option value="">-- Selecione --</option>
+                    {safeColumns.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid gap-2">
+                  <Label className="text-[#2D3436]">Vencimento</Label>
+                  <Input
+                    type="datetime-local"
+                    value={
+                      isEditTaskModal ? editTaskDueDate : taskDueDate
+                    }
+                    onChange={(e) =>
+                      isEditTaskModal
+                        ? setEditTaskDueDate(e.target.value)
+                        : setTaskDueDate(e.target.value)
+                    }
+                    className="border-[#95A5A6]/30"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label className="text-[#2D3436]">Responsável</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-[#95A5A6]/30 bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-[#2C3E50]"
+                    value={
+                      isEditTaskModal
+                        ? editTaskAssignedTo
+                        : taskAssignedTo
+                    }
+                    onChange={(e) =>
+                      isEditTaskModal
+                        ? setEditTaskAssignedTo(e.target.value)
+                        : setTaskAssignedTo(e.target.value)
+                    }
+                  >
+                    <option value="">Sem responsável</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label className="text-[#2D3436]">Coluna / Status</Label>
-                <select
-                  className="flex h-10 w-full rounded-md border border-[#95A5A6]/30 bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-[#2C3E50]"
-                  value={isEditTaskModal ? editTaskColumn : taskColumn}
-                  onChange={(e) =>
-                    isEditTaskModal
-                      ? setEditTaskColumn(e.target.value)
-                      : setTaskColumn(e.target.value)
-                  }
-                >
-                  <option value="">-- Selecione --</option>
-                  {safeColumns.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[#2D3436]">Vencimento</Label>
-                <Input
-                  type="datetime-local"
-                  value={isEditTaskModal ? editTaskDueDate : taskDueDate}
-                  onChange={(e) =>
-                    isEditTaskModal
-                      ? setEditTaskDueDate(e.target.value)
-                      : setTaskDueDate(e.target.value)
-                  }
-                  className="border-[#95A5A6]/30"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[#2D3436]">Responsável</Label>
-                <select
-                  className="flex h-10 w-full rounded-md border border-[#95A5A6]/30 bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-[#2C3E50]"
-                  value={isEditTaskModal ? editTaskAssignedTo : taskAssignedTo}
-                  onChange={(e) =>
-                    isEditTaskModal
-                      ? setEditTaskAssignedTo(e.target.value)
-                      : setTaskAssignedTo(e.target.value)
-                  }
-                >
-                  <option value="">Sem responsável</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
 
-            {/* Uploads */}
-            <div className="space-y-4 border-t border-[#95A5A6]/20 pt-4">
-              <h4 className="font-semibold text-sm text-[#2D3436]">Anexos</h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* 1. Imagem */}
-                <div className="flex flex-col gap-2">
-                  <div className="p-3 border border-dashed border-[#95A5A6]/40 rounded-lg bg-[#F5F0E6]/30 hover:bg-[#F5F0E6]/60 transition-colors h-32 flex flex-col justify-center">
-                    <Label className="cursor-pointer flex flex-col items-center gap-2 text-center h-full justify-center">
-                      <ImageIcon className="w-6 h-6 text-[#2C3E50]" />
-                      <span className="text-xs text-[#95A5A6]">
-                        Adicionar Imagens
-                      </span>
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files) {
-                            const files = Array.from(e.target.files);
-                            if (isEditTaskModal)
-                              setEditTaskImages((prev) => [...prev, ...files]);
-                            else setTaskImages((prev) => [...prev, ...files]);
-                          }
-                        }}
-                      />
-                    </Label>
-                  </div>
-                  {(isEditTaskModal ? editTaskImages : taskImages).length >
-                    0 && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-[#95A5A6]">
-                        {(isEditTaskModal ? editTaskImages : taskImages).length}{" "}
-                        selecionadas
-                      </p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(isEditTaskModal ? editTaskImages : taskImages).map(
-                          (file, idx) => (
+              {/* Uploads Section */}
+              <div className="space-y-4 border-t border-[#95A5A6]/20 pt-4">
+                <h4 className="font-semibold text-sm text-[#2D3436]">Anexos</h4>
+                {/* Imagens */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="flex flex-col gap-2">
+                    <div className="p-3 border border-dashed border-[#95A5A6]/40 rounded-lg bg-[#F5F0E6]/30 hover:bg-[#F5F0E6]/60 transition-colors h-32 flex flex-col justify-center">
+                      <Label className="cursor-pointer flex flex-col items-center gap-2 text-center h-full justify-center">
+                        <ImageIcon className="w-6 h-6 text-[#2C3E50]" />
+                        <span className="text-xs text-[#95A5A6]">
+                          Adicionar Imagens
+                        </span>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files) {
+                              const files = Array.from(e.target.files);
+                              if (isEditTaskModal)
+                                setEditTaskImages((prev) => [
+                                  ...prev,
+                                  ...files,
+                                ]);
+                              else setTaskImages((prev) => [...prev, ...files]);
+                            }
+                          }}
+                        />
+                      </Label>
+                    </div>
+                    {(isEditTaskModal ? editTaskImages : taskImages).length >
+                      0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-[#95A5A6]">
+                          {(isEditTaskModal ? editTaskImages : taskImages).length}{" "}
+                          selecionadas
+                        </p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(isEditTaskModal
+                            ? editTaskImages
+                            : taskImages
+                          ).map((file, idx) => (
                             <div
                               key={idx}
                               className="relative aspect-square rounded overflow-hidden border border-gray-200 group"
@@ -1353,55 +1324,64 @@ export default function ProductKanban() {
                                 alt="preview"
                               />
                               <button
+                                type="button"
                                 onClick={() =>
-                                  removeNewFile(idx, "image", isEditTaskModal)
+                                  removeNewFile(
+                                    idx,
+                                    "image",
+                                    isEditTaskModal
+                                  )
                                 }
                                 className="absolute top-0 right-0 bg-red-500 text-white p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                               >
                                 <X className="w-3 h-3" />
                               </button>
                             </div>
-                          )
-                        )}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. Vídeo */}
-                <div className="flex flex-col gap-2">
-                  <div className="p-3 border border-dashed border-[#95A5A6]/40 rounded-lg bg-[#F5F0E6]/30 hover:bg-[#F5F0E6]/60 transition-colors h-32 flex flex-col justify-center">
-                    <Label className="cursor-pointer flex flex-col items-center gap-2 text-center h-full justify-center">
-                      <Video className="w-6 h-6 text-[#2C3E50]" />
-                      <span className="text-xs text-[#95A5A6]">
-                        Adicionar Vídeos
-                      </span>
-                      <Input
-                        type="file"
-                        accept="video/*"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files) {
-                            const files = Array.from(e.target.files);
-                            if (isEditTaskModal)
-                              setEditTaskVideos((prev) => [...prev, ...files]);
-                            else setTaskVideos((prev) => [...prev, ...files]);
-                          }
-                        }}
-                      />
-                    </Label>
+                    )}
                   </div>
-                  {(isEditTaskModal ? editTaskVideos : taskVideos).length >
-                    0 && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-[#95A5A6]">
-                        {(isEditTaskModal ? editTaskVideos : taskVideos).length}{" "}
-                        selecionados
-                      </p>
-                      <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                        {(isEditTaskModal ? editTaskVideos : taskVideos).map(
-                          (file, idx) => (
+
+                  {/* Video */}
+                  <div className="flex flex-col gap-2">
+                    <div className="p-3 border border-dashed border-[#95A5A6]/40 rounded-lg bg-[#F5F0E6]/30 hover:bg-[#F5F0E6]/60 transition-colors h-32 flex flex-col justify-center">
+                      <Label className="cursor-pointer flex flex-col items-center gap-2 text-center h-full justify-center">
+                        <Video className="w-6 h-6 text-[#2C3E50]" />
+                        <span className="text-xs text-[#95A5A6]">
+                          Adicionar Vídeos
+                        </span>
+                        <Input
+                          type="file"
+                          accept="video/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files) {
+                              const files = Array.from(e.target.files);
+                              if (isEditTaskModal)
+                                setEditTaskVideos((prev) => [
+                                  ...prev,
+                                  ...files,
+                                ]);
+                              else setTaskVideos((prev) => [...prev, ...files]);
+                            }
+                          }}
+                        />
+                      </Label>
+                    </div>
+                    {(isEditTaskModal ? editTaskVideos : taskVideos).length >
+                      0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-[#95A5A6]">
+                          {(isEditTaskModal ? editTaskVideos : taskVideos).length}{" "}
+                          selecionados
+                        </p>
+                        <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
+                          {(isEditTaskModal
+                            ? editTaskVideos
+                            : taskVideos
+                          ).map((file, idx) => (
                             <div
                               key={idx}
                               className="flex justify-between items-center text-[10px] bg-gray-50 p-1 rounded"
@@ -1410,55 +1390,64 @@ export default function ProductKanban() {
                                 {file.name}
                               </span>
                               <button
+                                type="button"
                                 onClick={() =>
-                                  removeNewFile(idx, "video", isEditTaskModal)
+                                  removeNewFile(
+                                    idx,
+                                    "video",
+                                    isEditTaskModal
+                                  )
                                 }
                                 className="text-red-500 hover:text-red-700"
                               >
                                 <X className="w-3 h-3" />
                               </button>
                             </div>
-                          )
-                        )}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. Audio */}
-                <div className="flex flex-col gap-2">
-                  <div className="p-3 border border-dashed border-[#95A5A6]/40 rounded-lg bg-[#F5F0E6]/30 hover:bg-[#F5F0E6]/60 transition-colors h-32 flex flex-col justify-center">
-                    <Label className="cursor-pointer flex flex-col items-center gap-2 text-center h-full justify-center">
-                      <Mic className="w-6 h-6 text-[#2C3E50]" />
-                      <span className="text-xs text-[#95A5A6]">
-                        Upload Áudio
-                      </span>
-                      <Input
-                        type="file"
-                        accept="audio/*"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files) {
-                            const files = Array.from(e.target.files);
-                            if (isEditTaskModal)
-                              setEditTaskAudios((prev) => [...prev, ...files]);
-                            else setTaskAudios((prev) => [...prev, ...files]);
-                          }
-                        }}
-                      />
-                    </Label>
+                    )}
                   </div>
-                  {(isEditTaskModal ? editTaskAudios : taskAudios).length >
-                    0 && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-[#95A5A6]">
-                        {(isEditTaskModal ? editTaskAudios : taskAudios).length}{" "}
-                        selecionados
-                      </p>
-                      <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                        {(isEditTaskModal ? editTaskAudios : taskAudios).map(
-                          (file, idx) => (
+
+                  {/* Audio */}
+                  <div className="flex flex-col gap-2">
+                    <div className="p-3 border border-dashed border-[#95A5A6]/40 rounded-lg bg-[#F5F0E6]/30 hover:bg-[#F5F0E6]/60 transition-colors h-32 flex flex-col justify-center">
+                      <Label className="cursor-pointer flex flex-col items-center gap-2 text-center h-full justify-center">
+                        <Mic className="w-6 h-6 text-[#2C3E50]" />
+                        <span className="text-xs text-[#95A5A6]">
+                          Upload Áudio
+                        </span>
+                        <Input
+                          type="file"
+                          accept="audio/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files) {
+                              const files = Array.from(e.target.files);
+                              if (isEditTaskModal)
+                                setEditTaskAudios((prev) => [
+                                  ...prev,
+                                  ...files,
+                                ]);
+                              else setTaskAudios((prev) => [...prev, ...files]);
+                            }
+                          }}
+                        />
+                      </Label>
+                    </div>
+                    {(isEditTaskModal ? editTaskAudios : taskAudios).length >
+                      0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-[#95A5A6]">
+                          {(isEditTaskModal ? editTaskAudios : taskAudios).length}{" "}
+                          selecionados
+                        </p>
+                        <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
+                          {(isEditTaskModal
+                            ? editTaskAudios
+                            : taskAudios
+                          ).map((file, idx) => (
                             <div
                               key={idx}
                               className="flex justify-between items-center text-[10px] bg-gray-50 p-1 rounded"
@@ -1467,122 +1456,139 @@ export default function ProductKanban() {
                                 {file.name}
                               </span>
                               <button
+                                type="button"
                                 onClick={() =>
-                                  removeNewFile(idx, "audio", isEditTaskModal)
+                                  removeNewFile(
+                                    idx,
+                                    "audio",
+                                    isEditTaskModal
+                                  )
                                 }
                                 className="text-red-500 hover:text-red-700"
                               >
                                 <X className="w-3 h-3" />
                               </button>
                             </div>
-                          )
-                        )}
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Gravador */}
+                <div className="flex items-center gap-3 bg-[#F5F0E6] p-3 rounded-lg border border-[#D35400]/10">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isRecording ? "destructive" : "secondary"}
+                    onClick={isRecording ? stopRecording : startRecording}
+                    className={cn(
+                      "w-32",
+                      isRecording
+                        ? "animate-pulse"
+                        : "bg-[#2C3E50] text-white hover:bg-[#34495E]"
+                    )}
+                  >
+                    {isRecording ? (
+                      <Square className="w-4 h-4 mr-2" />
+                    ) : (
+                      <Mic className="w-4 h-4 mr-2" />
+                    )}
+                    {isRecording ? "Parar" : "Gravar Voz"}
+                  </Button>
+                  {isRecording && (
+                    <span className="text-sm font-mono text-red-600">
+                      00:{String(recordingTime).padStart(2, "0")}
+                    </span>
+                  )}
+                  {audioBlob && !isRecording && (
+                    <span className="text-xs text-green-600 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Áudio gravado
+                    </span>
                   )}
                 </div>
-              </div>
-
-              {/* Gravador */}
-              <div className="flex items-center gap-3 bg-[#F5F0E6] p-3 rounded-lg border border-[#D35400]/10">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={isRecording ? "destructive" : "secondary"}
-                  onClick={isRecording ? stopRecording : startRecording}
-                  className={cn(
-                    "w-32",
-                    isRecording
-                      ? "animate-pulse"
-                      : "bg-[#2C3E50] text-white hover:bg-[#34495E]"
-                  )}
-                >
-                  {isRecording ? (
-                    <Square className="w-4 h-4 mr-2" />
-                  ) : (
-                    <Mic className="w-4 h-4 mr-2" />
-                  )}
-                  {isRecording ? "Parar" : "Gravar Voz"}
-                </Button>
-                {isRecording && (
-                  <span className="text-sm font-mono text-red-600">
-                    00:{String(recordingTime).padStart(2, "0")}
-                  </span>
-                )}
-                {audioBlob && !isRecording && (
-                  <span className="text-xs text-green-600 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Áudio gravado
-                  </span>
-                )}
               </div>
             </div>
-          </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsTaskModal(false);
-                setIsEditTaskModal(false);
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={isEditTaskModal ? updateTask : createTask}
-              disabled={isSubmitting}
-              className="bg-[#D35400] hover:bg-[#A04000] text-white"
-            >
-              {isSubmitting ? (
-                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-              ) : null}
-              {isSubmitting
-                ? "Salvando..."
-                : isEditTaskModal
-                ? "Salvar Alterações"
-                : "Criar Tarefa"}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsTaskModal(false);
+                  setIsEditTaskModal(false);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-[#D35400] hover:bg-[#A04000] text-white touch-action-manipulation"
+              >
+                {isSubmitting ? (
+                  <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                ) : null}
+                {isSubmitting
+                  ? "Salvando..."
+                  : isEditTaskModal
+                  ? "Salvar Alterações"
+                  : "Criar Tarefa"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      {/* 2. Modal Coluna */}
+      {/* 2. Modal Coluna - FIX: Envolvido em FORM para funcionar submit mobile */}
       <Dialog open={isColumnModal} onOpenChange={setIsColumnModal}>
         <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>
-              {editingCol ? "Renomear Coluna" : "Nova Coluna"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="colTitle">Título</Label>
-              <Input
-                id="colTitle"
-                value={colTitle}
-                onChange={(e) => setColTitle(e.target.value)}
-                placeholder="Ex: Em revisão"
-              />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (editingCol) updateColumn();
+              else createColumn();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                {editingCol ? "Renomear Coluna" : "Nova Coluna"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="colTitle">Título</Label>
+                <Input
+                  id="colTitle"
+                  value={colTitle}
+                  onChange={(e) => setColTitle(e.target.value)}
+                  placeholder="Ex: Em revisão"
+                />
+              </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsColumnModal(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={editingCol ? updateColumn : createColumn}
-              className="bg-[#2C3E50] text-white hover:bg-[#34495E]"
-            >
-              {editingCol ? "Salvar" : "Criar"}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsColumnModal(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="bg-[#2C3E50] text-white hover:bg-[#34495E] touch-action-manipulation"
+              >
+                {editingCol ? "Salvar" : "Criar"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
       {/* 3. Modal Preview Profissional Única Coluna */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white p-0 gap-0 border-0 shadow-2xl flex flex-col">
-          {/* ACCESSIBILITY FIX: Hidden Description to satisfy Radix UI */}
           <DialogDescription id="task-preview-desc" className="sr-only">
             Detalhes da tarefa: {previewTask?.title}
           </DialogDescription>
@@ -1607,7 +1613,7 @@ export default function ProductKanban() {
                 </div>
                 <Button
                   variant="ghost"
-                  className="h-8 w-8 rounded-full hover:bg-slate-100"
+                  className="h-8 w-8 rounded-full hover:bg-slate-100 touch-action-manipulation"
                   onClick={() => setIsPreviewModal(false)}
                 >
                   <X className="w-5 h-5 text-slate-500" />
@@ -1771,14 +1777,14 @@ export default function ProductKanban() {
               <div className="p-5 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3 sticky bottom-0 z-10">
                 <Button
                   variant="outline"
-                  className="border-slate-300 text-slate-700 hover:bg-white hover:text-slate-900"
+                  className="border-slate-300 text-slate-700 hover:bg-white hover:text-slate-900 touch-action-manipulation"
                   onClick={() => setIsPreviewModal(false)}
                 >
                   Fechar
                 </Button>
                 <div className="h-6 w-px bg-slate-200 mx-1" />
                 <Button
-                  className="bg-slate-800 text-white hover:bg-slate-900 shadow-sm"
+                  className="bg-slate-800 text-white hover:bg-slate-900 shadow-sm touch-action-manipulation"
                   onClick={() => {
                     setIsPreviewModal(false);
                     openEditModal(previewTask);
@@ -1799,9 +1805,7 @@ export default function ProductKanban() {
         onConfirm={handleConfirmDelete}
         loading={isDeleting}
         title={
-          itemToDelete?.type === "column"
-            ? "Excluir Coluna?"
-            : "Excluir Tarefa?"
+          itemToDelete?.type === "column" ? "Excluir Coluna?" : "Excluir Tarefa?"
         }
         description={
           itemToDelete?.type === "column"
