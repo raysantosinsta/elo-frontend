@@ -503,7 +503,7 @@ export default function TasksReportPage() {
                           ) : '-'}
                         </TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="sm" onClick={() => router.push(`/kanban?taskId=${task.id}`)}>
+                          <Button variant="ghost" size="sm" onClick={() => router.push(`/Kanban`)}>
                             <EyeIcon className="h-4 w-4 mr-2" /> Ver
                           </Button>
                         </TableCell>

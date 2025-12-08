@@ -6,222 +6,223 @@ import { io, Socket } from "socket.io-client";
 import { useAuth, useAuthFetch } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { ChatMessage, User } from "@/types/chat";
+import { socketService } from "./socket";
 
 // ==========================================
 // 1. SOCKET SERVICE (Singleton)
 // ==========================================
 
-class SocketService {
-  private socket: Socket | null = null;
-  private listeners = new Map<string, Array<(data: any) => void>>();
-  private connectionCallbacks: Array<(connected: boolean) => void> = [];
+// class SocketService {
+//   private socket: Socket | null = null;
+//   private listeners = new Map<string, Array<(data: any) => void>>();
+//   private connectionCallbacks: Array<(connected: boolean) => void> = [];
 
-  // Singleton instance
-  private static instance: SocketService;
+//   // Singleton instance
+//   private static instance: SocketService;
 
-  public static getInstance(): SocketService {
-    if (!SocketService.instance) {
-      SocketService.instance = new SocketService();
-    }
-    return SocketService.instance;
-  }
+//   public static getInstance(): SocketService {
+//     if (!SocketService.instance) {
+//       SocketService.instance = new SocketService();
+//     }
+//     return SocketService.instance;
+//   }
 
-  connect() {
-    if (this.socket) return;
+//   connect() {
+//     if (this.socket) return;
 
-    // URL do backend (ajuste conforme seu env)
-    const API_URL = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+//     // URL do backend (ajuste conforme seu env)
+//     const API_URL = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
-    // 🔥 CORREÇÃO: Adicionamos o "/ws" na URL para bater com o @WebSocketGateway do NestJS
-    this.socket = io(`${API_URL}/ws`, {
-      transports: ["websocket", "polling"],
-      path: "/socket.io/", 
-    });
+//     // 🔥 CORREÇÃO: Adicionamos o "/ws" na URL para bater com o @WebSocketGateway do NestJS
+//     this.socket = io(`${API_URL}/ws`, {
+//       transports: ["websocket", "polling"],
+//       path: "/socket.io/",
+//     });
 
-    // Tratamento de eventos de conexão
-    this.socket.on("connect", () => {
-      console.log("✅ Conectado ao WebSocket");
-      this.notifyConnectionChange(true);
-    });
+//     // Tratamento de eventos de conexão
+//     this.socket.on("connect", () => {
+//       console.log("✅ Conectado ao WebSocket");
+//       this.notifyConnectionChange(true);
+//     });
 
-    this.socket.on("disconnect", (reason) => {
-      console.log("❌ Desconectado do WebSocket:", reason);
-      this.notifyConnectionChange(false);
-    });
+//     this.socket.on("disconnect", (reason) => {
+//       console.log("❌ Desconectado do WebSocket:", reason);
+//       this.notifyConnectionChange(false);
+//     });
 
-    this.socket.on("connect_error", (error) => {
-      console.error("💥 Erro de conexão WebSocket:", error);
-      this.notifyConnectionChange(false);
-    });
+//     this.socket.on("connect_error", (error) => {
+//       console.error("💥 Erro de conexão WebSocket:", error);
+//       this.notifyConnectionChange(false);
+//     });
 
-    // Registrar listeners que foram adicionados antes da conexão
-    this.listeners.forEach((callbacks, event) => {
-      callbacks.forEach((callback) => {
-        this.socket?.on(event, callback);
-      });
-    });
-  }
+//     // Registrar listeners que foram adicionados antes da conexão
+//     this.listeners.forEach((callbacks, event) => {
+//       callbacks.forEach((callback) => {
+//         this.socket?.on(event, callback);
+//       });
+//     });
+//   }
 
-  disconnect() {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-      this.notifyConnectionChange(false);
-    }
-  }
+//   disconnect() {
+//     if (this.socket) {
+//       this.socket.disconnect();
+//       this.socket = null;
+//       this.notifyConnectionChange(false);
+//     }
+//   }
 
-  // Métodos específicos do seu backend
-  joinUserRoom(userId: string) {
-    this.emit("join_user_room", userId);
-  }
+//   // Métodos específicos do seu backend
+//   joinUserRoom(userId: string) {
+//     this.emit("join_user_room", userId);
+//   }
 
-  joinCompanyRoom(companyId: string) {
-    this.emit("join_company_room", companyId);
-  }
+//   joinCompanyRoom(companyId: string) {
+//     this.emit("join_company_room", companyId);
+//   }
 
-  joinChatRoom(chatId: string) {
-    this.emit("join_chat_room", chatId);
-  }
+//   joinChatRoom(chatId: string) {
+//     this.emit("join_chat_room", chatId);
+//   }
 
-  leaveChatRoom(chatId: string) {
-    this.emit("leave_chat_room", chatId);
-  }
+//   leaveChatRoom(chatId: string) {
+//     this.emit("leave_chat_room", chatId);
+//   }
 
-  // Métodos genéricos
-  on(event: string, callback: (data: any) => void) {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, []);
-    }
-    this.listeners.get(event)?.push(callback);
-    this.socket?.on(event, callback);
-  }
+//   // Métodos genéricos
+//   on(event: string, callback: (data: any) => void) {
+//     if (!this.listeners.has(event)) {
+//       this.listeners.set(event, []);
+//     }
+//     this.listeners.get(event)?.push(callback);
+//     this.socket?.on(event, callback);
+//   }
 
-  off(event: string, callback?: (data: any) => void) {
-    if (this.listeners.has(event) && callback) {
-      const eventListeners = this.listeners.get(event);
-      const index = eventListeners?.indexOf(callback);
-      if (index !== undefined && index > -1) {
-        eventListeners?.splice(index, 1);
-      }
-    } else {
-      this.listeners.delete(event);
-    }
-    this.socket?.off(event, callback);
-  }
+//   off(event: string, callback?: (data: any) => void) {
+//     if (this.listeners.has(event) && callback) {
+//       const eventListeners = this.listeners.get(event);
+//       const index = eventListeners?.indexOf(callback);
+//       if (index !== undefined && index > -1) {
+//         eventListeners?.splice(index, 1);
+//       }
+//     } else {
+//       this.listeners.delete(event);
+//     }
+//     this.socket?.off(event, callback);
+//   }
 
-  emit(event: string, data?: any) {
-    this.socket?.emit(event, data);
-  }
+//   emit(event: string, data?: any) {
+//     this.socket?.emit(event, data);
+//   }
 
-  isConnected(): boolean {
-    return this.socket?.connected || false;
-  }
+//   isConnected(): boolean {
+//     return this.socket?.connected || false;
+//   }
 
-  onConnectionChange(callback: (connected: boolean) => void) {
-    this.connectionCallbacks.push(callback);
-    callback(this.isConnected()); // Chama imediatamente com estado atual
-    return () => {
-      const index = this.connectionCallbacks.indexOf(callback);
-      if (index > -1) this.connectionCallbacks.splice(index, 1);
-    };
-  }
+//   onConnectionChange(callback: (connected: boolean) => void) {
+//     this.connectionCallbacks.push(callback);
+//     callback(this.isConnected()); // Chama imediatamente com estado atual
+//     return () => {
+//       const index = this.connectionCallbacks.indexOf(callback);
+//       if (index > -1) this.connectionCallbacks.splice(index, 1);
+//     };
+//   }
 
-  private notifyConnectionChange(connected: boolean) {
-    this.connectionCallbacks.forEach((cb) => cb(connected));
-  }
-}
+//   private notifyConnectionChange(connected: boolean) {
+//     this.connectionCallbacks.forEach((cb) => cb(connected));
+//   }
+// }
 
-export const socketService = SocketService.getInstance();
+// export const socketService = SocketService.getInstance();
 
-// ==========================================
-// 2. HOOK: USE SOCKET (Genérico)
-// ==========================================
-export function useSocket() {
-  const isInitialized = useRef(false);
+// // ==========================================
+// // 2. HOOK: USE SOCKET (Genérico)
+// // ==========================================
+// export function useSocket() {
+//   const isInitialized = useRef(false);
 
-  useEffect(() => {
-    if (!isInitialized.current) {
-      socketService.connect();
-      isInitialized.current = true;
-    }
-  }, []);
+//   useEffect(() => {
+//     if (!isInitialized.current) {
+//       socketService.connect();
+//       isInitialized.current = true;
+//     }
+//   }, []);
 
-  return socketService;
-}
+//   return socketService;
+// }
 
-// ==========================================
-// 3. HOOK: USE CHAT SOCKET (Lógica de Sala)
-// ==========================================
-interface UseChatSocketProps {
-  chatId: string;
-  currentUserId: string;
-  companyId?: string;
-  onNewMessage?: (msg: ChatMessage) => void;
-  onUserNotification?: (notification: any) => void;
-  onCompanyNotification?: (notification: any) => void;
-}
+// // ==========================================
+// // 3. HOOK: USE CHAT SOCKET (Lógica de Sala)
+// // ==========================================
+// interface UseChatSocketProps {
+//   chatId: string;
+//   currentUserId: string;
+//   companyId?: string;
+//   onNewMessage?: (msg: ChatMessage) => void;
+//   onUserNotification?: (notification: any) => void;
+//   onCompanyNotification?: (notification: any) => void;
+// }
 
-export function useChatSocket({
-  chatId,
-  currentUserId,
-  companyId,
-  onNewMessage,
-  onUserNotification,
-  onCompanyNotification,
-}: UseChatSocketProps) {
-  const socket = useSocket();
-  const [isConnected, setIsConnected] = useState(socket.isConnected());
+// export function useChatSocket({
+//   chatId,
+//   currentUserId,
+//   companyId,
+//   onNewMessage,
+//   onUserNotification,
+//   onCompanyNotification,
+// }: UseChatSocketProps) {
+//   const socket = useSocket();
+//   const [isConnected, setIsConnected] = useState(socket.isConnected());
 
-  // Refs para manter callbacks atualizados sem recriar effects
-  const callbacksRef = useRef({ onNewMessage, onUserNotification, onCompanyNotification });
+//   // Refs para manter callbacks atualizados sem recriar effects
+//   const callbacksRef = useRef({ onNewMessage, onUserNotification, onCompanyNotification });
 
-  useEffect(() => {
-    callbacksRef.current = { onNewMessage, onUserNotification, onCompanyNotification };
-  });
+//   useEffect(() => {
+//     callbacksRef.current = { onNewMessage, onUserNotification, onCompanyNotification };
+//   });
 
-  useEffect(() => {
-    return socket.onConnectionChange(setIsConnected);
-  }, [socket]);
+//   useEffect(() => {
+//     return socket.onConnectionChange(setIsConnected);
+//   }, [socket]);
 
-  useEffect(() => {
-    if (!chatId || !currentUserId || !isConnected) return;
+//   useEffect(() => {
+//     if (!chatId || !currentUserId || !isConnected) return;
 
-    // Entrar nas salas
-    socket.joinUserRoom(currentUserId);
-    if (companyId) socket.joinCompanyRoom(companyId);
-    socket.joinChatRoom(chatId);
+//     // Entrar nas salas
+//     socket.joinUserRoom(currentUserId);
+//     if (companyId) socket.joinCompanyRoom(companyId);
+//     socket.joinChatRoom(chatId);
 
-    // Handlers
-    const handleMsg = (msg: ChatMessage) => {
-      console.log("🔥 SOCKET (Client) Recebeu:", msg); // ADICIONE ESTE LOG
+//     // Handlers
+//     const handleMsg = (msg: ChatMessage) => {
+//       console.log("🔥 SOCKET (Client) Recebeu:", msg); // ADICIONE ESTE LOG
 
-      // 🔥 REMOVA ou COMENTE esta verificação estrita:
-      // if (msg.chatId === chatId) callbacksRef.current.onNewMessage?.(msg);
+//       // 🔥 REMOVA ou COMENTE esta verificação estrita:
+//       // if (msg.chatId === chatId) callbacksRef.current.onNewMessage?.(msg);
 
-      // 🔥 USE ASSIM (Confie que se veio pelo socket, é para este chat):
-      callbacksRef.current.onNewMessage?.(msg);
-    };
+//       // 🔥 USE ASSIM (Confie que se veio pelo socket, é para este chat):
+//       callbacksRef.current.onNewMessage?.(msg);
+//     };
 
-    const handleUserNotif = (notif: any) => callbacksRef.current.onUserNotification?.(notif);
-    const handleCompanyNotif = (notif: any) => callbacksRef.current.onCompanyNotification?.(notif);
+//     const handleUserNotif = (notif: any) => callbacksRef.current.onUserNotification?.(notif);
+//     const handleCompanyNotif = (notif: any) => callbacksRef.current.onCompanyNotification?.(notif);
 
-    // Registra listeners
-    socket.on("chat:message", handleMsg);
-    socket.on("notification:new", handleUserNotif);
-    socket.on("notification:mention", handleUserNotif);
-    socket.on("company:notification", handleCompanyNotif);
+//     // Registra listeners
+//     socket.on("chat:message", handleMsg);
+//     socket.on("notification:new", handleUserNotif);
+//     socket.on("notification:mention", handleUserNotif);
+//     socket.on("company:notification", handleCompanyNotif);
 
-    return () => {
-      socket.off("chat:message", handleMsg);
-      socket.off("notification:new", handleUserNotif);
-      socket.off("notification:mention", handleUserNotif);
-      socket.off("company:notification", handleCompanyNotif);
-      socket.leaveChatRoom(chatId);
-    };
-  }, [chatId, currentUserId, companyId, socket, isConnected]);
+//     return () => {
+//       socket.off("chat:message", handleMsg);
+//       socket.off("notification:new", handleUserNotif);
+//       socket.off("notification:mention", handleUserNotif);
+//       socket.off("company:notification", handleCompanyNotif);
+//       socket.leaveChatRoom(chatId);
+//     };
+//   }, [chatId, currentUserId, companyId, socket, isConnected]);
 
-  return { isConnected, socket };
-}
+//   return { isConnected, socket };
+// }
 
 // ==========================================
 // 4. HOOK: USE MENTIONS (Input & Busca)
@@ -244,48 +245,56 @@ export function useMentions() {
     setSelectedIndex(0);
   }, [results]);
 
-  const handleInputChange = useCallback((text: string, cursor: number, el?: HTMLInputElement | HTMLTextAreaElement) => {
-    const lastAt = text.lastIndexOf("@", cursor - 1);
+  const handleInputChange = useCallback(
+    (
+      text: string,
+      cursor: number,
+      el?: HTMLInputElement | HTMLTextAreaElement
+    ) => {
+      const lastAt = text.lastIndexOf("@", cursor - 1);
 
-    if (lastAt !== -1 && (lastAt === 0 || /[\s\n]/.test(text[lastAt - 1]))) {
-      const textAfterAt = text.substring(lastAt + 1, cursor);
-      const queryTerm = textAfterAt.split(' ')[0];
+      if (lastAt !== -1 && (lastAt === 0 || /[\s\n]/.test(text[lastAt - 1]))) {
+        const textAfterAt = text.substring(lastAt + 1, cursor);
+        const queryTerm = textAfterAt.split(" ")[0];
 
-      if (!queryTerm.includes('\n')) {
-        setQuery(queryTerm);
-        setShowList(true);
+        if (!queryTerm.includes("\n")) {
+          setQuery(queryTerm);
+          setShowList(true);
 
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          // Ajuste simples para posicionar acima do input
-          const scrollY = window.scrollY || document.documentElement.scrollTop;
-          setPosition({ top: (rect.top + scrollY) - 20, left: rect.left });
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            // Ajuste simples para posicionar acima do input
+            const scrollY =
+              window.scrollY || document.documentElement.scrollTop;
+            setPosition({ top: rect.top + scrollY - 20, left: rect.left });
+          }
+
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          setIsLoading(true);
+
+          timeoutRef.current = setTimeout(async () => {
+            if (!queryTerm.trim()) {
+              setIsLoading(false);
+              return;
+            }
+            try {
+              const users = await api.getUsersForMention(queryTerm);
+              setResults(users);
+              if (users.length === 0) setShowList(false);
+            } catch (e) {
+              console.error(e);
+              setResults([]);
+            } finally {
+              setIsLoading(false);
+            }
+          }, 300);
+          return;
         }
-
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        setIsLoading(true);
-
-        timeoutRef.current = setTimeout(async () => {
-          if (!queryTerm.trim()) {
-            setIsLoading(false);
-            return;
-          }
-          try {
-            const users = await api.getUsersForMention(queryTerm);
-            setResults(users);
-            if (users.length === 0) setShowList(false);
-          } catch (e) {
-            console.error(e);
-            setResults([]);
-          } finally {
-            setIsLoading(false);
-          }
-        }, 300);
-        return;
       }
-    }
-    setShowList(false);
-  }, []);
+      setShowList(false);
+    },
+    []
+  );
 
   const insertMention = (text: string, user: User, cursor: number) => {
     const lastAt = text.lastIndexOf("@", cursor - 1);
@@ -297,7 +306,7 @@ export function useMentions() {
     return {
       text: newText,
       // Posição: antes + @ + nome + espaço
-      cursor: lastAt + user.name.length + 2
+      cursor: lastAt + user.name.length + 2,
     };
   };
 
@@ -308,16 +317,16 @@ export function useMentions() {
   ) => {
     if (!showList || results.length === 0) return;
 
-    if (e.key === 'ArrowDown') {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % results.length);
-    } else if (e.key === 'ArrowUp') {
+      setSelectedIndex((prev) => (prev + 1) % results.length);
+    } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + results.length) % results.length);
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      setSelectedIndex((prev) => (prev - 1 + results.length) % results.length);
+    } else if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
       onSelect(results[selectedIndex]);
-    } else if (e.key === 'Escape') {
+    } else if (e.key === "Escape") {
       setShowList(false);
     }
   };
@@ -332,20 +341,20 @@ export function useMentions() {
     handleInputChange,
     handleKeyDown, // Exportando
     insertMention,
-    close: () => setShowList(false)
+    close: () => setShowList(false),
   };
 }
 
 // ==========================================
 // 5. HOOK: USE NOTIFICATIONS (API + Socket)
 // ==========================================
-const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
 export function useNotifications() {
   const { user } = useAuth();
   const authFetch = useAuthFetch();
-  const socket = useSocket(); // Reutiliza o socket deste mesmo arquivo
-
+  const socket = socketService;
   const [notifications, setNotifs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -392,9 +401,13 @@ export function useNotifications() {
   }, [fetchNotifs, socket]);
 
   const markAsRead = async (id: string) => {
-    setNotifs(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    setNotifs((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
     try {
-      await authFetch(`${API_BASE}/notifications/${id}/read`, { method: "PATCH" });
+      await authFetch(`${API_BASE}/notifications/${id}/read`, {
+        method: "PATCH",
+      });
       return true;
     } catch {
       return false;
@@ -402,9 +415,11 @@ export function useNotifications() {
   };
 
   const markAllAsRead = async () => {
-    setNotifs(prev => prev.map(n => ({ ...n, isRead: true })));
+    setNotifs((prev) => prev.map((n) => ({ ...n, isRead: true })));
     try {
-      await authFetch(`${API_BASE}/notifications/mark-all-read`, { method: "POST" });
+      await authFetch(`${API_BASE}/notifications/mark-all-read`, {
+        method: "POST",
+      });
       return true;
     } catch {
       return false;
@@ -418,6 +433,6 @@ export function useNotifications() {
     error,
     markAsRead,
     markAllAsRead,
-    refresh: fetchNotifs
+    refresh: fetchNotifs,
   };
 }

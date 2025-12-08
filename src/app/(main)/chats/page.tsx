@@ -3,96 +3,104 @@
 import { ChatList } from "@/components/chat/chat-list";
 import { useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
+import { Loader2 } from "lucide-react";
 
-// Interface para tipar o payload do JWT
+// --- TYPE DEFINITIONS ---
 interface JwtPayload {
   sub: string;
   email: string;
-  role: string;
+  role: string; // 🔥 CRUCIAL: Agora capturamos o cargo
   companyId: string;
   iat: number;
   exp: number;
 }
 
 export default function ChatsPage() {
+  // --- STATE MANAGEMENT ---
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [companyId, setCompanyId] = useState<string>("");
+  const [userRole, setUserRole] = useState<string>(""); // Estado para o cargo
   const [loading, setLoading] = useState(true);
 
+  // --- LOGIC / EFFECTS ---
   useEffect(() => {
     const getTokenData = () => {
       try {
-        console.log("🔍 Iniciando busca do token no localStorage...");
-        
-        const token = localStorage.getItem('accessToken');
-        console.log("📄 Token encontrado:", token ? "Sim" : "Não");
+        if (process.env.NODE_ENV === 'development') {
+           console.log("🔍 Iniciando validação de sessão...");
+        }
+
+        const token = localStorage.getItem("accessToken");
         
         if (token) {
-          console.log("✅ Token recuperado com sucesso!");
-          console.log("🔓 Decodificando token...");
-          
           const decoded = jwtDecode<JwtPayload>(token);
-          console.log("🎯 Payload decodificado:", decoded);
           
-          console.log("👤 User ID (sub):", decoded.sub);
-          console.log("🏢 Company ID:", decoded.companyId);
-          
+          if (process.env.NODE_ENV === 'development') {
+            console.log("✅ Sessão válida. User:", decoded.sub, "Role:", decoded.role);
+          }
+
           setCurrentUserId(decoded.sub);
           setCompanyId(decoded.companyId);
-          
-          console.log("✅ Estados atualizados com sucesso!");
-          console.log("📊 Resumo:");
-          console.log("   - User ID:", decoded.sub);
-          console.log("   - Company ID:", decoded.companyId);
+          setUserRole(decoded.role || ""); // Garante que não seja undefined
         } else {
-          console.warn("⚠️ Nenhum token 'accessToken' encontrado no localStorage");
-          console.log("📋 Chaves disponíveis no localStorage:", Object.keys(localStorage));
+          console.warn("⚠️ Token não encontrado. Redirecionando para login...");
+          // Aqui você poderia adicionar um router.push('/login')
         }
       } catch (error) {
-        console.error('❌ Erro ao decodificar token:', error);
+        console.error("❌ Erro crítico na sessão:", error);
       } finally {
         setLoading(false);
-        console.log("🏁 Processo de carregamento finalizado");
       }
     };
 
     getTokenData();
   }, []);
 
-  // Log quando os estados são atualizados
-  useEffect(() => {
-    if (!loading) {
-      console.log("🔄 Estados atualizados:");
-      console.log("   - currentUserId:", currentUserId);
-      console.log("   - companyId:", companyId);
-      console.log("   - loading:", loading);
-    }
-  }, [currentUserId, companyId, loading]);
-
+  // --- RENDER: LOADING STATE (UX: Feedback Imediato) ---
   if (loading) {
-    console.log("⏳ Componente em estado de loading...");
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center">
-          Carregando...
+      <div 
+        className="flex h-screen w-full items-center justify-center bg-[#F5F0E6]"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-10 w-10 animate-spin text-[#D35400]" />
+          <p className="animate-pulse text-sm font-medium text-[#95A5A6]">
+            Carregando ambiente...
+          </p>
         </div>
       </div>
     );
   }
 
-  console.log("🎉 Renderizando componente com dados:", { currentUserId, companyId });
-
+  // --- RENDER: MAIN CONTENT ---
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex gap-6">
-        <ChatList 
-          currentUserId={currentUserId} 
-          companyId={companyId} 
-        />
-        <div className="flex-1 flex items-center justify-center text-muted-foreground">
-          Selecione um chat para começar a conversar
-        </div>
+    <main className="min-h-screen w-full bg-[#F5F0E6] text-[#2D3436]">
+      {/* Container Centralizado
+         Mobile-First: Padding pequeno (p-4).
+         Desktop: Padding maior e largura controlada (max-w-4xl) para leitura confortável.
+      */}
+      <div className="mx-auto flex h-screen max-w-4xl flex-col p-4 md:p-6 lg:p-8">
+        
+        <section 
+          className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-[#95A5A6]/20 bg-white shadow-sm"
+          aria-label="Gerenciamento de Chats"
+        >
+          <div className="flex-1 overflow-y-auto">
+             {/* 🔥 AQUI ESTÁ A MÁGICA:
+                Passamos o userRole para a ChatList. 
+                Se for ADM/MASTER, o botão de lixeira aparecerá.
+             */}
+             <ChatList 
+               currentUserId={currentUserId} 
+               companyId={companyId} 
+               userRole={userRole}
+             />
+          </div>
+        </section>
+
       </div>
-    </div>
+    </main>
   );
 }

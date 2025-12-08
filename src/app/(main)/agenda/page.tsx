@@ -7,12 +7,23 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
-import { Calendar, ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Star, AlertTriangle } from 'lucide-react';
+import { 
+  Calendar as CalendarIcon, 
+  ArrowLeft, 
+  ChevronLeft, 
+  ChevronRight, 
+  RefreshCw, 
+  Star, 
+  AlertTriangle,
+  CheckCircle2,
+  Clock
+} from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDay } from 'date-fns';
+import { useEffect, useState, useMemo } from 'react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDay, isSameDay, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+// --- Types & Interfaces ---
 interface Task {
   id: string;
   title: string;
@@ -31,110 +42,85 @@ interface Task {
   };
 }
 
+// --- Design Tokens (Paleta de Cores) ---
+const COLORS = {
+  textMain: '#2D3436',      // Grafite
+  background: '#F5F0E6',    // Algodão Cru
+  primary: '#D35400',       // Terracota
+  secondaryText: '#95A5A6', // Areia Escuro
+  accent: '#2C3E50',        // Azul Petróleo
+  white: '#FFFFFF',
+};
+
 export default function AgendaPage() {
+  // --- Hooks & Context ---
   const { user, token, authFetch, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // --- Local State ---
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [highlightedTask, setHighlightedTask] = useState<string | null>(null);
-  const router = useRouter();
-  const searchParams = useSearchParams();
 
-  // Redireciona se não estiver logado
+  // --- Auth Check ---
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
     }
   }, [user, authLoading, router]);
 
-  // Processar query params para highlight
+  // --- Query Params Processing ---
   useEffect(() => {
     const focusDateStr = searchParams.get('focusDate');
     const taskId = searchParams.get('highlightTask');
     
-    if (taskId) {
-      setHighlightedTask(taskId);
-    }
+    if (taskId) setHighlightedTask(taskId);
 
     if (focusDateStr) {
-      try {
-        const focusDate = new Date(focusDateStr);
-        if (!isNaN(focusDate.getTime())) {
-          setCurrentMonth(startOfMonth(focusDate));
-        }
-      } catch (err) {
-        console.warn('Data de foco inválida:', focusDateStr);
+      const focusDate = new Date(focusDateStr);
+      if (!isNaN(focusDate.getTime())) {
+        setCurrentMonth(startOfMonth(focusDate));
       }
     }
   }, [searchParams]);
 
-  // Carregar todas as tarefas
+  // --- Data Fetching ---
   const fetchTasks = async () => {
-    if (!user || !token) {
-      setError('Usuário não autenticado');
-      return;
-    }
+    if (!user || !token) return;
 
     setLoading(true);
     setError('');
     
     try {
-      console.log('📡 Buscando tarefas para agenda...');
-      
       const API_BASE_URL = process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000';
       const response = await authFetch(`${API_BASE_URL}/tasks`);
 
-      console.log('📊 Resposta da API:', response.status);
-      
       if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Sessão expirada. Faça login novamente.');
-        }
+        if (response.status === 401) throw new Error('Sessão expirada. Faça login novamente.');
         throw new Error(`Erro ao carregar tarefas: ${response.status}`);
       }
 
-      // Verificar se a resposta é JSON
       const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text();
-        console.error('❌ Resposta não é JSON:', text.substring(0, 200));
-        throw new Error('Resposta inválida do servidor');
-      }
+      if (!contentType?.includes('application/json')) throw new Error('Resposta inválida do servidor');
 
       const data = await response.json();
-      console.log('✅ Dados recebidos:', data);
-
-      // Processar as tarefas - lidar com diferentes formatos de resposta
-      let taskList: any[] = [];
       
-      if (Array.isArray(data)) {
-        taskList = data;
-      } else if (data.tasks && Array.isArray(data.tasks)) {
-        taskList = data.tasks;
-      } else if (data.data && Array.isArray(data.data)) {
-        taskList = data.data;
-      } else {
-        console.warn('⚠️ Formato de dados inesperado:', data);
-        taskList = [];
-      }
+      // Normalização de dados (Adapter Pattern)
+      let taskList: any[] = [];
+      if (Array.isArray(data)) taskList = data;
+      else if (Array.isArray(data.tasks)) taskList = data.tasks;
+      else if (Array.isArray(data.data)) taskList = data.data;
 
-      console.log(`📋 ${taskList.length} tarefas encontradas`);
-
-      // Filtrar tarefas que têm dueDate e mapear os dados
       const filtered = taskList
-        .filter((t: any) => {
-          const hasDueDate = t.dueDate !== null && t.dueDate !== undefined;
-          if (hasDueDate) {
-            console.log(`📅 Tarefa com dueDate: ${t.title} - ${t.dueDate}`);
-          }
-          return hasDueDate;
-        })
+        .filter((t: any) => t.dueDate)
         .map((t: any) => ({
           id: t.id,
           title: t.title,
           description: t.description || '',
-          dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : null,
+          dueDate: new Date(t.dueDate).toISOString().split('T')[0],
           code: t.code,
           status: t.status,
           priority: t.priority || 1,
@@ -145,11 +131,9 @@ export default function AgendaPage() {
           } : undefined,
         }));
 
-      console.log(`🎯 ${filtered.length} tarefas com data definida`);
       setTasks(filtered);
-
     } catch (err: any) {
-      console.error('❌ Erro ao carregar agenda:', err);
+      console.error('❌ Erro na agenda:', err);
       setError(err.message || 'Erro ao carregar tarefas');
     } finally {
       setLoading(false);
@@ -157,266 +141,277 @@ export default function AgendaPage() {
   };
 
   useEffect(() => {
-    if (user && token) {
-      fetchTasks();
-    }
+    if (user && token) fetchTasks();
   }, [user, token]);
 
-  const goToPreviousMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
-  const goToNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
-  const goToToday = () => setCurrentMonth(startOfMonth(new Date()));
-
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(currentMonth);
-  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  const startingDayOfWeek = getDay(monthStart);
+  // --- Calendar Logic ---
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    const startDate = startOfMonth(monthStart); 
+    const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    const startDayOfWeek = getDay(startDate); // 0 = Domingo
+    
+    // Create empty slots for days before the 1st of the month
+    const emptySlots = Array.from({ length: startDayOfWeek });
+    
+    return { days, emptySlots };
+  }, [currentMonth]);
 
   const getTasksForDay = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
     return tasks.filter(task => task.dueDate === dateStr);
   };
 
-  const isToday = (date: Date) => format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+  // --- Navigation Handlers ---
+  const goToPreviousMonth = () => setCurrentMonth(prev => subMonths(prev, 1));
+  const goToNextMonth = () => setCurrentMonth(prev => addMonths(prev, 1));
+  const goToToday = () => setCurrentMonth(startOfMonth(new Date()));
+  const navigateToTaskInKanban = (taskId: string) => router.push(`/Kanban?highlightTask=${taskId}`);
 
-  const getTaskPriorityColor = (priority: number) => {
+  // --- UI Helpers ---
+  const getPriorityStyles = (priority: number) => {
+    // Usando tons que conversam com a paleta Terracota/Grafite mas mantendo semântica
     switch (priority) {
-      case 1: return 'bg-gray-500';
-      case 2: return 'bg-blue-500';
-      case 3: return 'bg-green-500';
-      case 4: return 'bg-orange-500';
-      case 5: return 'bg-red-500';
-      default: return 'bg-gray-500';
+      case 5: return 'bg-red-600 border-red-700 text-white'; // Crítica
+      case 4: return 'bg-[#D35400] border-[#A04000] text-white'; // Urgente (Terracota)
+      case 3: return 'bg-amber-500 border-amber-600 text-white'; // Alta
+      case 2: return 'bg-[#2C3E50] border-[#1a252f] text-white'; // Média (Azul Petróleo)
+      default: return 'bg-[#95A5A6] border-[#7f8c8d] text-white'; // Baixa/Normal (Areia Escuro)
     }
   };
 
-  const getTaskPriorityText = (priority: number) => {
-    switch (priority) {
-      case 1: return 'Baixa';
-      case 2: return 'Média';
-      case 3: return 'Alta';
-      case 4: return 'Urgente';
-      case 5: return 'Crítica';
-      default: return 'Normal';
-    }
-  };
-
-  const isTaskHighlighted = (taskId: string) => {
-    return highlightedTask === taskId;
-  };
-
-  // Função para navegar para o Kanban com foco na tarefa
-  const navigateToTaskInKanban = (taskId: string) => {
-    router.push(`/Kanban?highlightTask=${taskId}`);
-  };
-
+  // --- Loading State ---
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center space-y-3">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-indigo-600 mx-auto"></div>
-          <p className="text-gray-600">Carregando...</p>
+      <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: COLORS.background }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-4" style={{ borderColor: COLORS.primary }}></div>
+          <p style={{ color: COLORS.textMain }}>Carregando sua agenda...</p>
         </div>
       </div>
     );
   }
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center space-y-3">
-          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto" />
-          <p className="text-gray-600">Usuário não autenticado</p>
-          <Button onClick={() => router.push('/login')}>
-            Fazer Login
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
+  // --- Main Render ---
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-4">
-            <Button onClick={() => router.push('/dashboard')} variant="outline" size="lg" className="gap-2">
+    <div className="min-h-screen p-4 md:p-8 font-sans transition-colors duration-300" 
+         style={{ backgroundColor: COLORS.background, color: COLORS.textMain }}>
+      
+      <div className="max-w-[1400px] mx-auto">
+        {/* --- Header Section --- */}
+        <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="space-y-2">
+            <Button 
+              onClick={() => router.push('/')} 
+              variant="ghost" 
+              className="pl-0 hover:bg-transparent gap-2 transition-transform hover:-translate-x-1"
+              style={{ color: COLORS.accent }}
+            >
               <ArrowLeft className="h-5 w-5" />
               Voltar ao Dashboard
             </Button>
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 flex items-center gap-3">
-                <Calendar className="h-9 w-9 text-indigo-600" />
-                Minha Agenda
-              </h1>
-              <p className="text-gray-600 mt-1">Acompanhe todas as suas tarefas com data marcada</p>
-            </div>
+            
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight flex items-center gap-3" style={{ color: COLORS.textMain }}>
+              <CalendarIcon className="h-8 w-8" style={{ color: COLORS.primary }} />
+              Agenda de Tarefas
+            </h1>
+            <p className="text-sm md:text-base font-medium" style={{ color: COLORS.secondaryText }}>
+              Gerencie seus prazos com eficiência e clareza.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
-            <Button onClick={goToToday} variant="outline" size="sm">
+          <div className="flex flex-wrap items-center gap-3 bg-white p-2 rounded-xl shadow-sm border" style={{ borderColor: `${COLORS.secondaryText}40` }}>
+            <Button 
+              onClick={goToToday} 
+              variant="outline" 
+              size="sm"
+              className="border-dashed hover:border-solid hover:bg-gray-50"
+              style={{ color: COLORS.textMain, borderColor: COLORS.secondaryText }}
+            >
               Hoje
             </Button>
-            <Button onClick={goToPreviousMonth} variant="outline" size="icon" className="h-10 w-10">
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <div className="text-xl font-semibold text-gray-800 min-w-48 text-center">
-              {format(currentMonth, 'MMMM yyyy', { locale: ptBR }).toUpperCase()}
+            
+            <div className="flex items-center mx-2">
+              <Button onClick={goToPreviousMonth} variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-gray-100">
+                <ChevronLeft className="h-5 w-5" style={{ color: COLORS.textMain }} />
+              </Button>
+              
+              <span className="min-w-[160px] text-center font-bold text-lg capitalize select-none" style={{ color: COLORS.textMain }}>
+                {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
+              </span>
+              
+              <Button onClick={goToNextMonth} variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-gray-100">
+                <ChevronRight className="h-5 w-5" style={{ color: COLORS.textMain }} />
+              </Button>
             </div>
-            <Button onClick={goToNextMonth} variant="outline" size="icon" className="h-10 w-10">
-              <ChevronRight className="h-5 w-5" />
-            </Button>
-            <Button onClick={fetchTasks} variant="default" size="lg" disabled={loading} className="gap-2">
-              <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-              Atualizar
+
+            <Button 
+              onClick={fetchTasks} 
+              disabled={loading}
+              className="shadow-md transition-all hover:brightness-110 active:scale-95 text-white gap-2"
+              style={{ backgroundColor: COLORS.primary }}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Atualizar</span>
             </Button>
           </div>
-        </div>
+        </header>
 
-        {/* Mensagem de erro */}
+        {/* --- Feedback Section --- */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
-            <div className="flex items-center gap-2 text-red-700">
-              <AlertTriangle className="h-4 w-4" />
-              <p>{error}</p>
+          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-md flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-3 text-red-700">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="font-medium">{error}</span>
             </div>
-            <Button onClick={fetchTasks} variant="outline" size="sm" className="mt-2">
+            <Button onClick={fetchTasks} variant="outline" size="sm" className="text-red-700 border-red-200 hover:bg-red-100">
               Tentar novamente
             </Button>
           </div>
         )}
 
-        {/* Banner de tarefa destacada */}
         {highlightedTask && tasks.find(t => t.id === highlightedTask) && (
-          <Card className="mb-6 bg-yellow-50 border-yellow-200">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <Star className="h-5 w-5 text-yellow-600 fill-yellow-600" />
-                <div className="flex-1">
-                  <p className="font-semibold text-yellow-800">Tarefa em destaque</p>
-                  <p className="text-yellow-700 text-sm">
-                    {tasks.find(t => t.id === highlightedTask)?.title}
-                  </p>
-                </div>
-                <Button 
-                  onClick={() => setHighlightedTask(null)} 
-                  variant="outline" 
-                  size="sm"
-                  className="text-yellow-700 border-yellow-300"
-                >
-                  Fechar
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="mb-6 bg-[#FEF9E7] border border-yellow-200 rounded-lg p-4 flex items-center gap-4 shadow-sm animate-in zoom-in-95">
+            <div className="p-2 bg-yellow-100 rounded-full">
+              <Star className="h-5 w-5 text-yellow-600 fill-yellow-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-[#2D3436]">Foco na Tarefa</p>
+              <p className="text-sm text-[#7f8c8d]">
+                Você está visualizando: <strong>{tasks.find(t => t.id === highlightedTask)?.title}</strong>
+              </p>
+            </div>
+            <Button 
+              onClick={() => setHighlightedTask(null)} 
+              variant="ghost" 
+              size="sm"
+              className="text-yellow-700 hover:bg-yellow-100"
+            >
+              Limpar Foco
+            </Button>
+          </div>
         )}
 
-        <Card className="shadow-xl border-0 overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
-            <CardTitle className="text-2xl font-bold text-center">
-              {format(currentMonth, 'MMMM yyyy', { locale: ptBR }).toUpperCase()}
-            </CardTitle>
-          </CardHeader>
+        {/* --- Calendar Grid --- */}
+        <Card className="border-0 shadow-lg overflow-hidden rounded-xl bg-white">
           <CardContent className="p-0">
             {loading ? (
-              <div className="p-10">
-                <div className="grid grid-cols-7 gap-4">
-                  {Array.from({ length: 35 }).map((_, i) => (
-                    <div key={i} className="space-y-3">
-                      <Skeleton className="h-4 w-12" />
-                      <Skeleton className="h-20 w-full rounded-lg" />
-                    </div>
-                  ))}
-                </div>
+              <div className="p-8 grid grid-cols-1 md:grid-cols-7 gap-4">
+                {Array.from({ length: 35 }).map((_, i) => (
+                  <Skeleton key={i} className="h-32 w-full rounded-lg bg-gray-100" />
+                ))}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <div className="min-w-[900px] grid grid-cols-7 text-sm">
-                  {/* Cabeçalho dos dias */}
-                  {['DOMINGO', 'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO'].map((day) => (
-                    <div key={day} className="text-center font-bold text-gray-700 py-4 border-b-2 border-gray-200 bg-gray-50">
+              <div className="overflow-x-auto custom-scrollbar">
+                <div className="min-w-[1000px] grid grid-cols-7 bg-gray-200 gap-px border border-gray-200">
+                  {/* Weekday Headers */}
+                  {['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'].map((day) => (
+                    <div 
+                      key={day} 
+                      className="bg-[#F8F9FA] py-3 text-center text-xs font-bold tracking-wider uppercase border-b-2"
+                      style={{ color: COLORS.secondaryText, borderColor: '#E5E7EB' }}
+                    >
                       {day}
                     </div>
                   ))}
 
-                  {/* Espaços vazios do início */}
-                  {Array.from({ length: startingDayOfWeek }).map((_, i) => (
-                    <div key={`empty-${i}`} className="border-r border-b min-h-40 bg-gray-50" />
+                  {/* Empty Slots */}
+                  {calendarDays.emptySlots.map((_, i) => (
+                    <div key={`empty-${i}`} className="bg-[#FBFCFD] min-h-[160px]" />
                   ))}
 
-                  {/* Dias do mês */}
-                  {daysInMonth.map((day) => {
+                  {/* Day Cells */}
+                  {calendarDays.days.map((day) => {
+                    const dateKey = day.toISOString();
                     const dayTasks = getTasksForDay(day);
-                    const today = isToday(day);
+                    const isToday = isSameDay(day, new Date());
+                    const isCurrentMonth = isSameMonth(day, currentMonth);
 
                     return (
                       <div
-                        key={day.toISOString()}
-                        className={`border-r border-b min-h-40 p-2 transition-all ${
-                          today ? 'bg-indigo-50 ring-2 ring-indigo-500' : 'bg-white hover:bg-gray-50'
-                        }`}
+                        key={dateKey}
+                        className={`min-h-[160px] p-2 transition-colors relative group border-b border-r border-transparent hover:z-10
+                          ${isCurrentMonth ? 'bg-white' : 'bg-gray-50/50'}
+                          ${isToday ? 'bg-orange-50/30 ring-inset ring-2' : 'hover:bg-[#F5F0E6]'}
+                        `}
+                        style={{ 
+                          // Aplica a borda de "hoje" usando a cor Terracota suave ou padrão
+                          boxShadow: isToday ? `inset 0 0 0 2px ${COLORS.primary}40` : 'none'
+                        }}
                       >
-                        <div className={`font-bold text-lg mb-2 flex justify-between items-center ${
-                          today ? 'text-indigo-700' : 'text-gray-800'
-                        }`}>
-                          <span>{format(day, 'd')}</span>
-                          {today && (
-                            <Badge variant="default" className="bg-indigo-600 text-white text-xs">
+                        {/* Day Number Header */}
+                        <div className="flex justify-between items-start mb-2">
+                          <span 
+                            className={`text-lg font-bold rounded-full w-8 h-8 flex items-center justify-center
+                              ${isToday ? 'text-white shadow-md' : 'text-gray-700'}
+                              ${!isCurrentMonth ? 'opacity-40' : ''}
+                            `}
+                            style={{ backgroundColor: isToday ? COLORS.primary : 'transparent' }}
+                          >
+                            {format(day, 'd')}
+                          </span>
+                          {isToday && (
+                            <Badge variant="outline" className="text-[10px] h-5 border-orange-200 text-orange-700 bg-orange-50">
                               Hoje
                             </Badge>
                           )}
                         </div>
 
-                        <div className="space-y-2 max-h-28 overflow-y-auto">
-                          {dayTasks.slice(0, 6).map((task) => (
-                            <div
-                              key={task.id}
-                              className={`text-xs p-2 rounded-lg text-white shadow-sm cursor-pointer transition-all hover:shadow-md ${
-                                isTaskHighlighted(task.id) 
-                                  ? 'ring-2 ring-yellow-400 ring-offset-1 scale-105' 
-                                  : ''
-                              } ${
-                                task.column?.status === 'FINISHED' 
-                                  ? 'bg-green-600' 
-                                  : getTaskPriorityColor(task.priority || 1)
-                              }`}
-                              title={`${task.title} - ${task.column?.title || 'Sem coluna'}`}
-                              onClick={() => navigateToTaskInKanban(task.id)}
-                            >
-                              <div className="font-semibold truncate flex items-center gap-1">
-                                {isTaskHighlighted(task.id) && (
-                                  <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                                )}
-                                {task.title}
-                              </div>
-                              
-                              <div className="flex justify-between items-center mt-1">
-                                {task.code && (
-                                  <div className="text-[10px] opacity-90">#{task.code}</div>
-                                )}
-                                <Badge className="text-[10px] py-0 h-4 bg-black/20 hover:bg-black/30 border-0">
-                                  {getTaskPriorityText(task.priority || 1)}
-                                </Badge>
-                              </div>
-                              
-                              {task.assignedTo && (
-                                <div className="text-[10px] opacity-90 mt-1 truncate">
-                                  👤 {task.assignedTo.name}
+                        {/* Task List */}
+                        <div className="space-y-1.5">
+                          {dayTasks.slice(0, 5).map((task) => {
+                            const isFinished = task.column?.status === 'FINISHED';
+                            const isHighlighted = task.id === highlightedTask;
+
+                            return (
+                              <div
+                                key={task.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigateToTaskInKanban(task.id);
+                                }}
+                                className={`
+                                  group/task text-xs p-1.5 rounded border shadow-sm cursor-pointer 
+                                  transition-all duration-200 hover:scale-[1.02] hover:shadow-md relative overflow-hidden
+                                  ${isHighlighted ? 'ring-2 ring-yellow-400 ring-offset-1 z-20' : ''}
+                                  ${isFinished 
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800 opacity-80' 
+                                    : getPriorityStyles(task.priority || 1)
+                                  }
+                                `}
+                              >
+                                {/* Efeito de brilho no hover */}
+                                <div className="absolute inset-0 bg-white opacity-0 group-hover/task:opacity-10 transition-opacity" />
+
+                                <div className="flex items-center gap-1.5 font-semibold truncate">
+                                  {isHighlighted && <Star size={10} className="fill-yellow-400 text-yellow-400 shrink-0" />}
+                                  {isFinished && <CheckCircle2 size={10} className="text-emerald-600 shrink-0" />}
+                                  <span className="truncate">{task.title}</span>
                                 </div>
-                              )}
-                            </div>
-                          ))}
+                                
+                                <div className="flex justify-between items-center mt-1 text-[10px] opacity-90">
+                                  <span className="font-mono opacity-80">{task.code ? `#${task.code}` : ''}</span>
+                                  {task.assignedTo && (
+                                    <span 
+                                      className="bg-black/20 px-1 rounded text-[9px] text-white/90 truncate max-w-[60px]"
+                                      title={`Atribuído a: ${task.assignedTo.name}`}
+                                    >
+                                      {task.assignedTo.name.split(' ')[0]}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                           
-                          {dayTasks.length > 6 && (
-                            <div className="text-center text-xs text-gray-500 font-medium pt-1">
-                              +{dayTasks.length - 6} mais
-                            </div>
-                          )}
-                          
-                          {dayTasks.length === 0 && (
-                            <div className="text-center text-xs text-gray-400 py-2">
-                              Sem tarefas
-                            </div>
+                          {dayTasks.length > 5 && (
+                            <button 
+                              className="w-full text-center text-xs py-1 rounded hover:bg-gray-100 text-gray-500 font-medium transition-colors"
+                              onClick={() => {/* Lógica para abrir modal do dia se necessário */}}
+                            >
+                              +{dayTasks.length - 5} tarefas
+                            </button>
                           )}
                         </div>
                       </div>
@@ -428,56 +423,34 @@ export default function AgendaPage() {
           </CardContent>
         </Card>
 
-        {/* Legenda */}
-        <div className="mt-8 flex flex-wrap justify-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-indigo-100 ring-2 ring-indigo-500 rounded"></div>
-            <span className="text-sm text-gray-700">Hoje</span>
+        {/* --- Legend / Footer --- */}
+        <div className="mt-8 bg-white p-4 rounded-xl border shadow-sm flex flex-wrap gap-4 justify-center md:justify-between items-center" 
+             style={{ borderColor: `${COLORS.secondaryText}40` }}>
+          
+          <div className="flex flex-wrap gap-4 justify-center">
+            {[
+              { label: 'Normal', color: 'bg-[#95A5A6]' },
+              { label: 'Média', color: 'bg-[#2C3E50]' },
+              { label: 'Alta', color: 'bg-amber-500' },
+              { label: 'Urgente', color: 'bg-[#D35400]' },
+              { label: 'Crítica', color: 'bg-red-600' },
+              { label: 'Concluída', color: 'bg-emerald-100 border border-emerald-300' },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${item.color} shadow-sm`}></div>
+                <span className="text-xs font-medium" style={{ color: COLORS.textMain }}>{item.label}</span>
+              </div>
+            ))}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-gray-500 rounded"></div>
-            <span className="text-sm text-gray-700">Prioridade Baixa</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-blue-500 rounded"></div>
-            <span className="text-sm text-gray-700">Prioridade Média</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-green-500 rounded"></div>
-            <span className="text-sm text-gray-700">Prioridade Alta</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-orange-500 rounded"></div>
-            <span className="text-sm text-gray-700">Urgente</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-red-500 rounded"></div>
-            <span className="text-sm text-gray-700">Crítica</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-green-600 rounded"></div>
-            <span className="text-sm text-gray-700">Concluída</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 ring-2 ring-yellow-400 rounded"></div>
-            <span className="text-sm text-gray-700">Em Destaque</span>
+
+          <div className="text-xs flex items-center gap-2" style={{ color: COLORS.secondaryText }}>
+            <Clock className="h-3 w-3" />
+            <span>
+              Total: <strong>{tasks.length}</strong> tarefas carregadas
+            </span>
           </div>
         </div>
 
-        <div className="mt-6 text-center text-sm text-gray-500">
-          Total de tarefas agendadas: <strong>{tasks.length}</strong> | 
-          Visíveis neste mês: <strong>{tasks.filter(t => {
-            if (!t.dueDate) return false;
-            const monthStartStr = format(monthStart, 'yyyy-MM-dd');
-            const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
-            return t.dueDate >= monthStartStr && t.dueDate <= monthEndStr;
-          }).length}</strong>
-        </div>
-
-        {/* Dica */}
-        <div className="mt-4 text-center text-xs text-gray-400">
-          💡 Clique em qualquer tarefa para abri-la no Kanban
-        </div>
       </div>
     </div>
   );

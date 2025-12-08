@@ -4,8 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { User } from "@/types/chat";
-import { Send } from "lucide-react";
+import { Send, Loader2, User as UserIcon } from "lucide-react";
 import { useMentions } from "@/hooks/use-app-features";
+
+// --- TYPES ---
 
 interface MessageInputProps {
   onSendMessage: (message: string, mentionedUserId?: string) => void;
@@ -20,65 +22,96 @@ interface MentionListProps {
   isLoading?: boolean;
 }
 
+// --- SUB-COMPONENT: MENTION LIST ---
+
 function MentionList({ users, onSelect, selectedIndex, position, isLoading }: MentionListProps) {
-  // Se não estiver carregando e não tiver usuários, não renderiza
+  // UX: Não mostrar nada se vazio e não carregando
   if (!isLoading && users.length === 0) return null;
 
   return (
     <div 
-      className="fixed bg-background border rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto min-w-64"
-      // Ajuste visual: renderiza a lista subindo a partir da posição (estilo tooltip de chat)
+      className="fixed z-50 min-w-[240px] max-w-[300px] overflow-hidden rounded-xl border border-[#95A5A6]/20 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100 ease-out"
+      role="listbox"
       style={{ 
-        bottom: `calc(100vh - ${position.top}px)`, 
+        // Lógica de posicionamento mantida ("popover" style)
+        bottom: `calc(100vh - ${position.top}px + 8px)`, 
         left: `${position.left}px`,
       }}
     >
-      {isLoading ? (
-        <div className="p-3 text-sm text-muted-foreground">Carregando...</div>
-      ) : (
-        users.map((user, index) => (
-          <button
-            key={user.id}
-            type="button"
-            className={`w-full text-left p-2 hover:bg-muted/50 rounded-lg flex items-center gap-2 transition-colors ${
-              index === selectedIndex ? 'bg-muted' : ''
-            }`}
-            onClick={() => onSelect(user)}
-            // Previne perder o foco do input ao clicar
-            onMouseDown={(e) => e.preventDefault()} 
-          >
-            <div className="flex-1 overflow-hidden">
-              <div className="font-medium truncate">{user.name}</div>
-              <div className="text-xs text-muted-foreground truncate">
-                {user.email}
-              </div>
-            </div>
-          </button>
-        ))
-      )}
+      {/* Header da Lista (Opcional, para contexto) */}
+      <div className="bg-[#F5F0E6]/50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-[#95A5A6]">
+        Sugestões
+      </div>
+
+      <div className="max-h-[240px] overflow-y-auto p-1 custom-scrollbar">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-4 text-[#D35400]">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="ml-2 text-xs font-medium text-[#95A5A6]">Buscando...</span>
+          </div>
+        ) : (
+          users.map((user, index) => {
+            const isSelected = index === selectedIndex;
+            return (
+              <button
+                key={user.id}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all duration-200 ${
+                  isSelected 
+                    ? "bg-[#F5F0E6] text-[#2D3436]" // Highlight: Algodão Cru
+                    : "text-[#2D3436] hover:bg-[#F5F0E6]/50"
+                }`}
+                onClick={() => onSelect(user)}
+                onMouseDown={(e) => e.preventDefault()} // UX: Mantém foco no input
+              >
+                {/* Avatar Placeholder */}
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white shadow-sm ${
+                    isSelected ? "bg-[#D35400]" : "bg-[#95A5A6]"
+                }`}>
+                  <span className="text-xs font-bold">
+                    {user.name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium leading-none">
+                    {user.name}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-[#95A5A6]">
+                    {user.email}
+                  </div>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
 
+// --- MAIN COMPONENT ---
+
 export function MessageInput({ onSendMessage, disabled = false }: MessageInputProps) {
   const [message, setMessage] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  
-  // Ref para armazenar usuários que foram selecionados durante a digitação
-  // Isso resolve o problema de 'results' estar vazio na hora do envio
   const confirmedMentions = useRef<User[]>([]);
 
   const {
-    results,          // Nome corrigido (vem do hook)
-    showList,         // Nome corrigido
-    position,         // Nome corrigido
-    selectedIndex,    // Agora existe no hook atualizado
+    results,
+    showList,
+    position,
+    selectedIndex,
     isLoading,
     handleInputChange,
     insertMention,
-    handleKeyDown,    // Agora existe no hook atualizado
+    handleKeyDown,
     close
   } = useMentions();
+
+  // --- HANDLERS ---
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -91,17 +124,15 @@ export function MessageInput({ onSendMessage, disabled = false }: MessageInputPr
   const handleSelectUser = (user: User) => {
     if (!inputRef.current) return;
 
-    // 1. Guarda o usuário na lista de confirmados
     confirmedMentions.current.push(user);
 
-    // 2. Insere o texto
     const cursorPosition = inputRef.current.selectionStart || 0;
     const { text, cursor } = insertMention(message, user, cursorPosition);
     
     setMessage(text);
     close();
     
-    // 3. Devolve o foco e ajusta o cursor
+    // UX: Recupera foco e posição do cursor
     setTimeout(() => {
       if (inputRef.current) {
         inputRef.current.focus();
@@ -110,13 +141,14 @@ export function MessageInput({ onSendMessage, disabled = false }: MessageInputPr
     }, 0);
   };
 
-  // Wrapper para lidar com navegação na lista vs envio de mensagem
   const handleKeyDownWrapper = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Se a lista de menções estiver visível, o hook controla a navegação
     if (showList) {
       handleKeyDown(e, handleSelectUser);
       return;
     }
 
+    // Envio rápido com Enter (sem Shift)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -125,13 +157,10 @@ export function MessageInput({ onSendMessage, disabled = false }: MessageInputPr
 
   const getMentionedUserId = (finalMessage: string): string | undefined => {
     if (confirmedMentions.current.length === 0) return undefined;
-
-    // Procura nos usuários confirmados se algum ainda está presente no texto final
-    // Ex: O usuário pode ter selecionado "@Joao", mas depois apagou e escreveu "@Pedro" manualmente
+    // Validação robusta: verifica se a menção ainda existe no texto final
     const foundUser = confirmedMentions.current.find(user => 
       finalMessage.includes(`@${user.name}`)
     );
-
     return foundUser?.id;
   };
 
@@ -140,43 +169,45 @@ export function MessageInput({ onSendMessage, disabled = false }: MessageInputPr
     
     if (!message.trim() || disabled) return;
 
-    // Busca o ID com base no histórico de seleções + texto atual
     const mentionedUserId = getMentionedUserId(message);
     
     onSendMessage(message.trim(), mentionedUserId);
     
-    // Limpeza
     setMessage("");
-    confirmedMentions.current = []; // Limpa histórico de menções
+    confirmedMentions.current = [];
     close();
   };
 
-  // Fecha lista ao clicar fora
+  // UX: Fecha a lista ao clicar fora
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      // Se clicar fora do input E fora da lista (a lista é portal ou fixed, mas o clique fecha)
       if (inputRef.current && !inputRef.current.contains(e.target as Node)) {
         close();
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [close]);
 
+  // --- RENDER ---
+
   return (
     <div className="relative w-full">
-        {showList && (
-            <MentionList
-              users={results}
-              onSelect={handleSelectUser}
-              selectedIndex={selectedIndex}
-              position={position}
-              isLoading={isLoading}
-            />
-        )}
+      {/* Lista de Menções (Renderização Condicional) */}
+      {showList && (
+        <MentionList
+          users={results}
+          onSelect={handleSelectUser}
+          selectedIndex={selectedIndex}
+          position={position}
+          isLoading={isLoading}
+        />
+      )}
       
-      <form onSubmit={handleSubmit} className="flex gap-2 items-center">
+      <form 
+        onSubmit={handleSubmit} 
+        className="group relative flex items-center gap-2 rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-[#95A5A6]/20 transition-all focus-within:shadow-md focus-within:ring-[#D35400]/50"
+      >
         <div className="relative flex-1">
           <Input
             ref={inputRef}
@@ -186,8 +217,13 @@ export function MessageInput({ onSendMessage, disabled = false }: MessageInputPr
             onChange={handleInput}
             onKeyDown={handleKeyDownWrapper}
             disabled={disabled}
-            className="pr-4 w-full"
             autoComplete="off"
+            // A11y Attributes
+            aria-autocomplete="list"
+            aria-expanded={showList}
+            aria-haspopup="listbox"
+            // Styling overrides for seamless integration
+            className="h-10 w-full border-0 bg-transparent px-3 text-[#2D3436] placeholder:text-[#95A5A6] focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
         
@@ -195,9 +231,14 @@ export function MessageInput({ onSendMessage, disabled = false }: MessageInputPr
           type="submit" 
           disabled={disabled || !message.trim()}
           size="icon"
-          className="shrink-0"
+          className={`h-9 w-9 shrink-0 transition-all duration-200 ${
+            !message.trim() 
+              ? "bg-[#95A5A6]/20 text-[#95A5A6]" // Estado inativo: Cinza claro
+              : "bg-[#D35400] text-white hover:bg-[#D35400]/90 shadow-md hover:shadow-lg hover:-translate-y-0.5" // Estado ativo: Terracota + Microinteração
+          }`}
+          aria-label="Enviar mensagem"
         >
-          <Send className="h-4 w-4" />
+          <Send className="h-4 w-4" strokeWidth={2.5} />
         </Button>
       </form>
     </div>
