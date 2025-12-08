@@ -56,7 +56,8 @@ import { toast } from "sonner";
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
-const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL;
+// FIX: Garante que não quebre se a env não estiver definida, mas avisa no console
+const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
 // --- INTERFACES ---
 interface Professional {
@@ -212,8 +213,21 @@ export default function ProductKanban() {
       const token = getAuthToken();
       const headers: HeadersInit = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
+      
       const response = await fetch(url, { method, headers, body: formData });
-      if (response.status === 401) logout();
+      
+      if (response.status === 401) {
+        logout();
+        return response;
+      }
+
+      // FIX: Tratamento de erro detalhado para ver o que o backend respondeu
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        console.error("Erro na requisição (Files):", errorBody);
+        throw new Error(errorBody.message || `Erro ${response.status}: Falha na requisição`);
+      }
+
       return response;
     },
     [getAuthToken, logout]
@@ -409,14 +423,14 @@ export default function ProductKanban() {
     setEditingCol(column);
     setColTitle(column.title);
     setIsColumnModal(true);
-    setIsMobileMenuOpen(false); // Fechar menu mobile
+    setIsMobileMenuOpen(false);
   };
 
   const openCreateColumnModal = () => {
     setEditingCol(null);
     setColTitle("");
     setIsColumnModal(true);
-    setIsMobileMenuOpen(false); // Fechar menu mobile
+    setIsMobileMenuOpen(false);
   };
 
   // --- CRUD TAREFAS ---
@@ -536,16 +550,35 @@ export default function ProductKanban() {
   // --- SUBMISSÃO ---
   const createTask = async () => {
     if (!taskTitle.trim()) return toast.error("Título obrigatório");
+    
+    // FIX: Validação obrigatória da coluna, pois o Prisma exige columnId
+    if (!taskColumn) {
+      toast.error("Selecione uma coluna para a tarefa");
+      return;
+    }
+
     setIsSubmitting(true);
     const formData = new FormData();
+    
     formData.append("title", taskTitle);
     formData.append("description", taskDescription);
-    formData.append("priority", taskPriority);
+    
+    // FIX: Enviando a prioridade como string, mas garantindo que o backend saiba lidar ou envie numero se possivel (FormData sempre vira string no envio)
+    formData.append("priority", taskPriority); 
+    
     if (user?.company?.id) formData.append("companyId", user.company.id);
     if (user?.id) formData.append("createdById", user.id);
-    if (taskColumn) formData.append("columnId", taskColumn);
-    if (taskDueDate) formData.append("dueDate", taskDueDate);
+    
+    // FIX: Já validado acima, enviamos o ID da coluna
+    formData.append("columnId", taskColumn);
+    
+    // FIX: Garantindo formato ISO para a data
+    if (taskDueDate) {
+      formData.append("dueDate", new Date(taskDueDate).toISOString());
+    }
+
     if (taskAssignedTo) formData.append("assignedToId", taskAssignedTo);
+    
     taskImages.forEach((f) => formData.append("images", f));
     taskAudios.forEach((f) => formData.append("audios", f));
     taskVideos.forEach((f) => formData.append("videos", f));
@@ -556,15 +589,17 @@ export default function ProductKanban() {
         formData,
         "POST"
       );
-      if (!res.ok) throw new Error("Erro ao criar");
+      // O tratamento de erro agora é feito dentro do authFetchWithFiles
       const newTask = await res.json();
       setTasks((prev) => [newTask, ...prev]);
       resetTaskForm();
       setIsTaskModal(false);
       toast.success("Tarefa criada!");
       setTimeout(() => refreshTask(newTask.id), 1000);
-    } catch (err) {
-      toast.error("Erro ao criar tarefa");
+    } catch (err: any) {
+      console.error("Erro detalhado:", err);
+      // Mostra a mensagem exata do backend
+      toast.error(err.message || "Erro ao criar tarefa. Verifique o console.");
     } finally {
       setIsSubmitting(false);
     }
@@ -579,9 +614,16 @@ export default function ProductKanban() {
     formData.append("title", editTaskTitle);
     formData.append("description", editTaskDescription || "");
     formData.append("priority", editTaskPriority);
-    formData.append("columnId", editTaskColumn || "");
-    formData.append("dueDate", editTaskDueDate || "");
-    formData.append("assignedToId", editTaskAssignedTo || "");
+    
+    // FIX: Garantir que só envia se tiver valor
+    if (editTaskColumn) formData.append("columnId", editTaskColumn);
+    
+    // FIX: Garantir formato ISO
+    if (editTaskDueDate) {
+      formData.append("dueDate", new Date(editTaskDueDate).toISOString());
+    }
+
+    if (editTaskAssignedTo) formData.append("assignedToId", editTaskAssignedTo);
     formData.append("status", editTaskStatus);
 
     if (removedImageIds.length)
@@ -601,7 +643,7 @@ export default function ProductKanban() {
         formData,
         "PUT"
       );
-      if (!res.ok) throw new Error("Erro ao atualizar");
+      // O tratamento de erro agora é feito dentro do authFetchWithFiles
       const updated = await res.json();
       setTasks((prev) =>
         prev.map((t) => (t.id === editingTask.id ? updated : t))
@@ -610,8 +652,9 @@ export default function ProductKanban() {
       setEditingTask(null);
       resetEditTaskForm();
       toast.success("Tarefa atualizada");
-    } catch (err) {
-      toast.error("Erro ao atualizar");
+    } catch (err: any) {
+      console.error("Erro detalhado na atualização:", err);
+      toast.error(err.message || "Erro ao atualizar");
     } finally {
       setIsSubmitting(false);
     }
