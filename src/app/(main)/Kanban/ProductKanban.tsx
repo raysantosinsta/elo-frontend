@@ -49,6 +49,9 @@ import {
   Flag,
   FileText,
   Paperclip,
+  UploadCloud,
+  FileVideo,
+  FileAudio,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -56,8 +59,8 @@ import { toast } from "sonner";
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
-// FIX: Garante que não quebre se a env não estiver definida, mas avisa no console
-const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
 // --- INTERFACES ---
 interface Professional {
@@ -172,7 +175,7 @@ export default function ProductKanban() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- ESTADOS PARA O MODAL DE EXCLUSÃO (NOVO) ---
+  // --- ESTADOS PARA O MODAL DE EXCLUSÃO ---
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{
@@ -213,19 +216,20 @@ export default function ProductKanban() {
       const token = getAuthToken();
       const headers: HeadersInit = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      
+
       const response = await fetch(url, { method, headers, body: formData });
-      
+
       if (response.status === 401) {
         logout();
         return response;
       }
 
-      // FIX: Tratamento de erro detalhado para ver o que o backend respondeu
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         console.error("Erro na requisição (Files):", errorBody);
-        throw new Error(errorBody.message || `Erro ${response.status}: Falha na requisição`);
+        throw new Error(
+          errorBody.message || `Erro ${response.status}: Falha na requisição`
+        );
       }
 
       return response;
@@ -547,11 +551,20 @@ export default function ProductKanban() {
     }
   };
 
+  // --- Função para marcar arquivos existentes para remoção ---
+  const removeExistingFile = (
+    id: string,
+    type: "image" | "audio" | "video"
+  ) => {
+    if (type === "image") setRemovedImageIds((prev) => [...prev, id]);
+    if (type === "audio") setRemovedAudioIds((prev) => [...prev, id]);
+    if (type === "video") setRemovedVideoIds((prev) => [...prev, id]);
+  };
+
   // --- SUBMISSÃO ---
   const createTask = async () => {
     if (!taskTitle.trim()) return toast.error("Título obrigatório");
-    
-    // FIX: Validação obrigatória da coluna, pois o Prisma exige columnId
+
     if (!taskColumn) {
       toast.error("Selecione uma coluna para a tarefa");
       return;
@@ -559,26 +572,22 @@ export default function ProductKanban() {
 
     setIsSubmitting(true);
     const formData = new FormData();
-    
+
     formData.append("title", taskTitle);
     formData.append("description", taskDescription);
-    
-    // FIX: Enviando a prioridade como string, mas garantindo que o backend saiba lidar ou envie numero se possivel (FormData sempre vira string no envio)
-    formData.append("priority", taskPriority); 
-    
+    formData.append("priority", taskPriority);
+
     if (user?.company?.id) formData.append("companyId", user.company.id);
     if (user?.id) formData.append("createdById", user.id);
-    
-    // FIX: Já validado acima, enviamos o ID da coluna
+
     formData.append("columnId", taskColumn);
-    
-    // FIX: Garantindo formato ISO para a data
+
     if (taskDueDate) {
       formData.append("dueDate", new Date(taskDueDate).toISOString());
     }
 
     if (taskAssignedTo) formData.append("assignedToId", taskAssignedTo);
-    
+
     taskImages.forEach((f) => formData.append("images", f));
     taskAudios.forEach((f) => formData.append("audios", f));
     taskVideos.forEach((f) => formData.append("videos", f));
@@ -589,7 +598,6 @@ export default function ProductKanban() {
         formData,
         "POST"
       );
-      // O tratamento de erro agora é feito dentro do authFetchWithFiles
       const newTask = await res.json();
       setTasks((prev) => [newTask, ...prev]);
       resetTaskForm();
@@ -598,7 +606,6 @@ export default function ProductKanban() {
       setTimeout(() => refreshTask(newTask.id), 1000);
     } catch (err: any) {
       console.error("Erro detalhado:", err);
-      // Mostra a mensagem exata do backend
       toast.error(err.message || "Erro ao criar tarefa. Verifique o console.");
     } finally {
       setIsSubmitting(false);
@@ -614,11 +621,9 @@ export default function ProductKanban() {
     formData.append("title", editTaskTitle);
     formData.append("description", editTaskDescription || "");
     formData.append("priority", editTaskPriority);
-    
-    // FIX: Garantir que só envia se tiver valor
+
     if (editTaskColumn) formData.append("columnId", editTaskColumn);
-    
-    // FIX: Garantir formato ISO
+
     if (editTaskDueDate) {
       formData.append("dueDate", new Date(editTaskDueDate).toISOString());
     }
@@ -643,7 +648,6 @@ export default function ProductKanban() {
         formData,
         "PUT"
       );
-      // O tratamento de erro agora é feito dentro do authFetchWithFiles
       const updated = await res.json();
       setTasks((prev) =>
         prev.map((t) => (t.id === editingTask.id ? updated : t))
@@ -736,41 +740,6 @@ export default function ProductKanban() {
   const getInitials = (name: string) => {
     const parts = name.split(" ");
     return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
-  };
-
-  const getStatusConfig = (status: string) => {
-    switch (status) {
-      case "PENDING":
-        return {
-          label: "Not Started",
-          color: "text-indigo-600 bg-indigo-50",
-          dot: "bg-indigo-600",
-        };
-      case "IN_PROGRESS":
-        return {
-          label: "In Progress",
-          color: "text-amber-600 bg-amber-50",
-          dot: "bg-amber-600",
-        };
-      case "COMPLETED":
-        return {
-          label: "Completed",
-          color: "text-emerald-600 bg-emerald-50",
-          dot: "bg-emerald-600",
-        };
-      case "FAILED":
-        return {
-          label: "Canceled",
-          color: "text-rose-600 bg-rose-50",
-          dot: "bg-rose-600",
-        };
-      default:
-        return {
-          label: "Unknown",
-          color: "text-slate-600 bg-slate-50",
-          dot: "bg-slate-600",
-        };
-    }
   };
 
   const getPriorityConfig = (priority: number) => {
@@ -936,7 +905,6 @@ export default function ProductKanban() {
   const tasksWithoutColumn = tasks.filter((t) => !t.columnId);
 
   return (
-    // FIX 1: Alterado para min-h-[100dvh] para corrigir problemas em mobile browsers
     <div className="min-h-[100dvh] bg-[#F5F0E6] flex flex-col font-sans">
       {/* HEADER */}
       <header className="bg-[#2C3E50] text-white px-4 py-3 shadow-md border-b border-[#2C3E50] z-20">
@@ -1167,7 +1135,7 @@ export default function ProductKanban() {
 
       {/* --- DIALOGS --- */}
 
-      {/* 1. Modal Nova/Edit Tarefa - FIX: Envolvido em FORM para funcionar submit mobile */}
+      {/* 1. Modal Nova/Edit Tarefa */}
       <Dialog
         open={isTaskModal || isEditTaskModal}
         onOpenChange={(open) => {
@@ -1314,17 +1282,82 @@ export default function ProductKanban() {
                 </div>
               </div>
 
-              {/* Uploads Section */}
-              <div className="space-y-4 border-t border-[#95A5A6]/20 pt-4">
-                <h4 className="font-semibold text-sm text-[#2D3436]">Anexos</h4>
-                {/* Imagens */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <div className="p-3 border border-dashed border-[#95A5A6]/40 rounded-lg bg-[#F5F0E6]/30 hover:bg-[#F5F0E6]/60 transition-colors h-32 flex flex-col justify-center">
-                      <Label className="cursor-pointer flex flex-col items-center gap-2 text-center h-full justify-center">
-                        <ImageIcon className="w-6 h-6 text-[#2C3E50]" />
-                        <span className="text-xs text-[#95A5A6]">
-                          Adicionar Imagens
+              {/* Uploads Section (NOVA ORGANIZAÇÃO) */}
+              <div className="space-y-6 border-t border-[#95A5A6]/20 pt-6">
+                <h4 className="font-semibold text-sm text-[#2D3436] flex items-center gap-2">
+                  <UploadCloud className="w-4 h-4" /> Gerenciar Anexos
+                </h4>
+
+                {/* --- 1. BLOCO DE IMAGENS --- */}
+                <div className="space-y-3">
+                  <Label className="text-xs font-bold text-[#95A5A6] uppercase tracking-wider flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5" /> Imagens
+                  </Label>
+
+                  {/* Lista de Imagens (Existentes + Novas) */}
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                    {/* Existentes */}
+                    {isEditTaskModal &&
+                      editingTask?.taskImages?.map((img) => {
+                        if (removedImageIds.includes(img.id)) return null;
+                        return (
+                          <div
+                            key={img.id}
+                            className="relative aspect-square rounded-md overflow-hidden border border-indigo-200 group bg-slate-50"
+                          >
+                            <img
+                              src={img.url}
+                              alt="saved"
+                              className="w-full h-full object-cover"
+                            />
+                            <div
+                              className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                              onClick={() => removeExistingFile(img.id, "image")}
+                              title="Excluir (será removido ao salvar)"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </div>
+                            <div className="absolute bottom-0 left-0 bg-indigo-600/80 text-white text-[8px] font-bold px-1.5 py-0.5 w-full text-center">
+                              SALVO
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                    {/* Novas */}
+                    {(isEditTaskModal ? editTaskImages : taskImages).map(
+                      (file, idx) => (
+                        <div
+                          key={idx}
+                          className="relative aspect-square rounded-md overflow-hidden border-2 border-green-400 group bg-green-50"
+                        >
+                          <img
+                            src={URL.createObjectURL(file)}
+                            className="w-full h-full object-cover opacity-90"
+                            alt="preview"
+                          />
+                          <div
+                            className="absolute top-1 right-1 bg-slate-800 text-white p-1 rounded-full cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                            onClick={() =>
+                              removeNewFile(idx, "image", isEditTaskModal)
+                            }
+                            title="Cancelar upload"
+                          >
+                            <X className="w-3 h-3" />
+                          </div>
+                          <div className="absolute bottom-0 left-0 bg-green-600/80 text-white text-[8px] font-bold px-1.5 py-0.5 w-full text-center">
+                            NOVO
+                          </div>
+                        </div>
+                      )
+                    )}
+
+                    {/* Botão de Adicionar Imagem */}
+                    <div className="aspect-square flex items-center justify-center border border-dashed border-[#95A5A6] rounded-md bg-[#F5F0E6]/50 hover:bg-[#F5F0E6] transition-colors cursor-pointer">
+                      <Label className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
+                        <Plus className="w-5 h-5 text-[#2C3E50]" />
+                        <span className="text-[9px] text-[#95A5A6] mt-1 font-medium">
+                          Add Img
                         </span>
                         <Input
                           type="file"
@@ -1335,64 +1368,101 @@ export default function ProductKanban() {
                             if (e.target.files) {
                               const files = Array.from(e.target.files);
                               if (isEditTaskModal)
-                                setEditTaskImages((prev) => [
-                                  ...prev,
-                                  ...files,
-                                ]);
-                              else setTaskImages((prev) => [...prev, ...files]);
+                                setEditTaskImages((prev) => [...prev, ...files]);
+                              else
+                                setTaskImages((prev) => [...prev, ...files]);
                             }
                           }}
                         />
                       </Label>
                     </div>
-                    {(isEditTaskModal ? editTaskImages : taskImages).length >
-                      0 && (
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-[#95A5A6]">
-                          {(isEditTaskModal ? editTaskImages : taskImages).length}{" "}
-                          selecionadas
-                        </p>
-                        <div className="grid grid-cols-3 gap-2">
-                          {(isEditTaskModal
-                            ? editTaskImages
-                            : taskImages
-                          ).map((file, idx) => (
-                            <div
-                              key={idx}
-                              className="relative aspect-square rounded overflow-hidden border border-gray-200 group"
-                            >
-                              <img
-                                src={URL.createObjectURL(file)}
-                                className="w-full h-full object-cover"
-                                alt="preview"
-                              />
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeNewFile(
-                                    idx,
-                                    "image",
-                                    isEditTaskModal
-                                  )
-                                }
-                                className="absolute top-0 right-0 bg-red-500 text-white p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
+                </div>
 
-                  {/* Video */}
-                  <div className="flex flex-col gap-2">
-                    <div className="p-3 border border-dashed border-[#95A5A6]/40 rounded-lg bg-[#F5F0E6]/30 hover:bg-[#F5F0E6]/60 transition-colors h-32 flex flex-col justify-center">
-                      <Label className="cursor-pointer flex flex-col items-center gap-2 text-center h-full justify-center">
-                        <Video className="w-6 h-6 text-[#2C3E50]" />
-                        <span className="text-xs text-[#95A5A6]">
-                          Adicionar Vídeos
+                {/* --- 2. BLOCO DE VÍDEOS --- */}
+                <div className="space-y-3">
+                  <Label className="text-xs font-bold text-[#95A5A6] uppercase tracking-wider flex items-center gap-1.5">
+                    <FileVideo className="w-3.5 h-3.5" /> Vídeos
+                  </Label>
+
+                  <div className="space-y-2">
+                    {/* Lista Unificada de Vídeos */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {/* Existentes */}
+                      {isEditTaskModal &&
+                        editingTask?.taskVideos?.map((v) => {
+                          if (removedVideoIds.includes(v.id)) return null;
+                          return (
+                            <div
+                              key={v.id}
+                              className="flex items-center justify-between p-2 rounded border border-indigo-200 bg-indigo-50/50"
+                            >
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <Video className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                                <span
+                                  className="text-xs font-medium text-indigo-900 truncate"
+                                  title={v.filename}
+                                >
+                                  {v.filename}
+                                </span>
+                                <Badge className="text-[9px] h-4 bg-indigo-200 text-indigo-800 hover:bg-indigo-300">
+                                  Salvo
+                                </Badge>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-red-500 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => removeExistingFile(v.id, "video")}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+
+                      {/* Novos */}
+                      {(isEditTaskModal ? editTaskVideos : taskVideos).map(
+                        (file, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-2 rounded border border-green-300 bg-green-50"
+                          >
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <Video className="w-4 h-4 text-green-700 flex-shrink-0" />
+                              <span
+                                className="text-xs font-medium text-green-900 truncate"
+                                title={file.name}
+                              >
+                                {file.name}
+                              </span>
+                              <Badge className="text-[9px] h-4 bg-green-200 text-green-800 hover:bg-green-300">
+                                Novo
+                              </Badge>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-slate-500 hover:text-slate-800"
+                              onClick={() =>
+                                removeNewFile(idx, "video", isEditTaskModal)
+                              }
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    {/* Botão de Upload Vídeo */}
+                    <div className="flex items-center justify-center p-3 border border-dashed border-[#95A5A6] rounded-md bg-[#F5F0E6]/30 hover:bg-[#F5F0E6] transition-colors cursor-pointer">
+                      <Label className="cursor-pointer flex items-center gap-2 w-full justify-center">
+                        <Plus className="w-4 h-4 text-[#2C3E50]" />
+                        <span className="text-xs text-[#2C3E50] font-medium">
+                          Adicionar Vídeo
                         </span>
                         <Input
                           type="file"
@@ -1403,153 +1473,166 @@ export default function ProductKanban() {
                             if (e.target.files) {
                               const files = Array.from(e.target.files);
                               if (isEditTaskModal)
-                                setEditTaskVideos((prev) => [
-                                  ...prev,
-                                  ...files,
-                                ]);
-                              else setTaskVideos((prev) => [...prev, ...files]);
+                                setEditTaskVideos((prev) => [...prev, ...files]);
+                              else
+                                setTaskVideos((prev) => [...prev, ...files]);
                             }
                           }}
                         />
                       </Label>
                     </div>
-                    {(isEditTaskModal ? editTaskVideos : taskVideos).length >
-                      0 && (
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-[#95A5A6]">
-                          {(isEditTaskModal ? editTaskVideos : taskVideos).length}{" "}
-                          selecionados
-                        </p>
-                        <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                          {(isEditTaskModal
-                            ? editTaskVideos
-                            : taskVideos
-                          ).map((file, idx) => (
-                            <div
-                              key={idx}
-                              className="flex justify-between items-center text-[10px] bg-gray-50 p-1 rounded"
-                            >
-                              <span className="truncate max-w-[80%]">
-                                {file.name}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeNewFile(
-                                    idx,
-                                    "video",
-                                    isEditTaskModal
-                                  )
-                                }
-                                className="text-red-500 hover:text-red-700"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Audio */}
-                  <div className="flex flex-col gap-2">
-                    <div className="p-3 border border-dashed border-[#95A5A6]/40 rounded-lg bg-[#F5F0E6]/30 hover:bg-[#F5F0E6]/60 transition-colors h-32 flex flex-col justify-center">
-                      <Label className="cursor-pointer flex flex-col items-center gap-2 text-center h-full justify-center">
-                        <Mic className="w-6 h-6 text-[#2C3E50]" />
-                        <span className="text-xs text-[#95A5A6]">
-                          Upload Áudio
-                        </span>
-                        <Input
-                          type="file"
-                          accept="audio/*"
-                          multiple
-                          className="hidden"
-                          onChange={(e) => {
-                            if (e.target.files) {
-                              const files = Array.from(e.target.files);
-                              if (isEditTaskModal)
-                                setEditTaskAudios((prev) => [
-                                  ...prev,
-                                  ...files,
-                                ]);
-                              else setTaskAudios((prev) => [...prev, ...files]);
-                            }
-                          }}
-                        />
-                      </Label>
-                    </div>
-                    {(isEditTaskModal ? editTaskAudios : taskAudios).length >
-                      0 && (
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-[#95A5A6]">
-                          {(isEditTaskModal ? editTaskAudios : taskAudios).length}{" "}
-                          selecionados
-                        </p>
-                        <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                          {(isEditTaskModal
-                            ? editTaskAudios
-                            : taskAudios
-                          ).map((file, idx) => (
-                            <div
-                              key={idx}
-                              className="flex justify-between items-center text-[10px] bg-gray-50 p-1 rounded"
-                            >
-                              <span className="truncate max-w-[80%]">
-                                {file.name}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeNewFile(
-                                    idx,
-                                    "audio",
-                                    isEditTaskModal
-                                  )
-                                }
-                                className="text-red-500 hover:text-red-700"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                {/* Gravador */}
-                <div className="flex items-center gap-3 bg-[#F5F0E6] p-3 rounded-lg border border-[#D35400]/10">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={isRecording ? "destructive" : "secondary"}
-                    onClick={isRecording ? stopRecording : startRecording}
-                    className={cn(
-                      "w-32",
-                      isRecording
-                        ? "animate-pulse"
-                        : "bg-[#2C3E50] text-white hover:bg-[#34495E]"
+                {/* --- 3. BLOCO DE ÁUDIOS --- */}
+                <div className="space-y-3">
+                  <Label className="text-xs font-bold text-[#95A5A6] uppercase tracking-wider flex items-center gap-1.5">
+                    <FileAudio className="w-3.5 h-3.5" /> Áudios e Gravações
+                  </Label>
+
+                  <div className="space-y-2">
+                    {/* Lista Unificada de Áudios */}
+                    <div className="grid grid-cols-1 gap-2">
+                      {/* Existentes */}
+                      {isEditTaskModal &&
+                        editingTask?.taskAudios?.map((a) => {
+                          if (removedAudioIds.includes(a.id)) return null;
+                          return (
+                            <div
+                              key={a.id}
+                              className="flex items-center justify-between p-2 rounded border border-indigo-200 bg-indigo-50/50"
+                            >
+                              <div className="flex items-center gap-2 overflow-hidden flex-1">
+                                <Mic className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                                <span
+                                  className="text-xs font-medium text-indigo-900 truncate max-w-[150px]"
+                                  title={a.filename}
+                                >
+                                  {a.filename}
+                                </span>
+                                <Badge className="text-[9px] h-4 bg-indigo-200 text-indigo-800 hover:bg-indigo-300">
+                                  Salvo
+                                </Badge>
+                                {/* Mini Player Opcional */}
+                                <audio
+                                  controls
+                                  src={a.url}
+                                  className="h-6 w-24 ml-2"
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-red-500 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => removeExistingFile(a.id, "audio")}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+
+                      {/* Novos */}
+                      {(isEditTaskModal ? editTaskAudios : taskAudios).map(
+                        (file, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-2 rounded border border-green-300 bg-green-50"
+                          >
+                            <div className="flex items-center gap-2 overflow-hidden flex-1">
+                              <Mic className="w-4 h-4 text-green-700 flex-shrink-0" />
+                              <span
+                                className="text-xs font-medium text-green-900 truncate"
+                                title={file.name}
+                              >
+                                {file.name}
+                              </span>
+                              <Badge className="text-[9px] h-4 bg-green-200 text-green-800 hover:bg-green-300">
+                                Novo
+                              </Badge>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-slate-500 hover:text-slate-800"
+                              onClick={() =>
+                                removeNewFile(idx, "audio", isEditTaskModal)
+                              }
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      {/* Upload Áudio */}
+                      <div className="flex-1 flex items-center justify-center p-2 border border-dashed border-[#95A5A6] rounded-md bg-[#F5F0E6]/30 hover:bg-[#F5F0E6] transition-colors cursor-pointer">
+                        <Label className="cursor-pointer flex items-center gap-2 w-full justify-center">
+                          <Plus className="w-4 h-4 text-[#2C3E50]" />
+                          <span className="text-xs text-[#2C3E50] font-medium">
+                            Upload
+                          </span>
+                          <Input
+                            type="file"
+                            accept="audio/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files) {
+                                const files = Array.from(e.target.files);
+                                if (isEditTaskModal)
+                                  setEditTaskAudios((prev) => [
+                                    ...prev,
+                                    ...files,
+                                  ]);
+                                else
+                                  setTaskAudios((prev) => [...prev, ...files]);
+                              }
+                            }}
+                          />
+                        </Label>
+                      </div>
+
+                      {/* Gravador */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={isRecording ? "destructive" : "secondary"}
+                        onClick={isRecording ? stopRecording : startRecording}
+                        className={cn(
+                          "flex-1 border border-dashed border-[#95A5A6]",
+                          isRecording
+                            ? "animate-pulse"
+                            : "bg-[#F5F0E6]/30 text-[#2C3E50] hover:bg-[#F5F0E6]"
+                        )}
+                      >
+                        {isRecording ? (
+                          <>
+                            <Square className="w-3 h-3 mr-2" />
+                            <span className="font-mono">
+                              00:{String(recordingTime).padStart(2, "0")}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="w-3 h-3 mr-2" />
+                            <span className="text-xs">Gravar Voz</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    {/* Feedback visual de áudio gravado (blob) */}
+                    {audioBlob && !isRecording && (
+                      <div className="text-xs text-green-600 flex items-center gap-1 bg-green-50 p-2 rounded border border-green-200">
+                        <CheckCircle2 className="w-3 h-3" /> Áudio gravado pronto
+                        para envio
+                      </div>
                     )}
-                  >
-                    {isRecording ? (
-                      <Square className="w-4 h-4 mr-2" />
-                    ) : (
-                      <Mic className="w-4 h-4 mr-2" />
-                    )}
-                    {isRecording ? "Parar" : "Gravar Voz"}
-                  </Button>
-                  {isRecording && (
-                    <span className="text-sm font-mono text-red-600">
-                      00:{String(recordingTime).padStart(2, "0")}
-                    </span>
-                  )}
-                  {audioBlob && !isRecording && (
-                    <span className="text-xs text-green-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> Áudio gravado
-                    </span>
-                  )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1584,7 +1667,7 @@ export default function ProductKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* 2. Modal Coluna - FIX: Envolvido em FORM para funcionar submit mobile */}
+      {/* 2. Modal Coluna */}
       <Dialog open={isColumnModal} onOpenChange={setIsColumnModal}>
         <DialogContent className="sm:max-w-[425px]">
           <form
@@ -1629,7 +1712,7 @@ export default function ProductKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* 3. Modal Preview Profissional Única Coluna */}
+      {/* 3. Modal Preview Profissional Única Coluna - NOVO LAYOUT */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white p-0 gap-0 border-0 shadow-2xl flex flex-col">
           <DialogDescription id="task-preview-desc" className="sr-only">
@@ -1710,99 +1793,15 @@ export default function ProductKanban() {
                 </div>
 
                 {/* Separator */}
-                <div className="border-t border-slate-100" />
+                <div className="border-t border-slate-100 my-6" />
 
-                {/* Attachments Section - Unified Gallery */}
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                {/* Attachments Section - Layout Otimizado */}
+                <div className="space-y-8">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                     <Paperclip className="w-4 h-4" /> Anexos & Mídia
                   </h3>
 
-                  {/* Images Grid */}
-                  {previewTask.taskImages.length > 0 && (
-                    <div className="mb-6">
-                      <h4 className="text-xs font-semibold text-slate-500 mb-3 flex items-center gap-1.5">
-                        <ImageIcon className="w-3.5 h-3.5" /> Imagens (
-                        {previewTask.taskImages.length})
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {previewTask.taskImages.map((img) => (
-                          <div
-                            key={img.id}
-                            className="relative group aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer shadow-sm hover:shadow-md transition-all"
-                          >
-                            <img
-                              src={img.url}
-                              alt="Attachment"
-                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            />
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Videos & Audios Split View */}
-                  <div className="grid md:grid-cols-2 gap-6">
-                    {/* Videos List */}
-                    {previewTask.taskVideos.length > 0 && (
-                      <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                        <h4 className="text-xs font-semibold text-slate-500 mb-3 flex items-center gap-1.5">
-                          <Video className="w-3.5 h-3.5" /> Vídeos (
-                          {previewTask.taskVideos.length})
-                        </h4>
-                        <div className="space-y-4">
-                          {previewTask.taskVideos.map((v) => (
-                            <div key={v.id} className="group">
-                              <div className="rounded-lg overflow-hidden bg-black aspect-video mb-2 shadow-sm">
-                                <video
-                                  controls
-                                  src={v.url}
-                                  className="w-full h-full"
-                                />
-                              </div>
-                              <p
-                                className="text-xs text-slate-500 truncate px-1"
-                                title={v.filename}
-                              >
-                                {v.filename}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Audios List */}
-                    {previewTask.taskAudios.length > 0 && (
-                      <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 h-fit">
-                        <h4 className="text-xs font-semibold text-slate-500 mb-3 flex items-center gap-1.5">
-                          <Mic className="w-3.5 h-3.5" /> Áudios (
-                          {previewTask.taskAudios.length})
-                        </h4>
-                        <div className="space-y-2">
-                          {previewTask.taskAudios.map((a) => (
-                            <div
-                              key={a.id}
-                              className="bg-white p-2 rounded-lg border border-slate-100 shadow-sm flex flex-col gap-1"
-                            >
-                              <audio
-                                controls
-                                src={a.url}
-                                className="w-full h-8"
-                              />
-                              <span className="text-[10px] text-slate-400 px-1 truncate">
-                                {a.filename}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Empty State for Media */}
+                  {/* Empty State */}
                   {previewTask.taskImages.length === 0 &&
                     previewTask.taskVideos.length === 0 &&
                     previewTask.taskAudios.length === 0 && (
@@ -1813,6 +1812,99 @@ export default function ProductKanban() {
                         </p>
                       </div>
                     )}
+
+                  {/* 1. SEÇÃO DE IMAGENS (Grid Adaptável) */}
+                  {previewTask.taskImages.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold text-slate-500 flex items-center gap-2">
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        Imagens ({previewTask.taskImages.length})
+                      </h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        {previewTask.taskImages.map((img) => (
+                          <div
+                            key={img.id}
+                            className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-sm hover:shadow-md transition-all cursor-zoom-in"
+                            onClick={() => window.open(img.url, "_blank")}
+                          >
+                            <img
+                              src={img.url}
+                              alt="Attachment"
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                              <Eye className="text-white opacity-0 group-hover:opacity-100 w-6 h-6 drop-shadow-lg transition-opacity" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. SEÇÃO DE VÍDEOS (Grid 2 por linha) */}
+                  {previewTask.taskVideos.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold text-slate-500 flex items-center gap-2">
+                        <Video className="w-3.5 h-3.5" />
+                        Vídeos ({previewTask.taskVideos.length})
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {previewTask.taskVideos.map((v) => (
+                          <div
+                            key={v.id}
+                            className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                          >
+                            <div className="aspect-video bg-black relative group">
+                              <video
+                                controls
+                                src={v.url}
+                                className="w-full h-full"
+                              />
+                            </div>
+                            <div className="p-2.5 bg-slate-50 border-t border-slate-100">
+                              <p
+                                className="text-xs text-slate-600 font-medium truncate"
+                                title={v.filename}
+                              >
+                                {v.filename}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. SEÇÃO DE ÁUDIOS (Lista Estilizada) */}
+                  {previewTask.taskAudios.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold text-slate-500 flex items-center gap-2">
+                        <Mic className="w-3.5 h-3.5" />
+                        Áudios ({previewTask.taskAudios.length})
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {previewTask.taskAudios.map((a) => (
+                          <div
+                            key={a.id}
+                            className="flex flex-col gap-2 p-3 rounded-lg border border-slate-200 bg-white shadow-sm hover:border-slate-300 transition-colors"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                                <Mic className="w-3 h-3 text-indigo-600" />
+                              </div>
+                              <span
+                                className="text-xs font-medium text-slate-700 truncate"
+                                title={a.filename}
+                              >
+                                {a.filename}
+                              </span>
+                            </div>
+                            <audio controls src={a.url} className="w-full h-8" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1841,7 +1933,7 @@ export default function ProductKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* 4. MODAL DE EXCLUSÃO (NOVO) */}
+      {/* 4. MODAL DE EXCLUSÃO */}
       <ConfirmDeleteModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}

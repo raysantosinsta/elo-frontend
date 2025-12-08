@@ -33,7 +33,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+    const API_URL = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
     const newSocket: Socket = io(API_URL, {
       withCredentials: true,
