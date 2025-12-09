@@ -1072,6 +1072,7 @@ export default function ProductFlowKanban() {
       </header>
 
       {/* Mobile Menu (Same as before) */}
+      {/* Mobile Menu Ajustado */}
       {isMobileMenuOpen && (
         <div className="md:hidden bg-[#34495E] p-4 space-y-4 shadow-inner border-t border-white/10 text-white">
           <select
@@ -1091,6 +1092,36 @@ export default function ProductFlowKanban() {
               </option>
             ))}
           </select>
+
+          {/* ADICIONADO: Opções de Etapa e Item para Mobile */}
+          {selectedFlow && (
+            <div className="grid grid-cols-2 gap-2 pb-2 border-b border-white/10">
+               <Button
+                onClick={() => {
+                  resetItemForm();
+                  setIsItemModal(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                size="sm"
+                className="w-full justify-start text-white border-0 shadow-md"
+                style={{ backgroundColor: THEME.colors.primary }}
+              >
+                <Plus size={14} className="mr-2" /> Novo Item
+              </Button>
+              <Button
+                onClick={() => {
+                  resetStageForm();
+                  setIsStageModal(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                size="sm"
+                className="w-full justify-start bg-white/10 hover:bg-white/20 text-white border-0"
+              >
+                <Layers size={14} className="mr-2" /> Nova Etapa
+              </Button>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={() => setIsFlowModal(true)}
@@ -1107,6 +1138,17 @@ export default function ProductFlowKanban() {
               <RefreshCw size={14} className="mr-2" /> Atualizar
             </Button>
           </div>
+          
+          {selectedFlow && (
+             <Button
+                onClick={() => setIsDeleteFlowModal(true)}
+                variant="ghost" 
+                className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10"
+             >
+              <Trash2 size={14} className="mr-2" /> Excluir Fluxo Atual
+            </Button>
+          )}
+
           <Button onClick={logout} variant="destructive" className="w-full">
             <LogOut size={14} className="mr-2" /> Sair
           </Button>
