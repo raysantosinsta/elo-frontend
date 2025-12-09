@@ -23,8 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// Textarea removido pois não é mais usado para descrição
-// import { Textarea } from "@/components/ui/textarea"; 
+// Textarea removido
 import { useAuth } from "@/contexts/AuthContext";
 import {
   AlertCircle,
@@ -121,7 +120,6 @@ interface FlowItem {
   audios: FlowAudio[];
   videos: FlowVideo[];
   flowId: string;
-  // description mantido na interface para evitar erro de TS se o backend retornar, mas ignorado na UI
   description?: string; 
 }
 interface ProductFlow {
@@ -199,7 +197,6 @@ export default function ProductFlowKanban() {
 
   // Forms
   const [flowName, setFlowName] = useState("");
-  // const [flowDescription, setFlowDescription] = useState(""); // Se quiser remover do fluxo também
   const [stageName, setStageName] = useState("");
   const [stageColor, setStageColor] = useState(THEME.colors.navigation);
 
@@ -211,6 +208,9 @@ export default function ProductFlowKanban() {
   const [itemDueDate, setItemDueDate] = useState("");
   const [itemAssignedTo, setItemAssignedTo] = useState("");
   const [itemPriority, setItemPriority] = useState("3");
+  // NOVO: Estado para a etapa na criação
+  const [itemStage, setItemStage] = useState("");
+  
   const [itemImages, setItemImages] = useState<File[]>([]);
   const [itemAudios, setItemAudios] = useState<File[]>([]);
   const [itemVideos, setItemVideos] = useState<File[]>([]);
@@ -220,7 +220,6 @@ export default function ProductFlowKanban() {
   const [editItemOrderNumber, setEditItemOrderNumber] = useState("");
   const [editItemProductRef, setEditItemProductRef] = useState("");
   const [editItemQuantity, setEditItemQuantity] = useState("1");
-  // REMOVIDO: const [editItemDescription, setEditItemDescription] = useState("");
   const [editItemDueDate, setEditItemDueDate] = useState("");
   const [editItemAssignedTo, setEditItemAssignedTo] = useState("");
   const [editItemPriority, setEditItemPriority] = useState("3");
@@ -387,7 +386,6 @@ export default function ProductFlowKanban() {
       const newFlow = await res.json();
       setFlows((prev) => [...prev, newFlow]);
       setFlowName("");
-      // setFlowDescription("");
       setIsFlowModal(false);
       setSelectedFlow(newFlow.id);
       showToast(`Fluxo "${newFlow.name}" criado com sucesso!`, "success");
@@ -488,9 +486,10 @@ export default function ProductFlowKanban() {
         productRef: itemProductRef || "SEM-REF",
         quantity: parseInt(itemQuantity) || 1,
         priority: parseInt(itemPriority) || 3,
-        // SEM DESCRIPTION
         dueDate: itemDueDate ? new Date(itemDueDate).toISOString() : undefined,
         assignedToId: itemAssignedTo || undefined,
+        // Enviar stageId na criação
+        stageId: itemStage || undefined,
       };
       const res = await authFetch(`${API_BASE}/flow/${selectedFlow}/items`, {
         method: "POST",
@@ -523,7 +522,6 @@ export default function ProductFlowKanban() {
           productRef: editItemProductRef,
           quantity: parseInt(editItemQuantity),
           priority: parseInt(editItemPriority),
-          // SEM DESCRIPTION
           dueDate: editItemDueDate || undefined,
           assignedToId: editItemAssignedTo,
           stageId: editItemStage,
@@ -669,7 +667,13 @@ export default function ProductFlowKanban() {
     setItemOrderNumber("");
     setItemProductRef("");
     setItemQuantity("1");
-    // SEM DESCRIPTION
+    // Tenta selecionar a primeira etapa automaticamente
+    if (currentFlow?.stages && currentFlow.stages.length > 0) {
+        const sortedStages = [...currentFlow.stages].sort((a,b) => a.order - b.order);
+        setItemStage(sortedStages[0].id);
+    } else {
+        setItemStage("");
+    }
     setItemDueDate("");
     setItemAssignedTo("");
     setItemPriority("3");
@@ -684,7 +688,6 @@ export default function ProductFlowKanban() {
     setEditItemOrderNumber("");
     setEditItemProductRef("");
     setEditItemQuantity("1");
-    // SEM DESCRIPTION
     setEditItemDueDate("");
     setEditItemAssignedTo("");
     setEditItemPriority("3");
@@ -710,7 +713,6 @@ export default function ProductFlowKanban() {
     setEditItemOrderNumber(item.orderNumber);
     setEditItemProductRef(item.productRef);
     setEditItemQuantity(item.quantity.toString());
-    // SEM DESCRIPTION
     setEditItemPriority(item.priority.toString());
     setEditItemStatus(item.status);
     setEditItemStage(item.stageId || "");
@@ -1258,7 +1260,7 @@ export default function ProductFlowKanban() {
         )}
       </main>
 
-      {/* MODAL DE CRIAÇÃO DE ITEM - (SEM DESCRIÇÃO) */}
+      {/* MODAL DE CRIAÇÃO DE ITEM */}
       <Dialog open={isItemModal} onOpenChange={setIsItemModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1307,7 +1309,26 @@ export default function ProductFlowKanban() {
                   <option value="3">Baixa</option>
                 </select>
               </div>
+              {/* NOVO CAMPO: ETAPA INICIAL */}
               <div className="space-y-2">
+                <Label>Etapa Inicial</Label>
+                <select
+                  className="w-full border rounded-md p-2 text-sm bg-white"
+                  value={itemStage}
+                  onChange={(e) => setItemStage(e.target.value)}
+                >
+                  {currentFlow?.stages
+                    ?.sort((a, b) => a.order - b.order)
+                    .map((stage) => (
+                      <option key={stage.id} value={stage.id}>
+                        {stage.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
                 <Label>Responsável</Label>
                 <select
                   className="w-full border rounded-md p-2 text-sm bg-white"
@@ -1322,7 +1343,6 @@ export default function ProductFlowKanban() {
                   ))}
                 </select>
               </div>
-            </div>
 
             {/* UPLOAD IMAGENS */}
             <div className="space-y-2">
@@ -1462,7 +1482,7 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE EDIÇÃO - AGORA SEM DESCRIÇÃO */}
+      {/* MODAL DE EDIÇÃO */}
       <Dialog open={isEditItemModal} onOpenChange={setIsEditItemModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1507,7 +1527,25 @@ export default function ProductFlowKanban() {
                     <option value="3">Baixa</option>
                   </select>
                 </div>
+                {/* NOVO CAMPO: ETAPA NA EDIÇÃO */}
                 <div className="space-y-2">
+                  <Label>Etapa (Coluna)</Label>
+                  <select
+                    className="w-full border rounded p-2 text-sm"
+                    value={editItemStage}
+                    onChange={(e) => setEditItemStage(e.target.value)}
+                  >
+                    {currentFlow?.stages
+                        ?.sort((a, b) => a.order - b.order)
+                        .map((stage) => (
+                        <option key={stage.id} value={stage.id}>
+                            {stage.name}
+                        </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-2">
                   <Label>Status</Label>
                   <select
                     className="w-full border rounded p-2 text-sm"
@@ -1518,9 +1556,7 @@ export default function ProductFlowKanban() {
                     <option value="EM_PRODUCAO">Em Produção</option>
                     <option value="CONCLUIDO">Concluído</option>
                   </select>
-                </div>
               </div>
-              {/* CAMPO DESCRIÇÃO REMOVIDO DAQUI */}
 
               <div className="border-t pt-4">
                 <Label className="mb-2 block font-bold text-gray-700">
@@ -1757,7 +1793,7 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE PREVIEW - SEM EXIBIR DESCRIÇÃO */}
+      {/* MODAL DE PREVIEW */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1799,7 +1835,6 @@ export default function ProductFlowKanban() {
                     </span>
                   </div>
                 </div>
-                {/* BLOCO DE DESCRIÇÃO REMOVIDO DO PREVIEW TAMBÉM */}
               </div>
               <div>
                 <h4 className="font-semibold mb-2">
