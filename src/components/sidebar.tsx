@@ -17,14 +17,12 @@ import { useSidebar } from "@/hooks/SidebarContext";
 import { useNotifications } from "@/hooks/use-app-features";
 import { cn } from "@/lib/utils";
 import {
-  AlertCircle,
   BarChart,
   BarChart2,
   BarChart3,
   Bell,
   Calendar,
   Check,
-  CheckCheck,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -35,11 +33,11 @@ import {
   KanbanSquareDashed,
   LayoutDashboard,
   MessageSquare,
-  RefreshCw,
+  RefreshCw
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 const menuItems = [
@@ -51,6 +49,7 @@ const menuItems = [
   { title: "Relatórios Profissionais", href: "/professionals/report", icon: BarChart3 },
   { title: "Relatórios Tarefas", href: "/tasks/report", icon: BarChart2 },
   { title: "Relatórios produtos", href: "/product/report", icon: BarChart },
+  { title: "Gerenciar Empresa", href: "/empresas", icon: Home },
 ];
 
 // --- CONTEÚDO INTERNO (Reutilizável para Mobile e Desktop) ---

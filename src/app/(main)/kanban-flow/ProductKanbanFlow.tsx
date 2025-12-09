@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// Textarea removido
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   AlertCircle,
@@ -202,13 +202,13 @@ export default function ProductFlowKanban() {
 
   // Item Form (Criação)
   const [itemTitle, setItemTitle] = useState("");
+  const [itemDescription, setItemDescription] = useState(""); 
   const [itemOrderNumber, setItemOrderNumber] = useState("");
   const [itemProductRef, setItemProductRef] = useState("");
   const [itemQuantity, setItemQuantity] = useState("1");
   const [itemDueDate, setItemDueDate] = useState("");
   const [itemAssignedTo, setItemAssignedTo] = useState("");
   const [itemPriority, setItemPriority] = useState("3");
-  // NOVO: Estado para a etapa na criação
   const [itemStage, setItemStage] = useState("");
   
   const [itemImages, setItemImages] = useState<File[]>([]);
@@ -217,13 +217,14 @@ export default function ProductFlowKanban() {
 
   // Edit Form
   const [editItemTitle, setEditItemTitle] = useState("");
+  const [editItemDescription, setEditItemDescription] = useState("");
   const [editItemOrderNumber, setEditItemOrderNumber] = useState("");
   const [editItemProductRef, setEditItemProductRef] = useState("");
   const [editItemQuantity, setEditItemQuantity] = useState("1");
   const [editItemDueDate, setEditItemDueDate] = useState("");
   const [editItemAssignedTo, setEditItemAssignedTo] = useState("");
   const [editItemPriority, setEditItemPriority] = useState("3");
-  const [editItemStatus, setEditItemStatus] = useState("PENDENTE");
+  // const [editItemStatus, setEditItemStatus] = useState("PENDENTE"); // Removido do uso no modal
   const [editItemStage, setEditItemStage] = useState("");
   const [editItemImages, setEditItemImages] = useState<File[]>([]);
   const [editItemAudios, setEditItemAudios] = useState<File[]>([]);
@@ -482,13 +483,13 @@ export default function ProductFlowKanban() {
     try {
       const itemData = {
         title: itemTitle,
+        description: itemDescription, 
         orderNumber: itemOrderNumber || `PED-${Date.now()}`,
         productRef: itemProductRef || "SEM-REF",
         quantity: parseInt(itemQuantity) || 1,
         priority: parseInt(itemPriority) || 3,
         dueDate: itemDueDate ? new Date(itemDueDate).toISOString() : undefined,
         assignedToId: itemAssignedTo || undefined,
-        // Enviar stageId na criação
         stageId: itemStage || undefined,
       };
       const res = await authFetch(`${API_BASE}/flow/${selectedFlow}/items`, {
@@ -518,6 +519,7 @@ export default function ProductFlowKanban() {
         method: "PUT",
         body: JSON.stringify({
           title: editItemTitle,
+          description: editItemDescription,
           orderNumber: editItemOrderNumber,
           productRef: editItemProductRef,
           quantity: parseInt(editItemQuantity),
@@ -664,10 +666,10 @@ export default function ProductFlowKanban() {
 
   const resetItemForm = () => {
     setItemTitle("");
+    setItemDescription(""); 
     setItemOrderNumber("");
     setItemProductRef("");
     setItemQuantity("1");
-    // Tenta selecionar a primeira etapa automaticamente
     if (currentFlow?.stages && currentFlow.stages.length > 0) {
         const sortedStages = [...currentFlow.stages].sort((a,b) => a.order - b.order);
         setItemStage(sortedStages[0].id);
@@ -685,13 +687,14 @@ export default function ProductFlowKanban() {
 
   const resetEditItemForm = () => {
     setEditItemTitle("");
+    setEditItemDescription(""); 
     setEditItemOrderNumber("");
     setEditItemProductRef("");
     setEditItemQuantity("1");
     setEditItemDueDate("");
     setEditItemAssignedTo("");
     setEditItemPriority("3");
-    setEditItemStatus("PENDENTE");
+    // setEditItemStatus("PENDENTE");
     setEditItemStage("");
     setEditItemImages([]);
     setEditItemAudios([]);
@@ -703,18 +706,31 @@ export default function ProductFlowKanban() {
 
   const resetStageForm = () => {
     setStageName("");
-    setStageColor(THEME.colors.navigation);
+    setStageColor(THEME.colors.navigation); // Define como azul escuro no reset
     setEditingStage(null);
   };
 
   const openEditModal = (item: FlowItem) => {
     setEditingItem(item);
     setEditItemTitle(item.title);
+    setEditItemDescription(item.description || ""); 
     setEditItemOrderNumber(item.orderNumber);
     setEditItemProductRef(item.productRef);
     setEditItemQuantity(item.quantity.toString());
     setEditItemPriority(item.priority.toString());
-    setEditItemStatus(item.status);
+    
+    // Formata data para o input (YYYY-MM-DD)
+    if (item.dueDate) {
+        const dateObj = new Date(item.dueDate);
+        const yyyy = dateObj.getFullYear();
+        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(dateObj.getDate()).padStart(2, '0');
+        setEditItemDueDate(`${yyyy}-${mm}-${dd}`);
+    } else {
+        setEditItemDueDate("");
+    }
+
+    // setEditItemStatus(item.status);
     setEditItemStage(item.stageId || "");
     setIsEditItemModal(true);
   };
@@ -930,7 +946,6 @@ export default function ProductFlowKanban() {
           </div>
 
           <div className="flex justify-between items-center pt-2 border-t border-gray-100 mt-2">
-            <span className="text-[10px] font-mono text-gray-400">{item.orderNumber}</span>
             <div className="flex gap-2">
                 {item.videos?.length > 0 && <Video size={14} className="text-blue-400" />}
                 {item.audios?.length > 0 && <Music size={14} className="text-purple-400" />}
@@ -1128,7 +1143,7 @@ export default function ProductFlowKanban() {
               <RefreshCw size={14} className="mr-2" /> Atualizar
             </Button>
           </div>
-           
+            
           {selectedFlow && (
              <Button
                 onClick={() => setIsDeleteFlowModal(true)}
@@ -1270,7 +1285,7 @@ export default function ProductFlowKanban() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="space-y-2 col-span-2">
                 <Label>Título *</Label>
                 <Input
                   value={itemTitle}
@@ -1278,6 +1293,7 @@ export default function ProductFlowKanban() {
                   placeholder="Ex: Camisa Linho M"
                 />
               </div>
+              
               <div className="space-y-2">
                 <Label>Referência *</Label>
                 <Input
@@ -1286,6 +1302,18 @@ export default function ProductFlowKanban() {
                   placeholder="REF-001"
                 />
               </div>
+
+               {/* --- CAMPO DESCRIPTION ADICIONADO --- */}
+              <div className="space-y-2 col-span-2">
+                <Label>Descrição</Label>
+                <Textarea 
+                  value={itemDescription} 
+                  onChange={(e) => setItemDescription(e.target.value)} 
+                  placeholder="Detalhes adicionais sobre a produção..." 
+                  className="resize-none h-20"
+                />
+              </div>
+
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
@@ -1309,7 +1337,6 @@ export default function ProductFlowKanban() {
                   <option value="3">Baixa</option>
                 </select>
               </div>
-              {/* NOVO CAMPO: ETAPA INICIAL */}
               <div className="space-y-2">
                 <Label>Etapa Inicial</Label>
                 <select
@@ -1328,21 +1355,32 @@ export default function ProductFlowKanban() {
               </div>
             </div>
 
-            <div className="space-y-2">
-                <Label>Responsável</Label>
-                <select
-                  className="w-full border rounded-md p-2 text-sm bg-white"
-                  value={itemAssignedTo}
-                  onChange={(e) => setItemAssignedTo(e.target.value)}
-                >
-                  <option value="">Selecione...</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* ADICIONADO: CAMPO DE DATA DE VENCIMENTO NO CRIAÇÃO */}
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>Responsável</Label>
+                    <select
+                    className="w-full border rounded-md p-2 text-sm bg-white"
+                    value={itemAssignedTo}
+                    onChange={(e) => setItemAssignedTo(e.target.value)}
+                    >
+                    <option value="">Selecione...</option>
+                    {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                        {u.name}
+                        </option>
+                    ))}
+                    </select>
+                </div>
+                <div className="space-y-2">
+                    <Label>Data de Vencimento</Label>
+                    <Input 
+                        type="date" 
+                        value={itemDueDate}
+                        onChange={(e) => setItemDueDate(e.target.value)}
+                    />
+                </div>
+            </div>
 
             {/* UPLOAD IMAGENS */}
             <div className="space-y-2">
@@ -1491,19 +1529,41 @@ export default function ProductFlowKanban() {
           {editingItem && (
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
+                <div className="space-y-2 col-span-2">
                   <Label>Título</Label>
                   <Input
                     value={editItemTitle}
                     onChange={(e) => setEditItemTitle(e.target.value)}
                   />
                 </div>
+                
+                 {/* --- CAMPO DESCRIÇÃO ADICIONADO NA EDIÇÃO --- */}
+                <div className="space-y-2 col-span-2">
+                  <Label>Descrição</Label>
+                  <Textarea 
+                    value={editItemDescription} 
+                    onChange={(e) => setEditItemDescription(e.target.value)} 
+                    placeholder="Detalhes adicionais..." 
+                    className="resize-none h-20"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label>Referência</Label>
                   <Input
                     value={editItemProductRef}
                     onChange={(e) => setEditItemProductRef(e.target.value)}
                   />
+                </div>
+                
+                {/* ADICIONADO: CAMPO DATA DE VENCIMENTO NA EDIÇÃO */}
+                <div className="space-y-2">
+                    <Label>Vencimento</Label>
+                    <Input 
+                        type="date"
+                        value={editItemDueDate}
+                        onChange={(e) => setEditItemDueDate(e.target.value)}
+                    />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
@@ -1527,7 +1587,6 @@ export default function ProductFlowKanban() {
                     <option value="3">Baixa</option>
                   </select>
                 </div>
-                {/* NOVO CAMPO: ETAPA NA EDIÇÃO */}
                 <div className="space-y-2">
                   <Label>Etapa (Coluna)</Label>
                   <select
@@ -1545,18 +1604,7 @@ export default function ProductFlowKanban() {
                   </select>
                 </div>
               </div>
-              <div className="space-y-2">
-                  <Label>Status</Label>
-                  <select
-                    className="w-full border rounded p-2 text-sm"
-                    value={editItemStatus}
-                    onChange={(e) => setEditItemStatus(e.target.value)}
-                  >
-                    <option value="PENDENTE">Pendente</option>
-                    <option value="EM_PRODUCAO">Em Produção</option>
-                    <option value="CONCLUIDO">Concluído</option>
-                  </select>
-              </div>
+              {/* STATUS REMOVIDO DAQUI */}
 
               <div className="border-t pt-4">
                 <Label className="mb-2 block font-bold text-gray-700">
@@ -1623,7 +1671,7 @@ export default function ProductFlowKanban() {
                     </span>
                   </div>
                 </div>
-                {/* Resumo do que será adicionado */}
+                
                 <div className="flex gap-4 mt-2 text-xs text-green-600">
                   {editItemImages.length > 0 && (
                     <span>{editItemImages.length} imgs novas</span>
@@ -1803,7 +1851,7 @@ export default function ProductFlowKanban() {
             </DialogTitle>
             <DialogDescription className="flex gap-4">
               <span>REF: {previewItem?.productRef}</span>
-              <span>PED: {previewItem?.orderNumber}</span>
+              {/* REMOVIDO: SPAN COM PEDIDO */}
             </DialogDescription>
           </DialogHeader>
           {previewItem && (
