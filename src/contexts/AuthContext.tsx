@@ -9,9 +9,13 @@ import React, {
   useCallback,
 } from "react";
 import { useRouter } from "next/navigation";
-import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from "axios";
+import axios, {
+  AxiosInstance,
+  AxiosError,
+  InternalAxiosRequestConfig,
+} from "axios";
 
-// --- Governança: Tipagem Estrita e Interfaces ---
+// --- Tipagem ---
 
 interface User {
   id: string;
@@ -40,16 +44,13 @@ interface AuthContextType {
   loading: boolean;
   token: string | null;
   api: AxiosInstance;
-  /**
-   * @deprecated Use `api` instead. Kept for legacy support.
-   */
+  /** @deprecated Use `api` instead. */
   authFetch: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
-// Configuração centralizada
+// --- Configuração ---
 const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
-// --- Monitoramento ---
 const logger = {
   error: (message: string, meta?: unknown) => console.error(`[AuthError]: ${message}`, meta),
   info: (message: string, meta?: unknown) => console.log(`[AuthInfo]: ${message}`, meta),
@@ -57,16 +58,14 @@ const logger = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// --- Instância Axios Base (Definida FORA do componente) ---
+// --- Instância Axios Base ---
 export const api = axios.create({
   baseURL: API_BASE,
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 60000, // Timeout ajustado para 60s para evitar erros em relatórios pesados
+  headers: { "Content-Type": "application/json" },
+  timeout: 60000,
 });
 
-// --- Controle de Concorrência para Refresh Token ---
+// --- Controle de Fila para Refresh Token (Fora do Componente) ---
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (token: string) => void;
@@ -90,13 +89,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // --- Segurança e Limpeza ---
+  // --- Helpers de Limpeza ---
   const clearAuthData = useCallback(() => {
     setToken(null);
     setUser(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
+      // Opcional: Limpar cookies se usar
       document.cookie.split(";").forEach((c) => {
         document.cookie = c
           .replace(/^ +/, "")
@@ -112,133 +112,142 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push("/login");
   }, [clearAuthData, router]);
 
-  // --- Setup Interceptors ---
+  // --- 1. CONFIGURAÇÃO DO INTERCEPTOR (A CORREÇÃO PRINCIPAL) ---
   useEffect(() => {
-    const reqInterceptor = api.interceptors.request.use(
-      (config) => {
-        const accessToken = localStorage.getItem("accessToken");
-        if (accessToken) {
-          config.headers.Authorization = `Bearer ${accessToken}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
-    const resInterceptor = api.interceptors.response.use(
+    // Adiciona o interceptor para tratar erros 401 globalmente
+    const interceptorId = api.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-        if (error.response?.status !== 401 || originalRequest._retry) {
+        // Evita loop infinito se a chamada for de login ou refresh
+        if (!originalRequest) return Promise.reject(error);
+        if (
+          originalRequest.url?.includes("/auth/login") ||
+          originalRequest.url?.includes("/auth/refresh")
+        ) {
           return Promise.reject(error);
         }
 
-        // Evita loop infinito em rotas de auth
-        if (originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/refresh')) {
-            return Promise.reject(error);
-        }
-
-        if (isRefreshing) {
-          return new Promise(function (resolve, reject) {
-            failedQueue.push({ resolve, reject });
-          })
-            .then((token) => {
-              if (originalRequest.headers) {
-                originalRequest.headers["Authorization"] = `Bearer ${token}`;
-              }
-              return api(originalRequest);
+        // Se deu 401 (Unauthorized) e ainda não tentamos reconectar
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          
+          // Caso A: Já existe um refresh acontecendo. Entra na fila.
+          if (isRefreshing) {
+            return new Promise<string>((resolve, reject) => {
+              failedQueue.push({ resolve, reject });
             })
-            .catch((err) => Promise.reject(err));
-        }
-
-        originalRequest._retry = true;
-        isRefreshing = true;
-
-        try {
-          const refreshToken = localStorage.getItem("refreshToken");
-          if (!refreshToken) throw new Error("No refresh token available");
-
-          // Usamos axios puro aqui para não acionar interceptors novamente
-          const { data } = await axios.post<LoginResponse>(`${API_BASE}/auth/refresh`, {
-            refreshToken,
-          });
-
-          const newAccessToken = data.accessToken;
-          const newRefreshToken = data.refreshToken;
-
-          localStorage.setItem("accessToken", newAccessToken);
-          if (newRefreshToken) localStorage.setItem("refreshToken", newRefreshToken);
-          
-          setToken(newAccessToken);
-          api.defaults.headers.common["Authorization"] = `Bearer ${newAccessToken}`;
-
-          processQueue(null, newAccessToken);
-          
-          if (originalRequest.headers) {
-             originalRequest.headers["Authorization"] = `Bearer ${newAccessToken}`;
+              .then((newToken) => {
+                originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
+                return api(originalRequest);
+              })
+              .catch((err) => Promise.reject(err));
           }
-          return api(originalRequest);
 
-        } catch (refreshError) {
-          processQueue(refreshError, null);
-          clearAuthData();
-          // Não redireciona forçado aqui, deixa o componente lidar com estado null
-          return Promise.reject(refreshError);
-        } finally {
-          isRefreshing = false;
+          // Caso B: Somos o primeiro a detectar o erro 401. Inicia o Refresh.
+          originalRequest._retry = true;
+          isRefreshing = true;
+
+          try {
+            const storedRefreshToken = localStorage.getItem("refreshToken");
+            if (!storedRefreshToken) throw new Error("No refresh token");
+
+            // Chamada direta com axios puro (sem a instância 'api' para não interceptar)
+            const { data } = await axios.post<LoginResponse>(`${API_BASE}/auth/refresh`, {
+              refreshToken: storedRefreshToken,
+            });
+
+            const { accessToken, refreshToken: newRefreshToken } = data;
+
+            // Salva novos dados
+            localStorage.setItem("accessToken", accessToken);
+            if (newRefreshToken) localStorage.setItem("refreshToken", newRefreshToken);
+            
+            // Atualiza o estado da aplicação
+            setToken(accessToken);
+            api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+
+            // Libera a fila de requisições pausadas
+            processQueue(null, accessToken);
+
+            // Retenta a requisição original que falhou
+            originalRequest.headers["Authorization"] = `Bearer ${accessToken}`;
+            return api(originalRequest);
+
+          } catch (refreshErr) {
+            // Se o refresh falhar (ex: refresh token expirado), desloga geral
+            processQueue(refreshErr, null);
+            logout();
+            return Promise.reject(refreshErr);
+          } finally {
+            isRefreshing = false;
+          }
         }
+
+        return Promise.reject(error);
       }
     );
 
+    // Remove o interceptor ao desmontar
     return () => {
-      api.interceptors.request.eject(reqInterceptor);
-      api.interceptors.response.eject(resInterceptor);
+      api.interceptors.response.eject(interceptorId);
     };
-  }, [clearAuthData]);
+  }, [logout]);
 
-  // --- Inicialização (Hydration Inteligente) ---
+  // --- 2. Inicialização / Hydration (Ao carregar a página) ---
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
       const savedToken = localStorage.getItem("accessToken");
-      
-      if (!savedToken) {
+      const savedRefreshToken = localStorage.getItem("refreshToken");
+
+      if (!savedToken || !savedRefreshToken) {
         if (mounted) setLoading(false);
         return;
       }
 
-      // Verificação Prévia de Expiração (Simples e Rápida)
       try {
-        const payload = JSON.parse(atob(savedToken.split('.')[1]));
+        // Verifica validade básica do token (decodificando JWT)
+        const payload = JSON.parse(atob(savedToken.split(".")[1]));
         const now = Math.floor(Date.now() / 1000);
         
-        if (payload.exp < now) {
-           console.log("Token expirado na inicialização. O interceptor tentará renovar.");
-           // Não fazemos nada aqui, deixamos o api.get falhar e o interceptor renovar
+        let currentAccessToken = savedToken;
+
+        // Se expirou (ou vai expirar em <10s), renova proativamente NO BOOT
+        if (payload.exp < now + 10) {
+          console.log("🔄 Token expirado no boot. Renovando...");
+          try {
+            const { data } = await axios.post(`${API_BASE}/auth/refresh`, {
+              refreshToken: savedRefreshToken,
+            });
+            currentAccessToken = data.accessToken;
+            localStorage.setItem("accessToken", currentAccessToken);
+            if (data.refreshToken) localStorage.setItem("refreshToken", data.refreshToken);
+            setToken(currentAccessToken);
+          } catch (e) {
+            console.error("Falha ao renovar no boot", e);
+            clearAuthData();
+            if (mounted) setLoading(false);
+            return;
+          }
+        } else {
+          setToken(savedToken);
         }
-      } catch (e) {
-        console.warn("Token malformado no storage");
-        clearAuthData();
-        if (mounted) setLoading(false);
-        return;
-      }
 
-      setToken(savedToken);
-      api.defaults.headers.common["Authorization"] = `Bearer ${savedToken}`;
-
-      try {
+        // Configura header e busca perfil
+        api.defaults.headers.common["Authorization"] = `Bearer ${currentAccessToken}`;
+        
         const { data } = await api.get<User>("/auth/profile");
         if (mounted) setUser(data);
+
       } catch (error) {
-        // Ignora erro 401 visualmente, pois o interceptor trata o refresh
-        if (axios.isAxiosError(error) && error.response?.status !== 401) {
-             logger.error("Failed to load profile on init", error);
-        }
-        // Se após o refresh (que acontece nos bastidores) ainda der 401, limpa tudo
+        // Se der erro aqui, o interceptor acima pode não ter pego ainda (ex: erro de rede ou malformado)
+        // Se for 401 REAL mesmo após tentativas, limpamos.
         if (axios.isAxiosError(error) && error.response?.status === 401) {
-            clearAuthData();
+             clearAuthData();
+        } else {
+            logger.error("Erro ao carregar perfil inicial", error);
         }
       } finally {
         if (mounted) setLoading(false);
@@ -247,9 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     init();
 
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [clearAuthData]);
 
   // --- Login ---
@@ -268,7 +275,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setToken(accessToken);
       setUser(user);
-      
+
       logger.info("Login successful", { userId: user.id });
       router.push("/");
     } catch (error) {
@@ -280,16 +287,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [router]);
 
-  // --- Legacy AuthFetch (Compatibilidade) ---
+  // --- Legacy AuthFetch ---
   const authFetch = useCallback(async (url: string, options: RequestInit = {}): Promise<Response> => {
     try {
       const fullUrl = url.startsWith("http") ? url : `${API_BASE}${url}`;
       let data = undefined;
       if (options.body) {
         try {
-           data = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+          data = typeof options.body === "string" ? JSON.parse(options.body) : options.body;
         } catch {
-           data = options.body;
+          data = options.body;
         }
       }
 
@@ -309,9 +316,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         text: async () => JSON.stringify(response.data),
         headers: new Headers(response.headers as unknown as HeadersInit),
       } as unknown as Response;
-
     } catch (error) {
-       if (axios.isAxiosError(error) && error.response) {
+      if (axios.isAxiosError(error) && error.response) {
         return {
           ok: false,
           status: error.response.status,
@@ -336,11 +342,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }), [user, login, logout, loading, token, authFetch]);
 
   return (
-    <AuthContext.Provider value={contextValue}>
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
   );
 }
+
+// --- Hooks ---
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -349,11 +355,11 @@ export const useAuth = () => {
 };
 
 export const useAuthFetch = () => {
-    const { authFetch } = useAuth();
-    return authFetch;
+  const { authFetch } = useAuth();
+  return authFetch;
 };
 
 export const useApi = () => {
-    const { api } = useAuth();
-    return api;
+  const { api } = useAuth();
+  return api;
 };

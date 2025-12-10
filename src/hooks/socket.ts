@@ -15,15 +15,19 @@ class SocketService {
   connect() {
     if (this.socket?.connected) return;
 
-    const API_URL = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+    // 1. Garante que a URL não tenha barra no final para não duplicar
+    const rawUrl = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+    const API_URL = rawUrl.replace(/\/$/, "");
+
+    console.log(`🔌 Tentando conectar em: ${API_URL}/ws`);
 
     // Conecta especificamente no Namespace '/ws' configurado no Backend
     this.socket = io(`${API_URL}/ws`, {
-      transports: ["websocket"], // Força WebSocket (mais rápido que polling)
+     transports: ["websocket", "polling"],
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
-      // path: "/socket.io/", // Padrão do NestJS, não precisa alterar
+      withCredentials: true, // Importante para CORS
     });
 
     this.socket.on("connect", () => {

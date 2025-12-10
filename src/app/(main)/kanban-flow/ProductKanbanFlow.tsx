@@ -24,7 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext"; // Importando o contexto que tem o axios configurado
 import {
   AlertCircle,
   CheckCircle2,
@@ -69,27 +69,14 @@ const THEME = {
   },
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
-
+// Interfaces
 interface UserProfile {
   id: string;
   name: string;
   email: string;
   role?: string;
 }
-interface FlowImage {
-  id: string;
-  url: string;
-  filename: string;
-}
-interface FlowAudio {
-  id: string;
-  url: string;
-  filename: string;
-  duration?: number;
-}
-interface FlowVideo {
+interface FlowMedia {
   id: string;
   url: string;
   filename: string;
@@ -117,11 +104,11 @@ interface FlowItem {
   assignedTo?: UserProfile;
   stage?: FlowStage;
   stageId?: string;
-  images: FlowImage[];
-  audios: FlowAudio[];
-  videos: FlowVideo[];
+  images: FlowMedia[];
+  audios: FlowMedia[];
+  videos: FlowMedia[];
   flowId: string;
-  description?: string;
+  description?: string; 
 }
 interface ProductFlow {
   id: string;
@@ -163,7 +150,9 @@ const Toast = ({
 };
 
 export default function ProductFlowKanban() {
-  const { user, logout, loading: authLoading } = useAuth();
+  // AQUI ESTÁ A MUDANÇA PRINCIPAL: Pegamos 'api' do hook useAuth
+  // 'api' é a instância do Axios que sabe fazer refresh token
+  const { user, logout, loading: authLoading, api } = useAuth();
   const router = useRouter();
 
   const [flows, setFlows] = useState<ProductFlow[]>([]);
@@ -171,9 +160,11 @@ export default function ProductFlowKanban() {
   const [currentFlow, setCurrentFlow] = useState<ProductFlow | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDeleteItemModal, setIsDeleteItemModal] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<FlowItem | null>(null);
+  
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error";
@@ -203,7 +194,7 @@ export default function ProductFlowKanban() {
 
   // Item Form (Criação)
   const [itemTitle, setItemTitle] = useState("");
-  const [itemDescription, setItemDescription] = useState("");
+  const [itemDescription, setItemDescription] = useState(""); 
   const [itemOrderNumber, setItemOrderNumber] = useState("");
   const [itemProductRef, setItemProductRef] = useState("");
   const [itemQuantity, setItemQuantity] = useState("1");
@@ -211,7 +202,7 @@ export default function ProductFlowKanban() {
   const [itemAssignedTo, setItemAssignedTo] = useState("");
   const [itemPriority, setItemPriority] = useState("3");
   const [itemStage, setItemStage] = useState("");
-
+  
   const [itemImages, setItemImages] = useState<File[]>([]);
   const [itemAudios, setItemAudios] = useState<File[]>([]);
   const [itemVideos, setItemVideos] = useState<File[]>([]);
@@ -242,53 +233,15 @@ export default function ProductFlowKanban() {
   const audioChunksRef = useRef<Blob[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const getAuthToken = useCallback(
-    () =>
-      typeof window !== "undefined"
-        ? localStorage.getItem("accessToken")
-        : null,
-    []
-  );
-  const authFetch = useCallback(
-    async (url: string, options: RequestInit = {}) => {
-      const token = getAuthToken();
-      if (!token) {
-        logout();
-        throw new Error("Sem token");
-      }
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        ...((options.headers as Record<string, string>) || {}),
-      };
-      const response = await fetch(url, { ...options, headers });
-      if (response.status === 401) logout();
-      return response;
-    },
-    [getAuthToken, logout]
-  );
-
-  const authFetchWithFiles = useCallback(
-    async (url: string, formData: FormData, method: string = "POST") => {
-      const token = getAuthToken();
-      const headers: HeadersInit = token
-        ? { Authorization: `Bearer ${token}` }
-        : {};
-      const response = await fetch(url, { method, headers, body: formData });
-      if (response.status === 401) logout();
-      return response;
-    },
-    [getAuthToken, logout]
-  );
+  // REMOVIDO: authFetch e getAuthToken manuais. 
+  // Agora usamos 'api' vindo do useAuth()
 
   const fetchFlows = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
-      const res = await authFetch(
-        `${API_BASE}/flow?companyId=${user.company.id}`
-      );
-      if (!res.ok) throw new Error("Erro ao buscar fluxos");
-      const data = await res.json();
+      // USANDO api.get (Axios) em vez de fetch
+      const { data } = await api.get(`/flow?companyId=${user.company.id}`);
+      
       const flowsArray = Array.isArray(data)
         ? data
         : data.flows || data.data || [];
@@ -299,40 +252,31 @@ export default function ProductFlowKanban() {
       console.error(err);
       showToast("Erro ao carregar fluxos", "error");
     }
-  }, [authFetch, user?.company?.id, selectedFlow]);
+  }, [api, user?.company?.id, selectedFlow]);
 
   const fetchFlowBoard = useCallback(
     async (flowId: string) => {
       if (!flowId) return;
       try {
-        const res = await authFetch(
-          `${API_BASE}/flow/${flowId}/board?companyId=${user?.company?.id}`
-        );
-        if (!res.ok) throw new Error("Erro ao buscar board");
-        const data = await res.json();
+        const { data } = await api.get(`/flow/${flowId}/board?companyId=${user?.company?.id}`);
         setCurrentFlow(data);
       } catch (err) {
         console.error(err);
         showToast("Erro ao carregar quadro", "error");
       }
     },
-    [authFetch, user?.company?.id]
+    [api, user?.company?.id]
   );
 
   const fetchUsers = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
-      const res = await authFetch(
-        `${API_BASE}/users/company/${user.company.id}`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(Array.isArray(data) ? data : []);
-      }
+      const { data } = await api.get(`/users/company/${user.company.id}`);
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Erro ao buscar usuários", err);
     }
-  }, [authFetch, user?.company?.id]);
+  }, [api, user?.company?.id]);
 
   const loadInitialData = useCallback(async () => {
     if (!user) return;
@@ -362,9 +306,7 @@ export default function ProductFlowKanban() {
     if (!itemToDelete) return;
     setIsSubmitting(true);
     try {
-      await authFetch(`${API_BASE}/flow/items/${itemToDelete.id}`, {
-        method: "DELETE",
-      });
+      await api.delete(`/flow/items/${itemToDelete.id}`);
       await fetchFlowBoard(selectedFlow);
       showToast("Item excluído com sucesso.", "success");
       setIsDeleteItemModal(false);
@@ -380,12 +322,8 @@ export default function ProductFlowKanban() {
     if (!flowName || flowName.trim() === "")
       return showToast("Por favor, digite o nome do fluxo.", "error");
     try {
-      const res = await authFetch(`${API_BASE}/flow`, {
-        method: "POST",
-        body: JSON.stringify({ name: flowName.trim() }),
-      });
-      if (!res.ok) throw new Error();
-      const newFlow = await res.json();
+      const { data: newFlow } = await api.post(`/flow`, { name: flowName.trim() });
+      
       setFlows((prev) => [...prev, newFlow]);
       setFlowName("");
       setIsFlowModal(false);
@@ -400,10 +338,8 @@ export default function ProductFlowKanban() {
   const handleDeleteFlow = async () => {
     if (!selectedFlow) return;
     try {
-      const res = await authFetch(`${API_BASE}/flow/${selectedFlow}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error();
+      await api.delete(`/flow/${selectedFlow}`);
+      
       const updatedFlows = flows.filter((f) => f.id !== selectedFlow);
       setFlows(updatedFlows);
       setIsDeleteFlowModal(false);
@@ -422,11 +358,8 @@ export default function ProductFlowKanban() {
     if (!selectedFlow || !stageName.trim())
       return showToast("Preencha o nome da etapa", "error");
     try {
-      const res = await authFetch(`${API_BASE}/flow/${selectedFlow}/stages`, {
-        method: "POST",
-        body: JSON.stringify({ name: stageName, color: stageColor }),
-      });
-      if (!res.ok) throw new Error();
+      await api.post(`/flow/${selectedFlow}/stages`, { name: stageName, color: stageColor });
+      
       await fetchFlowBoard(selectedFlow);
       resetStageForm();
       setIsStageModal(false);
@@ -439,18 +372,12 @@ export default function ProductFlowKanban() {
   const updateStage = async () => {
     if (!editingStage || !stageName.trim()) return;
     try {
-      const res = await authFetch(
-        `${API_BASE}/flow/stages/${editingStage.id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            name: stageName,
-            color: stageColor,
-            order: editingStage.order,
-          }),
-        }
-      );
-      if (!res.ok) throw new Error();
+      await api.put(`/flow/stages/${editingStage.id}`, {
+        name: stageName,
+        color: stageColor,
+        order: editingStage.order,
+      });
+
       await fetchFlowBoard(selectedFlow);
       resetStageForm();
       setIsStageModal(false);
@@ -463,11 +390,8 @@ export default function ProductFlowKanban() {
   const deleteStage = async () => {
     if (!stageToDelete) return;
     try {
-      const res = await authFetch(
-        `${API_BASE}/flow/stages/${stageToDelete.id}`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) throw new Error();
+      await api.delete(`/flow/stages/${stageToDelete.id}`);
+      
       await fetchFlowBoard(selectedFlow);
       setIsDeleteStageModal(false);
       setStageToDelete(null);
@@ -480,17 +404,16 @@ export default function ProductFlowKanban() {
   const createFlowItem = async () => {
     if (!selectedFlow || !itemTitle.trim())
       return showToast("Título é obrigatório", "error");
-
-    // Verificar se ainda está gravando
+    
     if (isRecording) {
-      return showToast("Pare a gravação antes de salvar.", "error");
+        return showToast("Pare a gravação antes de salvar.", "error");
     }
 
     setIsSubmitting(true);
     try {
       const itemData = {
         title: itemTitle,
-        description: itemDescription,
+        description: itemDescription, 
         orderNumber: itemOrderNumber || `PED-${Date.now()}`,
         productRef: itemProductRef || "SEM-REF",
         quantity: parseInt(itemQuantity) || 1,
@@ -499,16 +422,12 @@ export default function ProductFlowKanban() {
         assignedToId: itemAssignedTo || undefined,
         stageId: itemStage || undefined,
       };
-
-      const res = await authFetch(`${API_BASE}/flow/${selectedFlow}/items`, {
-        method: "POST",
-        body: JSON.stringify(itemData),
-      });
-      if (!res.ok) throw new Error();
-      const responseData = await res.json();
+      
+      // AXIOS POST (Refresh token automático se der 401)
+      const { data: responseData } = await api.post(`/flow/${selectedFlow}/items`, itemData);
 
       await uploadAllMediaFiles(responseData.id);
-
+      
       await fetchFlowBoard(selectedFlow);
       resetItemForm();
       setIsItemModal(false);
@@ -525,9 +444,7 @@ export default function ProductFlowKanban() {
     if (!editingItem || !editItemTitle.trim()) return;
     setIsSubmitting(true);
     try {
-      await authFetch(`${API_BASE}/flow/items/${editingItem.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
+      await api.put(`/flow/items/${editingItem.id}`, {
           title: editItemTitle,
           description: editItemDescription,
           orderNumber: editItemOrderNumber,
@@ -537,18 +454,17 @@ export default function ProductFlowKanban() {
           dueDate: editItemDueDate || undefined,
           assignedToId: editItemAssignedTo,
           stageId: editItemStage,
-        }),
       });
+
       await removeMarkedMedia();
+      
       if (editItemImages.length)
-        for (const f of editItemImages)
-          await uploadSingleMedia(editingItem.id, f, "image");
+        for (const f of editItemImages) await uploadSingleMedia(editingItem.id, f, "image");
       if (editItemAudios.length)
-        for (const f of editItemAudios)
-          await uploadSingleMedia(editingItem.id, f, "audio");
+        for (const f of editItemAudios) await uploadSingleMedia(editingItem.id, f, "audio");
       if (editItemVideos.length)
-        for (const f of editItemVideos)
-          await uploadSingleMedia(editingItem.id, f, "video");
+        for (const f of editItemVideos) await uploadSingleMedia(editingItem.id, f, "video");
+        
       await fetchFlowBoard(selectedFlow);
       setIsEditItemModal(false);
       resetEditItemForm();
@@ -562,10 +478,7 @@ export default function ProductFlowKanban() {
 
   const moveItem = async (itemId: string, newStageId: string) => {
     try {
-      await authFetch(`${API_BASE}/flow/items/${itemId}/move`, {
-        method: "PUT",
-        body: JSON.stringify({ newStageId }),
-      });
+      await api.put(`/flow/items/${itemId}/move`, { newStageId });
       await fetchFlowBoard(selectedFlow);
     } catch {
       showToast("Erro ao mover item.", "error");
@@ -578,14 +491,15 @@ export default function ProductFlowKanban() {
     type: "image" | "audio" | "video"
   ) => {
     const formData = new FormData();
-    // AQUI ESTÁ A CORREÇÃO CRUCIAL PARA SALVAR O ÁUDIO GRAVADO:
-    // O terceiro parâmetro (file.name) garante que o nome do arquivo com a extensão .webm seja enviado
-    formData.append("file", file, file.name);
-
-    await authFetchWithFiles(
-      `${API_BASE}/flow/items/${itemId}/media/${type}`,
-      formData
-    );
+    // Nome do arquivo explícito para garantir extensão correta no backend
+    formData.append("file", file, file.name); 
+    
+    // AXIOS POST para multipart
+    await api.post(`/flow/items/${itemId}/media/${type}`, formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        }
+    });
   };
 
   const uploadAllMediaFiles = async (itemId: string) => {
@@ -597,20 +511,11 @@ export default function ProductFlowKanban() {
   const removeMarkedMedia = async () => {
     if (!editingItem) return;
     for (const id of removedImageIds)
-      await authFetch(
-        `${API_BASE}/flow/items/${editingItem.id}/media/image/${id}`,
-        { method: "DELETE" }
-      );
+      await api.delete(`/flow/items/${editingItem.id}/media/image/${id}`);
     for (const id of removedAudioIds)
-      await authFetch(
-        `${API_BASE}/flow/items/${editingItem.id}/media/audio/${id}`,
-        { method: "DELETE" }
-      );
+      await api.delete(`/flow/items/${editingItem.id}/media/audio/${id}`);
     for (const id of removedVideoIds)
-      await authFetch(
-        `${API_BASE}/flow/items/${editingItem.id}/media/video/${id}`,
-        { method: "DELETE" }
-      );
+      await api.delete(`/flow/items/${editingItem.id}/media/video/${id}`);
   };
 
   const removeImage = (id: string) => {
@@ -653,52 +558,53 @@ export default function ProductFlowKanban() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      let mimeType = "audio/webm";
-      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
-        mimeType = "audio/webm;codecs=opus";
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
       }
       const recorder = new MediaRecorder(stream, { mimeType });
+      
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
-
+      
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
+          if(e.data.size > 0) {
+              audioChunksRef.current.push(e.data);
+          }
       };
 
       recorder.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
-
+        
         if (blob.size === 0) {
-          showToast("Erro: Gravação vazia.", "error");
-          return;
+            showToast("Erro: Gravação vazia.", "error");
+            return;
         }
 
         const fileName = `gravacao-${Date.now()}.webm`;
         const audioFile = new File([blob], fileName, { type: mimeType });
 
-        setItemAudios((prev) => [...prev, audioFile]);
-
+        setItemAudios((prev) => [
+          ...prev,
+          audioFile,
+        ]);
+        
         showToast("Áudio gravado com sucesso!", "success");
-
         stream.getTracks().forEach((t) => t.stop());
       };
 
-      recorder.start(100);
+      recorder.start(100); 
       setIsRecording(true);
-    } catch {
+    } catch (error) {
+      console.error(error);
       showToast("Erro no microfone. Verifique permissões.", "error");
     }
   };
 
   const stopRecording = () => {
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !== "inactive"
-    ) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
     }
   };
 
@@ -708,17 +614,15 @@ export default function ProductFlowKanban() {
 
   const resetItemForm = () => {
     setItemTitle("");
-    setItemDescription("");
+    setItemDescription(""); 
     setItemOrderNumber("");
     setItemProductRef("");
     setItemQuantity("1");
     if (currentFlow?.stages && currentFlow.stages.length > 0) {
-      const sortedStages = [...currentFlow.stages].sort(
-        (a, b) => a.order - b.order
-      );
-      setItemStage(sortedStages[0].id);
+        const sortedStages = [...currentFlow.stages].sort((a,b) => a.order - b.order);
+        setItemStage(sortedStages[0].id);
     } else {
-      setItemStage("");
+        setItemStage("");
     }
     setItemDueDate("");
     setItemAssignedTo("");
@@ -731,7 +635,7 @@ export default function ProductFlowKanban() {
 
   const resetEditItemForm = () => {
     setEditItemTitle("");
-    setEditItemDescription("");
+    setEditItemDescription(""); 
     setEditItemOrderNumber("");
     setEditItemProductRef("");
     setEditItemQuantity("1");
@@ -757,20 +661,20 @@ export default function ProductFlowKanban() {
   const openEditModal = (item: FlowItem) => {
     setEditingItem(item);
     setEditItemTitle(item.title);
-    setEditItemDescription(item.description || "");
+    setEditItemDescription(item.description || ""); 
     setEditItemOrderNumber(item.orderNumber);
     setEditItemProductRef(item.productRef);
     setEditItemQuantity(item.quantity.toString());
     setEditItemPriority(item.priority.toString());
-
+    
     if (item.dueDate) {
-      const dateObj = new Date(item.dueDate);
-      const yyyy = dateObj.getFullYear();
-      const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-      const dd = String(dateObj.getDate()).padStart(2, "0");
-      setEditItemDueDate(`${yyyy}-${mm}-${dd}`);
+        const dateObj = new Date(item.dueDate);
+        const yyyy = dateObj.getFullYear();
+        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(dateObj.getDate()).padStart(2, '0');
+        setEditItemDueDate(`${yyyy}-${mm}-${dd}`);
     } else {
-      setEditItemDueDate("");
+        setEditItemDueDate("");
     }
 
     setEditItemStatus(item.status);
@@ -868,30 +772,28 @@ export default function ProductFlowKanban() {
                 className="flex flex-col bg-gray-50 p-2 rounded text-sm border border-gray-100"
               >
                 <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2 truncate">
-                    <Music size={14} className="text-purple-500" />
-                    <span className="truncate text-xs font-medium">
-                      {aud.filename}
-                    </span>
-                  </div>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => window.open(aud.url, "_blank")}
-                      className="text-gray-400 hover:text-purple-600"
-                      title="Abrir em nova aba"
-                    >
-                      <Download size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeAudio(aud.id)}
-                      className="text-gray-400 hover:text-red-600"
-                      title="Excluir"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                    <div className="flex items-center gap-2 truncate">
+                        <Music size={14} className="text-purple-500" />
+                        <span className="truncate text-xs font-medium">{aud.filename}</span>
+                    </div>
+                    <div className="flex gap-1">
+                        <button
+                            type="button"
+                            onClick={() => window.open(aud.url, "_blank")}
+                            className="text-gray-400 hover:text-purple-600"
+                            title="Abrir em nova aba"
+                        >
+                            <Download size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => removeAudio(aud.id)}
+                            className="text-gray-400 hover:text-red-600"
+                            title="Excluir"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    </div>
                 </div>
                 {/* PLAYER DE ÁUDIO NATIVO PARA OUVIR AGORA NO EDIT */}
                 <audio controls src={aud.url} className="w-full h-8 mt-1" />
@@ -905,7 +807,7 @@ export default function ProductFlowKanban() {
 
   const KanbanCard = ({ item }: { item: FlowItem }) => {
     const priorityStyle = getPriorityStyles(item.priority);
-
+    
     return (
       <Card
         draggable
@@ -996,23 +898,17 @@ export default function ProductFlowKanban() {
             </span>
           </div>
 
-          {/* RODAPÉ DO CARD ATUALIZADO (SEM O NÚMERO DO PEDIDO) */}
           <div className="flex justify-between items-center pt-2 border-t border-gray-100 mt-2">
             <div className="flex gap-2">
-              {item.videos?.length > 0 && (
-                <Video size={14} className="text-blue-400" />
-              )}
-              {item.audios?.length > 0 && (
-                <Music size={14} className="text-purple-400" />
-              )}
+                {item.videos?.length > 0 && <Video size={14} className="text-blue-400" />}
+                {item.audios?.length > 0 && <Music size={14} className="text-purple-400" />}
             </div>
             {item.assignedTo ? (
               <div className="flex items-center gap-1 bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full text-[10px] font-medium border border-purple-100">
                 <User size={10} /> {item.assignedTo.name.split(" ")[0]}
               </div>
             ) : (
-              // Adicionei um espaço vazio caso não tenha responsável para manter o layout alinhado se necessário
-              <div />
+                <div /> 
             )}
           </div>
         </div>
@@ -1160,7 +1056,7 @@ export default function ProductFlowKanban() {
 
           {selectedFlow && (
             <div className="grid grid-cols-2 gap-2 pb-2 border-b border-white/10">
-              <Button
+               <Button
                 onClick={() => {
                   resetItemForm();
                   setIsItemModal(true);
@@ -1202,13 +1098,13 @@ export default function ProductFlowKanban() {
               <RefreshCw size={14} className="mr-2" /> Atualizar
             </Button>
           </div>
-
+           
           {selectedFlow && (
-            <Button
-              onClick={() => setIsDeleteFlowModal(true)}
-              variant="ghost"
-              className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10"
-            >
+             <Button
+                onClick={() => setIsDeleteFlowModal(true)}
+                variant="ghost" 
+                className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10"
+             >
               <Trash2 size={14} className="mr-2" /> Excluir Fluxo Atual
             </Button>
           )}
@@ -1352,7 +1248,7 @@ export default function ProductFlowKanban() {
                   placeholder="Ex: Camisa Linho M"
                 />
               </div>
-
+              
               <div className="space-y-2">
                 <Label>Referência *</Label>
                 <Input
@@ -1362,16 +1258,17 @@ export default function ProductFlowKanban() {
                 />
               </div>
 
-              {/* --- CAMPO DESCRIPTION --- */}
+               {/* --- CAMPO DESCRIPTION --- */}
               <div className="space-y-2 col-span-2">
                 <Label>Descrição</Label>
-                <Textarea
-                  value={itemDescription}
-                  onChange={(e) => setItemDescription(e.target.value)}
-                  placeholder="Detalhes adicionais sobre a produção..."
+                <Textarea 
+                  value={itemDescription} 
+                  onChange={(e) => setItemDescription(e.target.value)} 
+                  placeholder="Detalhes adicionais sobre a produção..." 
                   className="resize-none h-20"
                 />
               </div>
+
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
@@ -1415,29 +1312,29 @@ export default function ProductFlowKanban() {
 
             {/* ADICIONADO: CAMPO DE DATA DE VENCIMENTO NO CRIAÇÃO */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Responsável</Label>
-                <select
-                  className="w-full border rounded-md p-2 text-sm bg-white"
-                  value={itemAssignedTo}
-                  onChange={(e) => setItemAssignedTo(e.target.value)}
-                >
-                  <option value="">Selecione...</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>Data de Vencimento</Label>
-                <Input
-                  type="date"
-                  value={itemDueDate}
-                  onChange={(e) => setItemDueDate(e.target.value)}
-                />
-              </div>
+                <div className="space-y-2">
+                    <Label>Responsável</Label>
+                    <select
+                    className="w-full border rounded-md p-2 text-sm bg-white"
+                    value={itemAssignedTo}
+                    onChange={(e) => setItemAssignedTo(e.target.value)}
+                    >
+                    <option value="">Selecione...</option>
+                    {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                        {u.name}
+                        </option>
+                    ))}
+                    </select>
+                </div>
+                <div className="space-y-2">
+                    <Label>Data de Vencimento</Label>
+                    <Input 
+                        type="date" 
+                        value={itemDueDate}
+                        onChange={(e) => setItemDueDate(e.target.value)}
+                    />
+                </div>
             </div>
 
             {/* UPLOAD IMAGENS */}
@@ -1523,11 +1420,7 @@ export default function ProductFlowKanban() {
                   </span>
                 </div>
                 {/* Gravar Mic */}
-                <div
-                  className={`flex flex-col items-center justify-center gap-2 border rounded-lg p-4 transition-colors ${
-                    isRecording ? "bg-red-50 border-red-200" : "bg-gray-50"
-                  }`}
-                >
+                <div className={`flex flex-col items-center justify-center gap-2 border rounded-lg p-4 transition-colors ${isRecording ? 'bg-red-50 border-red-200' : 'bg-gray-50'}`}>
                   <Button
                     type="button"
                     variant="outline"
@@ -1544,13 +1437,15 @@ export default function ProductFlowKanban() {
                     ) : (
                       <Mic className="w-4 h-4 mr-2" />
                     )}
-                    {isRecording ? `Parar Gravação` : "Gravar Áudio"}
+                    {isRecording
+                      ? `Parar Gravação`
+                      : "Gravar Áudio"}
                   </Button>
                   {isRecording && (
-                    <span className="text-xs text-red-500 animate-pulse font-medium flex items-center gap-1">
-                      <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                      Gravando...
-                    </span>
+                     <span className="text-xs text-red-500 animate-pulse font-medium flex items-center gap-1">
+                        <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                        Gravando...
+                     </span>
                   )}
                 </div>
               </div>
@@ -1558,42 +1453,30 @@ export default function ProductFlowKanban() {
               {/* LISTA DE ÁUDIOS PRONTOS PARA SALVAR (PENDENTES) - COM PLAYER */}
               {itemAudios.length > 0 && (
                 <div className="mt-3 space-y-2">
-                  <Label className="text-xs text-gray-500">
-                    Áudios prontos para enviar ({itemAudios.length})
-                  </Label>
+                  <Label className="text-xs text-gray-500">Áudios prontos para enviar ({itemAudios.length})</Label>
                   <div className="grid grid-cols-1 gap-2">
                     {itemAudios.map((file, index) => (
-                      <div
-                        key={index}
-                        className="flex flex-col bg-green-50 border border-green-100 p-2 rounded-md"
-                      >
+                      <div key={index} className="flex flex-col bg-green-50 border border-green-100 p-2 rounded-md">
                         <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            <Music
-                              size={14}
-                              className="text-green-600 flex-shrink-0"
-                            />
-                            <span className="text-xs text-gray-700 truncate">
-                              {file.name}
-                            </span>
-                            <span className="text-[10px] text-gray-400">
-                              ({(file.size / 1024).toFixed(1)} KB)
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removePendingAudio(index)}
-                            className="text-gray-400 hover:text-red-500 p-1"
-                            title="Remover"
-                          >
-                            <X size={14} />
-                          </button>
+                            <div className="flex items-center gap-2 overflow-hidden">
+                                <Music size={14} className="text-green-600 flex-shrink-0" />
+                                <span className="text-xs text-gray-700 truncate">{file.name}</span>
+                                <span className="text-[10px] text-gray-400">({(file.size / 1024).toFixed(1)} KB)</span>
+                            </div>
+                            <button 
+                                type="button"
+                                onClick={() => removePendingAudio(index)}
+                                className="text-gray-400 hover:text-red-500 p-1"
+                                title="Remover"
+                            >
+                                <X size={14} />
+                            </button>
                         </div>
                         {/* PLAYER PARA OUVIR ANTES DE SALVAR */}
-                        <audio
-                          controls
-                          src={URL.createObjectURL(file)}
-                          className="w-full h-8"
+                        <audio 
+                            controls 
+                            src={URL.createObjectURL(file)} 
+                            className="w-full h-8" 
                         />
                       </div>
                     ))}
@@ -1638,14 +1521,14 @@ export default function ProductFlowKanban() {
                     onChange={(e) => setEditItemTitle(e.target.value)}
                   />
                 </div>
-
-                {/* --- CAMPO DESCRIÇÃO ADICIONADO NA EDIÇÃO --- */}
+                
+                 {/* --- CAMPO DESCRIÇÃO ADICIONADO NA EDIÇÃO --- */}
                 <div className="space-y-2 col-span-2">
                   <Label>Descrição</Label>
-                  <Textarea
-                    value={editItemDescription}
-                    onChange={(e) => setEditItemDescription(e.target.value)}
-                    placeholder="Detalhes adicionais..."
+                  <Textarea 
+                    value={editItemDescription} 
+                    onChange={(e) => setEditItemDescription(e.target.value)} 
+                    placeholder="Detalhes adicionais..." 
                     className="resize-none h-20"
                   />
                 </div>
@@ -1657,15 +1540,15 @@ export default function ProductFlowKanban() {
                     onChange={(e) => setEditItemProductRef(e.target.value)}
                   />
                 </div>
-
+                
                 {/* CAMPO DATA DE VENCIMENTO */}
                 <div className="space-y-2">
-                  <Label>Vencimento</Label>
-                  <Input
-                    type="date"
-                    value={editItemDueDate}
-                    onChange={(e) => setEditItemDueDate(e.target.value)}
-                  />
+                    <Label>Vencimento</Label>
+                    <Input 
+                        type="date" 
+                        value={editItemDueDate}
+                        onChange={(e) => setEditItemDueDate(e.target.value)}
+                    />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
@@ -1697,26 +1580,26 @@ export default function ProductFlowKanban() {
                     onChange={(e) => setEditItemStage(e.target.value)}
                   >
                     {currentFlow?.stages
-                      ?.sort((a, b) => a.order - b.order)
-                      .map((stage) => (
+                        ?.sort((a, b) => a.order - b.order)
+                        .map((stage) => (
                         <option key={stage.id} value={stage.id}>
-                          {stage.name}
+                            {stage.name}
                         </option>
-                      ))}
+                    ))}
                   </select>
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Status</Label>
-                <select
-                  className="w-full border rounded p-2 text-sm"
-                  value={editItemStatus}
-                  onChange={(e) => setEditItemStatus(e.target.value)}
-                >
-                  <option value="PENDENTE">Pendente</option>
-                  <option value="EM_PRODUCAO">Em Produção</option>
-                  <option value="CONCLUIDO">Concluído</option>
-                </select>
+                  <Label>Status</Label>
+                  <select
+                    className="w-full border rounded p-2 text-sm"
+                    value={editItemStatus}
+                    onChange={(e) => setEditItemStatus(e.target.value)}
+                  >
+                    <option value="PENDENTE">Pendente</option>
+                    <option value="EM_PRODUCAO">Em Produção</option>
+                    <option value="CONCLUIDO">Concluído</option>
+                  </select>
               </div>
 
               <div className="border-t pt-4">
@@ -1969,7 +1852,6 @@ export default function ProductFlowKanban() {
           </DialogHeader>
           {previewItem && (
             <div className="space-y-6">
-              {/* Detalhes e Descrição */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                   <h4 className="font-semibold text-sm">Detalhes</h4>
@@ -1997,6 +1879,7 @@ export default function ProductFlowKanban() {
                     </span>
                   </div>
                 </div>
+                {/* BLOCO DE DESCRIÇÃO NO PREVIEW */}
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h4 className="font-semibold text-sm mb-2">Descrição</h4>
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">
@@ -2004,144 +1887,113 @@ export default function ProductFlowKanban() {
                   </p>
                 </div>
               </div>
-
-              {/* Seção de Mídias */}
               <div>
-                {/* Imagens */}
-                {previewItem.images.length > 0 && (
-                  <div className="mb-6">
-                    <h4 className="font-semibold mb-2 text-sm flex items-center gap-2">
-                      <ImageIcon size={16} /> Imagens (
-                      {previewItem.images.length})
-                    </h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {previewItem.images.map((img) => (
-                        <div
-                          key={img.id}
-                          className="relative group rounded-lg overflow-hidden border border-gray-200 shadow-sm"
+                <h4 className="font-semibold mb-2">
+                  Imagens ({previewItem.images.length})
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {previewItem.images.map((img) => (
+                    <div
+                      key={img.id}
+                      className="relative group rounded-lg overflow-hidden border"
+                    >
+                      <img
+                        src={img.url}
+                        alt={img.filename}
+                        className="w-full h-32 object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-white hover:bg-white/20"
+                          onClick={() => window.open(img.url, "_blank")}
                         >
-                          <img
-                            src={img.url}
-                            alt={img.filename}
-                            className="w-full h-32 object-cover"
-                          />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <Maximize2 size={16} />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-white hover:bg-white/20"
+                          onClick={() => {
+                            const a = document.createElement("a");
+                            a.href = img.url;
+                            a.download = img.filename;
+                            a.click();
+                          }}
+                        >
+                          <Download size={16} />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {(previewItem.audios.length > 0 ||
+                previewItem.videos.length > 0) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* VISUALIZAÇÃO DOS ÁUDIOS NO PREVIEW */}
+                  {previewItem.audios.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold mb-2">Áudios ({previewItem.audios.length})</h4>
+                      <div className="space-y-2">
+                        {previewItem.audios.map((a) => (
+                          <div
+                            key={a.id}
+                            className="flex flex-col gap-2 bg-gray-100 p-2 rounded"
+                          >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Music size={16} className="text-gray-500" />
+                                    <span className="text-xs truncate font-medium max-w-[200px]">
+                                    {a.filename}
+                                    </span>
+                                </div>
+                                <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                onClick={() => window.open(a.url, "_blank")}
+                                title="Baixar"
+                                >
+                                <Download size={14} />
+                                </Button>
+                            </div>
+                            {/* PLAYER DE ÁUDIO NO PREVIEW */}
+                            <audio controls src={a.url} className="w-full h-8" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {previewItem.videos.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold mb-2">Vídeos</h4>
+                      <div className="space-y-2">
+                        {previewItem.videos.map((v) => (
+                          <div
+                            key={v.id}
+                            className="flex items-center gap-2 bg-gray-100 p-2 rounded"
+                          >
+                            <Video size={16} className="text-gray-500" />
+                            <span className="text-xs truncate flex-1">
+                              {v.filename}
+                            </span>
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="text-white hover:bg-white/20"
-                              onClick={() => window.open(img.url, "_blank")}
+                              className="h-6 w-6"
+                              onClick={() => window.open(v.url, "_blank")}
                             >
-                              <Maximize2 size={16} />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-white hover:bg-white/20"
-                              onClick={() => window.open(img.url, "_blank")}
-                            >
-                              <Download size={16} />
+                              <Eye size={14} />
                             </Button>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {/* Grid para Áudios e Vídeos */}
-                {(previewItem.audios.length > 0 ||
-                  previewItem.videos.length > 0) && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* ÁUDIOS (MP3 e WebM aparecem aqui) */}
-                    {previewItem.audios.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold mb-2 text-sm flex items-center gap-2">
-                          <Music size={16} /> Áudios (
-                          {previewItem.audios.length})
-                        </h4>
-                        <div className="space-y-3">
-                          {previewItem.audios.map((a) => (
-                            <div
-                              key={a.id}
-                              className="flex flex-col gap-2 bg-white border border-gray-200 p-3 rounded-md shadow-sm"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 overflow-hidden">
-                                  <div className="bg-purple-100 p-1.5 rounded-full">
-                                    <FileAudio
-                                      size={14}
-                                      className="text-purple-600"
-                                    />
-                                  </div>
-                                  <span
-                                    className="text-xs font-medium text-gray-700 truncate max-w-[200px]"
-                                    title={a.filename}
-                                  >
-                                    {a.filename}
-                                  </span>
-                                </div>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-6 w-6 text-gray-400 hover:text-purple-600"
-                                  onClick={() => window.open(a.url, "_blank")}
-                                  title="Baixar"
-                                >
-                                  <Download size={14} />
-                                </Button>
-                              </div>
-                              {/* O navegador detecta automaticamente se é mp3 ou webm pelo src */}
-                              <audio
-                                controls
-                                src={a.url}
-                                className="w-full h-8"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* VÍDEOS */}
-                    {previewItem.videos.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold mb-2 text-sm flex items-center gap-2">
-                          <Video size={16} /> Vídeos (
-                          {previewItem.videos.length})
-                        </h4>
-                        <div className="space-y-3">
-                          {previewItem.videos.map((v) => (
-                            <div
-                              key={v.id}
-                              className="flex items-center justify-between bg-white border border-gray-200 p-3 rounded-md shadow-sm"
-                            >
-                              <div className="flex items-center gap-2 overflow-hidden">
-                                <div className="bg-blue-100 p-1.5 rounded-full">
-                                  <Video size={14} className="text-blue-600" />
-                                </div>
-                                <span className="text-xs font-medium text-gray-700 truncate max-w-[200px]">
-                                  {v.filename}
-                                </span>
-                              </div>
-                              <div className="flex gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 text-gray-500 hover:text-blue-600"
-                                  onClick={() => window.open(v.url, "_blank")}
-                                >
-                                  <Eye size={16} />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
