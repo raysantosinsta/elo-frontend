@@ -37,11 +37,12 @@ const signupSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
   phone: z
-    .string()
-    .regex(
-      /^\(\d{2}\) \s?(9?\d{4}-\d{4})$/,
-      "Formato esperado: (DD) 9XXXX-XXXX ou (DD) XXXX-XXXX"
-    ),
+  .string()
+  .min(13, "Telefone incompleto") // Garante que tem o tamanho mínimo
+  .regex(
+    /^\d{2} \d{4,5}-\d{4}$/, 
+    "Formato inválido. Use: 85 99999-9999"
+  ),
   document: z.string().optional().nullable(),
   companyId: z.string().uuid("Selecione uma empresa válida"),
   role: z.enum(["EMPLOYER", "ADMIN", "MASTER"]),
@@ -161,17 +162,14 @@ export default function AdminSignupPage() {
     }
   };
 
-  const maskPhone = (value: string) => {
-    if (!value) return "";
-    let clean = value.replace(/\D/g, "").substring(0, 11);
-    clean = clean.replace(/^(\d{2})(\d)/g, "($1) $2");
-    if (clean.length > 10 && clean.startsWith("(")) {
-      clean = clean.replace(/(\d{5})(\d{4})$/, "$1-$2");
-    } else {
-      clean = clean.replace(/(\d{4})(\d{4})$/, "$1-$2");
-    }
-    return clean;
-  };
+  const maskPhone = (v: string | undefined | null) => {
+  if (!v) return "";
+  
+  return v
+    .replace(/\D/g, "") // Remove tudo que não é dígito
+    .replace(/^(\d{2})(\d{5})(\d{4}).*/, "$1 $2-$3") // Formata: 00 00000-0000
+    .substring(0, 13); // Limita o tamanho (11 números + 1 espaço + 1 traço = 13 chars)
+};
 
   const maskDocument = (value: string) => {
     if (!value) return "";
