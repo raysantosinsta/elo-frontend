@@ -24,7 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext"; // Importando o contexto que tem o axios configurado
 import {
   AlertCircle,
   CheckCircle2,
@@ -70,26 +70,14 @@ const THEME = {
   },
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
-
+// Interfaces
 interface UserProfile {
   id: string;
   name: string;
   email: string;
   role?: string;
 }
-interface FlowImage {
-  id: string;
-  url: string;
-  filename: string;
-}
-interface FlowAudio {
-  id: string;
-  url: string;
-  filename: string;
-  duration?: number;
-}
-interface FlowVideo {
+interface FlowMedia {
   id: string;
   url: string;
   filename: string;
@@ -117,9 +105,9 @@ interface FlowItem {
   assignedTo?: UserProfile;
   stage?: FlowStage;
   stageId?: string;
-  images: FlowImage[];
-  audios: FlowAudio[];
-  videos: FlowVideo[];
+  images: FlowMedia[];
+  audios: FlowMedia[];
+  videos: FlowMedia[];
   flowId: string;
   description?: string;
 }
@@ -162,7 +150,9 @@ const Toast = ({
 };
 
 export default function ProductFlowKanban() {
-  const { user, logout, loading: authLoading } = useAuth();
+  // AQUI ESTÁ A MUDANÇA PRINCIPAL: Pegamos 'api' do hook useAuth
+  // 'api' é a instância do Axios que sabe fazer refresh token
+  const { user, logout, loading: authLoading, api } = useAuth();
   const router = useRouter();
 
   const [flows, setFlows] = useState<ProductFlow[]>([]);
@@ -170,9 +160,11 @@ export default function ProductFlowKanban() {
   const [currentFlow, setCurrentFlow] = useState<ProductFlow | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDeleteItemModal, setIsDeleteItemModal] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<FlowItem | null>(null);
+  
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error";
@@ -224,7 +216,7 @@ export default function ProductFlowKanban() {
   const [editItemDueDate, setEditItemDueDate] = useState("");
   const [editItemAssignedTo, setEditItemAssignedTo] = useState("");
   const [editItemPriority, setEditItemPriority] = useState("3");
-  // const [editItemStatus, setEditItemStatus] = useState("PENDENTE"); // Removido do uso no modal
+  const [editItemStatus, setEditItemStatus] = useState("PENDENTE");
   const [editItemStage, setEditItemStage] = useState("");
   const [editItemImages, setEditItemImages] = useState<File[]>([]);
   const [editItemAudios, setEditItemAudios] = useState<File[]>([]);
@@ -241,53 +233,15 @@ export default function ProductFlowKanban() {
   const audioChunksRef = useRef<Blob[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const getAuthToken = useCallback(
-    () =>
-      typeof window !== "undefined"
-        ? localStorage.getItem("accessToken")
-        : null,
-    []
-  );
-  const authFetch = useCallback(
-    async (url: string, options: RequestInit = {}) => {
-      const token = getAuthToken();
-      if (!token) {
-        logout();
-        throw new Error("Sem token");
-      }
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        ...((options.headers as Record<string, string>) || {}),
-      };
-      const response = await fetch(url, { ...options, headers });
-      if (response.status === 401) logout();
-      return response;
-    },
-    [getAuthToken, logout]
-  );
-
-  const authFetchWithFiles = useCallback(
-    async (url: string, formData: FormData, method: string = "POST") => {
-      const token = getAuthToken();
-      const headers: HeadersInit = token
-        ? { Authorization: `Bearer ${token}` }
-        : {};
-      const response = await fetch(url, { method, headers, body: formData });
-      if (response.status === 401) logout();
-      return response;
-    },
-    [getAuthToken, logout]
-  );
+  // REMOVIDO: authFetch e getAuthToken manuais. 
+  // Agora usamos 'api' vindo do useAuth()
 
   const fetchFlows = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
-      const res = await authFetch(
-        `${API_BASE}/flow?companyId=${user.company.id}`
-      );
-      if (!res.ok) throw new Error("Erro ao buscar fluxos");
-      const data = await res.json();
+      // USANDO api.get (Axios) em vez de fetch
+      const { data } = await api.get(`/flow?companyId=${user.company.id}`);
+      
       const flowsArray = Array.isArray(data)
         ? data
         : data.flows || data.data || [];
@@ -298,40 +252,31 @@ export default function ProductFlowKanban() {
       console.error(err);
       showToast("Erro ao carregar fluxos", "error");
     }
-  }, [authFetch, user?.company?.id, selectedFlow]);
+  }, [api, user?.company?.id, selectedFlow]);
 
   const fetchFlowBoard = useCallback(
     async (flowId: string) => {
       if (!flowId) return;
       try {
-        const res = await authFetch(
-          `${API_BASE}/flow/${flowId}/board?companyId=${user?.company?.id}`
-        );
-        if (!res.ok) throw new Error("Erro ao buscar board");
-        const data = await res.json();
+        const { data } = await api.get(`/flow/${flowId}/board?companyId=${user?.company?.id}`);
         setCurrentFlow(data);
       } catch (err) {
         console.error(err);
         showToast("Erro ao carregar quadro", "error");
       }
     },
-    [authFetch, user?.company?.id]
+    [api, user?.company?.id]
   );
 
   const fetchUsers = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
-      const res = await authFetch(
-        `${API_BASE}/users/company/${user.company.id}`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(Array.isArray(data) ? data : []);
-      }
+      const { data } = await api.get(`/users/company/${user.company.id}`);
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Erro ao buscar usuários", err);
     }
-  }, [authFetch, user?.company?.id]);
+  }, [api, user?.company?.id]);
 
   const loadInitialData = useCallback(async () => {
     if (!user) return;
@@ -361,9 +306,7 @@ export default function ProductFlowKanban() {
     if (!itemToDelete) return;
     setIsSubmitting(true);
     try {
-      await authFetch(`${API_BASE}/flow/items/${itemToDelete.id}`, {
-        method: "DELETE",
-      });
+      await api.delete(`/flow/items/${itemToDelete.id}`);
       await fetchFlowBoard(selectedFlow);
       showToast("Item excluído com sucesso.", "success");
       setIsDeleteItemModal(false);
@@ -379,12 +322,8 @@ export default function ProductFlowKanban() {
     if (!flowName || flowName.trim() === "")
       return showToast("Por favor, digite o nome do fluxo.", "error");
     try {
-      const res = await authFetch(`${API_BASE}/flow`, {
-        method: "POST",
-        body: JSON.stringify({ name: flowName.trim() }),
-      });
-      if (!res.ok) throw new Error();
-      const newFlow = await res.json();
+      const { data: newFlow } = await api.post(`/flow`, { name: flowName.trim() });
+      
       setFlows((prev) => [...prev, newFlow]);
       setFlowName("");
       setIsFlowModal(false);
@@ -399,10 +338,8 @@ export default function ProductFlowKanban() {
   const handleDeleteFlow = async () => {
     if (!selectedFlow) return;
     try {
-      const res = await authFetch(`${API_BASE}/flow/${selectedFlow}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error();
+      await api.delete(`/flow/${selectedFlow}`);
+      
       const updatedFlows = flows.filter((f) => f.id !== selectedFlow);
       setFlows(updatedFlows);
       setIsDeleteFlowModal(false);
@@ -421,11 +358,8 @@ export default function ProductFlowKanban() {
     if (!selectedFlow || !stageName.trim())
       return showToast("Preencha o nome da etapa", "error");
     try {
-      const res = await authFetch(`${API_BASE}/flow/${selectedFlow}/stages`, {
-        method: "POST",
-        body: JSON.stringify({ name: stageName, color: stageColor }),
-      });
-      if (!res.ok) throw new Error();
+      await api.post(`/flow/${selectedFlow}/stages`, { name: stageName, color: stageColor });
+      
       await fetchFlowBoard(selectedFlow);
       resetStageForm();
       setIsStageModal(false);
@@ -438,18 +372,12 @@ export default function ProductFlowKanban() {
   const updateStage = async () => {
     if (!editingStage || !stageName.trim()) return;
     try {
-      const res = await authFetch(
-        `${API_BASE}/flow/stages/${editingStage.id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            name: stageName,
-            color: stageColor,
-            order: editingStage.order,
-          }),
-        }
-      );
-      if (!res.ok) throw new Error();
+      await api.put(`/flow/stages/${editingStage.id}`, {
+        name: stageName,
+        color: stageColor,
+        order: editingStage.order,
+      });
+
       await fetchFlowBoard(selectedFlow);
       resetStageForm();
       setIsStageModal(false);
@@ -462,11 +390,8 @@ export default function ProductFlowKanban() {
   const deleteStage = async () => {
     if (!stageToDelete) return;
     try {
-      const res = await authFetch(
-        `${API_BASE}/flow/stages/${stageToDelete.id}`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) throw new Error();
+      await api.delete(`/flow/stages/${stageToDelete.id}`);
+      
       await fetchFlowBoard(selectedFlow);
       setIsDeleteStageModal(false);
       setStageToDelete(null);
@@ -479,6 +404,11 @@ export default function ProductFlowKanban() {
   const createFlowItem = async () => {
     if (!selectedFlow || !itemTitle.trim())
       return showToast("Título é obrigatório", "error");
+    
+    if (isRecording) {
+        return showToast("Pare a gravação antes de salvar.", "error");
+    }
+
     setIsSubmitting(true);
     try {
       const itemData = {
@@ -492,13 +422,12 @@ export default function ProductFlowKanban() {
         assignedToId: itemAssignedTo || undefined,
         stageId: itemStage || undefined,
       };
-      const res = await authFetch(`${API_BASE}/flow/${selectedFlow}/items`, {
-        method: "POST",
-        body: JSON.stringify(itemData),
-      });
-      if (!res.ok) throw new Error();
-      const responseData = await res.json();
+      
+      // AXIOS POST (Refresh token automático se der 401)
+      const { data: responseData } = await api.post(`/flow/${selectedFlow}/items`, itemData);
+
       await uploadAllMediaFiles(responseData.id);
+      
       await fetchFlowBoard(selectedFlow);
       resetItemForm();
       setIsItemModal(false);
@@ -515,9 +444,7 @@ export default function ProductFlowKanban() {
     if (!editingItem || !editItemTitle.trim()) return;
     setIsSubmitting(true);
     try {
-      await authFetch(`${API_BASE}/flow/items/${editingItem.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
+      await api.put(`/flow/items/${editingItem.id}`, {
           title: editItemTitle,
           description: editItemDescription,
           orderNumber: editItemOrderNumber,
@@ -527,18 +454,17 @@ export default function ProductFlowKanban() {
           dueDate: editItemDueDate || undefined,
           assignedToId: editItemAssignedTo,
           stageId: editItemStage,
-        }),
       });
+
       await removeMarkedMedia();
+      
       if (editItemImages.length)
-        for (const f of editItemImages)
-          await uploadSingleMedia(editingItem.id, f, "image");
+        for (const f of editItemImages) await uploadSingleMedia(editingItem.id, f, "image");
       if (editItemAudios.length)
-        for (const f of editItemAudios)
-          await uploadSingleMedia(editingItem.id, f, "audio");
+        for (const f of editItemAudios) await uploadSingleMedia(editingItem.id, f, "audio");
       if (editItemVideos.length)
-        for (const f of editItemVideos)
-          await uploadSingleMedia(editingItem.id, f, "video");
+        for (const f of editItemVideos) await uploadSingleMedia(editingItem.id, f, "video");
+        
       await fetchFlowBoard(selectedFlow);
       setIsEditItemModal(false);
       resetEditItemForm();
@@ -552,10 +478,7 @@ export default function ProductFlowKanban() {
 
   const moveItem = async (itemId: string, newStageId: string) => {
     try {
-      await authFetch(`${API_BASE}/flow/items/${itemId}/move`, {
-        method: "PUT",
-        body: JSON.stringify({ newStageId }),
-      });
+      await api.put(`/flow/items/${itemId}/move`, { newStageId });
       await fetchFlowBoard(selectedFlow);
     } catch {
       showToast("Erro ao mover item.", "error");
@@ -568,11 +491,15 @@ export default function ProductFlowKanban() {
     type: "image" | "audio" | "video"
   ) => {
     const formData = new FormData();
-    formData.append("file", file);
-    await authFetchWithFiles(
-      `${API_BASE}/flow/items/${itemId}/media/${type}`,
-      formData
-    );
+    // Nome do arquivo explícito para garantir extensão correta no backend
+    formData.append("file", file, file.name); 
+    
+    // AXIOS POST para multipart
+    await api.post(`/flow/items/${itemId}/media/${type}`, formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        }
+    });
   };
 
   const uploadAllMediaFiles = async (itemId: string) => {
@@ -584,20 +511,11 @@ export default function ProductFlowKanban() {
   const removeMarkedMedia = async () => {
     if (!editingItem) return;
     for (const id of removedImageIds)
-      await authFetch(
-        `${API_BASE}/flow/items/${editingItem.id}/media/image/${id}`,
-        { method: "DELETE" }
-      );
+      await api.delete(`/flow/items/${editingItem.id}/media/image/${id}`);
     for (const id of removedAudioIds)
-      await authFetch(
-        `${API_BASE}/flow/items/${editingItem.id}/media/audio/${id}`,
-        { method: "DELETE" }
-      );
+      await api.delete(`/flow/items/${editingItem.id}/media/audio/${id}`);
     for (const id of removedVideoIds)
-      await authFetch(
-        `${API_BASE}/flow/items/${editingItem.id}/media/video/${id}`,
-        { method: "DELETE" }
-      );
+      await api.delete(`/flow/items/${editingItem.id}/media/video/${id}`);
   };
 
   const removeImage = (id: string) => {
@@ -640,28 +558,58 @@ export default function ProductFlowKanban() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
+      }
+      const recorder = new MediaRecorder(stream, { mimeType });
+      
+      mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
+      
+      recorder.ondataavailable = (e) => {
+          if(e.data.size > 0) {
+              audioChunksRef.current.push(e.data);
+          }
+      };
+
       recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        setAudioBlob(blob);
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        
+        if (blob.size === 0) {
+            showToast("Erro: Gravação vazia.", "error");
+            return;
+        }
+
+        const fileName = `gravacao-${Date.now()}.webm`;
+        const audioFile = new File([blob], fileName, { type: mimeType });
+
         setItemAudios((prev) => [
           ...prev,
-          new File([blob], "gravacao.webm", { type: "audio/webm" }),
+          audioFile,
         ]);
+        
+        showToast("Áudio gravado com sucesso!", "success");
         stream.getTracks().forEach((t) => t.stop());
       };
-      recorder.start();
+
+      recorder.start(100); 
       setIsRecording(true);
-    } catch {
-      showToast("Erro no microfone", "error");
+    } catch (error) {
+      console.error(error);
+      showToast("Erro no microfone. Verifique permissões.", "error");
     }
   };
 
   const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+    }
+  };
+
+  const removePendingAudio = (index: number) => {
+    setItemAudios((prev) => prev.filter((_, i) => i !== index));
   };
 
   const resetItemForm = () => {
@@ -694,7 +642,7 @@ export default function ProductFlowKanban() {
     setEditItemDueDate("");
     setEditItemAssignedTo("");
     setEditItemPriority("3");
-    // setEditItemStatus("PENDENTE");
+    setEditItemStatus("PENDENTE");
     setEditItemStage("");
     setEditItemImages([]);
     setEditItemAudios([]);
@@ -706,7 +654,7 @@ export default function ProductFlowKanban() {
 
   const resetStageForm = () => {
     setStageName("");
-    setStageColor(THEME.colors.navigation); // Define como azul escuro no reset
+    setStageColor(THEME.colors.navigation);
     setEditingStage(null);
   };
 
@@ -730,7 +678,7 @@ export default function ProductFlowKanban() {
       setEditItemDueDate("");
     }
 
-    // setEditItemStatus(item.status);
+    setEditItemStatus(item.status);
     setEditItemStage(item.stageId || "");
     setIsEditItemModal(true);
   };
@@ -818,32 +766,38 @@ export default function ProductFlowKanban() {
       {item.audios.length > 0 && (
         <div className="space-y-1">
           <Label className="text-xs text-gray-500">Áudios Salvos</Label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2">
             {item.audios.map((aud) => (
               <div
                 key={aud.id}
-                className="flex items-center justify-between bg-gray-100 p-2 rounded text-sm"
+                className="flex flex-col bg-gray-50 p-2 rounded text-sm border border-gray-100"
               >
-                <div className="flex items-center gap-2 truncate">
-                  <Music size={14} className="text-purple-500" />
-                  <span className="truncate">{aud.filename}</span>
+                <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2 truncate">
+                        <Music size={14} className="text-purple-500" />
+                        <span className="truncate text-xs font-medium">{aud.filename}</span>
+                    </div>
+                    <div className="flex gap-1">
+                        <button
+                            type="button"
+                            onClick={() => window.open(aud.url, "_blank")}
+                            className="text-gray-400 hover:text-purple-600"
+                            title="Abrir em nova aba"
+                        >
+                            <Download size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => removeAudio(aud.id)}
+                            className="text-gray-400 hover:text-red-600"
+                            title="Excluir"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    </div>
                 </div>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => window.open(aud.url, "_blank")}
-                    className="text-gray-600 hover:text-purple-600"
-                  >
-                    <Eye size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeAudio(aud.id)}
-                    className="text-gray-600 hover:text-red-600"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {/* PLAYER DE ÁUDIO NATIVO PARA OUVIR AGORA NO EDIT */}
+                <audio controls src={aud.url} className="w-full h-8 mt-1" />
               </div>
             ))}
           </div>
@@ -954,10 +908,12 @@ export default function ProductFlowKanban() {
               {item.videos?.length > 0 && <Video size={14} className="text-blue-400" />}
               {item.audios?.length > 0 && <Music size={14} className="text-purple-400" />}
             </div>
-            {item.assignedTo && (
+            {item.assignedTo ? (
               <div className="flex items-center gap-1 bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full text-[10px] font-medium border border-purple-100">
                 <User size={10} /> {item.assignedTo.name.split(" ")[0]}
               </div>
+            ) : (
+                <div /> 
             )}
           </div>
         </div>
@@ -1147,7 +1103,6 @@ export default function ProductFlowKanban() {
               <RefreshCw size={14} className="mr-2" /> Atualizar
             </Button>
           </div>
-
           {selectedFlow && (
             <Button
               onClick={() => setIsDeleteFlowModal(true)}
@@ -1469,7 +1424,7 @@ export default function ProductFlowKanban() {
                   </span>
                 </div>
                 {/* Gravar Mic */}
-                <div className="flex flex-col items-center justify-center gap-2 border rounded-lg p-4 bg-gray-50">
+                <div className={`flex flex-col items-center justify-center gap-2 border rounded-lg p-4 transition-colors ${isRecording ? 'bg-red-50 border-red-200' : 'bg-gray-50'}`}>
                   <Button
                     type="button"
                     variant="outline"
@@ -1477,7 +1432,7 @@ export default function ProductFlowKanban() {
                     onClick={isRecording ? stopRecording : startRecording}
                     className={
                       isRecording
-                        ? "text-red-600 border-red-200 bg-red-50 w-full"
+                        ? "text-red-600 border-red-200 bg-red-100 hover:bg-red-200 w-full"
                         : "w-full"
                     }
                   >
@@ -1487,19 +1442,49 @@ export default function ProductFlowKanban() {
                       <Mic className="w-4 h-4 mr-2" />
                     )}
                     {isRecording
-                      ? `Parar (${recordingTime}s)`
-                      : "Gravar Microfone"}
+                      ? `Parar Gravação`
+                      : "Gravar Áudio"}
                   </Button>
-                  {audioBlob && (
-                    <span className="text-xs text-green-600 flex items-center">
-                      <CheckCircle2 size={12} className="mr-1" /> Áudio gravado
-                    </span>
+                  {isRecording && (
+                     <span className="text-xs text-red-500 animate-pulse font-medium flex items-center gap-1">
+                        <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                        Gravando...
+                     </span>
                   )}
                 </div>
               </div>
+
+              {/* LISTA DE ÁUDIOS PRONTOS PARA SALVAR (PENDENTES) - COM PLAYER */}
               {itemAudios.length > 0 && (
-                <div className="text-xs text-green-600 font-medium">
-                  {itemAudios.length} áudios preparados
+                <div className="mt-3 space-y-2">
+                  <Label className="text-xs text-gray-500">Áudios prontos para enviar ({itemAudios.length})</Label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {itemAudios.map((file, index) => (
+                      <div key={index} className="flex flex-col bg-green-50 border border-green-100 p-2 rounded-md">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                                <Music size={14} className="text-green-600 flex-shrink-0" />
+                                <span className="text-xs text-gray-700 truncate">{file.name}</span>
+                                <span className="text-[10px] text-gray-400">({(file.size / 1024).toFixed(1)} KB)</span>
+                            </div>
+                            <button 
+                                type="button"
+                                onClick={() => removePendingAudio(index)}
+                                className="text-gray-400 hover:text-red-500 p-1"
+                                title="Remover"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                        {/* PLAYER PARA OUVIR ANTES DE SALVAR */}
+                        <audio 
+                            controls 
+                            src={URL.createObjectURL(file)} 
+                            className="w-full h-8" 
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -1608,7 +1593,18 @@ export default function ProductFlowKanban() {
                   </select>
                 </div>
               </div>
-              {/* STATUS REMOVIDO DAQUI */}
+              <div className="space-y-2">
+                  <Label>Status</Label>
+                  <select
+                    className="w-full border rounded p-2 text-sm"
+                    value={editItemStatus}
+                    onChange={(e) => setEditItemStatus(e.target.value)}
+                  >
+                    <option value="PENDENTE">Pendente</option>
+                    <option value="EM_PRODUCAO">Em Produção</option>
+                    <option value="CONCLUIDO">Concluído</option>
+                  </select>
+              </div>
 
               <div className="border-t pt-4">
                 <Label className="mb-2 block font-bold text-gray-700">
@@ -1675,7 +1671,6 @@ export default function ProductFlowKanban() {
                     </span>
                   </div>
                 </div>
-
                 <div className="flex gap-4 mt-2 text-xs text-green-600">
                   {editItemImages.length > 0 && (
                     <span>{editItemImages.length} imgs novas</span>
@@ -1845,7 +1840,7 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE PREVIEW */}
+      {/* MODAL DE PREVIEW - CORRIGIDO E UNIFICADO */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1855,7 +1850,7 @@ export default function ProductFlowKanban() {
             </DialogTitle>
             <DialogDescription className="flex gap-4">
               <span>REF: {previewItem?.productRef}</span>
-              {/* REMOVIDO: SPAN COM PEDIDO */}
+              {/* REMOVIDO O NÚMERO DO PEDIDO AQUI */}
             </DialogDescription>
           </DialogHeader>
           {previewItem && (
@@ -1886,6 +1881,13 @@ export default function ProductFlowKanban() {
                         : "-"}
                     </span>
                   </div>
+                </div>
+                {/* BLOCO DE DESCRIÇÃO NO PREVIEW */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-sm mb-2">Descrição</h4>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {previewItem.description || "Sem descrição."}
+                  </p>
                 </div>
               </div>
               <div>
