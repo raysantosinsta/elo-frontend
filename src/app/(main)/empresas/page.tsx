@@ -52,7 +52,7 @@ interface Company {
   cep: string
   complemento?: string
   ramoAtividade?: string
-  status: "ATIVO" | "INATIVO"
+  status: "ACTIVE" | "INACTIVE"
 }
 
 // --- Form Schema (Edit Only) ---
@@ -198,29 +198,34 @@ export default function CompanyManagementPage() {
     }
   }
 
-  // --- Action: Toggle Status (Activate/Deactivate) ---
-  const handleToggleStatus = async (id: string, currentStatus: "ATIVO" | "INATIVO") => {
-    const newStatus = currentStatus === "ATIVO" ? "INATIVO" : "ATIVO"
-    
-    // Optimistic Update
-    setCompanies(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c))
+// --- Action: Toggle Status (Activate/Deactivate) ---
+const handleToggleStatus = async (id: string, currentStatus: string) => {
+  // Convert to API format (ACTIVE/INACTIVE) and toggle
+  const apiStatus = currentStatus === "ACTIVE" ? "ACTIVE" : "INACTIVE";
+  const newApiStatus = apiStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+  // Convert back to UI format (ATIVO/INATIVO)
+  const newStatus = newApiStatus === "ACTIVE" ? "ACTIVE" : "INACTIVE";
 
-    try {
-      await api.patch(`/companies/${id}`, { status: newStatus })
-      toast.success(`Status alterado para ${newStatus}`)
-    } catch (error: any) {
-      // Revert on error
-      setCompanies(prev => prev.map(c => c.id === id ? { ...c, status: currentStatus } : c))
-      
-      if (error.response?.status === 400) {
-         toast.error("Não foi possível alterar o status", { 
-             description: "Provável erro de permissão no backend (Role mismatch)." 
-         })
-      } else {
-         toast.error("Erro ao alterar status")
-      }
-    }
+  try {
+    // Call API with API format
+    await api.patch(`/companies/${id}`, { status: newApiStatus });
+
+    toast.success("Status atualizado com sucesso");
+
+    // Update UI with correct status type
+    setCompanies((prevCompanies) => 
+      prevCompanies.map((company) => 
+        company.id === id 
+          ? { ...company, status: newStatus }
+          : company
+      )
+    );
+
+  } catch (error) {
+    console.error("Erro ao atualizar", error);
+    toast.error("Não foi possível atualizar o status.");
   }
+};
 
   // --- Action: Delete ---
   const confirmDelete = (id: string) => { setDeleteId(id); setIsDeleteOpen(true) }
@@ -319,8 +324,8 @@ export default function CompanyManagementPage() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={company.status === "ATIVO" ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-100 text-gray-500 border-gray-200"}>
-                            {company.status === "ATIVO" ? "Ativo" : "Inativo"}
+                          <Badge variant="outline" className={company.status === "ACTIVE" ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-100 text-gray-500 border-gray-200"}>
+                            {company.status === "ACTIVE" ? "Ativo" : "Inativo"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
@@ -336,7 +341,7 @@ export default function CompanyManagementPage() {
                                 <Edit className="mr-2 h-4 w-4" /> Editar
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleToggleStatus(company.id, company.status)}>
-                                <Power className="mr-2 h-4 w-4" /> {company.status === "ATIVO" ? "Desativar" : "Ativar"}
+                                <Power className="mr-2 h-4 w-4" /> {company.status === "ACTIVE" ? "Desativar" : "Ativar"}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => confirmDelete(company.id)}>

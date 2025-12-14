@@ -122,7 +122,7 @@ interface ProfessionalReportItem {
   id: string;
   name: string;
   email: string;
-  phone?: string; // Adicionado para edição
+  contact?: string; // Adicionado para edição
   role: string;
   professionalRole: string | null;
   status: "ACTIVE" | "INACTIVE";
@@ -307,7 +307,7 @@ export default function ProfessionalsReportPage() {
       const payload = {
         name: editingUser.name,
         email: editingUser.email,
-        phone: editingUser.phone,
+        contact: editingUser.contact,
         professionalRole: editingUser.professionalRole,
         // Adicione outros campos se necessário (role, companyId, etc)
       };
@@ -821,11 +821,11 @@ export default function ProfessionalsReportPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="phone">Telefone</Label>
+                <Label htmlFor="contact">Telefone</Label>
                 <Input
-                  id="phone"
-                  value={editingUser.phone || ""}
-                  onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
+                  id="contact"
+                  value={editingUser.contact || ""}
+                  onChange={(e) => setEditingUser({ ...editingUser, contact: e.target.value })}
                   placeholder="(00) 00000-0000"
                 />
               </div>

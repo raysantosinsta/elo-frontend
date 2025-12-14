@@ -13,10 +13,10 @@ import axios, {
   AxiosInstance,
   AxiosError,
   InternalAxiosRequestConfig,
+  AxiosRequestConfig,
 } from "axios";
 
 // --- Tipagem ---
-
 interface User {
   id: string;
   email: string;
@@ -44,11 +44,9 @@ interface AuthContextType {
   loading: boolean;
   token: string | null;
   api: AxiosInstance;
-  /** @deprecated Use `api` instead. */
   authFetch: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
-// --- Configuração ---
 const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
 const logger = {
@@ -58,14 +56,14 @@ const logger = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// --- Instância Axios Base ---
+// Instância base
 export const api = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
   timeout: 60000,
 });
 
-// --- Controle de Fila para Refresh Token (Fora do Componente) ---
+// Fila de espera para refresh token
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (token: string) => void;
@@ -89,62 +87,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // --- Helpers de Limpeza ---
+  // --- Limpeza de Dados ---
   const clearAuthData = useCallback(() => {
     setToken(null);
     setUser(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
-      // Opcional: Limpar cookies se usar
-      document.cookie.split(";").forEach((c) => {
-        document.cookie = c
-          .replace(/^ +/, "")
-          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-      });
+      // Limpa Cookies também para evitar loops no Middleware
+      document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+      document.cookie = "refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
     }
     delete api.defaults.headers.common["Authorization"];
   }, []);
 
   const logout = useCallback(() => {
-    logger.info("User initiated logout");
     clearAuthData();
     router.push("/login");
   }, [clearAuthData, router]);
 
-  // --- 1. CONFIGURAÇÃO DO INTERCEPTOR (A CORREÇÃO PRINCIPAL) ---
+  // --- INTERCEPTOR (BLINDAGEM DO RETRY) ---
+  const retryRequest = (originalRequest: InternalAxiosRequestConfig, newToken: string) => {
+    let data = originalRequest.data;
+    if (data && typeof data === 'string') {
+        try {
+            data = JSON.parse(data);
+        } catch { /* ignorar */ }
+    }
+
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${newToken}`
+    };
+
+    const newConfig: AxiosRequestConfig = {
+        method: originalRequest.method,
+        url: originalRequest.url,
+        params: originalRequest.params,
+        baseURL: originalRequest.baseURL,
+        data: data,
+        headers: headers 
+    };
+
+    return api(newConfig);
+  };
+
   useEffect(() => {
-    // Adiciona o interceptor para tratar erros 401 globalmente
     const interceptorId = api.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-        // Evita loop infinito se a chamada for de login ou refresh
         if (!originalRequest) return Promise.reject(error);
-        if (
-          originalRequest.url?.includes("/auth/login") ||
-          originalRequest.url?.includes("/auth/refresh")
-        ) {
+
+        if (originalRequest.url?.includes("/auth/login") || originalRequest.url?.includes("/auth/refresh")) {
           return Promise.reject(error);
         }
 
-        // Se deu 401 (Unauthorized) e ainda não tentamos reconectar
         if (error.response?.status === 401 && !originalRequest._retry) {
-          
-          // Caso A: Já existe um refresh acontecendo. Entra na fila.
           if (isRefreshing) {
             return new Promise<string>((resolve, reject) => {
               failedQueue.push({ resolve, reject });
             })
               .then((newToken) => {
-                originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
-                return api(originalRequest);
+                return retryRequest(originalRequest, newToken);
               })
               .catch((err) => Promise.reject(err));
           }
 
-          // Caso B: Somos o primeiro a detectar o erro 401. Inicia o Refresh.
           originalRequest._retry = true;
           isRefreshing = true;
 
@@ -152,30 +162,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const storedRefreshToken = localStorage.getItem("refreshToken");
             if (!storedRefreshToken) throw new Error("No refresh token");
 
-            // Chamada direta com axios puro (sem a instância 'api' para não interceptar)
             const { data } = await axios.post<LoginResponse>(`${API_BASE}/auth/refresh`, {
               refreshToken: storedRefreshToken,
             });
 
             const { accessToken, refreshToken: newRefreshToken } = data;
 
-            // Salva novos dados
             localStorage.setItem("accessToken", accessToken);
+            // Atualiza Cookie para Middleware
+            document.cookie = `access_token=${accessToken}; path=/; max-age=86400; SameSite=Lax`;
+            
             if (newRefreshToken) localStorage.setItem("refreshToken", newRefreshToken);
             
-            // Atualiza o estado da aplicação
             setToken(accessToken);
             api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
 
-            // Libera a fila de requisições pausadas
             processQueue(null, accessToken);
 
-            // Retenta a requisição original que falhou
-            originalRequest.headers["Authorization"] = `Bearer ${accessToken}`;
-            return api(originalRequest);
+            return retryRequest(originalRequest, accessToken);
 
           } catch (refreshErr) {
-            // Se o refresh falhar (ex: refresh token expirado), desloga geral
             processQueue(refreshErr, null);
             logout();
             return Promise.reject(refreshErr);
@@ -183,183 +189,127 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isRefreshing = false;
           }
         }
-
         return Promise.reject(error);
       }
     );
 
-    // Remove o interceptor ao desmontar
     return () => {
       api.interceptors.response.eject(interceptorId);
     };
   }, [logout]);
 
-  // --- 2. Inicialização / Hydration (Ao carregar a página) ---
+  // --- INIT ---
   useEffect(() => {
     let mounted = true;
-
     const init = async () => {
       const savedToken = localStorage.getItem("accessToken");
       const savedRefreshToken = localStorage.getItem("refreshToken");
-
+      
       if (!savedToken || !savedRefreshToken) {
         if (mounted) setLoading(false);
         return;
       }
-
+      
       try {
-        // Verifica validade básica do token (decodificando JWT)
-        const payload = JSON.parse(atob(savedToken.split(".")[1]));
-        const now = Math.floor(Date.now() / 1000);
-        
-        let currentAccessToken = savedToken;
+        setToken(savedToken);
+        api.defaults.headers.common["Authorization"] = `Bearer ${savedToken}`;
+        // Garante que o cookie existe no reload
+        document.cookie = `access_token=${savedToken}; path=/; max-age=86400; SameSite=Lax`;
 
-        // Se expirou (ou vai expirar em <10s), renova proativamente NO BOOT
-        if (payload.exp < now + 10) {
-          console.log("🔄 Token expirado no boot. Renovando...");
-          try {
-            const { data } = await axios.post(`${API_BASE}/auth/refresh`, {
-              refreshToken: savedRefreshToken,
-            });
-            currentAccessToken = data.accessToken;
-            localStorage.setItem("accessToken", currentAccessToken);
-            if (data.refreshToken) localStorage.setItem("refreshToken", data.refreshToken);
-            setToken(currentAccessToken);
-          } catch (e) {
-            console.error("Falha ao renovar no boot", e);
-            clearAuthData();
-            if (mounted) setLoading(false);
-            return;
-          }
-        } else {
-          setToken(savedToken);
-        }
-
-        // Configura header e busca perfil
-        api.defaults.headers.common["Authorization"] = `Bearer ${currentAccessToken}`;
-        
         const { data } = await api.get<User>("/auth/profile");
         if (mounted) setUser(data);
-
-      } catch (error) {
-        // Se der erro aqui, o interceptor acima pode não ter pego ainda (ex: erro de rede ou malformado)
-        // Se for 401 REAL mesmo após tentativas, limpamos.
-        if (axios.isAxiosError(error) && error.response?.status === 401) {
-             clearAuthData();
-        } else {
-            logger.error("Erro ao carregar perfil inicial", error);
+      } catch (e) {
+        // Se falhar o profile, tenta um refresh silencioso ou desloga
+        if (axios.isAxiosError(e) && e.response?.status === 401) {
+             // Deixa o interceptor tentar resolver ou falhar
         }
       } finally {
         if (mounted) setLoading(false);
       }
     };
-
     init();
-
     return () => { mounted = false; };
   }, [clearAuthData]);
 
-  // --- Login ---
+  // --- LOGIN (CORRIGIDO PARA RACE CONDITION) ---
   const login = useCallback(async (email: string, password: string) => {
     try {
-      const response = await api.post<LoginResponse>("/auth/login", {
-        email: email.trim().toLowerCase(),
-        password,
-      });
-
+      const response = await api.post<LoginResponse>("/auth/login", { email, password });
       const { accessToken, refreshToken, user } = response.data;
-
+      
+      // 1. LocalStorage (Persistência)
       localStorage.setItem("accessToken", accessToken);
       localStorage.setItem("refreshToken", refreshToken);
+      
+      // 2. Cookie (Para Middleware e Race Conditions)
+      document.cookie = `access_token=${accessToken}; path=/; max-age=86400; SameSite=Lax`;
+      
+      // 3. Axios Defaults (Para chamadas futuras)
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-
+      
+      // 4. State React
       setToken(accessToken);
       setUser(user);
-
-      logger.info("Login successful", { userId: user.id });
+      
       router.push("/");
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const message = error.response?.data?.message || "Erro de conexão";
-        throw new Error(message);
-      }
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.message || "Erro de conexão");
       throw error;
     }
   }, [router]);
 
-  // --- Legacy AuthFetch ---
+  // --- AUTH FETCH (CORRIGIDO PARA FORÇAR HEADER) ---
   const authFetch = useCallback(async (url: string, options: RequestInit = {}): Promise<Response> => {
     try {
       const fullUrl = url.startsWith("http") ? url : `${API_BASE}${url}`;
-      let data = undefined;
-      if (options.body) {
-        try {
-          data = typeof options.body === "string" ? JSON.parse(options.body) : options.body;
-        } catch {
-          data = options.body;
-        }
+      
+      let data = options.body;
+      if (typeof options.body === "string") {
+         try { data = JSON.parse(options.body); } catch { data = options.body; }
       }
 
-      const config = {
-        method: options.method || "GET",
-        headers: options.headers as unknown as Record<string, string>,
-        data,
+      // CORREÇÃO CRÍTICA: Ler token direto do storage para garantir atualização imediata
+      const currentToken = localStorage.getItem("accessToken") || token;
+      
+      const headers: any = { 
+          ...options.headers,
+          "Content-Type": "application/json"
       };
 
-      const response = await api(fullUrl, config);
+      // Força o header Authorization se tivermos o token
+      if (currentToken) {
+          headers["Authorization"] = `Bearer ${currentToken}`;
+      }
+
+      const response = await api(fullUrl, {
+        method: options.method || "GET",
+        headers: headers, // Passa headers explícitos
+        data,
+      });
 
       return {
         ok: true,
         status: response.status,
-        statusText: response.statusText,
         json: async () => response.data,
-        text: async () => JSON.stringify(response.data),
-        headers: new Headers(response.headers as unknown as HeadersInit),
+        headers: new Headers(response.headers as any),
       } as unknown as Response;
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response) {
-        return {
-          ok: false,
-          status: error.response.status,
-          statusText: error.response.statusText,
-          json: async () => error.response?.data,
-          text: async () => JSON.stringify(error.response?.data),
-        } as unknown as Response;
-      }
-      throw error;
+    } catch (error: any) {
+        if (error.response) return { ok: false, status: error.response.status, json: async () => error.response.data } as Response;
+        throw error;
     }
-  }, []);
+  }, [token]);
 
   const contextValue = useMemo(() => ({
-    user,
-    isAuthenticated: !!user,
-    login,
-    logout,
-    loading,
-    token,
-    api,
-    authFetch,
+    user, isAuthenticated: !!user, login, logout, loading, token, api, authFetch
   }), [user, login, logout, loading, token, authFetch]);
 
-  return (
-    <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 }
-
-// --- Hooks ---
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth deve estar dentro de AuthProvider");
   return context;
 };
-
-export const useAuthFetch = () => {
-  const { authFetch } = useAuth();
-  return authFetch;
-};
-
-export const useApi = () => {
-  const { api } = useAuth();
-  return api;
-};
+export const useAuthFetch = () => useAuth().authFetch;
+export const useApi = () => useAuth().api;

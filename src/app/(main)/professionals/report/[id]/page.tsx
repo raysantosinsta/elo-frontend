@@ -80,7 +80,7 @@ interface ProfessionalDetails {
     id: string;
     name: string;
     email: string;
-    phone: string;
+    contact: string;
     role: string;
     status: string;
     professionalRole?: string;
@@ -481,7 +481,7 @@ export default function ProfessionalReportPage() {
                 </div>
                 <div className="flex items-center gap-3 text-[#2D3436]">
                   <PhoneIcon className="h-4 w-4 text-[#D35400]" />
-                  <span>{professional.phone}</span>
+                  <span>{professional.contact}</span>
                 </div>
                 {professional.company && (
                   <div className="flex items-start gap-3 text-[#2D3436]">

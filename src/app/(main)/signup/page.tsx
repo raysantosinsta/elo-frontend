@@ -36,7 +36,7 @@ const signupSchema = z.object({
   name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
-  phone: z
+  contact: z
     .string()
     .regex(
       /^\(\d{2}\) \s?(9?\d{4}-\d{4})$/,
@@ -133,7 +133,6 @@ export default function AdminSignupPage() {
         body: JSON.stringify({
           ...data,
           document: data.document || null,
-          isProfessional: false,
           status: "ACTIVE",
         }),
       });
@@ -148,7 +147,7 @@ export default function AdminSignupPage() {
         name: "",
         email: "",
         password: "",
-        phone: "",
+        contact: "",
         document: "",
         companyId: user?.role === "ADMIN" ? user.companyId || "" : "",
         role: "EMPLOYER",
@@ -161,7 +160,7 @@ export default function AdminSignupPage() {
     }
   };
 
-  const maskPhone = (value: string) => {
+  const maskcontact = (value: string) => {
     if (!value) return "";
     let clean = value.replace(/\D/g, "").substring(0, 11);
     clean = clean.replace(/^(\d{2})(\d)/g, "($1) $2");
@@ -317,29 +316,29 @@ export default function AdminSignupPage() {
 
                   <div className="space-y-2">
                     <Label
-                      htmlFor="phone"
+                      htmlFor="contact"
                       className="text-[#2D3436] font-medium"
                     >
                       Telefone / Celular <span className="text-[#D35400]">*</span>
                     </Label>
                     <Input
-                      id="phone"
+                      id="contact"
                       placeholder="(11) 99999-9999"
                       maxLength={15}
-                      {...register("phone", {
+                      {...register("contact", {
                         onChange: (e) => {
-                          const val = maskPhone(e.target.value);
+                          const val = maskcontact(e.target.value);
                           e.target.value = val;
-                          setValue("phone", val, { shouldValidate: true });
+                          setValue("contact", val, { shouldValidate: true });
                         },
                       })}
                       className={`h-11 border-[#95A5A6] focus:border-[#2C3E50] focus:ring-[#2C3E50] transition-all ${
-                        errors.phone ? "border-red-500 focus:ring-red-200" : ""
+                        errors.contact ? "border-red-500 focus:ring-red-200" : ""
                       }`}
                     />
-                    {errors.phone && (
+                    {errors.contact && (
                       <p className="text-sm text-red-600 font-medium">
-                        {errors.phone.message}
+                        {errors.contact.message}
                       </p>
                     )}
                   </div>
