@@ -1,12 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
+import Link from "next/link";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+// Services & Context
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/services/api";
+
+// UI Components
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,8 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAuth } from "@/contexts/AuthContext";
-import { zodResolver } from "@hookform/resolvers/zod";
+
+// Icons
 import {
   Building,
   CheckCircle2,
@@ -26,10 +34,6 @@ import {
   ShieldAlert,
   UserPlus,
 } from "lucide-react";
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
 
 // --- VALIDATION SCHEMA ---
 const signupSchema = z.object({
@@ -57,7 +61,7 @@ interface Company {
 }
 
 export default function AdminSignupPage() {
-  const { user, token, loading: authLoading, authFetch } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
@@ -79,29 +83,24 @@ export default function AdminSignupPage() {
   });
 
   const selectedCompanyId = watch("companyId");
-  const API_BASE =
-    process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
-  // --- EFEITOS (Lógica de Negócio) ---
+  // --- EFEITOS ---
 
   // Buscar empresas se for MASTER
   useEffect(() => {
-    if (user?.role === "MASTER" && token) {
+    // Agora verificamos apenas se o user está carregado e é MASTER
+    if (user?.role === "MASTER") {
       const loadCompanies = async () => {
         setLoadingCompanies(true);
         try {
-          const res = await authFetch(`${API_BASE}/companies?limit=100`);
-          if (!res.ok) {
-            const errorText = await res.text();
-            throw new Error(`Erro ${res.status}: ${errorText}`);
-          }
-          const responseJson = await res.json();
-          const companiesList = responseJson.data || responseJson;
-          if (Array.isArray(companiesList)) {
-            setCompanies(companiesList);
-          } else {
-            setCompanies([]);
-          }
+          // O Axios já tem o token injetado pelo interceptor
+          const { data } = await api.get("/companies", {
+            params: { limit: 100 },
+          });
+          
+          // Tratamento para garantir array, independente do formato { data: [] } ou []
+          const companiesList = Array.isArray(data) ? data : data.data || [];
+          setCompanies(companiesList);
         } catch (err) {
           console.error("Falha ao carregar empresas:", err);
           setServerError("Não foi possível carregar a lista de empresas.");
@@ -111,9 +110,9 @@ export default function AdminSignupPage() {
       };
       loadCompanies();
     }
-  }, [user?.role, token, authFetch]);
+  }, [user]);
 
-  // Auto-preencher companyId se for ADMIN
+  // Auto-preencher companyId se for ADMIN (não vê a lista, mas vincula à sua)
   useEffect(() => {
     if (user?.role === "ADMIN" && user.companyId) {
       setValue("companyId", user.companyId);
@@ -127,20 +126,11 @@ export default function AdminSignupPage() {
     setSuccess("");
 
     try {
-      const response = await authFetch(`${API_BASE}/users`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data,
-          document: data.document || null,
-          status: "ACTIVE",
-        }),
+      await api.post("/users", {
+        ...data,
+        document: data.document || null,
+        status: "ACTIVE",
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Falha ao criar usuário");
-      }
 
       setSuccess("Usuário cadastrado com sucesso!");
       reset({
@@ -155,7 +145,8 @@ export default function AdminSignupPage() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
       console.error(err);
-      setServerError(err.message || "Erro ao cadastrar usuário");
+      const msg = err.response?.data?.message || "Erro ao cadastrar usuário";
+      setServerError(msg);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
@@ -189,9 +180,6 @@ export default function AdminSignupPage() {
     }
   };
 
-  // --- RENDER STYLES & LAYOUT ---
-
-  // 1. Loading State Global
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F5F0E6]">
@@ -205,7 +193,6 @@ export default function AdminSignupPage() {
     );
   }
 
-  // 2. Access Denied State
   if (!user || !["MASTER", "ADMIN"].includes(user.role)) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-[#F5F0E6]">
@@ -229,15 +216,11 @@ export default function AdminSignupPage() {
     );
   }
 
-  // 3. Main Form
   return (
-    // Fundo Algodão Cru (#F5F0E6)
     <div className="min-h-screen bg-[#F5F0E6] px-4 py-8 md:py-12 font-sans flex items-center justify-center">
       <div className="max-w-4xl w-full">
-        {/* Card Principal - Sem cabeçalho externo ou interno */}
         <Card className="shadow-xl border-0 bg-white/95 backdrop-blur overflow-hidden">
           <CardContent className="p-6 md:p-8">
-            {/* Feedback Messages */}
             {serverError && (
               <Alert
                 variant="destructive"
@@ -260,7 +243,6 @@ export default function AdminSignupPage() {
             )}
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-              {/* Seção 1: Dados Pessoais */}
               <div className="space-y-6">
                 <div className="flex items-center gap-2 pb-2 border-b border-[#95A5A6]/30">
                   <h3 className="text-lg font-semibold text-[#2D3436]">
@@ -270,10 +252,7 @@ export default function AdminSignupPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="name"
-                      className="text-[#2D3436] font-medium"
-                    >
+                    <Label htmlFor="name" className="text-[#2D3436] font-medium">
                       Nome Completo <span className="text-[#D35400]">*</span>
                     </Label>
                     <Input
@@ -292,10 +271,7 @@ export default function AdminSignupPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="email"
-                      className="text-[#2D3436] font-medium"
-                    >
+                    <Label htmlFor="email" className="text-[#2D3436] font-medium">
                       Email Corporativo <span className="text-[#D35400]">*</span>
                     </Label>
                     <Input
@@ -315,10 +291,7 @@ export default function AdminSignupPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="contact"
-                      className="text-[#2D3436] font-medium"
-                    >
+                    <Label htmlFor="contact" className="text-[#2D3436] font-medium">
                       Telefone / Celular <span className="text-[#D35400]">*</span>
                     </Label>
                     <Input
@@ -344,10 +317,7 @@ export default function AdminSignupPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="document"
-                      className="text-[#2D3436] font-medium"
-                    >
+                    <Label htmlFor="document" className="text-[#2D3436] font-medium">
                       CPF ou CNPJ
                     </Label>
                     <Input
@@ -362,16 +332,13 @@ export default function AdminSignupPage() {
                         },
                       })}
                       className={`h-11 border-[#95A5A6] focus:border-[#2C3E50] focus:ring-[#2C3E50] transition-all ${
-                        errors.document
-                          ? "border-red-500 focus:ring-red-200"
-                          : ""
+                        errors.document ? "border-red-500 focus:ring-red-200" : ""
                       }`}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Seção 2: Credenciais e Vínculos */}
               <div className="space-y-6">
                 <div className="flex items-center gap-2 pb-2 border-b border-[#95A5A6]/30">
                   <h3 className="text-lg font-semibold text-[#2D3436]">
@@ -381,10 +348,7 @@ export default function AdminSignupPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="password"
-                      className="text-[#2D3436] font-medium"
-                    >
+                    <Label htmlFor="password" className="text-[#2D3436] font-medium">
                       Senha Inicial <span className="text-[#D35400]">*</span>
                     </Label>
                     <Input
@@ -393,9 +357,7 @@ export default function AdminSignupPage() {
                       placeholder="Mínimo 6 caracteres"
                       {...register("password")}
                       className={`h-11 border-[#95A5A6] focus:border-[#2C3E50] focus:ring-[#2C3E50] transition-all ${
-                        errors.password
-                          ? "border-red-500 focus:ring-red-200"
-                          : ""
+                        errors.password ? "border-red-500 focus:ring-red-200" : ""
                       }`}
                     />
                     {errors.password && (
@@ -417,17 +379,11 @@ export default function AdminSignupPage() {
                         <SelectValue placeholder="Selecione..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="EMPLOYER">
-                          Funcionário Padrão
-                        </SelectItem>
+                        <SelectItem value="EMPLOYER">Funcionário Padrão</SelectItem>
                         {user.role === "MASTER" && (
                           <>
-                            <SelectItem value="ADMIN">
-                              Administrador Local
-                            </SelectItem>
-                            <SelectItem value="MASTER">
-                              Master (Sistema)
-                            </SelectItem>
+                            <SelectItem value="ADMIN">Administrador Local</SelectItem>
+                            <SelectItem value="MASTER">Master (Sistema)</SelectItem>
                           </>
                         )}
                       </SelectContent>
@@ -435,7 +391,6 @@ export default function AdminSignupPage() {
                   </div>
                 </div>
 
-                {/* Seção da Empresa */}
                 <div className="pt-2">
                   <Label className="text-[#2D3436] font-medium mb-2 block">
                     Vínculo Empresarial <span className="text-[#D35400]">*</span>
@@ -490,8 +445,7 @@ export default function AdminSignupPage() {
                           {user.company?.name}
                         </p>
                         <p className="text-sm text-[#95A5A6]">
-                          O novo usuário será vinculado automaticamente a esta
-                          organização.
+                          O novo usuário será vinculado automaticamente a esta organização.
                         </p>
                       </div>
                     </div>
@@ -499,7 +453,6 @@ export default function AdminSignupPage() {
                 </div>
               </div>
 
-              {/* Botão de Ação Principal */}
               <div className="pt-4">
                 <Button
                   type="submit"

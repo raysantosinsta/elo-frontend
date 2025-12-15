@@ -24,7 +24,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/contexts/AuthContext"; // Importando o contexto que tem o axios configurado
+// 1. CORREÇÃO: Importar api diretamente, não do contexto
+import { api } from "@/services/api"; 
+import { useAuth } from "@/contexts/AuthContext";
 import {
   AlertCircle,
   CheckCircle2,
@@ -150,9 +152,8 @@ const Toast = ({
 };
 
 export default function ProductFlowKanban() {
-  // AQUI ESTÁ A MUDANÇA PRINCIPAL: Pegamos 'api' do hook useAuth
-  // 'api' é a instância do Axios que sabe fazer refresh token
-  const { user, logout, loading: authLoading, api } = useAuth();
+  // 2. CORREÇÃO: Removemos 'api' daqui
+  const { user, logout, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [flows, setFlows] = useState<ProductFlow[]>([]);
@@ -233,13 +234,9 @@ export default function ProductFlowKanban() {
   const audioChunksRef = useRef<Blob[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // REMOVIDO: authFetch e getAuthToken manuais. 
-  // Agora usamos 'api' vindo do useAuth()
-
   const fetchFlows = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
-      // USANDO api.get (Axios) em vez de fetch
       const { data } = await api.get(`/flow?companyId=${user.company.id}`);
       
       const flowsArray = Array.isArray(data)
@@ -252,7 +249,7 @@ export default function ProductFlowKanban() {
       console.error(err);
       showToast("Erro ao carregar fluxos", "error");
     }
-  }, [api, user?.company?.id, selectedFlow]);
+  }, [user?.company?.id, selectedFlow]);
 
   const fetchFlowBoard = useCallback(
     async (flowId: string) => {
@@ -265,7 +262,7 @@ export default function ProductFlowKanban() {
         showToast("Erro ao carregar quadro", "error");
       }
     },
-    [api, user?.company?.id]
+    [user?.company?.id]
   );
 
   const fetchUsers = useCallback(async () => {
@@ -276,7 +273,7 @@ export default function ProductFlowKanban() {
     } catch (err) {
       console.error("Erro ao buscar usuários", err);
     }
-  }, [api, user?.company?.id]);
+  }, [user?.company?.id]);
 
   const loadInitialData = useCallback(async () => {
     if (!user) return;
@@ -288,9 +285,11 @@ export default function ProductFlowKanban() {
   useEffect(() => {
     if (user) loadInitialData();
   }, [user, loadInitialData]);
+  
   useEffect(() => {
     if (selectedFlow) fetchFlowBoard(selectedFlow);
   }, [selectedFlow, fetchFlowBoard]);
+  
   useEffect(() => {
     if (isRecording) {
       const i = setInterval(() => setRecordingTime((t) => t + 1), 1000);
@@ -423,7 +422,6 @@ export default function ProductFlowKanban() {
         stageId: itemStage || undefined,
       };
       
-      // AXIOS POST (Refresh token automático se der 401)
       const { data: responseData } = await api.post(`/flow/${selectedFlow}/items`, itemData);
 
       await uploadAllMediaFiles(responseData.id);
@@ -491,10 +489,8 @@ export default function ProductFlowKanban() {
     type: "image" | "audio" | "video"
   ) => {
     const formData = new FormData();
-    // Nome do arquivo explícito para garantir extensão correta no backend
     formData.append("file", file, file.name); 
     
-    // AXIOS POST para multipart
     await api.post(`/flow/items/${itemId}/media/${type}`, formData, {
         headers: {
             'Content-Type': 'multipart/form-data'
@@ -667,7 +663,6 @@ export default function ProductFlowKanban() {
     setEditItemQuantity(item.quantity.toString());
     setEditItemPriority(item.priority.toString());
 
-    // Formata data para o input (YYYY-MM-DD)
     if (item.dueDate) {
       const dateObj = new Date(item.dueDate);
       const yyyy = dateObj.getFullYear();
@@ -691,7 +686,6 @@ export default function ProductFlowKanban() {
 
   const MediaThumbnails = ({ item }: { item: FlowItem }) => (
     <div className="space-y-4">
-      {/* Imagens */}
       {item.images.length > 0 && (
         <div className="grid grid-cols-4 gap-2">
           {item.images.map((img) => (
@@ -726,7 +720,6 @@ export default function ProductFlowKanban() {
         </div>
       )}
 
-      {/* Vídeos */}
       {item.videos.length > 0 && (
         <div className="space-y-1">
           <Label className="text-xs text-gray-500">Vídeos Salvos</Label>
@@ -762,7 +755,6 @@ export default function ProductFlowKanban() {
         </div>
       )}
 
-      {/* Áudios */}
       {item.audios.length > 0 && (
         <div className="space-y-1">
           <Label className="text-xs text-gray-500">Áudios Salvos</Label>
@@ -796,7 +788,6 @@ export default function ProductFlowKanban() {
                         </button>
                     </div>
                 </div>
-                {/* PLAYER DE ÁUDIO NATIVO PARA OUVIR AGORA NO EDIT */}
                 <audio controls src={aud.url} className="w-full h-8 mt-1" />
               </div>
             ))}
@@ -805,7 +796,7 @@ export default function ProductFlowKanban() {
       )}
     </div>
   );
-// TODO: trabalhando nesse card
+
   const KanbanCard = ({ item }: { item: FlowItem }) => {
     const priorityStyle = getPriorityStyles(item.priority);
 
@@ -1262,7 +1253,6 @@ export default function ProductFlowKanban() {
                 />
               </div>
 
-              {/* --- CAMPO DESCRIPTION ADICIONADO --- */}
               <div className="space-y-2 col-span-2">
                 <Label>Descrição</Label>
                 <Textarea
@@ -1314,7 +1304,6 @@ export default function ProductFlowKanban() {
               </div>
             </div>
 
-            {/* ADICIONADO: CAMPO DE DATA DE VENCIMENTO NO CRIAÇÃO */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Responsável</Label>
@@ -1446,10 +1435,10 @@ export default function ProductFlowKanban() {
                       : "Gravar Áudio"}
                   </Button>
                   {isRecording && (
-                     <span className="text-xs text-red-500 animate-pulse font-medium flex items-center gap-1">
+                      <span className="text-xs text-red-500 animate-pulse font-medium flex items-center gap-1">
                         <span className="w-2 h-2 bg-red-500 rounded-full"></span>
                         Gravando...
-                     </span>
+                      </span>
                   )}
                 </div>
               </div>
@@ -1526,7 +1515,6 @@ export default function ProductFlowKanban() {
                   />
                 </div>
 
-                {/* --- CAMPO DESCRIÇÃO ADICIONADO NA EDIÇÃO --- */}
                 <div className="space-y-2 col-span-2">
                   <Label>Descrição</Label>
                   <Textarea
@@ -1545,7 +1533,6 @@ export default function ProductFlowKanban() {
                   />
                 </div>
 
-                {/* ADICIONADO: CAMPO DATA DE VENCIMENTO NA EDIÇÃO */}
                 <div className="space-y-2">
                   <Label>Data de Entrega</Label>
                   <Input
@@ -1850,7 +1837,6 @@ export default function ProductFlowKanban() {
             </DialogTitle>
             <DialogDescription className="flex gap-4">
               <span>REF: {previewItem?.productRef}</span>
-              {/* REMOVIDO O NÚMERO DO PEDIDO AQUI */}
             </DialogDescription>
           </DialogHeader>
           {previewItem && (

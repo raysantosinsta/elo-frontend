@@ -1,24 +1,26 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useAuth, useAuthFetch } from "@/contexts/AuthContext";
-import { api } from "@/lib/api";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { User } from "@/types/chat";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/services/api"; // Certifique-se de importar do local correto onde criou o axios
+import { chatService } from "@/services/chatService"; // Importe o service criado no passo anterior
 import { socketService } from "./socket";
 
+// ==========================================
+// USE MENTIONS
+// ==========================================
 export function useMentions() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<User[]>([]);
   const [showList, setShowList] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const [isLoading, setIsLoading] = useState(false);
-  // NOVO: Estado para controlar o item selecionado via teclado
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const timeoutRef = useRef<any>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Reseta o index quando os resultados mudam
   useEffect(() => {
     setSelectedIndex(0);
   }, [results]);
@@ -41,9 +43,7 @@ export function useMentions() {
 
           if (el) {
             const rect = el.getBoundingClientRect();
-            // Ajuste simples para posicionar acima do input
-            const scrollY =
-              window.scrollY || document.documentElement.scrollTop;
+            const scrollY = window.scrollY || document.documentElement.scrollTop;
             setPosition({ top: rect.top + scrollY - 20, left: rect.left });
           }
 
@@ -56,7 +56,8 @@ export function useMentions() {
               return;
             }
             try {
-              const users = await api.getUsersForMention(queryTerm);
+              // USANDO O SERVICE PADRONIZADO
+              const users = await chatService.getUsersForMention(queryTerm);
               setResults(users);
               if (users.length === 0) setShowList(false);
             } catch (e) {
@@ -78,19 +79,16 @@ export function useMentions() {
     const lastAt = text.lastIndexOf("@", cursor - 1);
     const before = text.substring(0, lastAt);
     const after = text.substring(cursor);
-    // Adiciona espaço após o nome para facilitar a continuação da digitação
     const newText = `${before}@${user.name} ${after}`;
 
     return {
       text: newText,
-      // Posição: antes + @ + nome + espaço
       cursor: lastAt + user.name.length + 2,
     };
   };
 
-  // NOVO: Lógica de Teclado
   const handleKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>,
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
     onSelect: (user: User) => void
   ) => {
     if (!showList || results.length === 0) return;
@@ -115,25 +113,21 @@ export function useMentions() {
     showList,
     position,
     isLoading,
-    selectedIndex, // Exportando
+    selectedIndex,
     handleInputChange,
-    handleKeyDown, // Exportando
+    handleKeyDown,
     insertMention,
     close: () => setShowList(false),
   };
 }
 
 // ==========================================
-// 5. HOOK: USE NOTIFICATIONS (API + Socket)
+// USE NOTIFICATIONS (Simplificado com Axios)
 // ==========================================
-const API_BASE =
-  process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
-
 export function useNotifications() {
-  const { user } = useAuth();
-  const authFetch = useAuthFetch();
+  const { user } = useAuth(); // Apenas para saber se está logado
   const socket = socketService;
-  const [notifications, setNotifs] = useState<any[]>([]);
+  const [notifications, setNotifs] = useState<any[]>([]); // Idealmente crie um tipo Notification
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,19 +141,16 @@ export function useNotifications() {
     setError(null);
 
     try {
-      const res = await authFetch(`${API_BASE}/notifications`);
-      if (res.ok) {
-        setNotifs(await res.json());
-      } else {
-        throw new Error("Falha ao carregar notificações");
-      }
+      // O Axios injeta o token e baseURL automaticamente
+      const { data } = await api.get("/notifications");
+      setNotifs(data);
     } catch (e: any) {
       console.error(e);
-      setError(e.message);
+      setError(e.message || "Erro ao carregar notificações");
     } finally {
       setLoading(false);
     }
-  }, [user, authFetch]);
+  }, [user]);
 
   useEffect(() => {
     fetchNotifs();
@@ -179,15 +170,15 @@ export function useNotifications() {
   }, [fetchNotifs, socket]);
 
   const markAsRead = async (id: string) => {
+    // Otimistic Update
     setNotifs((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     );
     try {
-      await authFetch(`${API_BASE}/notifications/${id}/read`, {
-        method: "PATCH",
-      });
+      await api.patch(`/notifications/${id}/read`);
       return true;
     } catch {
+      // Reverter se falhar (opcional)
       return false;
     }
   };
@@ -195,9 +186,7 @@ export function useNotifications() {
   const markAllAsRead = async () => {
     setNotifs((prev) => prev.map((n) => ({ ...n, isRead: true })));
     try {
-      await authFetch(`${API_BASE}/notifications/mark-all-read`, {
-        method: "POST",
-      });
+      await api.post("/notifications/mark-all-read");
       return true;
     } catch {
       return false;

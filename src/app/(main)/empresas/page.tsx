@@ -10,9 +10,11 @@ import {
   Edit, Trash2, Power, Loader2, AlertTriangle, CheckCircle2, Search as SearchIcon
 } from "lucide-react"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation" // For redirection
+import { useRouter } from "next/navigation"
 
-import { useAuth } from "@/contexts/AuthContext"
+// 1. CORREÇÃO: Importar api diretamente do serviço
+import { api } from "@/services/api"
+// import { useAuth } from "@/contexts/AuthContext" // Opcional se for usar apenas para redirecionamento
 
 // UI Components
 import { Button } from "@/components/ui/button"
@@ -74,7 +76,7 @@ const companyFormSchema = z.object({
 type CompanyFormValues = z.infer<typeof companyFormSchema>
 
 export default function CompanyManagementPage() {
-  const { api } = useAuth()
+  // 2. CORREÇÃO: Removemos api do useAuth
   const router = useRouter()
 
   // --- States ---
@@ -128,7 +130,7 @@ export default function CompanyManagementPage() {
     } finally {
       setLoading(false)
     }
-  }, [api])
+  }, [])
 
   useEffect(() => { fetchCompanies() }, [fetchCompanies])
 
@@ -362,9 +364,6 @@ const handleToggleStatus = async (id: string, currentStatus: string) => {
 
       {/* --- MODAL UNIFICADO (CRIAR / EDITAR) --- */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        {/* ALTERAÇÃO 1: h-[80vh] para subir o modal inteiro.
-           flex flex-col para organizar cabeçalho, corpo e rodapé.
-        */}
         <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 overflow-hidden bg-white border-[#F5F0E6]">
           
           {/* CABEÇALHO (Fixo no topo) */}

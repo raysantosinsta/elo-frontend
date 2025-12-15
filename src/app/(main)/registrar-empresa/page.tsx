@@ -14,11 +14,10 @@ import {
   Search,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner"; // Usando Sonner como pedido
+import { toast } from "sonner";
 
-// --- Importe o seu hook de autenticação ---
-// Ajuste o caminho se seu AuthContext estiver em outra pasta
-import { useAuth } from "@/contexts/AuthContext";
+// 1. CORREÇÃO: Importar api diretamente do serviço
+import { api } from "@/services/api";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -66,9 +65,8 @@ type CompanyFormValues = z.infer<typeof companyFormSchema>;
 export default function CompanyRegistrationPage() {
   const router = useRouter();
 
-  // --- 1. USAR O HOOK DE AUTH ---
-  // Isso traz a instância do Axios já configurada com o Token
-  const { api } = useAuth();
+  // 2. CORREÇÃO: Removemos o useAuth aqui
+  // const { api } = useAuth(); <--- REMOVIDO
 
   const [isLoading, setIsLoading] = useState(false);
   const [isCepLoading, setIsCepLoading] = useState(false);
@@ -93,7 +91,6 @@ export default function CompanyRegistrationPage() {
   });
 
   // --- Helpers Visuais (Máscaras) ---
-  // --- Helpers de Máscara (Versão Segura contra Crash) ---
   const formatCNPJ = (v: string | undefined | null) => {
     if (!v) return "";
     return v
@@ -118,7 +115,7 @@ export default function CompanyRegistrationPage() {
       .substring(0, 9);
   };
 
-  // --- Busca de CEP (Pública, não precisa de auth) ---
+  // --- Busca de CEP (Pública) ---
   const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const rawCep = e.target.value.replace(/\D/g, "");
     if (rawCep.length !== 8) return;
@@ -155,8 +152,7 @@ export default function CompanyRegistrationPage() {
     try {
       console.log("Enviando payload via Axios:", data);
 
-      // --- 2. CHAMADA CORRETA ---
-      // A instância 'api' já injeta o Header Authorization automaticamente
+      // A instância 'api' já injeta o Header Authorization e URL Base
       await api.post("/companies", data);
 
       toast.success("Empresa cadastrada!", {
@@ -165,23 +161,23 @@ export default function CompanyRegistrationPage() {
       });
 
       form.reset();
-      // router.push('/dashboard/companies') // Exemplo de redirecionamento
+      // router.push('/dashboard/companies') 
     } catch (error: any) {
-      console.error("Erro completo:", error); // Olhe o console do navegador!
+      console.error("Erro completo:", error); 
 
       let errorMessage = "Erro ao conectar com o servidor.";
 
+      // Tratamento de erro do Axios
       if (error.response) {
-        // Tenta extrair a mensagem de várias formas comuns do NestJS
-        const data = error.response.data;
+        const responseData = error.response.data;
 
-        if (typeof data === "string") {
-          errorMessage = data;
-        } else if (data?.message) {
-          if (Array.isArray(data.message)) {
-            errorMessage = data.message.join(", "); // Erros de validação (DTO)
+        if (typeof responseData === "string") {
+          errorMessage = responseData;
+        } else if (responseData?.message) {
+          if (Array.isArray(responseData.message)) {
+            errorMessage = responseData.message.join(", "); // Erros de validação (DTO)
           } else {
-            errorMessage = data.message; // Erros manuais (BadRequestException)
+            errorMessage = responseData.message; // Erros manuais
           }
         }
 
@@ -191,8 +187,8 @@ export default function CompanyRegistrationPage() {
       }
 
       toast.error("Falha no cadastro", {
-        description: errorMessage, // Agora mostrará "Empresa já cadastrada..." se for o caso
-        duration: 5000, // Dá tempo de ler
+        description: errorMessage,
+        duration: 5000,
       });
     } finally {
       setIsLoading(false);

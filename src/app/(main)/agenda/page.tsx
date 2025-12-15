@@ -3,9 +3,10 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { api } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   Calendar as CalendarIcon, 
@@ -19,7 +20,7 @@ import {
   Clock
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDay, isSameDay, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -54,7 +55,8 @@ const COLORS = {
 
 export default function AgendaPage() {
   // --- Hooks & Context ---
-  const { user, token, authFetch, loading: authLoading } = useAuth();
+  // 2. CORREÇÃO: Removemos authFetch e token daqui
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -87,26 +89,18 @@ export default function AgendaPage() {
     }
   }, [searchParams]);
 
-  // --- Data Fetching ---
-  const fetchTasks = async () => {
-    if (!user || !token) return;
+  // --- Data Fetching (USANDO AXIOS) ---
+  const fetchTasks = useCallback(async () => {
+    if (!user) return;
 
     setLoading(true);
     setError('');
     
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000';
-      const response = await authFetch(`${API_BASE_URL}/tasks`);
-
-      if (!response.ok) {
-        if (response.status === 401) throw new Error('Sessão expirada. Faça login novamente.');
-        throw new Error(`Erro ao carregar tarefas: ${response.status}`);
-      }
-
-      const contentType = response.headers.get('content-type');
-      if (!contentType?.includes('application/json')) throw new Error('Resposta inválida do servidor');
-
-      const data = await response.json();
+      // 3. CORREÇÃO: Usar api.get
+      // O Axios injeta a BaseURL e o Token automaticamente
+      const response = await api.get('/tasks');
+      const data = response.data;
       
       // Normalização de dados (Adapter Pattern)
       let taskList: any[] = [];
@@ -134,15 +128,20 @@ export default function AgendaPage() {
       setTasks(filtered);
     } catch (err: any) {
       console.error('❌ Erro na agenda:', err);
-      setError(err.message || 'Erro ao carregar tarefas');
+      // Se for 401, o interceptor do axios já lidou, mas podemos exibir msg
+      if (err.response?.status === 401) {
+         setError('Sessão expirada. Redirecionando...');
+      } else {
+         setError('Não foi possível carregar as tarefas.');
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
-    if (user && token) fetchTasks();
-  }, [user, token]);
+    if (user) fetchTasks();
+  }, [user, fetchTasks]);
 
   // --- Calendar Logic ---
   const calendarDays = useMemo(() => {
@@ -171,7 +170,6 @@ export default function AgendaPage() {
 
   // --- UI Helpers ---
   const getPriorityStyles = (priority: number) => {
-    // Usando tons que conversam com a paleta Terracota/Grafite mas mantendo semântica
     switch (priority) {
       case 5: return 'bg-red-600 border-red-700 text-white'; // Crítica
       case 4: return 'bg-[#D35400] border-[#A04000] text-white'; // Urgente (Terracota)
@@ -196,7 +194,7 @@ export default function AgendaPage() {
   // --- Main Render ---
   return (
     <div className="min-h-screen p-4 md:p-8 font-sans transition-colors duration-300" 
-         style={{ backgroundColor: COLORS.background, color: COLORS.textMain }}>
+          style={{ backgroundColor: COLORS.background, color: COLORS.textMain }}>
       
       <div className="max-w-[1400px] mx-auto">
         {/* --- Header Section --- */}
@@ -225,7 +223,7 @@ export default function AgendaPage() {
             <Button 
               onClick={goToToday} 
               variant="outline" 
-              size="sm"
+              size="sm" 
               className="border-dashed hover:border-solid hover:bg-gray-50"
               style={{ color: COLORS.textMain, borderColor: COLORS.secondaryText }}
             >
@@ -285,7 +283,7 @@ export default function AgendaPage() {
             <Button 
               onClick={() => setHighlightedTask(null)} 
               variant="ghost" 
-              size="sm"
+              size="sm" 
               className="text-yellow-700 hover:bg-yellow-100"
             >
               Limpar Foco

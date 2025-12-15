@@ -1,31 +1,29 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/services/api'; // <--- IMPORTANTE: Importando a instância do Axios
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import {
   AlertTriangleIcon,
-  CalendarIcon,
   CheckCircle2Icon,
   ClockIcon,
-  DownloadIcon,
   EyeIcon,
   FilterIcon,
   LayoutListIcon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Bar,
   BarChart,
@@ -70,7 +68,8 @@ interface TaskReportSummary {
 }
 
 export default function TasksReportPage() {
-  const { user, authFetch } = useAuth();
+  // 1. CORREÇÃO: Removemos authFetch daqui
+  const { user } = useAuth();
   const router = useRouter();
 
   const [tasks, setTasks] = useState<TaskReportItem[]>([]);
@@ -78,7 +77,7 @@ export default function TasksReportPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
-  // Filtros (CompanyId removido)
+  // Filtros
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [startDate, setStartDate] = useState<Date | undefined>();
@@ -91,42 +90,35 @@ export default function TasksReportPage() {
     }
   }, [user, router]);
 
-  // Buscar dados do relatório
-  useEffect(() => {
-    if (user) {
-      fetchReport();
-    }
-  }, [user, statusFilter, priorityFilter, startDate, endDate]);
-
-  const fetchReport = async () => {
+  // 2. CORREÇÃO: Usando useCallback e api.get
+  const fetchReport = useCallback(async () => {
+    if (!user) return;
+    
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      // Não enviamos mais companyId, o backend pega do token
-      if (statusFilter && statusFilter !== "all") params.append("status", statusFilter);
-      if (priorityFilter && priorityFilter !== "all") params.append("priority", priorityFilter);
-      if (startDate) params.append("startDate", startDate.toISOString());
-      if (endDate) params.append("endDate", endDate.toISOString());
+      // Construção dos params para o Axios
+      const params: any = {};
+      if (statusFilter && statusFilter !== "all") params.status = statusFilter;
+      if (priorityFilter && priorityFilter !== "all") params.priority = priorityFilter;
+      if (startDate) params.startDate = startDate.toISOString();
+      if (endDate) params.endDate = endDate.toISOString();
 
-      const url = `${process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000'}/reports-tasks/tasks?${params.toString()}`;
+      // Chamada simplificada
+      const { data } = await api.get('/reports-tasks/tasks', { params });
       
-      const response = await authFetch(url);
-      
-      if (response.ok) {
-        const data = await response.json();
-        setTasks(data.tasks);
-        setSummary(data.summary);
-      } else {
-        console.error("Falha ao buscar relatório", response.status);
-      }
+      setTasks(data.tasks);
+      setSummary(data.summary);
     } catch (error) {
       console.error("Erro ao buscar relatório de tarefas:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, statusFilter, priorityFilter, startDate, endDate]);
 
-  
+  // Buscar dados do relatório
+  useEffect(() => {
+    fetchReport();
+  }, [fetchReport]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -167,7 +159,6 @@ export default function TasksReportPage() {
             Visão geral de produtividade, status e prazos da sua equipe.
           </p>
         </div>
-       
       </div>
 
       {/* Cards de Resumo */}
@@ -244,8 +235,6 @@ export default function TasksReportPage() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             
-            {/* Filtro de Empresa Removido Completamente */}
-
             <div className="space-y-2">
               <Label>Status</Label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -272,8 +261,6 @@ export default function TasksReportPage() {
                 </SelectContent>
               </Select>
             </div>
-
-            
           </div>
           
           <div className="flex justify-end mt-4">

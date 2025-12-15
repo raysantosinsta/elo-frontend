@@ -1,29 +1,27 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
+// 1. IMPORTANTE: Importando a instância do Axios
+import { api } from '@/services/api'; 
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
 import {
   AlertCircle,
-  CalendarIcon,
-  FilterIcon,
   Layers,
   LayoutDashboard,
   Search,
   Shirt
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Bar,
   BarChart,
@@ -64,7 +62,8 @@ interface FlowOption {
 }
 
 export default function ProductionReportsPage() {
-  const { user, authFetch } = useAuth();
+  // 2. CORREÇÃO: Removemos authFetch daqui
+  const { user } = useAuth();
 
   const [items, setItems] = useState<FlowReportItem[]>([]);
   const [summary, setSummary] = useState<FlowReportSummary | null>(null);
@@ -78,12 +77,42 @@ export default function ProductionReportsPage() {
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
 
+  // 3. CORREÇÃO: Usando api.get e useCallback
+  const fetchFlows = useCallback(async () => {
+    try {
+      const { data } = await api.get('/reports-flow/flows-list');
+      setFlows(data);
+    } catch (error) {
+      console.error('Erro ao buscar fluxos:', error);
+    }
+  }, []);
+
+  const fetchReport = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: any = {};
+      if (flowId && flowId !== "all") params.flowId = flowId;
+      if (search) params.search = search;
+      if (startDate) params.startDate = startDate.toISOString();
+      if (endDate) params.endDate = endDate.toISOString();
+
+      const { data } = await api.get('/reports-flow/analytics', { params });
+      
+      setItems(data.items);
+      setSummary(data.summary);
+    } catch (error) {
+      console.error("Erro ao buscar analytics:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [flowId, search, startDate, endDate]);
+
   // Carregar lista de fluxos ao iniciar
   useEffect(() => {
     if (user) {
       fetchFlows();
     }
-  }, [user]);
+  }, [user, fetchFlows]);
 
   // Carregar dados do relatório quando filtros mudam
   useEffect(() => {
@@ -93,40 +122,7 @@ export default function ProductionReportsPage() {
       }, 500); // Debounce para o search
       return () => clearTimeout(delayDebounceFn);
     }
-  }, [user, flowId, search, startDate, endDate]);
-
-  const fetchFlows = async () => {
-    try {
-      const res = await authFetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL}/reports-flow/flows-list`);
-      if (res.ok) setFlows(await res.json());
-    } catch (error) {
-      console.error('Erro ao buscar fluxos:', error);
-    }
-  };
-
-  const fetchReport = async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (flowId && flowId !== "all") params.append("flowId", flowId);
-      if (search) params.append("search", search);
-      if (startDate) params.append("startDate", startDate.toISOString());
-      if (endDate) params.append("endDate", endDate.toISOString());
-
-      const url = `${process.env.NEXT_PUBLIC_NESTJS_API_URL}/reports-flow/analytics?${params.toString()}`;
-      const response = await authFetch(url);
-      
-      if (response.ok) {
-        const data = await response.json();
-        setItems(data.items);
-        setSummary(data.summary);
-      }
-    } catch (error) {
-      console.error("Erro ao buscar analytics:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [user, fetchReport]);
 
   const getPriorityBadge = (priority: number) => {
     if (priority >= 4) return <Badge className="bg-red-100 text-red-700 hover:bg-red-200 border-red-200">Alta</Badge>;
@@ -152,7 +148,7 @@ export default function ProductionReportsPage() {
         </div>
       </div>
 
-      {/* Cards de KPIs (Key Performance Indicators) */}
+      {/* Cards de KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-blue-500 shadow-sm">
           <CardHeader className="pb-2">
@@ -312,26 +308,22 @@ export default function ProductionReportsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {/* Atualizado: Removido "OP" do título */}
                     <TableHead>Referência</TableHead>
                     <TableHead>Título</TableHead>
                     <TableHead>Fluxo</TableHead>
                     <TableHead>Etapa Atual</TableHead>
                     <TableHead className="text-right">Qtd. Peças</TableHead>
                     <TableHead className="text-center">Prioridade</TableHead>
-                    {/* Removido: TableHead Prazo */}
                     <TableHead>Resp.</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      {/* Ajustado colSpan para 7 (era 8) */}
                       <TableCell colSpan={7} className="text-center h-24">Carregando dados...</TableCell>
                     </TableRow>
                   ) : items.length === 0 ? (
                     <TableRow>
-                      {/* Ajustado colSpan para 7 (era 8) */}
                       <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">Nenhum item encontrado.</TableCell>
                     </TableRow>
                   ) : (
@@ -339,7 +331,6 @@ export default function ProductionReportsPage() {
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="font-semibold text-gray-800">{item.productRef}</div>
-                          {/* Removido: item.orderNumber */}
                         </TableCell>
                         <TableCell>{item.title}</TableCell>
                         <TableCell>
@@ -358,7 +349,6 @@ export default function ProductionReportsPage() {
                         <TableCell className="text-center">
                           {getPriorityBadge(item.priority)}
                         </TableCell>
-                        {/* Removido: TableCell do Prazo */}
                         <TableCell>
                            {item.assignedTo ? (
                              <Avatar className="h-6 w-6" title={item.assignedTo}>

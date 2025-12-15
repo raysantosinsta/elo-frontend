@@ -1,11 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+// 1. CORREÇÃO: Importar api e useAuth (sem authFetch)
+import { api } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 // UI Components
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -119,7 +122,6 @@ interface ProfessionalDetails {
     updatedAt: string;
     column: { title: string };
   }>;
-  // Timeline mantida na tipagem para evitar erros caso a API envie, mas não será renderizada
   timeline: Array<{
     type: "task" | "budget";
     id: string;
@@ -214,7 +216,8 @@ const ActivityItem = ({
 
 export default function ProfessionalReportPage() {
   const { id } = useParams();
-  const { user, authFetch } = useAuth();
+  // 2. CORREÇÃO: Removemos authFetch daqui
+  const { user } = useAuth();
   const router = useRouter();
 
   // State
@@ -233,25 +236,15 @@ export default function ProfessionalReportPage() {
     if (!user || !id) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      
-      const url = `${process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000"
-        }/reports/professionals/${id}/details?${params.toString()}`;
-
-      const response = await authFetch(url);
-
-      if (response.ok) {
-        const data = await response.json();
-        setDetails(data);
-      } else {
-        console.error("Erro ao buscar detalhes:", response.status);
-      }
+      // 3. CORREÇÃO: Usando api.get e caminho relativo
+      const { data } = await api.get(`/reports/professionals/${id}/details`);
+      setDetails(data);
     } catch (error) {
       console.error("Erro na requisição:", error);
     } finally {
       setLoading(false);
     }
-  }, [authFetch, id, user]);
+  }, [id, user]);
 
   useEffect(() => {
     fetchDetails();

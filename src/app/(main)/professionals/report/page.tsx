@@ -1,11 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useAuth } from "@/contexts/AuthContext";
-import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+
+// Services & Contexts
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/services/api"; // <--- Importação do Axios
+import { cn } from "@/lib/utils";
 
 // UI Components
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -58,7 +61,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ActivityIcon,
   BriefcaseIcon,
-  DownloadIcon,
   Edit,
   Eye,
   FilterIcon,
@@ -168,21 +170,19 @@ const SummaryCard = ({
 // --- MAIN PAGE COMPONENT ---
 
 export default function ProfessionalsReportPage() {
-  const { user, authFetch } = useAuth();
+  const { user, isAuthenticated } = useAuth(); // AuthFetch removido daqui
   const router = useRouter();
-  const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
   // State Data
   const [professionals, setProfessionals] = useState<ProfessionalReportItem[]>([]);
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState(false); // Mantido caso implemente no futuro
 
   // Filters State
   const [statusFilter, setStatusFilter] = useState("all");
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
-
 
   // Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -194,49 +194,42 @@ export default function ProfessionalsReportPage() {
   const fetchReport = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (statusFilter && statusFilter !== "all") params.append("status", statusFilter);
-      if (startDate) params.append("startDate", startDate.toISOString());
-      if (endDate) params.append("endDate", endDate.toISOString());
+      // Axios Params simplifica a construção da query string
+      const params: any = {};
+      if (statusFilter && statusFilter !== "all") params.status = statusFilter;
+      if (startDate) params.startDate = startDate.toISOString();
+      if (endDate) params.endDate = endDate.toISOString();
 
-      const url = `${API_BASE}/reports/professionals/?${params.toString()}`;
-      const response = await authFetch(url);
+      // Chamada simplificada com api.get
+      const { data } = await api.get("/reports/professionals/", { params });
 
-      if (response.ok) {
-        const data = await response.json();
-        setProfessionals(data.professionals);
-        setSummary(data.summary);
-      } else {
-        console.error("Falha ao buscar relatório", response.status);
-      }
+      setProfessionals(data.professionals);
+      setSummary(data.summary);
     } catch (error) {
       console.error("Erro crítico ao buscar dados:", error);
+      toast.error("Não foi possível carregar o relatório.");
     } finally {
       setLoading(false);
     }
-  }, [authFetch, statusFilter, startDate, endDate, API_BASE]);
+  }, [statusFilter, startDate, endDate]);
 
   // --- ACTIONS HANDLERS ---
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     try {
-      const res = await authFetch(`${API_BASE}/users/${id}/status/${newStatus}`, {
-        method: "PATCH",
-      });
+      await api.patch(`/users/${id}/status/${newStatus}`);
 
-      if (res.ok) {
-        toast.success(`Usuário ${newStatus === "ACTIVE" ? "ativado" : "desativado"} com sucesso!`);
-        setProfessionals((prev) =>
-          prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p))
-        );
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(errorData.message || "Erro ao alterar status.");
-      }
-    } catch (error) {
+      toast.success(`Usuário ${newStatus === "ACTIVE" ? "ativado" : "desativado"} com sucesso!`);
+      
+      // Atualização Otimista
+      setProfessionals((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p))
+      );
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erro de conexão.");
+      const msg = error.response?.data?.message || "Erro ao alterar status.";
+      toast.error(msg);
     }
   };
 
@@ -244,19 +237,13 @@ export default function ProfessionalsReportPage() {
     if (!confirm("Tem certeza que deseja excluir este usuário? Essa ação não pode ser desfeita.")) return;
 
     try {
-      const res = await authFetch(`${API_BASE}/users/${id}`, {
-        method: "DELETE",
-      });
+      await api.delete(`/users/${id}`);
 
-      if (res.ok) {
-        toast.success("Usuário excluído com sucesso.");
-        setProfessionals((prev) => prev.filter((p) => p.id !== id));
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(errorData.message || "Erro ao excluir usuário.");
-      }
-    } catch (error) {
-      toast.error("Erro ao tentar excluir.");
+      toast.success("Usuário excluído com sucesso.");
+      setProfessionals((prev) => prev.filter((p) => p.id !== id));
+    } catch (error: any) {
+      const msg = error.response?.data?.message || "Erro ao excluir usuário.";
+      toast.error(msg);
     }
   };
 
@@ -287,24 +274,17 @@ export default function ProfessionalsReportPage() {
         professionalRole: editingUser.professionalRole,
       };
 
-      const res = await authFetch(`${API_BASE}/users/${editingUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      await api.patch(`/users/${editingUser.id}`, payload);
 
-      if (res.ok) {
-        toast.success("Usuário atualizado com sucesso!");
-        setProfessionals((prev) =>
-          prev.map((p) => (p.id === editingUser.id ? { ...p, ...payload } : p))
-        );
-        setIsEditModalOpen(false);
-      } else {
-        const errorData = await res.json();
-        toast.error(errorData.message || "Erro ao atualizar usuário");
-      }
-    } catch (error) {
-      toast.error("Erro de conexão ao salvar.");
+      toast.success("Usuário atualizado com sucesso!");
+      
+      setProfessionals((prev) =>
+        prev.map((p) => (p.id === editingUser.id ? { ...p, ...payload } : p))
+      );
+      setIsEditModalOpen(false);
+    } catch (error: any) {
+      const msg = error.response?.data?.message || "Erro ao atualizar usuário";
+      toast.error(msg);
     } finally {
       setIsSaving(false);
     }
@@ -313,7 +293,7 @@ export default function ProfessionalsReportPage() {
   // --- EFFECTS ---
 
   useEffect(() => {
-    if (user) fetchReport();
+    if (isAuthenticated) fetchReport();
   }, [fetchReport, user]);
 
   // --- RENDER HELPERS ---
@@ -374,7 +354,7 @@ export default function ProfessionalsReportPage() {
           </div>
         </header>
 
-        {/* SUMMARY CARDS - GRID AJUSTADO PARA 3 COLUNAS */}
+        {/* SUMMARY CARDS */}
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <SummaryCard
             title="Total Profissionais"
@@ -397,7 +377,6 @@ export default function ProfessionalsReportPage() {
             subtext="Distribuídas entre a equipe"
             colorClass={COLORS.grafite}
           />
-          {/* Card Alta Performance REMOVIDO */}
         </section>
 
         {/* FILTERS */}

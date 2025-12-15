@@ -1,5 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AlertCircle, Calendar, Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
+
+// UI Components
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,12 +19,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { api } from "@/lib/api";
+
+// Utils & Services
+import { cn } from "@/lib/utils";
+import { chatService } from "@/services/chatService"; // Importe o service novo
 import { Chat } from "@/types/chat";
-import { cn } from "@/lib/utils"; // Certifique-se de importar o cn
-import { AlertCircle, Calendar, Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 
 interface ChatListProps {
   currentUserId: string;
@@ -27,7 +31,7 @@ interface ChatListProps {
   userRole?: string;
 }
 
-export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) {
+export function ChatList({ companyId, userRole }: ChatListProps) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(false);
   const [creatingChat, setCreatingChat] = useState(false);
@@ -35,10 +39,9 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  // Verificação de permissão
   const canDelete = ["ADM", "MASTER"].includes(userRole?.toUpperCase() || "");
 
-  // --- LOGIC: DATA FETCHING ---
+  // --- BUSCAR CHATS ---
   useEffect(() => {
     const loadChats = async () => {
       if (!companyId) return;
@@ -46,8 +49,9 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
       setLoading(true);
       setError(null);
       try {
-        const chatsWithMessages = await api.getChats({ companyId });
-        setChats(chatsWithMessages);
+        // Agora usamos o chatService limpo
+        const data = await chatService.getChats(companyId);
+        setChats(data);
       } catch (error) {
         console.error("❌ Erro ao carregar chats:", error);
         setError("Não foi possível carregar o histórico.");
@@ -59,44 +63,51 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
     loadChats();
   }, [companyId]);
 
-  // --- LOGIC: CREATE ACTION ---
+  // --- CRIAR CHAT ---
   const createNewChat = async () => {
     if (!companyId) return;
 
     setCreatingChat(true);
     try {
-      const newChat = await api.createChat({ companyId });
-      const fullChat = await api.getChat(newChat.id);
-      setChats((prev) => [fullChat, ...prev]);
+      // 1. Cria o chat
+      const newChat = await chatService.createChat({ companyId });
+      
+      // 2. Atualiza a lista localmente para parecer instantâneo
+      setChats((prev) => [newChat, ...prev]);
+      
+      // 3. Redireciona
       router.push(`/chats/${newChat.id}`);
     } catch (error) {
+      console.error(error);
       setError("Erro ao criar novo atendimento.");
     } finally {
       setCreatingChat(false);
     }
   };
 
-  // --- LOGIC: DELETE ACTION ---
-  const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
+  // --- DELETAR CHAT ---
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    // Impede que o clique no lixo abra o chat
     e.stopPropagation();
   };
 
   const confirmDelete = async (chatId: string) => {
     setDeletingId(chatId);
     try {
-      console.log(`🗑️ Deletando chat ${chatId}...`);
-      await api.deleteChat(chatId);
+      await chatService.deleteChat(chatId);
+      // Remove da lista localmente
       setChats((prev) => prev.filter((c) => c.id !== chatId));
     } catch (error) {
       console.error("Erro ao deletar:", error);
-      alert("Erro ao deletar o chat.");
+      alert("Erro ao deletar o chat. Tente novamente.");
     } finally {
       setDeletingId(null);
     }
   };
 
   // --- HELPERS ---
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "";
     return new Date(dateString).toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
@@ -108,11 +119,16 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
   const getLastMessagePreview = (chat: Chat) => {
     if (!chat.messages?.length) return "Nova conversa iniciada";
     const lastMsg = chat.messages[chat.messages.length - 1];
-    const text = lastMsg.message.length > 40 ? lastMsg.message.substring(0, 40) + "..." : lastMsg.message;
-    return `${lastMsg.sender?.name || "User"}: ${text}`;
+    
+    // Tratamento seguro caso sender seja null
+    const senderName = lastMsg.sender?.name || "Usuário";
+    const text = lastMsg.message.length > 35 
+      ? lastMsg.message.substring(0, 35) + "..." 
+      : lastMsg.message;
+      
+    return `${senderName}: ${text}`;
   };
 
-  // --- RENDER ---
   return (
     <Card className="h-full w-full border-0 shadow-none sm:border sm:border-[#95A5A6]/20 sm:shadow-sm">
       {/* HEADER */}
@@ -131,13 +147,17 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
             size="sm"
             className="bg-[#D35400] text-white shadow-md transition-all hover:bg-[#D35400]/90 disabled:opacity-50"
           >
-            {creatingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+            {creatingChat ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="mr-2 h-4 w-4" />
+            )}
             Novo Chat
           </Button>
         </div>
       </CardHeader>
 
-      {/* LIST CONTENT */}
+      {/* LISTA */}
       <CardContent className="p-0">
         {error && (
           <div className="m-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
@@ -161,6 +181,7 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
                   <MessageSquare className="h-8 w-8 text-[#95A5A6]" />
                 </div>
                 <h3 className="text-sm font-semibold text-[#2D3436]">Nenhum chat</h3>
+                <p className="text-xs text-[#95A5A6]">Clique em Novo Chat para começar</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -170,16 +191,15 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
                       onClick={() => router.push(`/chats/${chat.id}`)}
                       className={cn(
                         "flex w-full items-start gap-3 rounded-xl border border-transparent bg-white p-3 text-left transition-all hover:border-[#D35400]/20 hover:bg-[#F5F0E6] hover:shadow-sm",
-                        // 👇 AQUI ESTÁ A CORREÇÃO: Adiciona padding na direita se puder deletar
-                        canDelete ? "pr-12" : "pr-3" 
+                        canDelete ? "pr-12" : "pr-3"
                       )}
                     >
-                      {/* Avatar Icon */}
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2C3E50]/10 text-[#2C3E50] group-hover:bg-white transition-colors">
+                      {/* Avatar */}
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2C3E50]/10 text-[#2C3E50] transition-colors group-hover:bg-white">
                         <MessageSquare className="h-5 w-5" />
                       </div>
 
-                      {/* Text Info */}
+                      {/* Texto */}
                       <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <div className="flex items-center justify-between">
                           <span className="truncate text-sm font-semibold text-[#2D3436]">
@@ -195,17 +215,17 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
                         </p>
                       </div>
 
-                      {/* Badge Count */}
+                      {/* Contador de Mensagens */}
                       {(chat.messages?.length || 0) > 0 && (
                         <div className="flex h-full items-center">
-                            <Badge variant="secondary" className="bg-[#2C3E50] text-white hover:bg-[#2C3E50]/90">
+                          <Badge variant="secondary" className="bg-[#2C3E50] text-white hover:bg-[#2C3E50]/90">
                             {chat.messages?.length}
-                            </Badge>
+                          </Badge>
                         </div>
                       )}
                     </button>
 
-                    {/* 🔥 DELETE BUTTON - Posicionado Absolutamente */}
+                    {/* Botão de Deletar */}
                     {canDelete && (
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 sm:right-3">
                         <AlertDialog>
@@ -214,7 +234,7 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-[#95A5A6] hover:bg-red-50 hover:text-red-600"
-                              onClick={(e) => handleDeleteChat(chat.id, e)}
+                              onClick={handleDeleteClick}
                             >
                               {deletingId === chat.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -223,18 +243,20 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
                               )}
                             </Button>
                           </AlertDialogTrigger>
-                          <AlertDialogContent className="bg-[#F5F0E6] border-[#95A5A6]/20">
+                          <AlertDialogContent className="border-[#95A5A6]/20 bg-[#F5F0E6]">
                             <AlertDialogHeader>
                               <AlertDialogTitle className="text-[#2D3436]">Excluir atendimento?</AlertDialogTitle>
                               <AlertDialogDescription className="text-[#95A5A6]">
-                                Esta ação não pode ser desfeita. Todo o histórico de mensagens deste chat será apagado permanentemente.
+                                Esta ação não pode ser desfeita. Todo o histórico será apagado.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel className="border-none text-[#2D3436] hover:bg-[#95A5A6]/10">Cancelar</AlertDialogCancel>
+                              <AlertDialogCancel className="border-none text-[#2D3436] hover:bg-[#95A5A6]/10">
+                                Cancelar
+                              </AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => confirmDelete(chat.id)}
-                                className="bg-red-600 hover:bg-red-700 text-white"
+                                className="bg-red-600 text-white hover:bg-red-700"
                               >
                                 Sim, excluir
                               </AlertDialogAction>
