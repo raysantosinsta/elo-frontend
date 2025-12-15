@@ -1,16 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 // UI Components
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -18,11 +18,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,17 +26,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertCircleIcon,
   ArrowLeftIcon,
+  BriefcaseIcon,
   BuildingIcon,
-  CalendarIcon,
   CheckCircleIcon,
   ClockIcon,
+  Loader2,
   MailIcon,
   PhoneIcon,
-  TargetIcon,
-  Loader2,
-  BriefcaseIcon,
-  DollarSignIcon,
-  FileTextIcon,
+  TargetIcon
 } from "lucide-react";
 
 // Charts
@@ -74,7 +66,7 @@ const THEME = {
   danger: "#C0392B",
 };
 
-// --- TYPES (Sincronizado com ReportsService) ---
+// --- TYPES ---
 interface ProfessionalDetails {
   professional: {
     id: string;
@@ -106,7 +98,6 @@ interface ProfessionalDetails {
       completionRate: number;
       averagePriority: number;
     };
-    // Adicionado conforme seu Service retorna budgets
     budgets: {
       byStatus: Array<{ status: string; _count: number }>;
       total: number;
@@ -128,6 +119,7 @@ interface ProfessionalDetails {
     updatedAt: string;
     column: { title: string };
   }>;
+  // Timeline mantida na tipagem para evitar erros caso a API envie, mas não será renderizada
   timeline: Array<{
     type: "task" | "budget";
     id: string;
@@ -218,40 +210,20 @@ const ActivityItem = ({
   );
 };
 
-// Helper para ícones da Timeline
-const getTimelineIcon = (iconName: string) => {
-  switch (iconName) {
-    case "check-circle":
-      return <CheckCircleIcon className="w-5 h-5" />;
-    case "dollar-sign":
-      return <DollarSignIcon className="w-5 h-5" />;
-    case "clock":
-      return <ClockIcon className="w-5 h-5" />;
-    case "file-text":
-      return <FileTextIcon className="w-5 h-5" />;
-    default:
-      return <ClockIcon className="w-5 h-5" />;
-  }
-};
-
 // --- MAIN PAGE ---
 
 export default function ProfessionalReportPage() {
-  // O [id] da pasta é capturado aqui
-  const { id } = useParams(); 
+  const { id } = useParams();
   const { user, authFetch } = useAuth();
   const router = useRouter();
 
   // State
   const [details, setDetails] = useState<ProfessionalDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [startDate, setStartDate] = useState<Date | undefined>();
-  const [endDate, setEndDate] = useState<Date | undefined>();
 
   // --- LOGIC ---
 
   useEffect(() => {
-    // Validação básica de acesso (opcional no front, já tem no back)
     if (user && !["MASTER", "ADMIN"].includes(user.role)) {
       // router.push('/unauthorized');
     }
@@ -262,14 +234,10 @@ export default function ProfessionalReportPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (startDate) params.append("startDate", startDate.toISOString());
-      if (endDate) params.append("endDate", endDate.toISOString());
-
-      // Chamada para o Controller: @Get('professionals/:userId/details')
-      const url = `${
-        process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000"
-      }/reports/professionals/${id}/details?${params.toString()}`;
       
+      const url = `${process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000"
+        }/reports/professionals/${id}/details?${params.toString()}`;
+
       const response = await authFetch(url);
 
       if (response.ok) {
@@ -283,7 +251,7 @@ export default function ProfessionalReportPage() {
     } finally {
       setLoading(false);
     }
-  }, [authFetch, id, startDate, endDate, user]);
+  }, [authFetch, id, user]);
 
   useEffect(() => {
     fetchDetails();
@@ -296,7 +264,7 @@ export default function ProfessionalReportPage() {
       case "COMPLETED":
         return THEME.success;
       case "APPROVED":
-        return THEME.success; // Orçamentos
+        return THEME.success;
       case "PENDING":
         return THEME.areia;
       case "IN_PROGRESS":
@@ -304,7 +272,7 @@ export default function ProfessionalReportPage() {
       case "FAILED":
         return THEME.danger;
       case "REJECTED":
-        return THEME.danger; // Orçamentos
+        return THEME.danger;
       default:
         return THEME.grafite;
     }
@@ -357,7 +325,7 @@ export default function ProfessionalReportPage() {
     );
   }
 
-  const { professional, statistics, recentActivities, timeline } = details;
+  const { professional, statistics, recentActivities } = details;
 
   return (
     <main className="min-h-screen bg-[#F5F0E6] p-4 md:p-8 font-sans">
@@ -379,56 +347,6 @@ export default function ProfessionalReportPage() {
               Relatório Detalhado de Performance
             </p>
           </div>
-
-          {/* DATE FILTER */}
-          <Card className="border-none shadow-sm bg-white/50 backdrop-blur-sm">
-            <CardContent className="p-2 flex gap-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "border-[#95A5A6]/30 text-[#2D3436]",
-                      !startDate && "text-[#95A5A6]"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-[#D35400]" />
-                    {startDate ? format(startDate, "dd/MM/yyyy") : "Início"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={setStartDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "border-[#95A5A6]/30 text-[#2D3436]",
-                      !endDate && "text-[#95A5A6]"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-[#D35400]" />
-                    {endDate ? format(endDate, "dd/MM/yyyy") : "Fim"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={endDate}
-                    onSelect={setEndDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </CardContent>
-          </Card>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
@@ -509,7 +427,8 @@ export default function ProfessionalReportPage() {
 
           {/* KEY METRICS */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* GRID AJUSTADO PARA 1 COLUNA POIS SÓ RESTOU UM CARD */}
+            <div className="grid grid-cols-1 gap-4">
               <StatCard
                 title="Conclusão"
                 value={`${statistics.tasks.completionRate}%`}
@@ -518,20 +437,7 @@ export default function ProfessionalReportPage() {
                 progress={statistics.tasks.completionRate}
                 color={THEME.success}
               />
-              <StatCard
-                title="Volume Total"
-                value={statistics.tasks.total}
-                subtext="Tarefas atribuídas no período"
-                icon={BriefcaseIcon}
-                color={THEME.azulPetroleo}
-              />
-              <StatCard
-                title="Orçamentos Aprovados"
-                value={statistics.budgets.total}
-                subtext={`R$ ${statistics.budgets.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} total`}
-                icon={DollarSignIcon}
-                color={THEME.terracota}
-              />
+              {/* Cards de Volume Total e Orçamentos Removidos */}
             </div>
 
             {/* CHART: PRODUCTIVITY */}
@@ -611,12 +517,7 @@ export default function ProfessionalReportPage() {
             >
               Atividades Recentes
             </TabsTrigger>
-            <TabsTrigger
-              value="timeline"
-              className="data-[state=active]:bg-[#2C3E50] data-[state=active]:text-white"
-            >
-              Linha do Tempo
-            </TabsTrigger>
+            {/* Aba Timeline Removida */}
           </TabsList>
 
           <TabsContent
@@ -706,71 +607,8 @@ export default function ProfessionalReportPage() {
               </CardContent>
             </Card>
           </TabsContent>
-
-          <TabsContent
-            value="timeline"
-            className="animate-in fade-in-50 duration-500"
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>Linha do Tempo Completa</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-[#95A5A6]/30 before:to-transparent">
-                  {timeline.length > 0 ? (
-                    timeline.map((item, index) => (
-                      <div
-                        key={item.id}
-                        className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active"
-                      >
-                        {/* Icon Wrapper */}
-                        <div
-                          className={cn(
-                            "flex items-center justify-center w-10 h-10 rounded-full border border-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10",
-                            item.type === "budget"
-                              ? "bg-emerald-100 text-emerald-600"
-                              : "bg-[#F5F0E6] text-[#D35400]"
-                          )}
-                        >
-                          {getTimelineIcon(item.icon)}
-                        </div>
-
-                        {/* Content */}
-                        <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-lg border border-[#95A5A6]/20 bg-white shadow-sm">
-                          <div className="flex items-center justify-between space-x-2 mb-1">
-                            <div className="font-bold text-[#2D3436] truncate">
-                              {item.title}
-                            </div>
-                            <time className="font-caveat font-medium text-[#D35400] text-xs whitespace-nowrap">
-                              {format(new Date(item.date), "dd/MM HH:mm")}
-                            </time>
-                          </div>
-                          <div className="text-[#95A5A6] text-sm">
-                            {item.description}
-                          </div>
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "mt-2 text-[10px]",
-                              item.type === "budget"
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-[#F5F0E6] text-[#2C3E50]"
-                            )}
-                          >
-                            {item.status}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-center text-[#95A5A6] py-10">
-                      Sem histórico disponível.
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+          
+          {/* Conteúdo da Timeline Removido */}
         </Tabs>
       </div>
     </main>

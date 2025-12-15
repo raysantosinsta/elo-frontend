@@ -10,12 +10,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"; // Instale este componente do shadcn/ui
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { Chat } from "@/types/chat";
+import { cn } from "@/lib/utils"; // Certifique-se de importar o cn
 import { AlertCircle, Calendar, Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -23,18 +24,18 @@ import { useEffect, useState } from "react";
 interface ChatListProps {
   currentUserId: string;
   companyId?: string;
-  userRole?: string; // 🔥 Nova prop para controle de acesso
+  userRole?: string;
 }
 
 export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(false);
   const [creatingChat, setCreatingChat] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null); // Estado para loading da deleção
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  // Verificação de permissão (Case insensitive para segurança)
+  // Verificação de permissão
   const canDelete = ["ADM", "MASTER"].includes(userRole?.toUpperCase() || "");
 
   // --- LOGIC: DATA FETCHING ---
@@ -77,30 +78,20 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
 
   // --- LOGIC: DELETE ACTION ---
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
-    // 🔥 Impede que o clique na lixeira abra o chat (Event Bubbling)
-    e.stopPropagation(); 
-    
-    // O modal abre automaticamente via Radix UI, a lógica real acontece no 'Confirmar'
+    e.stopPropagation();
   };
 
   const confirmDelete = async (chatId: string) => {
     setDeletingId(chatId);
     try {
-        console.log(`🗑️ Deletando chat ${chatId}...`);
-        
-        // Chamada à API (certifique-se que o método existe no api.ts)
-        await api.deleteChat(chatId); 
-
-        // Optimistic Update: Remove da UI imediatamente
-        setChats((prev) => prev.filter((c) => c.id !== chatId));
-        
-        // Se o usuário estiver na página desse chat, redirecionar (Opcional)
-        // router.refresh(); 
+      console.log(`🗑️ Deletando chat ${chatId}...`);
+      await api.deleteChat(chatId);
+      setChats((prev) => prev.filter((c) => c.id !== chatId));
     } catch (error) {
-        console.error("Erro ao deletar:", error);
-        alert("Erro ao deletar o chat."); // Ou use um Toast component
+      console.error("Erro ao deletar:", error);
+      alert("Erro ao deletar o chat.");
     } finally {
-        setDeletingId(null);
+      setDeletingId(null);
     }
   };
 
@@ -177,7 +168,11 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
                   <div key={chat.id} className="group relative">
                     <button
                       onClick={() => router.push(`/chats/${chat.id}`)}
-                      className="flex w-full items-start gap-3 rounded-xl border border-transparent bg-white p-3 text-left transition-all hover:border-[#D35400]/20 hover:bg-[#F5F0E6] hover:shadow-sm"
+                      className={cn(
+                        "flex w-full items-start gap-3 rounded-xl border border-transparent bg-white p-3 text-left transition-all hover:border-[#D35400]/20 hover:bg-[#F5F0E6] hover:shadow-sm",
+                        // 👇 AQUI ESTÁ A CORREÇÃO: Adiciona padding na direita se puder deletar
+                        canDelete ? "pr-12" : "pr-3" 
+                      )}
                     >
                       {/* Avatar Icon */}
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2C3E50]/10 text-[#2C3E50] group-hover:bg-white transition-colors">
@@ -185,7 +180,7 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
                       </div>
 
                       {/* Text Info */}
-                      <div className="flex min-w-0 flex-1 flex-col gap-1 pr-8"> {/* pr-8 para dar espaço ao botão delete */}
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <div className="flex items-center justify-between">
                           <span className="truncate text-sm font-semibold text-[#2D3436]">
                             Chat #{chat.id.slice(-4)}
@@ -202,16 +197,18 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
 
                       {/* Badge Count */}
                       {(chat.messages?.length || 0) > 0 && (
-                        <Badge variant="secondary" className="bg-[#2C3E50] text-white hover:bg-[#2C3E50]/90">
-                          {chat.messages?.length}
-                        </Badge>
+                        <div className="flex h-full items-center">
+                            <Badge variant="secondary" className="bg-[#2C3E50] text-white hover:bg-[#2C3E50]/90">
+                            {chat.messages?.length}
+                            </Badge>
+                        </div>
                       )}
                     </button>
 
-                    {/* 🔥 DELETE BUTTON - Só aparece para ADM/MASTER */}
+                    {/* 🔥 DELETE BUTTON - Posicionado Absolutamente */}
                     {canDelete && (
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 sm:right-3">
-                         <AlertDialog>
+                        <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
                               variant="ghost"
@@ -235,7 +232,7 @@ export function ChatList({ currentUserId, companyId, userRole }: ChatListProps) 
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel className="border-none text-[#2D3436] hover:bg-[#95A5A6]/10">Cancelar</AlertDialogCancel>
-                              <AlertDialogAction 
+                              <AlertDialogAction
                                 onClick={() => confirmDelete(chat.id)}
                                 className="bg-red-600 hover:bg-red-700 text-white"
                               >

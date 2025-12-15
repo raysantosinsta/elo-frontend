@@ -78,52 +78,31 @@ export default function TasksReportPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
-  // Filtros
-  const [companyId, setCompanyId] = useState('');
+  // Filtros (CompanyId removido)
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
-  const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
 
   // Verificar permissão
   useEffect(() => {
     if (user && !['MASTER', 'ADMIN'].includes(user.role)) {
-      // router.push('/unauthorized'); // Descomente se tiver a página
+      // router.push('/unauthorized'); 
     }
   }, [user, router]);
-
-  // Buscar empresas (apenas MASTER)
-  useEffect(() => {
-    if (user?.role === 'MASTER') {
-      fetchCompanies();
-    }
-  }, [user]);
 
   // Buscar dados do relatório
   useEffect(() => {
     if (user) {
       fetchReport();
     }
-  }, [user, companyId, statusFilter, priorityFilter, startDate, endDate]);
-
-  const fetchCompanies = async () => {
-    try {
-      const response = await authFetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000'}/auth/companies/master`);
-      if(response.ok) {
-        const data = await response.json();
-        setCompanies(data);
-      }
-    } catch (error) {
-      console.error('Erro ao buscar empresas:', error);
-    }
-  };
+  }, [user, statusFilter, priorityFilter, startDate, endDate]);
 
   const fetchReport = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (companyId && companyId !== "all") params.append("companyId", companyId);
+      // Não enviamos mais companyId, o backend pega do token
       if (statusFilter && statusFilter !== "all") params.append("status", statusFilter);
       if (priorityFilter && priorityFilter !== "all") params.append("priority", priorityFilter);
       if (startDate) params.append("startDate", startDate.toISOString());
@@ -147,38 +126,7 @@ export default function TasksReportPage() {
     }
   };
 
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const params = new URLSearchParams();
-      if (companyId && companyId !== "all") params.append("companyId", companyId);
-      if (statusFilter !== 'all') params.append('status', statusFilter);
-      if (startDate) params.append('startDate', startDate.toISOString());
-      if (endDate) params.append('endDate', endDate.toISOString());
-
-      const response = await authFetch(
-        `${process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000'}/reports-tasks/tasks/export?${params.toString()}`
-      );
-
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `relatorio-tarefas-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        alert("Erro ao exportar");
-      }
-    } catch (error) {
-      console.error('Erro ao exportar:', error);
-    } finally {
-      setExporting(false);
-    }
-  };
+  
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -216,13 +164,10 @@ export default function TasksReportPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Relatório de Tarefas</h1>
           <p className="text-muted-foreground">
-            Visão geral de produtividade, status e prazos da equipe.
+            Visão geral de produtividade, status e prazos da sua equipe.
           </p>
         </div>
-        <Button variant="outline" onClick={handleExport} disabled={exporting}>
-          <DownloadIcon className="mr-2 h-4 w-4" />
-          {exporting ? 'Exportando...' : 'Exportar Excel'}
-        </Button>
+       
       </div>
 
       {/* Cards de Resumo */}
@@ -297,22 +242,9 @@ export default function TasksReportPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {/* Filtro Empresa (Master) */}
-            {user?.role === 'MASTER' && (
-              <div className="space-y-2">
-                <Label>Empresa</Label>
-                <Select value={companyId} onValueChange={setCompanyId}>
-                  <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as empresas</SelectItem>
-                    {companies.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            
+            {/* Filtro de Empresa Removido Completamente */}
 
             <div className="space-y-2">
               <Label>Status</Label>
@@ -341,35 +273,7 @@ export default function TasksReportPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>De</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, "dd/MM/yyyy") : "Início"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar mode="single" selected={startDate} onSelect={setStartDate} initialFocus />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Até</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !endDate && "text-muted-foreground")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {endDate ? format(endDate, "dd/MM/yyyy") : "Fim"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar mode="single" selected={endDate} onSelect={setEndDate} initialFocus />
-                </PopoverContent>
-              </Popover>
-            </div>
+            
           </div>
           
           <div className="flex justify-end mt-4">
@@ -378,7 +282,6 @@ export default function TasksReportPage() {
               setPriorityFilter('all');
               setStartDate(undefined);
               setEndDate(undefined);
-              if (user?.role === 'MASTER') setCompanyId('');
             }}>
               Limpar Filtros
             </Button>

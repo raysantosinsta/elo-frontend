@@ -1,17 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 // UI Components
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -19,13 +18,24 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input"; // Importado Input
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -43,41 +53,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"; // Importado Dialog
 
 // Icons
 import {
-  UsersIcon,
-  CalendarIcon,
-  BriefcaseIcon,
-  TrophyIcon,
-  DownloadIcon,
-  FilterIcon,
-  Loader2,
-  XCircle,
   ActivityIcon,
-  MoreVertical,
-  UserPlus,
-  Trash2,
-  Power,
+  BriefcaseIcon,
+  DownloadIcon,
   Edit,
   Eye,
+  FilterIcon,
+  Loader2,
+  MoreVertical,
+  Power,
   Save,
+  Trash2,
+  UserPlus,
+  UsersIcon,
+  XCircle
 } from "lucide-react";
 
 // Charts
@@ -85,14 +77,14 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
-  PieChart,
-  Pie,
-  Cell,
 } from "recharts";
 
 // --- CONSTANTS & TYPES ---
@@ -115,14 +107,13 @@ interface ProfessionalMetrics {
   completionRate: number;
   pendingTasks: number;
   inProgressTasks: number;
-  // totalBudgets e approvedBudgets removidos visualmente
 }
 
 interface ProfessionalReportItem {
   id: string;
   name: string;
   email: string;
-  contact?: string; // Adicionado para edição
+  contact?: string;
   role: string;
   professionalRole: string | null;
   status: "ACTIVE" | "INACTIVE";
@@ -188,11 +179,10 @@ export default function ProfessionalsReportPage() {
   const [exporting, setExporting] = useState(false);
 
   // Filters State
-  const [companyId, setCompanyId] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
-  const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
+
 
   // Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -201,24 +191,10 @@ export default function ProfessionalsReportPage() {
 
   // --- API HANDLERS ---
 
-  const fetchCompanies = useCallback(async () => {
-    if (user?.role !== "MASTER") return;
-    try {
-      const response = await authFetch(`${API_BASE}/companies?page=1&limit=100`);
-      if (response.ok) {
-        const result = await response.json();
-        setCompanies(result.data || []);
-      }
-    } catch (error) {
-      console.error("Erro ao buscar empresas:", error);
-    }
-  }, [user, authFetch, API_BASE]);
-
   const fetchReport = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (companyId && companyId !== "all") params.append("companyId", companyId);
       if (statusFilter && statusFilter !== "all") params.append("status", statusFilter);
       if (startDate) params.append("startDate", startDate.toISOString());
       if (endDate) params.append("endDate", endDate.toISOString());
@@ -238,17 +214,15 @@ export default function ProfessionalsReportPage() {
     } finally {
       setLoading(false);
     }
-  }, [authFetch, companyId, statusFilter, startDate, endDate, API_BASE]);
+  }, [authFetch, statusFilter, startDate, endDate, API_BASE]);
 
   // --- ACTIONS HANDLERS ---
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     try {
-      const res = await authFetch(`${API_BASE}/users/${id}/status`, {
+      const res = await authFetch(`${API_BASE}/users/${id}/status/${newStatus}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
-        headers: { "Content-Type": "application/json" },
       });
 
       if (res.ok) {
@@ -257,9 +231,11 @@ export default function ProfessionalsReportPage() {
           prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p))
         );
       } else {
-        toast.error("Erro ao alterar status.");
+        const errorData = await res.json().catch(() => ({}));
+        toast.error(errorData.message || "Erro ao alterar status.");
       }
     } catch (error) {
+      console.error(error);
       toast.error("Erro de conexão.");
     }
   };
@@ -295,7 +271,7 @@ export default function ProfessionalsReportPage() {
   // --- EDIT MODAL HANDLERS ---
 
   const openEditModal = (user: ProfessionalReportItem) => {
-    setEditingUser({ ...user }); // Clone para não editar direto no estado da lista
+    setEditingUser({ ...user });
     setIsEditModalOpen(true);
   };
 
@@ -309,7 +285,6 @@ export default function ProfessionalsReportPage() {
         email: editingUser.email,
         contact: editingUser.contact,
         professionalRole: editingUser.professionalRole,
-        // Adicione outros campos se necessário (role, companyId, etc)
       };
 
       const res = await authFetch(`${API_BASE}/users/${editingUser.id}`, {
@@ -320,12 +295,9 @@ export default function ProfessionalsReportPage() {
 
       if (res.ok) {
         toast.success("Usuário atualizado com sucesso!");
-        
-        // Atualiza a lista localmente para refletir a mudança imediata
         setProfessionals((prev) =>
           prev.map((p) => (p.id === editingUser.id ? { ...p, ...payload } : p))
         );
-        
         setIsEditModalOpen(false);
       } else {
         const errorData = await res.json();
@@ -341,10 +313,6 @@ export default function ProfessionalsReportPage() {
   // --- EFFECTS ---
 
   useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
-
-  useEffect(() => {
     if (user) fetchReport();
   }, [fetchReport, user]);
 
@@ -354,7 +322,6 @@ export default function ProfessionalsReportPage() {
     setStatusFilter("all");
     setStartDate(undefined);
     setEndDate(undefined);
-    if (user?.role === "MASTER") setCompanyId("");
   };
 
   const chartData = professionals
@@ -369,9 +336,9 @@ export default function ProfessionalsReportPage() {
 
   const pieData = summary
     ? [
-        { name: "Ativos", value: summary.activeProfessionals },
-        { name: "Inativos", value: summary.inactiveProfessionals },
-      ]
+      { name: "Ativos", value: summary.activeProfessionals },
+      { name: "Inativos", value: summary.inactiveProfessionals },
+    ]
     : [];
 
   if (loading && !summary) {
@@ -397,38 +364,23 @@ export default function ProfessionalsReportPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            {/* BOTÃO DE SIGNUP (ROTA CORRIGIDA) */}
             <Button
-              onClick={() => router.push("/signup")} 
+              onClick={() => router.push("/signup")}
               className="bg-[#2C3E50] hover:bg-[#34495E] text-white shadow-md transition-all active:scale-95"
             >
               <UserPlus className="mr-2 h-4 w-4" />
               Novo Profissional
             </Button>
-
-            <Button
-              onClick={handleExport}
-              disabled={exporting}
-              variant="outline"
-              className="border-[#D35400] text-[#D35400] hover:bg-[#D35400] hover:text-white"
-            >
-              {exporting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <DownloadIcon className="mr-2 h-4 w-4" />
-              )}
-              Exportar
-            </Button>
           </div>
         </header>
 
-        {/* SUMMARY CARDS */}
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* SUMMARY CARDS - GRID AJUSTADO PARA 3 COLUNAS */}
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <SummaryCard
             title="Total Profissionais"
             value={summary?.totalProfessionals || 0}
             icon={UsersIcon}
-            subtext={user?.role === "MASTER" ? `${summary?.companies.length || 0} Empresas` : "Na sua empresa"}
+            subtext="Cadastrados no sistema"
             colorClass={COLORS.azulPetroleo}
           />
           <SummaryCard
@@ -445,44 +397,19 @@ export default function ProfessionalsReportPage() {
             subtext="Distribuídas entre a equipe"
             colorClass={COLORS.grafite}
           />
-          <SummaryCard
-            title="Alta Performance"
-            value={professionals.filter((p) => p.metrics.completionRate > 80).length}
-            icon={TrophyIcon}
-            subtext="> 80% de conclusão"
-            colorClass={COLORS.terracota}
-          />
+          {/* Card Alta Performance REMOVIDO */}
         </section>
 
         {/* FILTERS */}
         <Card className="mb-8 border-[#95A5A6]/40 bg-white/80 backdrop-blur-sm shadow-sm">
           <CardHeader className="pb-4 border-b border-[#95A5A6]/20">
             <CardTitle className="flex items-center gap-2 text-base text-[#2C3E50]">
-              <FilterIcon className="h-4 w-4" /> Filtros de Profissionais
+              <FilterIcon className="h-4 w-4" /> Filtrar Lista
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-              {user?.role === "MASTER" && (
-                <div className="space-y-2">
-                  <Label className="text-[#2D3436]">Empresa</Label>
-                  <Select value={companyId} onValueChange={setCompanyId}>
-                    <SelectTrigger className="border-[#95A5A6] focus:ring-[#D35400]">
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas as empresas</SelectItem>
-                      {companies.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <div className="space-y-2">
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="space-y-2 w-full md:w-1/3">
                 <Label className="text-[#2D3436]">Status do Usuário</Label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="border-[#95A5A6] focus:ring-[#D35400]">
@@ -496,58 +423,15 @@ export default function ProfessionalsReportPage() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-[#2D3436]">De</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal border-[#95A5A6]",
-                        !startDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4 text-[#D35400]" />
-                      {startDate ? format(startDate, "dd/MM/yyyy") : "Selecione"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={startDate} onSelect={setStartDate} initialFocus />
-                  </PopoverContent>
-                </Popover>
+              <div className="pb-0.5">
+                <Button
+                  variant="ghost"
+                  onClick={clearFilters}
+                  className="text-[#95A5A6] hover:text-[#D35400] hover:bg-[#F5F0E6]"
+                >
+                  <XCircle className="mr-2 h-4 w-4" /> Limpar
+                </Button>
               </div>
-
-              <div className="space-y-2">
-                <Label className="text-[#2D3436]">Até</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal border-[#95A5A6]",
-                        !endDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4 text-[#D35400]" />
-                      {endDate ? format(endDate, "dd/MM/yyyy") : "Selecione"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={endDate} onSelect={setEndDate} initialFocus />
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-
-            <div className="flex justify-end mt-6">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearFilters}
-                className="text-[#95A5A6] hover:text-[#D35400] hover:bg-[#F5F0E6]"
-              >
-                <XCircle className="mr-2 h-4 w-4" /> Limpar Filtros
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -583,7 +467,6 @@ export default function ProfessionalsReportPage() {
                       <TableHead className="text-[#2C3E50] font-bold">Cargo</TableHead>
                       <TableHead className="text-[#2C3E50] font-bold w-[200px]">Eficiência</TableHead>
                       <TableHead className="text-[#2C3E50] font-bold text-center">Tarefas</TableHead>
-                      {/* Removida Coluna de Orçamentos */}
                       <TableHead className="text-[#2C3E50] font-bold text-center">Status</TableHead>
                       <TableHead className="text-right text-[#2C3E50] font-bold">Ações</TableHead>
                     </TableRow>
@@ -626,8 +509,8 @@ export default function ProfessionalsReportPage() {
                                     prof.metrics.completionRate > 75
                                       ? COLORS.success
                                       : prof.metrics.completionRate > 40
-                                      ? COLORS.warning
-                                      : COLORS.danger,
+                                        ? COLORS.warning
+                                        : COLORS.danger,
                                 } as React.CSSProperties}
                               />
                             </div>
@@ -645,8 +528,6 @@ export default function ProfessionalsReportPage() {
                               </span>
                             </div>
                           </TableCell>
-                          
-                          {/* Coluna Orçamentos REMOVIDA */}
 
                           <TableCell className="text-center">
                             <Badge
@@ -670,7 +551,6 @@ export default function ProfessionalsReportPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                {/* Botão Editar abre o Modal agora */}
                                 <DropdownMenuItem onClick={() => openEditModal(prof)}>
                                   <Edit className="mr-2 h-4 w-4" /> Editar
                                 </DropdownMenuItem>
@@ -698,7 +578,7 @@ export default function ProfessionalsReportPage() {
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={6} // Ajustado colspan
+                          colSpan={6}
                           className="text-center py-12 text-[#95A5A6]"
                         >
                           <div className="flex flex-col items-center justify-center">
@@ -800,7 +680,7 @@ export default function ProfessionalsReportPage() {
               Faça alterações no perfil do usuário aqui. Clique em salvar quando terminar.
             </DialogDescription>
           </DialogHeader>
-          
+
           {editingUser && (
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -845,8 +725,8 @@ export default function ProfessionalsReportPage() {
             <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
               Cancelar
             </Button>
-            <Button 
-              onClick={handleSaveEdit} 
+            <Button
+              onClick={handleSaveEdit}
               disabled={isSaving}
               className="bg-[#D35400] hover:bg-[#A04000] text-white"
             >

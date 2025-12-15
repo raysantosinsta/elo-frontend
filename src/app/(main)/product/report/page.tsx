@@ -14,14 +14,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import {
   AlertCircle,
   CalendarIcon,
   FilterIcon,
   Layers,
   LayoutDashboard,
-  Package,
   Search,
   Shirt
 } from 'lucide-react';
@@ -30,7 +28,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -245,37 +242,6 @@ export default function ProductionReportsPage() {
               </Select>
             </div>
 
-            {/* Datas */}
-            <div className="md:col-span-2 space-y-2">
-               <Label>Prazo De</Label>
-               <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, "dd/MM/yy") : "Início"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar mode="single" selected={startDate} onSelect={setStartDate} locale={ptBR} />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="md:col-span-2 space-y-2">
-               <Label>Até</Label>
-               <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !endDate && "text-muted-foreground")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {endDate ? format(endDate, "dd/MM/yy") : "Fim"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar mode="single" selected={endDate} onSelect={setEndDate} locale={ptBR} />
-                </PopoverContent>
-              </Popover>
-            </div>
-
              <div className="md:col-span-1">
                 <Button 
                   variant="ghost" 
@@ -346,31 +312,34 @@ export default function ProductionReportsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Ref / OP</TableHead>
+                    {/* Atualizado: Removido "OP" do título */}
+                    <TableHead>Referência</TableHead>
                     <TableHead>Título</TableHead>
                     <TableHead>Fluxo</TableHead>
                     <TableHead>Etapa Atual</TableHead>
                     <TableHead className="text-right">Qtd. Peças</TableHead>
                     <TableHead className="text-center">Prioridade</TableHead>
-                    <TableHead>Prazo</TableHead>
+                    {/* Removido: TableHead Prazo */}
                     <TableHead>Resp.</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center h-24">Carregando dados...</TableCell>
+                      {/* Ajustado colSpan para 7 (era 8) */}
+                      <TableCell colSpan={7} className="text-center h-24">Carregando dados...</TableCell>
                     </TableRow>
                   ) : items.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">Nenhum item encontrado.</TableCell>
+                      {/* Ajustado colSpan para 7 (era 8) */}
+                      <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">Nenhum item encontrado.</TableCell>
                     </TableRow>
                   ) : (
                     items.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="font-semibold text-gray-800">{item.productRef}</div>
-                          <div className="text-xs text-muted-foreground">{item.orderNumber}</div>
+                          {/* Removido: item.orderNumber */}
                         </TableCell>
                         <TableCell>{item.title}</TableCell>
                         <TableCell>
@@ -389,15 +358,7 @@ export default function ProductionReportsPage() {
                         <TableCell className="text-center">
                           {getPriorityBadge(item.priority)}
                         </TableCell>
-                        <TableCell>
-                           {item.dueDate ? (
-                             <span className={cn(
-                               new Date(item.dueDate) < new Date() ? "text-red-600 font-bold" : "text-gray-600"
-                             )}>
-                               {format(new Date(item.dueDate), 'dd/MM/yy')}
-                             </span>
-                           ) : "-"}
-                        </TableCell>
+                        {/* Removido: TableCell do Prazo */}
                         <TableCell>
                            {item.assignedTo ? (
                              <Avatar className="h-6 w-6" title={item.assignedTo}>
