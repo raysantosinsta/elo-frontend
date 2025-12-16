@@ -90,7 +90,7 @@ export function MentionList({
               </div>
 
               {/* Badge de Profissional */}
-              {user.isProfessional && (
+              {user.professionalRole && (
                 <Badge 
                   variant="secondary" 
                   className="bg-[#D35400]/10 text-[#D35400] hover:bg-[#D35400]/20 text-[9px] px-1.5 h-5 rounded"

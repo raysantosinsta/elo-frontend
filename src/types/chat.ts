@@ -16,7 +16,7 @@ export interface ChatMessage {
     name: string;
     email: string;
     role: string;
-    isProfessional: boolean;
+    // isProfessional: boolean;
     professionalRole?: string;
     phone?: string;
   };
@@ -50,7 +50,7 @@ export interface User {
   email: string;
   phone?: string;
   professionalRole?: string;
-  isProfessional: boolean;
+  // isProfessional: boolean;
   company?: {
     id: string;
     name: string;

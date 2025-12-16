@@ -153,7 +153,7 @@ export function ChatMessages({
                           <span className="text-xs font-bold text-[#2D3436]">
                             {message.sender?.name}
                           </span>
-                          {message.sender?.isProfessional && (
+                          {message.sender?.professionalRole && (
                             <Badge 
                               variant="secondary" 
                               className="h-4 rounded px-1 text-[9px] font-normal bg-[#2C3E50]/10 text-[#2C3E50] hover:bg-[#2C3E50]/20"
