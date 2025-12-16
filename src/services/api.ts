@@ -75,6 +75,10 @@ api.interceptors.response.use(
         // Logout forçado
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
+
+        // ADICIONE ESTA LINHA: Limpa o cookie também para o Middleware não se confundir
+        document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+
         window.location.href = "/login"; 
         return Promise.reject(err);
       } finally {

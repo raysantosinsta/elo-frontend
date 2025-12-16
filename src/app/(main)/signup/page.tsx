@@ -4,17 +4,17 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
 
 // Services & Context
 import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/services/api";
+import { api } from "@/services/api"; // <--- IMPORTANTE: Usar o Axios configurado
 
 // UI Components
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -24,16 +24,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 
 // Icons
 import {
   Building,
   CheckCircle2,
   Loader2,
-  LogIn,
   ShieldAlert,
   UserPlus,
+  ArrowLeft,
+  Mail,
+  Phone,
+  User,
+  FileText,
+  Lock
 } from "lucide-react";
+import { toast } from "sonner";
 
 // --- VALIDATION SCHEMA ---
 const signupSchema = z.object({
@@ -43,35 +50,28 @@ const signupSchema = z.object({
   contact: z
     .string()
     .regex(
-      /^\(\d{2}\) \s?(9?\d{4}-\d{4})$/,
-      "Formato esperado: (DD) 9XXXX-XXXX ou (DD) XXXX-XXXX"
+      /^\d{2} \d{4,5}-\d{4}$/,
+      "Formato esperado: 85 99999-9999"
     ),
   document: z.string().optional().nullable(),
-  companyId: z.string().uuid("Selecione uma empresa válida"),
+  companyId: z.string().uuid("Empresa não identificada"),
   role: z.enum(["EMPLOYER", "ADMIN", "MASTER"]),
+  professionalRole: z.string().optional(),
 });
 
 type SignupFormData = z.infer<typeof signupSchema>;
 
-interface Company {
-  id: string;
-  name: string;
-  email: string;
-  cnpj: string;
-}
-
 export default function AdminSignupPage() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
 
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [serverError, setServerError] = useState("");
-  const [success, setSuccess] = useState("");
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
     reset,
     setValue,
     watch,
@@ -79,86 +79,91 @@ export default function AdminSignupPage() {
     resolver: zodResolver(signupSchema),
     defaultValues: {
       role: "EMPLOYER",
+      professionalRole: "",
     },
   });
 
-  const selectedCompanyId = watch("companyId");
+  const selectedRole = watch("role");
 
   // --- EFEITOS ---
 
-  // Buscar empresas se for MASTER
+  // 1. Verificar Permissão
   useEffect(() => {
-    // Agora verificamos apenas se o user está carregado e é MASTER
-    if (user?.role === "MASTER") {
-      const loadCompanies = async () => {
-        setLoadingCompanies(true);
-        try {
-          // O Axios já tem o token injetado pelo interceptor
-          const { data } = await api.get("/companies", {
-            params: { limit: 100 },
-          });
-          
-          // Tratamento para garantir array, independente do formato { data: [] } ou []
-          const companiesList = Array.isArray(data) ? data : data.data || [];
-          setCompanies(companiesList);
-        } catch (err) {
-          console.error("Falha ao carregar empresas:", err);
-          setServerError("Não foi possível carregar a lista de empresas.");
-        } finally {
-          setLoadingCompanies(false);
-        }
-      };
-      loadCompanies();
+    if (!authLoading && user) {
+      if (!["MASTER", "ADMIN"].includes(user.role)) {
+        toast.error("Acesso negado.");
+        router.push("/dashboard");
+      }
+      
+      // Auto-preencher a empresa do usuário logado
+      if (user.company?.id) {
+        setValue("companyId", user.company.id);
+      }
     }
-  }, [user]);
-
-  // Auto-preencher companyId se for ADMIN (não vê a lista, mas vincula à sua)
-  useEffect(() => {
-    if (user?.role === "ADMIN" && user.companyId) {
-      setValue("companyId", user.companyId);
-    }
-  }, [user, setValue]);
+  }, [user, authLoading, router, setValue]);
 
   // --- HANDLERS ---
 
   const onSubmit = async (data: SignupFormData) => {
     setServerError("");
-    setSuccess("");
+    setIsLoading(true);
 
     try {
+      // O Axios (api) injeta o Header Authorization automaticamente
       await api.post("/users", {
         ...data,
-        document: data.document || null,
+        // Limpa documento se vier vazio para não dar erro de Unique no banco
+        document: data.document || null, 
         status: "ACTIVE",
       });
 
-      setSuccess("Usuário cadastrado com sucesso!");
+      toast.success("Usuário cadastrado com sucesso!", {
+        description: `O acesso para ${data.email} foi criado.`
+      });
+      
       reset({
         name: "",
         email: "",
         password: "",
         contact: "",
         document: "",
-        companyId: user?.role === "ADMIN" ? user.companyId || "" : "",
+        companyId: user?.company?.id || "",
         role: "EMPLOYER",
+        professionalRole: "",
       });
+      
+      // Rola para o topo
       window.scrollTo({ top: 0, behavior: "smooth" });
+
     } catch (err: any) {
       console.error(err);
+      
+      // Tratamento de erro 401 específico
+      if (err.response?.status === 401) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        // O interceptor do axios deve redirecionar, mas forçamos aqui caso falhe
+        router.push("/login");
+        return;
+      }
+
       const msg = err.response?.data?.message || "Erro ao cadastrar usuário";
-      setServerError(msg);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      setServerError(Array.isArray(msg) ? msg.join(", ") : msg);
+      toast.error("Falha no cadastro");
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // --- MÁSCARAS ---
   const maskcontact = (value: string) => {
     if (!value) return "";
     let clean = value.replace(/\D/g, "").substring(0, 11);
-    clean = clean.replace(/^(\d{2})(\d)/g, "($1) $2");
-    if (clean.length > 10 && clean.startsWith("(")) {
-      clean = clean.replace(/(\d{5})(\d{4})$/, "$1-$2");
-    } else {
-      clean = clean.replace(/(\d{4})(\d{4})$/, "$1-$2");
+    if (clean.length > 10) {
+      clean = clean.replace(/^(\d{2})(\d{5})(\d{4})/, "$1 $2-$3");
+    } else if (clean.length > 5) {
+      clean = clean.replace(/^(\d{2})(\d{4})(\d{0,4})/, "$1 $2-$3");
+    } else if (clean.length > 2) {
+      clean = clean.replace(/^(\d{2})(\d+)/, "$1 $2");
     }
     return clean;
   };
@@ -166,12 +171,12 @@ export default function AdminSignupPage() {
   const maskDocument = (value: string) => {
     if (!value) return "";
     let v = value.replace(/\D/g, "");
-    if (v.length <= 11) {
+    if (v.length <= 11) { // CPF
       v = v.replace(/(\d{3})(\d)/, "$1.$2");
       v = v.replace(/(\d{3})(\d)/, "$1.$2");
       v = v.replace(/(\d{3})(\d{1,2})$/, "$1-$2");
       return v.substring(0, 14);
-    } else {
+    } else { // CNPJ (caso necessário, embora seja cadastro de pessoa)
       v = v.replace(/^(\d{2})(\d)/, "$1.$2");
       v = v.replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3");
       v = v.replace(/\.(\d{3})(\d)/, ".$1/$2");
@@ -183,299 +188,223 @@ export default function AdminSignupPage() {
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F5F0E6]">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-12 w-12 animate-spin text-[#D35400]" />
-          <p className="text-[#2D3436] font-medium animate-pulse">
-            Carregando sistema...
-          </p>
-        </div>
+        <Loader2 className="h-12 w-12 animate-spin text-[#D35400]" />
       </div>
     );
   }
 
+  // Proteção visual extra
   if (!user || !["MASTER", "ADMIN"].includes(user.role)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-[#F5F0E6]">
-        <Card className="w-full max-w-md border-t-4 border-t-[#D35400] shadow-lg">
-          <CardContent className="text-center pt-6">
-            <ShieldAlert className="h-16 w-16 mx-auto text-[#D35400] mb-4" />
-            <h2 className="text-2xl font-bold text-[#2D3436] mb-2">
-              Acesso Restrito
-            </h2>
-            <p className="text-[#95A5A6] mb-6">
-              Você não tem permissão para acessar esta área.
-            </p>
-            <Link href="/login">
-              <Button className="w-full bg-[#2C3E50] hover:bg-[#1a252f] text-white">
-                <LogIn className="h-4 w-4 mr-2" /> Ir para Login
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return null; // O useEffect já redireciona
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F0E6] px-4 py-8 md:py-12 font-sans flex items-center justify-center">
-      <div className="max-w-4xl w-full">
-        <Card className="shadow-xl border-0 bg-white/95 backdrop-blur overflow-hidden">
+    <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-8 font-sans flex justify-center">
+      <div className="w-full max-w-5xl">
+        
+        {/* Header */}
+        <div className="mb-6 flex items-center gap-4">
+          <Button variant="ghost" onClick={() => router.back()} className="text-[#2C3E50]">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-[#2D3436]">Novo Colaborador</h1>
+            <p className="text-sm text-[#95A5A6]">Adicione um novo membro à equipe da {user.company?.name}</p>
+          </div>
+        </div>
+
+        <Card className="shadow-lg border-0 bg-white/95 backdrop-blur overflow-hidden">
+          <CardHeader className="border-b border-gray-100 bg-gray-50/50">
+             <div className="flex items-center gap-2 text-[#D35400]">
+                <UserPlus className="h-5 w-5" />
+                <CardTitle className="text-lg">Formulário de Cadastro</CardTitle>
+             </div>
+             <CardDescription>Preencha os dados abaixo para criar o acesso.</CardDescription>
+          </CardHeader>
+
           <CardContent className="p-6 md:p-8">
             {serverError && (
-              <Alert
-                variant="destructive"
-                className="mb-8 border-l-4 border-l-red-600 bg-red-50"
-              >
-                <ShieldAlert className="h-5 w-5" />
-                <AlertDescription className="text-base ml-2">
-                  {serverError}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {success && (
-              <Alert className="mb-8 border-l-4 border-l-green-600 bg-green-50">
-                <CheckCircle2 className="h-5 w-5 text-green-700" />
-                <AlertDescription className="text-base ml-2 text-green-800 font-medium">
-                  {success}
-                </AlertDescription>
+              <Alert variant="destructive" className="mb-6 bg-red-50 border-red-200 text-red-800">
+                <ShieldAlert className="h-4 w-4" />
+                <AlertDescription>{serverError}</AlertDescription>
               </Alert>
             )}
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 pb-2 border-b border-[#95A5A6]/30">
-                  <h3 className="text-lg font-semibold text-[#2D3436]">
-                    Dados Pessoais
-                  </h3>
-                </div>
-
+              
+              {/* --- DADOS PESSOAIS --- */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-[#95A5A6] uppercase tracking-wider flex items-center gap-2">
+                  <User className="h-4 w-4" /> Dados Pessoais
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
                   <div className="space-y-2">
-                    <Label htmlFor="name" className="text-[#2D3436] font-medium">
-                      Nome Completo <span className="text-[#D35400]">*</span>
-                    </Label>
-                    <Input
-                      id="name"
-                      placeholder="Ex: Ana Souza"
-                      {...register("name")}
-                      className={`h-11 border-[#95A5A6] focus:border-[#2C3E50] focus:ring-[#2C3E50] transition-all ${
-                        errors.name ? "border-red-500 focus:ring-red-200" : ""
-                      }`}
-                    />
-                    {errors.name && (
-                      <p className="text-sm text-red-600 font-medium animate-in slide-in-from-top-1">
-                        {errors.name.message}
-                      </p>
-                    )}
+                    <Label htmlFor="name">Nome Completo <span className="text-red-500">*</span></Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="name"
+                        placeholder="Ex: Ana Souza"
+                        {...register("name")}
+                        className={`pl-9 ${errors.name ? "border-red-500" : ""}`}
+                      />
+                    </div>
+                    {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-[#2D3436] font-medium">
-                      Email Corporativo <span className="text-[#D35400]">*</span>
-                    </Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="nome@empresa.com"
-                      {...register("email")}
-                      className={`h-11 border-[#95A5A6] focus:border-[#2C3E50] focus:ring-[#2C3E50] transition-all ${
-                        errors.email ? "border-red-500 focus:ring-red-200" : ""
-                      }`}
-                    />
-                    {errors.email && (
-                      <p className="text-sm text-red-600 font-medium">
-                        {errors.email.message}
-                      </p>
-                    )}
+                    <Label htmlFor="document">CPF</Label>
+                    <div className="relative">
+                      <FileText className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="document"
+                        placeholder="000.000.000-00"
+                        maxLength={14}
+                        {...register("document", {
+                          onChange: (e) => {
+                             e.target.value = maskDocument(e.target.value);
+                             setValue("document", e.target.value);
+                          }
+                        })}
+                        className="pl-9"
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="contact" className="text-[#2D3436] font-medium">
-                      Telefone / Celular <span className="text-[#D35400]">*</span>
-                    </Label>
-                    <Input
-                      id="contact"
-                      placeholder="(11) 99999-9999"
-                      maxLength={15}
-                      {...register("contact", {
-                        onChange: (e) => {
-                          const val = maskcontact(e.target.value);
-                          e.target.value = val;
-                          setValue("contact", val, { shouldValidate: true });
-                        },
-                      })}
-                      className={`h-11 border-[#95A5A6] focus:border-[#2C3E50] focus:ring-[#2C3E50] transition-all ${
-                        errors.contact ? "border-red-500 focus:ring-red-200" : ""
-                      }`}
-                    />
-                    {errors.contact && (
-                      <p className="text-sm text-red-600 font-medium">
-                        {errors.contact.message}
-                      </p>
-                    )}
+                    <Label htmlFor="contact">Celular / WhatsApp <span className="text-red-500">*</span></Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="contact"
+                        placeholder="85 99999-9999"
+                        maxLength={15}
+                        {...register("contact", {
+                          onChange: (e) => {
+                             e.target.value = maskcontact(e.target.value);
+                             setValue("contact", e.target.value, { shouldValidate: true });
+                          }
+                        })}
+                        className={`pl-9 ${errors.contact ? "border-red-500" : ""}`}
+                      />
+                    </div>
+                    {errors.contact && <p className="text-xs text-red-500">{errors.contact.message}</p>}
+                  </div>
+                  
+                  <div className="space-y-2">
+                     <Label htmlFor="profRole">Cargo / Função</Label>
+                     <Input 
+                       id="profRole" 
+                       placeholder="Ex: Costureira, Gerente..." 
+                       {...register("professionalRole")}
+                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="document" className="text-[#2D3436] font-medium">
-                      CPF ou CNPJ
-                    </Label>
-                    <Input
-                      id="document"
-                      placeholder="Apenas números"
-                      maxLength={18}
-                      {...register("document", {
-                        onChange: (e) => {
-                          const val = maskDocument(e.target.value);
-                          e.target.value = val;
-                          setValue("document", val);
-                        },
-                      })}
-                      className={`h-11 border-[#95A5A6] focus:border-[#2C3E50] focus:ring-[#2C3E50] transition-all ${
-                        errors.document ? "border-red-500 focus:ring-red-200" : ""
-                      }`}
-                    />
-                  </div>
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 pb-2 border-b border-[#95A5A6]/30">
-                  <h3 className="text-lg font-semibold text-[#2D3436]">
-                    Acesso e Permissões
-                  </h3>
-                </div>
+              <Separator />
 
+              {/* --- DADOS DE ACESSO --- */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-[#95A5A6] uppercase tracking-wider flex items-center gap-2">
+                  <Lock className="h-4 w-4" /> Credenciais de Acesso
+                </h3>
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
                   <div className="space-y-2">
-                    <Label htmlFor="password" className="text-[#2D3436] font-medium">
-                      Senha Inicial <span className="text-[#D35400]">*</span>
-                    </Label>
+                    <Label htmlFor="email">E-mail de Login <span className="text-red-500">*</span></Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="nome@empresa.com"
+                        {...register("email")}
+                        className={`pl-9 ${errors.email ? "border-red-500" : ""}`}
+                      />
+                    </div>
+                    {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Senha Inicial <span className="text-red-500">*</span></Label>
                     <Input
                       id="password"
                       type="password"
                       placeholder="Mínimo 6 caracteres"
                       {...register("password")}
-                      className={`h-11 border-[#95A5A6] focus:border-[#2C3E50] focus:ring-[#2C3E50] transition-all ${
-                        errors.password ? "border-red-500 focus:ring-red-200" : ""
-                      }`}
+                      className={errors.password ? "border-red-500" : ""}
                     />
-                    {errors.password && (
-                      <p className="text-sm text-red-600 font-medium">
-                        {errors.password.message}
-                      </p>
-                    )}
+                    {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-[#2D3436] font-medium">
-                      Perfil de Acesso
-                    </Label>
+                    <Label>Nível de Permissão</Label>
                     <Select
-                      value={watch("role")}
-                      onValueChange={(val) => setValue("role", val as any)}
+                      value={selectedRole}
+                      onValueChange={(val: any) => setValue("role", val)}
                     >
-                      <SelectTrigger className="h-11 border-[#95A5A6] focus:ring-[#2C3E50]">
-                        <SelectValue placeholder="Selecione..." />
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Selecione o perfil" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="EMPLOYER">Funcionário Padrão</SelectItem>
+                        <SelectItem value="EMPLOYER">Funcionário (Acesso Padrão)</SelectItem>
+                        <SelectItem value="ADMIN">Administrador (Gerência)</SelectItem>
                         {user.role === "MASTER" && (
-                          <>
-                            <SelectItem value="ADMIN">Administrador Local</SelectItem>
-                            <SelectItem value="MASTER">Master (Sistema)</SelectItem>
-                          </>
+                           <SelectItem value="MASTER">Master (Acesso Total)</SelectItem>
                         )}
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
 
-                <div className="pt-2">
-                  <Label className="text-[#2D3436] font-medium mb-2 block">
-                    Vínculo Empresarial <span className="text-[#D35400]">*</span>
-                  </Label>
+                  {/* VINCULO EMPRESARIAL FIXO */}
+                  <div className="space-y-2">
+                     <Label>Vínculo Empresarial</Label>
+                     <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-md text-sm text-[#2C3E50]">
+                        <div className="p-2 bg-white rounded-full shadow-sm">
+                           <Building className="h-4 w-4 text-[#D35400]" />
+                        </div>
+                        <div>
+                           <p className="font-semibold">{user.company?.name || "Empresa..."}</p>
+                           <p className="text-xs text-[#95A5A6]">O usuário será vinculado a esta empresa.</p>
+                        </div>
+                     </div>
+                  </div>
 
-                  {user.role === "MASTER" ? (
-                    loadingCompanies ? (
-                      <div className="flex items-center gap-2 text-[#95A5A6] h-11 px-3 border border-[#95A5A6]/30 rounded-md bg-[#F5F0E6]/50">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Carregando lista de empresas...
-                      </div>
-                    ) : companies.length > 0 ? (
-                      <div className="relative">
-                        <Select
-                          value={selectedCompanyId}
-                          onValueChange={(val) => setValue("companyId", val)}
-                        >
-                          <SelectTrigger className="h-12 border-[#95A5A6] focus:ring-[#2C3E50] bg-white">
-                            <SelectValue placeholder="Selecione a empresa contratante" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {companies.map((comp) => (
-                              <SelectItem key={comp.id} value={comp.id}>
-                                <span className="font-medium text-[#2D3436]">
-                                  {comp.name}
-                                </span>
-                                <span className="ml-2 text-[#95A5A6] text-xs">
-                                  ({comp.cnpj})
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.companyId && (
-                          <p className="text-sm text-red-600 font-medium mt-1">
-                            {errors.companyId.message}
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-amber-600 text-sm bg-amber-50 p-3 rounded-md border border-amber-200">
-                        Nenhuma empresa ativa encontrada no banco de dados.
-                      </p>
-                    )
-                  ) : (
-                    <div className="p-4 bg-[#F5F0E6] border border-[#95A5A6]/30 rounded-lg flex items-start gap-4">
-                      <div className="bg-white p-2 rounded-full shadow-sm">
-                        <Building className="h-6 w-6 text-[#2C3E50]" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-[#2C3E50] text-lg">
-                          {user.company?.name}
-                        </p>
-                        <p className="text-sm text-[#95A5A6]">
-                          O novo usuário será vinculado automaticamente a esta organização.
-                        </p>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
-              <div className="pt-4">
+              <div className="pt-6 flex justify-end gap-3">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => reset()}
+                  disabled={isLoading}
+                >
+                  Limpar
+                </Button>
                 <Button
                   type="submit"
-                  disabled={isSubmitting || !selectedCompanyId}
-                  className="w-full h-14 text-lg font-bold tracking-wide rounded-lg shadow-md hover:shadow-lg transition-all transform active:scale-[0.99]
-                    bg-[#D35400] hover:bg-[#A04000] text-white disabled:bg-[#95A5A6] disabled:opacity-70"
+                  disabled={isLoading}
+                  className="bg-[#D35400] hover:bg-[#A04000] text-white min-w-[150px]"
                 >
-                  {isSubmitting ? (
+                  {isLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-6 w-6 animate-spin" />
-                      Processando Cadastro...
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Salvando...
                     </>
                   ) : (
                     <>
-                      <UserPlus className="mr-2 h-6 w-6" />
-                      Confirmar Cadastro
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Cadastrar Usuário
                     </>
                   )}
                 </Button>
-                <p className="text-center text-[#95A5A6] text-sm mt-4">
-                  Todas as ações são monitoradas e registradas por segurança.
-                </p>
               </div>
+
             </form>
           </CardContent>
         </Card>

@@ -372,8 +372,7 @@ export default function DashboardPage() {
               aria-label="Ver Kanban (Quadro de Tarefas)"
               className="flex items-center gap-2 bg-[#D35400] text-white hover:bg-[#D35400]/90 transition-all duration-300"
             >
-              <Plus className="h-4 w-4" />
-              Novo / Kanban
+              Kanban
             </Button>
             <Button
               onClick={fetchAllTasks} 

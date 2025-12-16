@@ -39,7 +39,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -170,7 +169,8 @@ const SummaryCard = ({
 // --- MAIN PAGE COMPONENT ---
 
 export default function ProfessionalsReportPage() {
-  const { user, isAuthenticated } = useAuth(); // AuthFetch removido daqui
+  // 1. CORREÇÃO: Removemos authFetch daqui
+  const { user } = useAuth(); 
   const router = useRouter();
 
   // State Data
@@ -293,7 +293,7 @@ export default function ProfessionalsReportPage() {
   // --- EFFECTS ---
 
   useEffect(() => {
-    if (isAuthenticated) fetchReport();
+    if (user) fetchReport();
   }, [fetchReport, user]);
 
   // --- RENDER HELPERS ---
@@ -444,7 +444,7 @@ export default function ProfessionalsReportPage() {
                     <TableRow className="hover:bg-transparent">
                       <TableHead className="w-[300px] text-[#2C3E50] font-bold">Profissional</TableHead>
                       <TableHead className="text-[#2C3E50] font-bold">Cargo</TableHead>
-                      <TableHead className="text-[#2C3E50] font-bold w-[200px]">Eficiência</TableHead>
+                      {/* COLUNA EFICIÊNCIA REMOVIDA DAQUI */}
                       <TableHead className="text-[#2C3E50] font-bold text-center">Tarefas</TableHead>
                       <TableHead className="text-[#2C3E50] font-bold text-center">Status</TableHead>
                       <TableHead className="text-right text-[#2C3E50] font-bold">Ações</TableHead>
@@ -475,25 +475,8 @@ export default function ProfessionalsReportPage() {
                               <div className="text-xs text-[#95A5A6] mt-1">{prof.company.name}</div>
                             )}
                           </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col gap-1">
-                              <div className="flex justify-between text-xs mb-1">
-                                <span className="font-medium">{prof.metrics.completionRate}%</span>
-                              </div>
-                              <Progress
-                                value={prof.metrics.completionRate}
-                                className="h-2 bg-gray-100"
-                                style={{
-                                  "--indicator-color":
-                                    prof.metrics.completionRate > 75
-                                      ? COLORS.success
-                                      : prof.metrics.completionRate > 40
-                                        ? COLORS.warning
-                                        : COLORS.danger,
-                                } as React.CSSProperties}
-                              />
-                            </div>
-                          </TableCell>
+                          {/* CÉLULA EFICIÊNCIA REMOVIDA DAQUI */}
+                          
                           <TableCell className="text-center">
                             <div className="flex flex-col items-center">
                               <Badge
@@ -557,7 +540,7 @@ export default function ProfessionalsReportPage() {
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={6}
+                          colSpan={5} // Ajustado o colspan
                           className="text-center py-12 text-[#95A5A6]"
                         >
                           <div className="flex flex-col items-center justify-center">

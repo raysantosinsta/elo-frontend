@@ -11,13 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
-// 1. IMPORTANTE: Importando a instância do Axios
 import { api } from '@/services/api'; 
 import { cn } from '@/lib/utils';
 import {
   AlertCircle,
   Layers,
-  LayoutDashboard,
   Search,
   Shirt
 } from 'lucide-react';
@@ -32,6 +30,7 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
+import { format } from 'date-fns'; // Certifique-se de importar o format
 
 // --- Interfaces ---
 interface FlowReportItem {
@@ -50,7 +49,7 @@ interface FlowReportItem {
 
 interface FlowReportSummary {
   totalCards: number;
-  totalPieces: number; // Soma das quantidades
+  totalPieces: number; 
   overdueItems: number;
   byStage: Array<{ name: string; count: number; pieces: number; color: string }>;
   byPriority: Array<{ name: string; value: number }>;
@@ -62,7 +61,6 @@ interface FlowOption {
 }
 
 export default function ProductionReportsPage() {
-  // 2. CORREÇÃO: Removemos authFetch daqui
   const { user } = useAuth();
 
   const [items, setItems] = useState<FlowReportItem[]>([]);
@@ -77,7 +75,6 @@ export default function ProductionReportsPage() {
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
 
-  // 3. CORREÇÃO: Usando api.get e useCallback
   const fetchFlows = useCallback(async () => {
     try {
       const { data } = await api.get('/reports-flow/flows-list');
@@ -107,19 +104,17 @@ export default function ProductionReportsPage() {
     }
   }, [flowId, search, startDate, endDate]);
 
-  // Carregar lista de fluxos ao iniciar
   useEffect(() => {
     if (user) {
       fetchFlows();
     }
   }, [user, fetchFlows]);
 
-  // Carregar dados do relatório quando filtros mudam
   useEffect(() => {
     if (user) {
       const delayDebounceFn = setTimeout(() => {
         fetchReport();
-      }, 500); // Debounce para o search
+      }, 500);
       return () => clearTimeout(delayDebounceFn);
     }
   }, [user, fetchReport]);
@@ -148,19 +143,10 @@ export default function ProductionReportsPage() {
         </div>
       </div>
 
-      {/* Cards de KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-l-4 border-l-blue-500 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Lotes/Ordens Ativos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-3xl font-bold">{summary?.totalCards || 0}</div>
-              <LayoutDashboard className="h-5 w-5 text-blue-500 opacity-70" />
-            </div>
-          </CardContent>
-        </Card>
+      {/* Cards de KPIs - Ajustado para 3 colunas pois removemos 1 card */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        {/* CARD DE LOTES REMOVIDO AQUI */}
 
         <Card className="border-l-4 border-l-indigo-500 shadow-sm">
           <CardHeader className="pb-2">
@@ -314,17 +300,20 @@ export default function ProductionReportsPage() {
                     <TableHead>Etapa Atual</TableHead>
                     <TableHead className="text-right">Qtd. Peças</TableHead>
                     <TableHead className="text-center">Prioridade</TableHead>
+                    {/* NOVA COLUNA ADICIONADA AQUI */}
+                    <TableHead className="text-center">Entrega</TableHead>
                     <TableHead>Resp.</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center h-24">Carregando dados...</TableCell>
+                      {/* Ajustado colSpan para 8 (7 originais + 1 nova) */}
+                      <TableCell colSpan={8} className="text-center h-24">Carregando dados...</TableCell>
                     </TableRow>
                   ) : items.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">Nenhum item encontrado.</TableCell>
+                      <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">Nenhum item encontrado.</TableCell>
                     </TableRow>
                   ) : (
                     items.map((item) => (
@@ -349,6 +338,19 @@ export default function ProductionReportsPage() {
                         <TableCell className="text-center">
                           {getPriorityBadge(item.priority)}
                         </TableCell>
+                        
+                        {/* NOVA CÉLULA DE DATA DE ENTREGA */}
+                        <TableCell className="text-center">
+                            {item.dueDate ? (
+                                <div className={cn(
+                                    "text-sm",
+                                    new Date(item.dueDate) < new Date() ? "text-red-600 font-medium" : "text-gray-600"
+                                )}>
+                                    {format(new Date(item.dueDate), 'dd/MM/yyyy')}
+                                </div>
+                            ) : '-'}
+                        </TableCell>
+
                         <TableCell>
                            {item.assignedTo ? (
                              <Avatar className="h-6 w-6" title={item.assignedTo}>

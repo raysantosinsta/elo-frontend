@@ -2,34 +2,54 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const API_PROTECTED_PATHS = [
-  '/api/dashboard',
-  '/api/tasks',
-  '/api/budgets',
-  '/api/Kanban',
+// 1. Defina as rotas VISUAIS que precisam de login (Páginas do Next.js)
+const PROTECTED_ROUTES = [
+  '/dashboard',
+  '/Kanban',
+  '/tasks', // Supondo que exista uma página meusite.com/tasks
+  '/budgets',
+  '/profile',
+  'kanban-flow',
+  'chats',
+  'agenda',
+  'professionals/report',
+  'tasks/report',
+  'product/report',
+  'empresas',
+
 ];
+
+// 2. Defina as rotas que são PÚBLICAS (Login, Cadastro, Home pública)
+// const PUBLIC_ROUTES = ['/login', '/register', '/'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  
+  // Recupera o token
   const token = getToken(request);
 
-  // Só protege rotas da API
-  const isProtectedApi = API_PROTECTED_PATHS.some(path => pathname.startsWith(path));
+  // Lógica 1: Se o cara tá tentando entrar numa rota protegida
+  // Verifica se o caminho começa com algum dos itens da lista
+  const isProtectedRoute = PROTECTED_ROUTES.some(path => pathname.startsWith(path));
 
-  if (isProtectedApi) {
+  if (isProtectedRoute) {
+    // Se não tem token ou token inválido -> Manda pro Login
     if (!token || !(await isTokenValid(token))) {
-      return NextResponse.json({ message: 'Não autorizado' }, { status: 401 });
+      const loginUrl = new URL('/login', request.url);
+      // Dica: Salva onde ele queria ir pra redirecionar depois do login
+      loginUrl.searchParams.set('callbackUrl', pathname); 
+      return NextResponse.redirect(loginUrl);
     }
-    return NextResponse.next();
   }
 
-  // Se estiver logado e tentar acessar /login → vai pro Kanban
+  // Lógica 2: Se o cara JÁ TEM token e tenta entrar no Login -> Manda pro Kanban
   if (pathname === '/login' && token && (await isTokenValid(token))) {
     return NextResponse.redirect(new URL('/Kanban', request.url));
   }
 
   return NextResponse.next();
 }
+
 
 function getToken(request: NextRequest): string | null {
   const cookie = request.cookies.get('access_token')?.value;
@@ -59,5 +79,8 @@ async function isTokenValid(token: string): Promise<boolean> {
 }
 
 export const config = {
-  matcher: ['/login', '/api/:path*'],
+  /* O matcher deve pegar tudo, exceto arquivos estáticos (_next, imagens, favicon).
+     Assim garantimos que o middleware avalie todas as navegações.
+  */
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
