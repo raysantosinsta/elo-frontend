@@ -16,6 +16,8 @@ const PROTECTED_ROUTES = [
   'tasks/report',
   'product/report',
   'empresas',
+  '/route-planner',
+  '/driver',
 
 ];
 

@@ -1,25 +1,27 @@
+/* eslint-disable jsx-a11y/alt-text */
+/* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
 /* eslint-disable @next/next/no-img-element */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,38 +31,32 @@ import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   Calendar,
-  CheckCircle2,
   Clock,
   Edit,
   Eye,
+  FileVideo,
+  Flag,
+  Globe,
   ImageIcon,
   Layout,
+  MapPin,
   Menu,
   Mic,
-  MoreVertical,
   MoreHorizontal,
+  MoreVertical,
+  Paperclip,
   Plus,
   RefreshCw,
+  Search,
   Settings,
-  Square,
   Trash2,
-  User,
-  Video,
-  X,
-  Flag,
-  FileText,
-  Paperclip,
   UploadCloud,
-  FileVideo,
-  FileAudio,
-  MapPin,
-  Globe,
-  Search, // Importado para o botão de busca
+  User,
+  X
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
@@ -753,53 +749,110 @@ export default function ProductKanban() {
     return { label: "Low", style: "bg-indigo-100 text-indigo-700" };
   };
 
+  // ... imports permanecem os mesmos
+
   const TaskCard = ({ task }: { task: Task }) => {
     const filesCount = task.taskImages.length + task.taskAudios.length + task.taskVideos.length;
     const cover = task.taskImages[0];
+
     return (
-      <Card draggable onDragStart={(e) => e.dataTransfer.setData("taskId", task.id)} className="bg-white shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing border border-slate-200 rounded-2xl group relative overflow-hidden">
+      <Card
+        draggable
+        onDragStart={(e) => e.dataTransfer.setData("taskId", task.id)}
+        className="bg-white shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing border border-slate-200 rounded-2xl group relative overflow-hidden transition-all duration-200"
+      >
         <CardContent className="p-5 flex flex-col gap-4">
+          {/* ... (Cabeçalho, Título, Imagem Cover e Assignee mantidos iguais) ... */}
+          
           <div className="flex justify-end items-start h-6">
-            {task.taskAddress && <div className="absolute top-5 left-5 text-indigo-500" title="Possui endereço"><MapPin className="w-4 h-4" /></div>}
+            {task.taskAddress && (
+              <div className="absolute top-5 left-5 text-indigo-500" title="Possui endereço">
+                <MapPin className="w-4 h-4" />
+              </div>
+            )}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-slate-600 -mr-2"><MoreHorizontal className="w-5 h-5" /></Button></DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-slate-600 -mr-2">
+                  <MoreHorizontal className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => { setPreviewTask(task); setIsPreviewModal(true); }}><Eye className="w-4 h-4 mr-2" /> Visualizar</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openEditModal(task)}><Edit className="w-4 h-4 mr-2" /> Editar</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setPreviewTask(task); setIsPreviewModal(true); }}>
+                  <Eye className="w-4 h-4 mr-2" /> Visualizar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openEditModal(task)}>
+                  <Edit className="w-4 h-4 mr-2" /> Editar
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-red-600" onClick={() => onRequestDeleteTask(task.id)}><Trash2 className="w-4 h-4 mr-2" /> Excluir</DropdownMenuItem>
+                <DropdownMenuItem className="text-red-600" onClick={() => onRequestDeleteTask(task.id)}>
+                  <Trash2 className="w-4 h-4 mr-2" /> Excluir
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
           <div className={cn(task.taskAddress ? "mt-2" : "")}>
-            <h3 className="font-bold text-slate-900 text-[15px] mb-1.5 cursor-pointer hover:text-indigo-600" onClick={() => { setPreviewTask(task); setIsPreviewModal(true); }}>{task.title}</h3>
+            <h3
+              className="font-bold text-slate-900 text-[15px] mb-1.5 cursor-pointer hover:text-indigo-600"
+              onClick={() => { setPreviewTask(task); setIsPreviewModal(true); }}
+            >
+              {task.title}
+            </h3>
             <p className="text-slate-500 text-xs line-clamp-2">{task.description || "Sem descrição."}</p>
           </div>
+
           {cover && (
-            <div className="relative w-full h-32 rounded-lg overflow-hidden mt-1 cursor-pointer" onClick={() => { setPreviewTask(task); setIsPreviewModal(true); }}>
+            <div
+              className="relative w-full h-32 rounded-lg overflow-hidden mt-1 cursor-pointer"
+              onClick={() => { setPreviewTask(task); setIsPreviewModal(true); }}
+            >
               <img src={cover.url} alt="Cover" className="w-full h-full object-cover" />
-              {task.taskImages.length > 1 && <div className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded-full">+{task.taskImages.length - 1}</div>}
+              {task.taskImages.length > 1 && (
+                <div className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                  +{task.taskImages.length - 1}
+                </div>
+              )}
             </div>
           )}
+
           <div className="flex items-center justify-between py-1">
             <span className="text-slate-500 text-xs font-medium">Assignees:</span>
             <div className="flex -space-x-2">
               {task.assignedTo ? (
-                <div className="h-6 w-6 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[9px] font-bold text-slate-600" title={task.assignedTo.name}>{getInitials(task.assignedTo.name)}</div>
+                <div className="h-6 w-6 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[9px] font-bold text-slate-600" title={task.assignedTo.name}>
+                  {getInitials(task.assignedTo.name)}
+                </div>
               ) : (
-                <div className="h-6 w-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] text-slate-400"><User className="w-3 h-3" /></div>
+                <div className="h-6 w-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] text-slate-400">
+                  <User className="w-3 h-3" />
+                </div>
               )}
             </div>
           </div>
+
           <div className="flex items-center justify-between">
             <div className={cn("flex items-center gap-2 text-xs font-medium", isOverdue(task.dueDate || "") && task.status !== "COMPLETED" ? "text-rose-500" : "text-slate-400")}>
               <Flag className="w-3.5 h-3.5" /> <span>{task.dueDate ? formatDateShort(task.dueDate) : "Sem prazo"}</span>
             </div>
-            <div className={cn("px-2.5 py-0.5 rounded-md text-[10px] font-bold", getPriorityConfig(task.priority).style)}>{getPriorityConfig(task.priority).label}</div>
+            <div className={cn("px-2.5 py-0.5 rounded-md text-[10px] font-bold", getPriorityConfig(task.priority).style)}>
+              {getPriorityConfig(task.priority).label}
+            </div>
           </div>
-          <div className="pt-3 mt-1 border-t border-slate-100 flex items-center gap-4 text-slate-400 text-xs font-medium">
-            <div className="flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> <span>{filesCount}</span></div>
+
+          {/* --- ALTERAÇÃO AQUI: Rodapé do Card com Data de Atualização --- */}
+          <div className="pt-3 mt-1 border-t border-slate-100 flex items-center justify-between text-slate-400 text-xs font-medium">
+            <div className="flex items-center gap-1.5" title="Anexos">
+              <Paperclip className="w-3.5 h-3.5" /> <span>{filesCount}</span>
+            </div>
+            
+            {/* Exibe a data de atualização */}
+            <div className="flex items-center gap-1.5 text-[10px]" title="Data da última atualização">
+               <RefreshCw className="w-3 h-3" />
+               {/* Isso vai mostrar algo como: 23/12 14:30 */}
+               <span>{formatDateTime(task.updatedAt)}</span> 
+            </div>
           </div>
+
         </CardContent>
       </Card>
     );
