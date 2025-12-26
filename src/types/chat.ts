@@ -51,6 +51,7 @@ export interface User {
   phone?: string;
   professionalRole?: string;
   // isProfessional: boolean;
+  role: string;
   company?: {
     id: string;
     name: string;

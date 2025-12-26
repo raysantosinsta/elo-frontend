@@ -8,10 +8,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Sheet,
-  SheetContent,
-} from "@/components/ui/sheet"; // Componente do Shadcn
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSidebar } from "@/hooks/SidebarContext";
 import { useNotifications } from "@/hooks/use-app-features";
@@ -22,6 +19,7 @@ import {
   BarChart3,
   Bell,
   Calendar,
+  CarFront,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -33,7 +31,7 @@ import {
   KanbanSquareDashed,
   LayoutDashboard,
   MessageSquare,
-  RefreshCw
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -46,14 +44,25 @@ const menuItems = [
   { title: "Kanban Produto", href: "/kanban-flow", icon: KanbanSquareDashed },
   { title: "Chats", href: "/chats", icon: MessageSquare },
   { title: "Calendário", href: "/agenda", icon: Calendar },
-  { title: "Relatórios Profissionais", href: "/professionals/report", icon: BarChart3 },
+  {
+    title: "Relatórios Profissionais",
+    href: "/professionals/report",
+    icon: BarChart3,
+  },
   { title: "Relatórios Tarefas", href: "/tasks/report", icon: BarChart2 },
   { title: "Relatórios produtos", href: "/product/report", icon: BarChart },
   { title: "Gerenciar Empresa", href: "/empresas", icon: Home },
+  { title: "Rotas", href: "/route-planner", icon: CarFront },
 ];
 
 // --- CONTEÚDO INTERNO (Reutilizável para Mobile e Desktop) ---
-function SidebarContent({ collapsed, onItemClick }: { collapsed: boolean; onItemClick?: () => void }) {
+function SidebarContent({
+  collapsed,
+  onItemClick,
+}: {
+  collapsed: boolean;
+  onItemClick?: () => void;
+}) {
   const pathname = usePathname();
   const { user } = useAuth();
   const {
@@ -68,12 +77,18 @@ function SidebarContent({ collapsed, onItemClick }: { collapsed: boolean; onItem
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case "TASK_ASSIGNED": return <FileText className="w-4 h-4 text-[#2C3E50]" />;
-      case "TASK_COMPLETED": return <Check className="w-4 h-4 text-green-600" />;
-      case "TASK_OVERDUE": return <Clock className="w-4 h-4 text-[#D35400]" />;
-      case "BUDGET_APPROVED": return <DollarSign className="w-4 h-4 text-[#2C3E50]" />;
-      case "NEW_MESSAGE": return <MessageSquare className="w-4 h-4 text-[#D35400]" />;
-      default: return <Bell className="w-4 h-4 text-[#95A5A6]" />;
+      case "TASK_ASSIGNED":
+        return <FileText className="w-4 h-4 text-[#2C3E50]" />;
+      case "TASK_COMPLETED":
+        return <Check className="w-4 h-4 text-green-600" />;
+      case "TASK_OVERDUE":
+        return <Clock className="w-4 h-4 text-[#D35400]" />;
+      case "BUDGET_APPROVED":
+        return <DollarSign className="w-4 h-4 text-[#2C3E50]" />;
+      case "NEW_MESSAGE":
+        return <MessageSquare className="w-4 h-4 text-[#D35400]" />;
+      default:
+        return <Bell className="w-4 h-4 text-[#95A5A6]" />;
     }
   };
 
@@ -84,13 +99,23 @@ function SidebarContent({ collapsed, onItemClick }: { collapsed: boolean; onItem
 
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR');
+    return date.toLocaleDateString("pt-BR");
   };
 
   return (
-    <div className={cn("flex flex-col h-full bg-[#2C3E50] text-white transition-all duration-300", collapsed ? "w-20" : "w-full")}>
+    <div
+      className={cn(
+        "flex flex-col h-full bg-[#2C3E50] text-white transition-all duration-300",
+        collapsed ? "w-20" : "w-full"
+      )}
+    >
       {/* Header Sidebar */}
-      <div className={cn("flex items-center justify-between p-5 border-b border-white/10 h-20", collapsed && "justify-center px-2")}>
+      <div
+        className={cn(
+          "flex items-center justify-between p-5 border-b border-white/10 h-20",
+          collapsed && "justify-center px-2"
+        )}
+      >
         {!collapsed && (
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-[#D35400] rounded-xl flex items-center justify-center shadow-md">
@@ -101,10 +126,16 @@ function SidebarContent({ collapsed, onItemClick }: { collapsed: boolean; onItem
         )}
 
         {/* Notificações */}
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "")}>
+        <div
+          className={cn("flex items-center", collapsed ? "justify-center" : "")}
+        >
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 relative text-gray-300 hover:bg-white/10 hover:text-white">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 relative text-gray-300 hover:bg-white/10 hover:text-white"
+              >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#D35400] text-[10px] font-bold text-white ring-2 ring-[#2C3E50]">
@@ -117,28 +148,57 @@ function SidebarContent({ collapsed, onItemClick }: { collapsed: boolean; onItem
               <div className="flex items-center justify-between p-4 bg-slate-50 border-b">
                 <h3 className="font-bold text-[#2C3E50]">Notificações</h3>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => refresh()} className="h-8 w-8">
-                    <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => refresh()}
+                    className="h-8 w-8"
+                  >
+                    <RefreshCw
+                      className={cn("w-4 h-4", loading && "animate-spin")}
+                    />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => markAllAsRead()} className="h-8 text-xs">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => markAllAsRead()}
+                    className="h-8 text-xs"
+                  >
                     Lidas
                   </Button>
                 </div>
               </div>
               <ScrollArea className="h-[300px]">
                 {notifications.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500 text-sm">Nenhuma notificação</div>
+                  <div className="p-8 text-center text-gray-500 text-sm">
+                    Nenhuma notificação
+                  </div>
                 ) : (
                   <div className="flex flex-col">
                     {notifications.map((n: any, i: number) => (
-                      <div key={i} className={cn("p-3 border-b flex gap-3 hover:bg-slate-50", !n.isRead && "bg-blue-50/50")}>
-                        <div className="mt-1">{getNotificationIcon(n.type)}</div>
+                      <div
+                        key={i}
+                        className={cn(
+                          "p-3 border-b flex gap-3 hover:bg-slate-50",
+                          !n.isRead && "bg-blue-50/50"
+                        )}
+                      >
+                        <div className="mt-1">
+                          {getNotificationIcon(n.type)}
+                        </div>
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-slate-800">{n.title}</p>
+                          <p className="text-sm font-medium text-slate-800">
+                            {n.title}
+                          </p>
                           <div className="mt-2 flex justify-between items-center">
-                            <span className="text-[10px] text-slate-400">{formatTimeAgo(n.createdAt)}</span>
+                            <span className="text-[10px] text-slate-400">
+                              {formatTimeAgo(n.createdAt)}
+                            </span>
                             {!n.isRead && (
-                              <button onClick={() => handleMarkAsRead(n.id)} className="text-[10px] text-[#D35400] hover:underline">
+                              <button
+                                onClick={() => handleMarkAsRead(n.id)}
+                                className="text-[10px] text-[#D35400] hover:underline"
+                              >
                                 Marcar lida
                               </button>
                             )}
@@ -159,15 +219,29 @@ function SidebarContent({ collapsed, onItemClick }: { collapsed: boolean; onItem
         <div className="space-y-1.5">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isActive =
+              pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link key={item.title} href={item.href} onClick={onItemClick}>
-                <div className={cn(
-                  "flex items-center rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 group relative overflow-hidden",
-                  isActive ? "bg-[#D35400] text-white shadow-md" : "text-gray-300 hover:bg-white/10 hover:text-white",
-                  collapsed ? "justify-center" : "justify-start"
-                )} title={collapsed ? item.title : undefined}>
-                  <Icon className={cn("w-5 h-5 transition-transform duration-200 group-hover:scale-110", collapsed ? "mr-0" : "mr-3", isActive ? "text-white" : "text-gray-400 group-hover:text-white")} />
+                <div
+                  className={cn(
+                    "flex items-center rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 group relative overflow-hidden",
+                    isActive
+                      ? "bg-[#D35400] text-white shadow-md"
+                      : "text-gray-300 hover:bg-white/10 hover:text-white",
+                    collapsed ? "justify-center" : "justify-start"
+                  )}
+                  title={collapsed ? item.title : undefined}
+                >
+                  <Icon
+                    className={cn(
+                      "w-5 h-5 transition-transform duration-200 group-hover:scale-110",
+                      collapsed ? "mr-0" : "mr-3",
+                      isActive
+                        ? "text-white"
+                        : "text-gray-400 group-hover:text-white"
+                    )}
+                  />
                   {!collapsed && <span className="truncate">{item.title}</span>}
                 </div>
               </Link>
@@ -181,11 +255,15 @@ function SidebarContent({ collapsed, onItemClick }: { collapsed: boolean; onItem
         <div className="p-4 border-t border-white/10 bg-black/20">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center text-white text-xs font-bold border border-white/5">
-              {user.name?.charAt(0).toUpperCase() || 'U'}
+              {user.name?.charAt(0).toUpperCase() || "U"}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-white truncate">{user.name}</p>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wider">{user.role}</p>
+              <p className="text-xs font-bold text-white truncate">
+                {user.name}
+              </p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider">
+                {user.role}
+              </p>
             </div>
           </div>
         </div>
@@ -195,7 +273,9 @@ function SidebarContent({ collapsed, onItemClick }: { collapsed: boolean; onItem
 }
 
 // --- COMPONENTE PRINCIPAL ---
-interface SidebarProps { className?: string; }
+interface SidebarProps {
+  className?: string;
+}
 
 export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
@@ -205,19 +285,37 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <>
       {/* VERSÃO DESKTOP (Fixa) */}
-      <div className={cn("hidden md:flex flex-col h-full border-r border-white/10 transition-all duration-300 bg-[#2C3E50]", collapsed ? "w-20" : "w-72", className)}>
+      <div
+        className={cn(
+          "hidden md:flex flex-col h-full border-r border-white/10 transition-all duration-300 bg-[#2C3E50]",
+          collapsed ? "w-20" : "w-72",
+          className
+        )}
+      >
         <SidebarContent collapsed={collapsed} />
         {/* Botão de Colapsar (Apenas Desktop) */}
         <div className="bg-[#2C3E50] p-2 flex justify-center border-t border-white/10">
-          <Button variant="ghost" size="sm" onClick={() => setCollapsed(!collapsed)} className="text-gray-400 hover:text-white hover:bg-white/10 w-full">
-            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCollapsed(!collapsed)}
+            className="text-gray-400 hover:text-white hover:bg-white/10 w-full"
+          >
+            {collapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
           </Button>
         </div>
       </div>
 
       {/* VERSÃO MOBILE (Sheet/Drawer) */}
       <Sheet open={isOpen} onOpenChange={close}>
-        <SheetContent side="left" className="p-0 border-none w-72 bg-[#2C3E50] text-white">
+        <SheetContent
+          side="left"
+          className="p-0 border-none w-72 bg-[#2C3E50] text-white"
+        >
           <SidebarContent collapsed={false} onItemClick={close} />
         </SheetContent>
       </Sheet>

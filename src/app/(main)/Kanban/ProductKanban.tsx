@@ -28,6 +28,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+// IMPORTANTE: Importe sua instância de API aqui
+import { api } from "@/services/api"; 
 import {
   AlertCircle,
   Calendar,
@@ -57,9 +59,6 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
 // --- INTERFACES ---
 interface Professional {
@@ -123,7 +122,7 @@ interface Column {
 }
 
 export default function ProductKanban() {
-  const { user, logout, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const router = useRouter();
 
@@ -213,7 +212,7 @@ export default function ProductKanban() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSearchingCep, setIsSearchingCep] = useState(false);
-  const [isGeocoding, setIsGeocoding] = useState(false); // NOVO: Estado de loading da geocodificação
+  const [isGeocoding, setIsGeocoding] = useState(false); 
 
   // Modal Exclusão
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -223,55 +222,7 @@ export default function ProductKanban() {
     id: string;
   } | null>(null);
 
-  // --- HELPERS ---
-  const getAuthToken = useCallback((): string | null => {
-    if (typeof window !== "undefined") return localStorage.getItem("accessToken");
-    return null;
-  }, []);
-
-  const authFetch = useCallback(
-    async (url: string, options: RequestInit = {}) => {
-      const token = getAuthToken();
-      if (!token) {
-        logout();
-        throw new Error("Sem token");
-      }
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        ...((options.headers as Record<string, string>) || {}),
-      };
-      const response = await fetch(url, { ...options, headers });
-      if (response.status === 401) logout();
-      return response;
-    },
-    [getAuthToken, logout]
-  );
-
-  const authFetchWithFiles = useCallback(
-    async (url: string, formData: FormData, method: string = "POST") => {
-      const token = getAuthToken();
-      const headers: HeadersInit = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      
-      const response = await fetch(url, { method, headers, body: formData });
-      
-      if (response.status === 401) {
-        logout();
-        throw new Error("Sessão expirada (401).");
-      }
-      
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.message || `Erro ${response.status}: Falha na requisição`);
-      }
-      
-      return response;
-    },
-    [getAuthToken, logout]
-  );
-
-  // --- VIACEP ---
+  // --- VIACEP (Mantido com fetch nativo pois é API Externa) ---
   const handleCepSearch = async (isEdit: boolean) => {
     const cep = isEdit ? editTaskZip : taskZip;
     const cleanCep = cep.replace(/\D/g, "");
@@ -306,7 +257,7 @@ export default function ProductKanban() {
     }
   };
 
-  // --- GEOCODING (NOMINATIM / OPENSTREETMAP) ---
+  // --- GEOCODING (NOMINATIM / OPENSTREETMAP - Mantido fetch nativo) ---
   const handleGeocode = async (isEdit: boolean) => {
     const street = isEdit ? editTaskStreet : taskStreet;
     const number = isEdit ? editTaskNumber : taskNumber;
@@ -320,13 +271,12 @@ export default function ProductKanban() {
 
     setIsGeocoding(true);
     try {
-      // Monta a query string para o Nominatim
       const query = `${street}, ${number ? number + ',' : ''} ${city}, ${state}, Brasil`;
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
       
       const response = await fetch(url, {
         headers: {
-          'User-Agent': 'ProductKanbanApp/1.0' // Nominatim exige User-Agent
+          'User-Agent': 'ProductKanbanApp/1.0' 
         }
       });
       
@@ -353,12 +303,10 @@ export default function ProductKanban() {
     }
   };
 
-  // --- FETCH DATA ---
+  // --- FETCH DATA (USANDO API AXIOS) ---
   const fetchColumns = useCallback(async () => {
     try {
-      const res = await authFetch(`${API_BASE}/kanban-columns`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const { data } = await api.get('/kanban-columns');
       let columnsArray: Column[] = [];
       if (Array.isArray(data)) columnsArray = data;
       else if (data.columns && Array.isArray(data.columns)) columnsArray = data.columns;
@@ -367,16 +315,11 @@ export default function ProductKanban() {
     } catch (err) {
       setColumns([]);
     }
-  }, [authFetch]);
+  }, []);
 
   const fetchTasks = useCallback(async () => {
     try {
-      const res = await authFetch(`${API_BASE}/tasks?limit=100`);
-      if (!res.ok) {
-        if (res.status === 400) { setTasks([]); return; }
-        throw new Error(`Erro ${res.status}`);
-      }
-      const data = await res.json();
+      const { data } = await api.get('/tasks', { params: { limit: 100 } });
       let tasksArray = [];
       if (data.data && Array.isArray(data.data)) tasksArray = data.data;
       else if (Array.isArray(data)) tasksArray = data;
@@ -385,18 +328,15 @@ export default function ProductKanban() {
     } catch (err) {
       setTasks([]);
     }
-  }, [authFetch]);
+  }, []);
 
   const fetchUsers = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
-      const res = await authFetch(`${API_BASE}/users/company/${user.company.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(Array.isArray(data) ? data : []);
-      }
+      const { data } = await api.get(`/users/company/${user.company.id}`);
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {}
-  }, [authFetch, user?.company?.id]);
+  }, [user?.company?.id]);
 
   const loadInitialData = useCallback(async () => {
     if (!user) return;
@@ -418,12 +358,7 @@ export default function ProductKanban() {
   const createColumn = async () => {
     if (!colTitle.trim()) return toast.error("Título obrigatório");
     try {
-      const res = await authFetch(`${API_BASE}/kanban-columns`, {
-        method: "POST",
-        body: JSON.stringify({ title: colTitle }),
-      });
-      if (!res.ok) throw new Error();
-      const newColumn = await res.json();
+      const { data: newColumn } = await api.post('/kanban-columns', { title: colTitle });
       setColumns((prev) => [...prev, newColumn]);
       setColTitle("");
       setIsColumnModal(false);
@@ -436,12 +371,7 @@ export default function ProductKanban() {
   const updateColumn = async () => {
     if (!editingCol || !colTitle.trim()) return;
     try {
-      const res = await authFetch(`${API_BASE}/kanban-columns/${editingCol.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ title: colTitle }),
-      });
-      if (!res.ok) throw new Error();
-      const updated = await res.json();
+      const { data: updated } = await api.put(`/kanban-columns/${editingCol.id}`, { title: colTitle });
       setColumns((prev) => prev.map((c) => (c.id === editingCol.id ? updated : c)));
       setColTitle("");
       setEditingCol(null);
@@ -468,11 +398,11 @@ export default function ProductKanban() {
     setIsDeleting(true);
     try {
       if (itemToDelete.type === "column") {
-        await authFetch(`${API_BASE}/kanban-columns/${itemToDelete.id}`, { method: "DELETE" });
+        await api.delete(`/kanban-columns/${itemToDelete.id}`);
         setColumns((prev) => prev.filter((c) => c.id !== itemToDelete.id));
         toast.success("Coluna excluída");
       } else {
-        await authFetch(`${API_BASE}/tasks/${itemToDelete.id}`, { method: "DELETE" });
+        await api.delete(`/tasks/${itemToDelete.id}`);
         setTasks((prev) => prev.filter((t) => t.id !== itemToDelete.id));
         toast.success("Tarefa excluída");
         if (isPreviewModal) setIsPreviewModal(false);
@@ -480,7 +410,7 @@ export default function ProductKanban() {
       setDeleteModalOpen(false);
       setItemToDelete(null);
     } catch (err: any) {
-      toast.error(err.message || "Erro ao excluir");
+      toast.error(err.response?.data?.message || err.message || "Erro ao excluir");
     } finally {
       setIsDeleting(false);
     }
@@ -488,20 +418,21 @@ export default function ProductKanban() {
 
   const refreshTask = useCallback(async (taskId: string) => {
     try {
-      const res = await authFetch(`${API_BASE}/tasks/${taskId}`);
-      if (res.ok) {
-        const updated = await res.json();
-        const taskWithUrls = {
-          ...updated,
-          taskImages: updated.taskImages?.map((img: TaskImage) => ({
-            ...img,
-            url: img.url.startsWith("http") ? img.url : `${API_BASE}${img.url}`
-          })) || []
-        };
-        setTasks((prev) => prev.map((t) => (t.id === taskId ? taskWithUrls : t)));
-      }
+      const { data: updated } = await api.get(`/tasks/${taskId}`);
+      // Se necessário ajustar URL, o interceptor da API não muda o body da resposta,
+      // então sua lógica de ajuste de URL relativa continua válida se o backend não retornar URL absoluta.
+      const API_URL = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+      
+      const taskWithUrls = {
+        ...updated,
+        taskImages: updated.taskImages?.map((img: TaskImage) => ({
+          ...img,
+          url: img.url.startsWith("http") ? img.url : `${API_URL}${img.url}`
+        })) || []
+      };
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? taskWithUrls : t)));
     } catch (err) {}
-  }, [authFetch]);
+  }, []);
 
   const handleDrop = useCallback(async (e: React.DragEvent, columnId: string | null) => {
     e.preventDefault();
@@ -510,16 +441,13 @@ export default function ProductKanban() {
     const prevTasks = [...tasks];
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, columnId } : t)));
     try {
-      await authFetch(`${API_BASE}/tasks/${taskId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ columnId }),
-      });
+      await api.patch(`/tasks/${taskId}/status`, { columnId });
       await refreshTask(taskId);
     } catch (err) {
       setTasks(prevTasks);
       toast.error("Erro ao mover tarefa");
     }
-  }, [tasks, authFetch, refreshTask]);
+  }, [tasks, refreshTask]);
 
   // --- GRAVAÇÃO ---
   const startRecording = async () => {
@@ -611,15 +539,15 @@ export default function ProductKanban() {
     taskVideos.forEach((f) => formData.append("videos", f));
 
     try {
-      const res = await authFetchWithFiles(`${API_BASE}/tasks`, formData, "POST");
-      const newTask = await res.json();
+      // Axios lida automaticamente com FormData
+      const { data: newTask } = await api.post('/tasks', formData);
       setTasks((prev) => [newTask, ...prev]);
       resetTaskForm();
       setIsTaskModal(false);
       toast.success("Tarefa criada!");
       setTimeout(() => refreshTask(newTask.id), 1000);
     } catch (err: any) {
-      toast.error(err.message || "Erro ao criar");
+      toast.error(err.response?.data?.message || err.message || "Erro ao criar");
     } finally {
       setIsSubmitting(false);
     }
@@ -649,13 +577,12 @@ export default function ProductKanban() {
     editTaskVideos.forEach((f) => formData.append("videos", f));
 
     try {
-      const res = await authFetchWithFiles(`${API_BASE}/tasks/${editingTask.id}`, formData, "PUT");
-      let updated = await res.json();
+      const { data: responseData } = await api.put(`/tasks/${editingTask.id}`, formData);
+      let updated = responseData;
 
       if (editTaskZip && editTaskStreet && editTaskNumber) {
-        await authFetch(`${API_BASE}/tasks/${editingTask.id}/address`, {
-          method: 'POST',
-          body: JSON.stringify({
+        // Atualiza endereço via POST (conforme seu código original)
+        await api.post(`/tasks/${editingTask.id}/address`, {
             cep: editTaskZip,
             endereco: editTaskStreet,
             numero: editTaskNumber,
@@ -665,10 +592,11 @@ export default function ProductKanban() {
             complemento: editTaskComplement,
             latitude: editTaskLatitude ? parseFloat(editTaskLatitude) : undefined,
             longitude: editTaskLongitude ? parseFloat(editTaskLongitude) : undefined,
-          })
         });
-        const refreshRes = await authFetch(`${API_BASE}/tasks/${editingTask.id}`);
-        if(refreshRes.ok) updated = await refreshRes.json();
+        
+        // Refresh após salvar endereço
+        const { data: refreshData } = await api.get(`/tasks/${editingTask.id}`);
+        updated = refreshData;
       }
 
       setTasks((prev) => prev.map((t) => (t.id === editingTask.id ? updated : t)));
@@ -677,7 +605,7 @@ export default function ProductKanban() {
       resetEditTaskForm();
       toast.success("Atualizado!");
     } catch (err: any) {
-      toast.error(err.message || "Erro ao atualizar");
+      toast.error(err.response?.data?.message || err.message || "Erro ao atualizar");
     } finally {
       setIsSubmitting(false);
     }
@@ -749,8 +677,6 @@ export default function ProductKanban() {
     return { label: "Low", style: "bg-indigo-100 text-indigo-700" };
   };
 
-  // ... imports permanecem os mesmos
-
   const TaskCard = ({ task }: { task: Task }) => {
     const filesCount = task.taskImages.length + task.taskAudios.length + task.taskVideos.length;
     const cover = task.taskImages[0];
@@ -762,7 +688,6 @@ export default function ProductKanban() {
         className="bg-white shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing border border-slate-200 rounded-2xl group relative overflow-hidden transition-all duration-200"
       >
         <CardContent className="p-5 flex flex-col gap-4">
-          {/* ... (Cabeçalho, Título, Imagem Cover e Assignee mantidos iguais) ... */}
           
           <div className="flex justify-end items-start h-6">
             {task.taskAddress && (
@@ -839,16 +764,13 @@ export default function ProductKanban() {
             </div>
           </div>
 
-          {/* --- ALTERAÇÃO AQUI: Rodapé do Card com Data de Atualização --- */}
           <div className="pt-3 mt-1 border-t border-slate-100 flex items-center justify-between text-slate-400 text-xs font-medium">
             <div className="flex items-center gap-1.5" title="Anexos">
               <Paperclip className="w-3.5 h-3.5" /> <span>{filesCount}</span>
             </div>
             
-            {/* Exibe a data de atualização */}
             <div className="flex items-center gap-1.5 text-[10px]" title="Data da última atualização">
                <RefreshCw className="w-3 h-3" />
-               {/* Isso vai mostrar algo como: 23/12 14:30 */}
                <span>{formatDateTime(task.updatedAt)}</span> 
             </div>
           </div>
@@ -1070,9 +992,9 @@ export default function ProductKanban() {
                       <p className="text-sm text-indigo-800">{previewTask.taskAddress.endereco}, {previewTask.taskAddress.numero} - {previewTask.taskAddress.bairro}</p>
                       <p className="text-xs text-indigo-600">{previewTask.taskAddress.cidade}/{previewTask.taskAddress.estado} - CEP: {previewTask.taskAddress.cep}</p>
                       {(previewTask.taskAddress.latitude || previewTask.taskAddress.longitude) && (
-                         <div className="mt-2 pt-2 border-t border-indigo-200 text-xs text-indigo-500 font-mono flex items-center gap-2">
-                           <Globe className="w-3 h-3"/> Lat: {previewTask.taskAddress.latitude} | Long: {previewTask.taskAddress.longitude}
-                         </div>
+                          <div className="mt-2 pt-2 border-t border-indigo-200 text-xs text-indigo-500 font-mono flex items-center gap-2">
+                            <Globe className="w-3 h-3"/> Lat: {previewTask.taskAddress.latitude} | Long: {previewTask.taskAddress.longitude}
+                          </div>
                       )}
                    </div>
                 )}
