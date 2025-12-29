@@ -6,13 +6,16 @@ import { Loader2, MapPin, Navigation } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-// --- TIPAGEM (Espelhando o seu Prisma/Backend) ---
+// --- TIPAGEM ---
 interface TaskAddress {
     id: string;
     endereco: string;
     numero: string;
     bairro: string;
     cidade: string;
+    estado: string;
+    cep: string;
+    complemento?: string;
     latitude: number;
     longitude: number;
 }
@@ -22,52 +25,41 @@ interface Task {
     title: string;
     description: string;
     status: string;
-    taskAddress: TaskAddress; // No seu service 'available-tasks', o address já vem garantido
+    columnId: string; // IMPORTANTE: Adicionado para salvar na rota
+    taskAddress: TaskAddress; 
 }
 
 export default function RoutePlannerPage() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
-    const [isOptimizing, setIsOptimizing] = useState(false); // Loading específico do botão
+    const [isOptimizing, setIsOptimizing] = useState(false);
     const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
-
-    // Localização do Usuário (Motorista)
     const [userLocation, setUserLocation] = useState<{ lat: number, lng: number } | null>(null);
 
     const router = useRouter();
 
-    // 1. Fetch das Tarefas Disponíveis (Usando seu novo Controller)
+    // 1. Fetch das Tarefas Disponíveis
     useEffect(() => {
         async function fetchAvailableTasks() {
             try {
                 const { data } = await api.get('/routes/available-tasks');
-
-                // Seu backend retorna diretamente um array
                 if (Array.isArray(data)) {
                     setTasks(data);
                 } else {
                     setTasks([]);
                 }
-
             } catch (error: any) {
                 console.error("Erro ao buscar tarefas", error);
-
-                // Se quiser, pode tratar mensagem do backend
-                const message =
-                    error.response?.data?.message || "Erro ao buscar tarefas";
-
+                const message = error.response?.data?.message || "Erro ao buscar tarefas";
                 alert(message);
-
             } finally {
                 setLoading(false);
             }
-
         }
-
         fetchAvailableTasks();
     }, [router]);
 
-    // 2. Pegar Geolocalização (Necessário para o ponto de partida do backend)
+    // 2. Pegar Geolocalização
     useEffect(() => {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
@@ -84,7 +76,7 @@ export default function RoutePlannerPage() {
         );
     };
 
-    // 4. A LÓGICA AGORA É NO BACKEND (POST /routes/calculate-best-path)
+    // 4. Calcular Rota
     const handleStartRoute = async () => {
         if (!userLocation) {
             alert("Aguardando localização do GPS...");
@@ -93,11 +85,7 @@ export default function RoutePlannerPage() {
 
         try {
             setIsOptimizing(true);
-
-            // --- CORREÇÃO FEITA AQUI ---
-            // Agora buscamos 'accessToken' (o nome correto)
             const token = localStorage.getItem('accessToken');
-            // ---------------------------
 
             if (!token) {
                 alert("Sessão inválida. Faça login novamente.");
@@ -105,18 +93,20 @@ export default function RoutePlannerPage() {
                 return;
             }
 
-            // Monta o DTO que o seu controller espera (OptimizeRouteDto)
             const payload = {
                 taskIds: selectedTaskIds,
                 driverLatitude: userLocation.lat,
                 driverLongitude: userLocation.lng
             };
 
-            const response = await fetch('http://localhost:3000/routes/calculate-best-path', {
+            // Ajuste a URL se necessário (localhost vs produção)
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+            
+            const response = await fetch(`${apiUrl}/routes/calculate-best-path`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}` // Agora o token vai cheio!
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify(payload)
             });
@@ -129,20 +119,23 @@ export default function RoutePlannerPage() {
 
             if (!response.ok) throw new Error('Erro ao calcular rota');
 
-            // O Backend devolve o array de tarefas JÁ ORDENADO
             const optimizedRoute = await response.json();
 
-            // Transformamos para o formato simples que a página do motorista espera
+            // --- CORREÇÃO PRINCIPAL AQUI ---
+            // Salvamos o columnId e o taskAddress completo para o DriverPage usar
             const routeForDriver = optimizedRoute.map((t: Task) => ({
                 id: t.id,
                 title: t.title,
                 lat: t.taskAddress.latitude,
                 lng: t.taskAddress.longitude,
-                endereco: `${t.taskAddress.endereco}, ${t.taskAddress.numero}`
+                endereco: `${t.taskAddress.endereco}, ${t.taskAddress.numero}`,
+                // DADOS EXTRAS IMPORTANTES:
+                columnId: t.columnId,
+                taskAddress: t.taskAddress
             }));
 
-            // Salva e Redireciona
             localStorage.setItem('rotaAtiva', JSON.stringify(routeForDriver));
+            localStorage.removeItem('rotaIndex'); // Reseta o índice para começar da primeira
             router.push('/driver');
 
         } catch (error) {
@@ -174,7 +167,6 @@ export default function RoutePlannerPage() {
                 </button>
             </div>
 
-            {/* Tabela */}
             <div className="border rounded-lg shadow-sm bg-white overflow-hidden">
                 <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b">
@@ -211,10 +203,10 @@ export default function RoutePlannerPage() {
                                     </td>
                                     <td className="p-4 flex items-center gap-2 text-slate-600">
                                         <MapPin size={16} />
-                                        {task.taskAddress.endereco}, {task.taskAddress.numero}
+                                        {task.taskAddress?.endereco}, {task.taskAddress?.numero}
                                     </td>
                                     <td className="p-4 text-slate-600">
-                                        {task.taskAddress.bairro} - {task.taskAddress.cidade}
+                                        {task.taskAddress?.bairro} - {task.taskAddress?.cidade}
                                     </td>
                                 </tr>
                             ))

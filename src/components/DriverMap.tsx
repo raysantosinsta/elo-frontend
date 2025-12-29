@@ -1,13 +1,11 @@
-// components/DriverMap.tsx
 'use client';
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
-import RoutingMachine from '@/components/RoutingMachine'; 
 
-// ... (Mantenha as definições de ícones como estavam) ...
+// --- ÍCONES (Mantém igual) ---
 const iconUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png';
 const shadowUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png';
 const carIconUrl = 'https://cdn-icons-png.flaticon.com/512/3097/3097180.png';
@@ -32,7 +30,7 @@ const driverIcon = L.icon({
   iconAnchor: [20, 20]
 });
 
-// Componente auxiliar para recentralizar
+// Componente para recentralizar
 function RecenterMap({ location }: { location: [number, number] }) {
   const map = useMap();
   useEffect(() => {
@@ -48,20 +46,75 @@ interface DriverMapProps {
 }
 
 export default function DriverMap({ route, myLocation, currentStopIndex }: DriverMapProps) {
-  // Fallback seguro para o centro inicial
   const defaultCenter: [number, number] = [-23.55052, -46.633309]; 
   const initialCenter = myLocation || (route[0] ? [route[0].lat, route[0].lng] : defaultCenter);
 
-  // Filtra rotas futuras
+  // Estado para guardar o desenho da rua
+  const [roadPath, setRoadPath] = useState<[number, number][]>([]);
+
+  // Pega as paradas restantes
   const remainingRoute = route.slice(currentStopIndex);
 
-  // Converte para objetos LatLng do Leaflet para garantir integridade
-  const routeWaypoints = remainingRoute.map(p => L.latLng(Number(p.lat), Number(p.lng)));
-  
-  // Adiciona o motorista como ponto de partida (índice 0 da rota)
-  const fullWaypoints = myLocation 
-    ? [L.latLng(myLocation[0], myLocation[1]), ...routeWaypoints]
-    : [];
+  // --- EFEITO: BUSCAR ROTA REAL (OSRM) ---
+  useEffect(() => {
+    if (!myLocation || remainingRoute.length === 0) {
+        setRoadPath([]);
+        return;
+    }
+
+    const fetchRoadGeometry = async () => {
+        try {
+            // 1. Define os pontos chaves: [Meu Carro, Destino 1, Destino 2 (se houver)]
+            // Limitamos a 2 destinos para não poluir demais o mapa ou estourar a API grátis
+            const nextStops = remainingRoute.slice(0, 2); 
+            
+            const points = [
+                { lat: myLocation[0], lng: myLocation[1] }, // Inicio: Carro
+                ...nextStops // Meio/Fim: Próximas paradas
+            ];
+
+            // 2. Constrói a string da URL: "lon,lat;lon,lat;lon,lat"
+            const coordinatesString = points
+                .map(p => `${p.lng},${p.lat}`)
+                .join(';');
+            
+            // 3. Chama a API do OSRM
+            const response = await fetch(
+                `https://router.project-osrm.org/route/v1/driving/${coordinatesString}?overview=full&geometries=geojson`
+            );
+            
+            const data = await response.json();
+
+            if (data.routes && data.routes.length > 0) {
+                // A API retorna [lng, lat], o Leaflet quer [lat, lng]. Invertemos:
+                const coordinates = data.routes[0].geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
+                setRoadPath(coordinates);
+            }
+        } catch (error) {
+            console.error("Erro ao buscar rota na rua:", error);
+            // Fallback: Linha Reta se a API falhar
+            setRoadPath([
+               myLocation,
+               [remainingRoute[0].lat, remainingRoute[0].lng] as [number, number]
+            ]);
+        }
+    };
+
+    const timer = setTimeout(() => {
+        fetchRoadGeometry();
+    }, 500); 
+
+    return () => clearTimeout(timer);
+
+  }, [myLocation, remainingRoute]); // Atualiza se andar ou se a lista de paradas mudar
+
+  // Configuração da Linha Azul Tracejada
+  const lineOptions = { 
+    color: '#2563EB', 
+    weight: 6, 
+    opacity: 0.8,
+    dashArray: '10, 15' 
+  };
 
   return (
     <MapContainer 
@@ -75,12 +128,12 @@ export default function DriverMap({ route, myLocation, currentStopIndex }: Drive
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {/* Marcadores das Tarefas (Destinos) */}
+      {/* Marcadores dos Destinos */}
       {remainingRoute.map((point, index) => {
         const isCurrentTarget = index === 0; 
         return (
           <Marker
-            key={`${point.lat}-${point.lng}-${index}`} // Key única para forçar re-render se mudar
+            key={`${point.lat}-${point.lng}-${index}`}
             position={[point.lat, point.lng]}
             icon={isCurrentTarget ? activeIcon : defaultIcon}
           >
@@ -92,7 +145,7 @@ export default function DriverMap({ route, myLocation, currentStopIndex }: Drive
         )
       })}
 
-      {/* Marcador e Controle do Motorista */}
+      {/* Marcador do Motorista */}
       {myLocation && (
         <>
           <Marker position={myLocation} icon={driverIcon} zIndexOffset={1000} />
@@ -100,13 +153,14 @@ export default function DriverMap({ route, myLocation, currentStopIndex }: Drive
         </>
       )}
 
-      {/* AQUI ESTAVA O ERRO LÓGICO:
-         Só renderizamos o RoutingMachine se tivermos o motorista E pelo menos 1 destino.
-         O componente RoutingMachine agora lida com atualizações via useEffect.
-      */}
-      {fullWaypoints.length >= 2 && (
-        <RoutingMachine waypoints={fullWaypoints} />
+      {/* LINHA AZUL QUE SEGUE A RUA (Mostrando até a 2ª parada) */}
+      {roadPath.length > 0 && (
+        <Polyline 
+          positions={roadPath as L.LatLngExpression[]} 
+          pathOptions={lineOptions} 
+        />
       )}
+
     </MapContainer>
   );
 }
