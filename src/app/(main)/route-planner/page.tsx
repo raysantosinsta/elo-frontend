@@ -2,7 +2,7 @@
 'use client';
 
 import { api } from '@/services/api';
-import { Loader2, MapPin, Navigation } from 'lucide-react';
+import { Activity, Clock, Loader2, MapPin, Navigation } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -25,18 +25,23 @@ interface Task {
     title: string;
     description: string;
     status: string;
+    priority?: number; // Adicionado para exibir na tabela se quiser
     columnId: string; // IMPORTANTE: Adicionado para salvar na rota
-    taskAddress: TaskAddress; 
+    taskAddress: TaskAddress;
 }
 
 export default function RoutePlannerPage() {
+    const router = useRouter();
+
+    // --- ESTADOS ---
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
     const [userLocation, setUserLocation] = useState<{ lat: number, lng: number } | null>(null);
-
-    const router = useRouter();
+    
+    // Novo estado para controlar o critério de ordenação
+    const [orderBy, setOrderBy] = useState<'DISTANCE' | 'PRIORITY'>('DISTANCE');
 
     // 1. Fetch das Tarefas Disponíveis
     useEffect(() => {
@@ -69,14 +74,14 @@ export default function RoutePlannerPage() {
         }
     }, []);
 
-    // 3. Toggle de Seleção
+    // 3. Toggle de Seleção (Checkbox)
     const toggleSelection = (id: string) => {
         setSelectedTaskIds(prev =>
             prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
         );
     };
 
-    // 4. Calcular Rota
+    // 4. Calcular Rota (Action Principal)
     const handleStartRoute = async () => {
         if (!userLocation) {
             alert("Aguardando localização do GPS...");
@@ -93,13 +98,14 @@ export default function RoutePlannerPage() {
                 return;
             }
 
+            // Payload com o novo campo 'orderBy'
             const payload = {
                 taskIds: selectedTaskIds,
                 driverLatitude: userLocation.lat,
-                driverLongitude: userLocation.lng
+                driverLongitude: userLocation.lng,
+                orderBy: orderBy // 'DISTANCE' ou 'PRIORITY'
             };
 
-            // Ajuste a URL se necessário (localhost vs produção)
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
             
             const response = await fetch(`${apiUrl}/routes/calculate-best-path`, {
@@ -121,21 +127,21 @@ export default function RoutePlannerPage() {
 
             const optimizedRoute = await response.json();
 
-            // --- CORREÇÃO PRINCIPAL AQUI ---
-            // Salvamos o columnId e o taskAddress completo para o DriverPage usar
+            // Mapeia para o formato simplificado que o DriverPage espera,
+            // MAS preservando columnId e taskAddress completo
             const routeForDriver = optimizedRoute.map((t: Task) => ({
                 id: t.id,
                 title: t.title,
                 lat: t.taskAddress.latitude,
                 lng: t.taskAddress.longitude,
                 endereco: `${t.taskAddress.endereco}, ${t.taskAddress.numero}`,
-                // DADOS EXTRAS IMPORTANTES:
+                // Dados cruciais para a criação de nova tarefa no destino
                 columnId: t.columnId,
                 taskAddress: t.taskAddress
             }));
 
             localStorage.setItem('rotaAtiva', JSON.stringify(routeForDriver));
-            localStorage.removeItem('rotaIndex'); // Reseta o índice para começar da primeira
+            localStorage.removeItem('rotaIndex'); // Reseta o índice
             router.push('/driver');
 
         } catch (error) {
@@ -146,27 +152,68 @@ export default function RoutePlannerPage() {
         }
     };
 
+    // Helper para exibir prioridade na tabela
+    const getPriorityLabel = (p?: number) => {
+        if (p === 1) return <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">ALTA</span>;
+        if (p === 2) return <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">MÉDIA</span>;
+        return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">BAIXA</span>;
+    };
+
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-6">
-            <div className="flex justify-between items-center">
+            
+            {/* HEADER COM CONTROLES */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900">Planejador de Rotas</h1>
-                    <p className="text-slate-500">Selecione as tarefas. O servidor calculará o melhor trajeto.</p>
+                    <p className="text-slate-500">Defina a ordem e inicie o trajeto.</p>
                 </div>
 
-                <button
-                    onClick={handleStartRoute}
-                    disabled={selectedTaskIds.length < 1 || !userLocation || isOptimizing}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold shadow-lg transition-all ${selectedTaskIds.length > 0
-                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                    
+                    {/* BOTÕES DE ORDENAÇÃO */}
+                    <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                        <button
+                            onClick={() => setOrderBy('DISTANCE')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                orderBy === 'DISTANCE' 
+                                    ? 'bg-white text-blue-600 shadow-sm' 
+                                    : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                        >
+                            <Navigation size={16} /> Proximidade
+                        </button>
+                        <button
+                            onClick={() => setOrderBy('PRIORITY')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                orderBy === 'PRIORITY' 
+                                    ? 'bg-white text-orange-600 shadow-sm' 
+                                    : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                        >
+                            <Clock size={16} /> Prioridade
+                        </button>
+                    </div>
+
+                    {/* BOTÃO GERAR ROTA */}
+                    <button
+                        onClick={handleStartRoute}
+                        disabled={selectedTaskIds.length < 1 || !userLocation || isOptimizing}
+                        className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg font-bold shadow-lg transition-all ${
+                            selectedTaskIds.length > 0
+                                ? orderBy === 'DISTANCE' 
+                                    ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                                    : 'bg-orange-600 hover:bg-orange-700 text-white'
+                                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         }`}
-                >
-                    {isOptimizing ? <Loader2 className="animate-spin" /> : <Navigation size={20} />}
-                    {selectedTaskIds.length > 0 ? "Gerar Rota Otimizada" : "Selecione Tarefas"}
-                </button>
+                    >
+                        {isOptimizing ? <Loader2 className="animate-spin" /> : <Activity size={20} />}
+                        {selectedTaskIds.length > 0 ? "Iniciar Rota" : "Selecione..."}
+                    </button>
+                </div>
             </div>
 
+            {/* TABELA DE TAREFAS */}
             <div className="border rounded-lg shadow-sm bg-white overflow-hidden">
                 <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b">
@@ -175,13 +222,14 @@ export default function RoutePlannerPage() {
                             <th className="p-4 font-medium text-slate-700">Tarefa</th>
                             <th className="p-4 font-medium text-slate-700">Endereço</th>
                             <th className="p-4 font-medium text-slate-700">Bairro/Cidade</th>
+                            <th className="p-4 font-medium text-slate-700 w-24 text-center">Prioridade</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y">
                         {loading ? (
-                            <tr><td colSpan={4} className="p-8 text-center">Carregando tarefas disponíveis...</td></tr>
+                            <tr><td colSpan={5} className="p-8 text-center">Carregando tarefas disponíveis...</td></tr>
                         ) : tasks.length === 0 ? (
-                            <tr><td colSpan={4} className="p-8 text-center text-slate-500">Nenhuma tarefa pendente com endereço.</td></tr>
+                            <tr><td colSpan={5} className="p-8 text-center text-slate-500">Nenhuma tarefa pendente com endereço.</td></tr>
                         ) : (
                             tasks.map((task) => (
                                 <tr
@@ -199,14 +247,19 @@ export default function RoutePlannerPage() {
                                     </td>
                                     <td className="p-4 font-medium">
                                         {task.title}
-                                        <div className="text-xs text-slate-500">{task.description}</div>
+                                        <div className="text-xs text-slate-500 line-clamp-1">{task.description}</div>
                                     </td>
                                     <td className="p-4 flex items-center gap-2 text-slate-600">
-                                        <MapPin size={16} />
-                                        {task.taskAddress?.endereco}, {task.taskAddress?.numero}
+                                        <MapPin size={16} className="text-slate-400 flex-shrink-0" />
+                                        <span className="line-clamp-1">
+                                            {task.taskAddress?.endereco}, {task.taskAddress?.numero}
+                                        </span>
                                     </td>
                                     <td className="p-4 text-slate-600">
                                         {task.taskAddress?.bairro} - {task.taskAddress?.cidade}
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        {getPriorityLabel(task.priority)}
                                     </td>
                                 </tr>
                             ))
