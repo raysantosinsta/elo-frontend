@@ -87,9 +87,7 @@ export default function RoutePlannerPage() {
 
   // 3. Toggle de Seleção (Checkbox)
   const toggleSelection = (id: string) => {
-    // Se mudar a seleção, limpa o resumo anterior pois a rota mudou
     setRouteSummary(null);
-    
     setSelectedTaskIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
@@ -104,7 +102,7 @@ export default function RoutePlannerPage() {
 
     try {
       setIsOptimizing(true);
-      setRouteSummary(null); // Limpa status anterior
+      setRouteSummary(null);
       
       const token = localStorage.getItem('accessToken');
       if (!token) {
@@ -132,14 +130,11 @@ export default function RoutePlannerPage() {
 
       if (!response.ok) throw new Error('Erro ao calcular rota');
 
-      // --- AQUI A MÁGICA ACONTECE ---
       const data = await response.json();
       
-      // O backend agora retorna { route: Task[], stats: RouteStats }
       const optimizedRoute = data.route || []; 
       const stats = data.stats;
 
-      // Mapeia para o formato simplificado que o DriverPage consome
       const routeForDriver = optimizedRoute.map((t: Task) => ({
         id: t.id,
         title: t.title,
@@ -154,12 +149,16 @@ export default function RoutePlannerPage() {
       localStorage.setItem('rotaAtiva', JSON.stringify(routeForDriver));
       localStorage.removeItem('rotaIndex');
 
-      // Atualiza o estado com as estatísticas para mostrar na tela
+      // --- ATUALIZAÇÃO IMPORTANTE ---
+      // Salva a duração total prevista para usar no cronômetro do Driver
+      if (stats && stats.totalDurationSeconds) {
+          localStorage.setItem('rotaTotalDuration', String(stats.totalDurationSeconds));
+      }
+
       if (stats) {
         setRouteSummary(stats);
       } else {
-        // Fallback se não vier stats (navega direto)
-        router.push('/driver');
+        startNavigation(); // Se não tem stats, vai direto e inicia o timer lá
       }
 
     } catch (error) {
@@ -170,12 +169,14 @@ export default function RoutePlannerPage() {
     }
   };
 
-  // 5. Iniciar Navegação (Vai para a página do mapa)
+  // 5. Iniciar Navegação
   const startNavigation = () => {
+    // --- ATUALIZAÇÃO IMPORTANTE ---
+    // Marca o momento exato do início da rota para o cálculo regressivo
+    localStorage.setItem('rotaStartTime', new Date().toISOString());
     router.push('/driver');
   };
 
-  // Helper para exibir prioridade na tabela
   const getPriorityLabel = (p?: number) => {
     if (p === 1) return <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">ALTA</span>;
     if (p === 2) return <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">MÉDIA</span>;
@@ -185,7 +186,6 @@ export default function RoutePlannerPage() {
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
       
-      {/* HEADER COM CONTROLES */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Planejador de Rotas</h1>
@@ -193,8 +193,6 @@ export default function RoutePlannerPage() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-end sm:items-center">
-          
-          {/* BOTÕES DE ORDENAÇÃO */}
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button
               onClick={() => { setOrderBy('DISTANCE'); setRouteSummary(null); }}
@@ -220,7 +218,6 @@ export default function RoutePlannerPage() {
         </div>
       </div>
 
-      {/* --- CARD DE RESUMO DA ROTA (APARECE APÓS CALCULAR) --- */}
       {routeSummary && (
         <div className="bg-indigo-600 rounded-2xl p-6 text-white shadow-xl animate-in fade-in slide-in-from-top-4 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-4">
@@ -245,7 +242,6 @@ export default function RoutePlannerPage() {
         </div>
       )}
 
-      {/* BOTÃO DE AÇÃO PRINCIPAL (SE NÃO TIVER RESUMO) */}
       {!routeSummary && (
         <div className="flex justify-end">
             <button
@@ -263,7 +259,6 @@ export default function RoutePlannerPage() {
         </div>
       )}
 
-      {/* TABELA DE TAREFAS */}
       <div className="border rounded-xl shadow-sm bg-white overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 border-b">

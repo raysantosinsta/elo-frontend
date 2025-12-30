@@ -828,7 +828,7 @@ export default function ProductKanban() {
     return { label: "Low", style: "bg-indigo-100 text-indigo-700" };
   };
 
-  const TaskCard = ({ task }: { task: Task }) => {
+ const TaskCard = ({ task }: { task: Task }) => {
     const filesCount =
       task.taskImages.length + task.taskAudios.length + task.taskVideos.length;
     const cover = task.taskImages[0];
@@ -897,6 +897,19 @@ export default function ProductKanban() {
             </p>
           </div>
 
+          {/* --- NOVO: EXIBIÇÃO DO COMENTÁRIO FINAL --- */}
+          {task.finalComment && (
+            <div className="bg-amber-50 border border-amber-100 rounded-lg p-2.5">
+              <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wide block mb-1">
+                Comentário Final
+              </span>
+              <p className="text-xs text-slate-700 line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                {task.finalComment}
+              </p>
+            </div>
+          )}
+          {/* ------------------------------------------ */}
+
           {cover && (
             <div
               className="relative w-full h-32 rounded-lg overflow-hidden mt-1 cursor-pointer"
@@ -939,7 +952,7 @@ export default function ProductKanban() {
           </div>
 
           <div className="flex items-center justify-between mt-2">
-            {/* DATA DE VENCIMENTO (Já existente) */}
+            {/* DATA DE VENCIMENTO */}
             <div
               className={cn(
                 "flex items-center gap-2 text-xs font-medium",
@@ -956,7 +969,6 @@ export default function ProductKanban() {
 
             {/* ÁREA DOS BADGES (STATUS + PRIORIDADE) */}
             <div className="flex items-center gap-1.5">
-              {/* --- NOVO: BADGE DE STATUS --- */}
               <div
                 className={cn(
                   "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider",
@@ -966,7 +978,6 @@ export default function ProductKanban() {
                 {getStatusConfig(task.status).label}
               </div>
 
-              {/* PRIORIDADE (Já existente) */}
               <div
                 className={cn(
                   "px-2.5 py-0.5 rounded-md text-[10px] font-bold",
