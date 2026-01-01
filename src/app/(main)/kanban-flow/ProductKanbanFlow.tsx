@@ -24,7 +24,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-// 1. CORREÇÃO: Importar api diretamente, não do contexto
 import { api } from "@/services/api"; 
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -100,7 +99,6 @@ interface FlowItem {
   quantity: number;
   priority: number;
   status: string;
-  dueDate?: string;
   enteredAt: string;
   createdAt: string;
   updatedAt: string;
@@ -112,6 +110,11 @@ interface FlowItem {
   videos: FlowMedia[];
   flowId: string;
   description?: string;
+  
+  // Datas de Controle
+  dueDate?: string;            // Prazo (Meta)
+  productionStartedAt?: string; // Data inicio real
+  deliveryAt?: string;          // Data entrega real
 }
 interface ProductFlow {
   id: string;
@@ -152,7 +155,6 @@ const Toast = ({
 };
 
 export default function ProductFlowKanban() {
-  // 2. CORREÇÃO: Removemos 'api' daqui
   const { user, logout, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -199,10 +201,14 @@ export default function ProductFlowKanban() {
   const [itemOrderNumber, setItemOrderNumber] = useState("");
   const [itemProductRef, setItemProductRef] = useState("");
   const [itemQuantity, setItemQuantity] = useState("1");
-  const [itemDueDate, setItemDueDate] = useState("");
   const [itemAssignedTo, setItemAssignedTo] = useState("");
   const [itemPriority, setItemPriority] = useState("3");
   const [itemStage, setItemStage] = useState("");
+  
+  // Datas Criação
+  const [itemDueDate, setItemDueDate] = useState("");
+  const [itemProductionStart, setItemProductionStart] = useState("");
+  const [itemProductionDelivery, setItemProductionDelivery] = useState("");
 
   const [itemImages, setItemImages] = useState<File[]>([]);
   const [itemAudios, setItemAudios] = useState<File[]>([]);
@@ -214,11 +220,16 @@ export default function ProductFlowKanban() {
   const [editItemOrderNumber, setEditItemOrderNumber] = useState("");
   const [editItemProductRef, setEditItemProductRef] = useState("");
   const [editItemQuantity, setEditItemQuantity] = useState("1");
-  const [editItemDueDate, setEditItemDueDate] = useState("");
   const [editItemAssignedTo, setEditItemAssignedTo] = useState("");
   const [editItemPriority, setEditItemPriority] = useState("3");
   const [editItemStatus, setEditItemStatus] = useState("PENDENTE");
   const [editItemStage, setEditItemStage] = useState("");
+  
+  // Datas Edição
+  const [editItemDueDate, setEditItemDueDate] = useState("");
+  const [editItemProductionStart, setEditItemProductionStart] = useState("");
+  const [editItemProductionDelivery, setEditItemProductionDelivery] = useState("");
+
   const [editItemImages, setEditItemImages] = useState<File[]>([]);
   const [editItemAudios, setEditItemAudios] = useState<File[]>([]);
   const [editItemVideos, setEditItemVideos] = useState<File[]>([]);
@@ -417,9 +428,13 @@ export default function ProductFlowKanban() {
         productRef: itemProductRef || "SEM-REF",
         quantity: parseInt(itemQuantity) || 1,
         priority: parseInt(itemPriority) || 3,
-        dueDate: itemDueDate ? new Date(itemDueDate).toISOString() : undefined,
         assignedToId: itemAssignedTo || undefined,
         stageId: itemStage || undefined,
+        
+        // Datas
+        dueDate: itemDueDate ? new Date(itemDueDate).toISOString() : undefined,
+        productionStartedAt: itemProductionStart ? new Date(itemProductionStart).toISOString() : undefined,
+        deliveryAt: itemProductionDelivery ? new Date(itemProductionDelivery).toISOString() : undefined,
       };
       
       const { data: responseData } = await api.post(`/flow/${selectedFlow}/items`, itemData);
@@ -449,9 +464,13 @@ export default function ProductFlowKanban() {
           productRef: editItemProductRef,
           quantity: parseInt(editItemQuantity),
           priority: parseInt(editItemPriority),
-          dueDate: editItemDueDate || undefined,
           assignedToId: editItemAssignedTo,
           stageId: editItemStage,
+          
+          // Datas
+          dueDate: editItemDueDate || undefined,
+          productionStartedAt: editItemProductionStart ? new Date(editItemProductionStart).toISOString() : undefined,
+          deliveryAt: editItemProductionDelivery ? new Date(editItemProductionDelivery).toISOString() : undefined,
       });
 
       await removeMarkedMedia();
@@ -620,7 +639,11 @@ export default function ProductFlowKanban() {
     } else {
       setItemStage("");
     }
+    // Reset datas
     setItemDueDate("");
+    setItemProductionStart("");
+    setItemProductionDelivery("");
+    
     setItemAssignedTo("");
     setItemPriority("3");
     setItemImages([]);
@@ -635,7 +658,12 @@ export default function ProductFlowKanban() {
     setEditItemOrderNumber("");
     setEditItemProductRef("");
     setEditItemQuantity("1");
+    
+    // Reset datas
     setEditItemDueDate("");
+    setEditItemProductionStart("");
+    setEditItemProductionDelivery("");
+    
     setEditItemAssignedTo("");
     setEditItemPriority("3");
     setEditItemStatus("PENDENTE");
@@ -664,13 +692,21 @@ export default function ProductFlowKanban() {
     setEditItemPriority(item.priority.toString());
 
     if (item.dueDate) {
-      const dateObj = new Date(item.dueDate);
-      const yyyy = dateObj.getFullYear();
-      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const dd = String(dateObj.getDate()).padStart(2, '0');
-      setEditItemDueDate(`${yyyy}-${mm}-${dd}`);
+      setEditItemDueDate(new Date(item.dueDate).toISOString().split('T')[0]);
     } else {
       setEditItemDueDate("");
+    }
+
+    if (item.productionStartedAt) {
+      setEditItemProductionStart(new Date(item.productionStartedAt).toISOString().split('T')[0]);
+    } else {
+      setEditItemProductionStart("");
+    }
+
+    if (item.deliveryAt) {
+      setEditItemProductionDelivery(new Date(item.deliveryAt).toISOString().split('T')[0]);
+    } else {
+      setEditItemProductionDelivery("");
     }
 
     setEditItemStatus(item.status);
@@ -888,8 +924,24 @@ export default function ProductFlowKanban() {
                 className="text-xs flex items-center gap-1"
                 style={{ color: THEME.colors.secondaryText }}
               >
-                <CalendarClock size={12} /> Data de Entrega:{" "}
+                <CalendarClock size={12} /> Prazo (Meta):{" "}
                 {new Date(item.dueDate).toLocaleDateString()}
+              </span>
+            )}
+             {item.productionStartedAt && (
+              <span
+                className="text-xs flex items-center gap-1 text-blue-600 font-medium"
+              >
+                <Factory size={12} /> Início Produção:{" "}
+                {new Date(item.productionStartedAt).toLocaleDateString()}
+              </span>
+            )}
+             {item.deliveryAt && (
+              <span
+                className="text-xs flex items-center gap-1 text-green-600 font-medium"
+              >
+                <CheckCircle2 size={12} /> Entrega Realizada:{" "}
+                {new Date(item.deliveryAt).toLocaleDateString()}
               </span>
             )}
           </div>
@@ -1304,8 +1356,34 @@ export default function ProductFlowKanban() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
+                <Label>Prazo (Meta)</Label>
+                <Input
+                  type="date"
+                  value={itemDueDate}
+                  onChange={(e) => setItemDueDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Início Produção</Label>
+                <Input
+                  type="date"
+                  value={itemProductionStart}
+                  onChange={(e) => setItemProductionStart(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Entrega Produção</Label>
+                <Input
+                  type="date"
+                  value={itemProductionDelivery}
+                  onChange={(e) => setItemProductionDelivery(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
                 <Label>Responsável</Label>
                 <select
                   className="w-full border rounded-md p-2 text-sm bg-white"
@@ -1319,15 +1397,6 @@ export default function ProductFlowKanban() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="space-y-2">
-                <Label>Data de Entrega</Label>
-                <Input
-                  type="date"
-                  value={itemDueDate}
-                  onChange={(e) => setItemDueDate(e.target.value)}
-                />
-              </div>
             </div>
 
             {/* UPLOAD IMAGENS */}
@@ -1534,14 +1603,49 @@ export default function ProductFlowKanban() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Data de Entrega</Label>
+                  <Label>Responsável</Label>
+                  <select
+                    className="w-full border rounded-md p-2 text-sm bg-white"
+                    value={editItemAssignedTo}
+                    onChange={(e) => setEditItemAssignedTo(e.target.value)}
+                  >
+                    <option value="">Selecione...</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 pt-2">
+                 <div className="space-y-2">
+                  <Label>Prazo (Meta)</Label>
                   <Input
                     type="date"
                     value={editItemDueDate}
                     onChange={(e) => setEditItemDueDate(e.target.value)}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label>Início Produção</Label>
+                  <Input
+                    type="date"
+                    value={editItemProductionStart}
+                    onChange={(e) => setEditItemProductionStart(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Entrega Produção</Label>
+                  <Input
+                    type="date"
+                    value={editItemProductionDelivery}
+                    onChange={(e) => setEditItemProductionDelivery(e.target.value)}
+                  />
+                </div>
               </div>
+
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Qtd</Label>
@@ -1853,17 +1957,24 @@ export default function ProductFlowKanban() {
                     <span>
                       {new Date(previewItem.createdAt).toLocaleDateString()}
                     </span>
-                    <span className="text-gray-500">Data de Entrega:</span>
-                    <span
-                      className={
-                        previewItem.dueDate &&
-                          new Date(previewItem.dueDate) < new Date()
-                          ? "text-red-500 font-bold"
-                          : ""
-                      }
-                    >
-                      {previewItem.dueDate
-                        ? new Date(previewItem.dueDate).toLocaleDateString()
+                    
+                    {/* DATAS NOVAS E EXISTENTES */}
+                    <span className="text-gray-500">Prazo (Meta):</span>
+                    <span className={previewItem.dueDate && new Date(previewItem.dueDate) < new Date() ? "text-red-500 font-bold" : ""}>
+                      {previewItem.dueDate ? new Date(previewItem.dueDate).toLocaleDateString() : "-"}
+                    </span>
+
+                    <span className="text-gray-500">Início Produção:</span>
+                    <span className="text-blue-600 font-medium">
+                      {previewItem.productionStartedAt 
+                        ? new Date(previewItem.productionStartedAt).toLocaleDateString() 
+                        : "-"}
+                    </span>
+
+                    <span className="text-gray-500">Entrega Realizada:</span>
+                    <span className="text-green-600 font-medium">
+                      {previewItem.deliveryAt 
+                        ? new Date(previewItem.deliveryAt).toLocaleDateString() 
                         : "-"}
                     </span>
                   </div>

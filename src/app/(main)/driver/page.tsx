@@ -1,22 +1,21 @@
 // app/driver/page.tsx
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { api } from "@/services/api";
 import {
+  AlertTriangle,
   ArrowLeft,
   CheckCircle,
+  Clock // Importado ícone Clock
+  ,
   Loader2,
   MapPin,
-  AlertTriangle,
-  PlusCircle,
-  Calendar,
-  Play,
   Navigation,
-  Clock // Importado ícone Clock
+  Play
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import { api } from "@/services/api";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 const DriverMap = dynamic(() => import("@/components/DriverMap"), {
   ssr: false,
