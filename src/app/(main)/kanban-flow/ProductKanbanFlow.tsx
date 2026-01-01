@@ -154,6 +154,12 @@ const Toast = ({
   );
 };
 
+// Função auxiliar para formatar data ignorando o timezone local (usa UTC)
+const formatDateUTC = (dateString?: string) => {
+    if (!dateString) return "-";
+    return new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+};
+
 export default function ProductFlowKanban() {
   const { user, logout, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -925,7 +931,7 @@ export default function ProductFlowKanban() {
                 style={{ color: THEME.colors.secondaryText }}
               >
                 <CalendarClock size={12} /> Prazo (Meta):{" "}
-                {new Date(item.dueDate).toLocaleDateString()}
+                {formatDateUTC(item.dueDate)}
               </span>
             )}
              {item.productionStartedAt && (
@@ -933,7 +939,7 @@ export default function ProductFlowKanban() {
                 className="text-xs flex items-center gap-1 text-blue-600 font-medium"
               >
                 <Factory size={12} /> Início Produção:{" "}
-                {new Date(item.productionStartedAt).toLocaleDateString()}
+                {formatDateUTC(item.productionStartedAt)}
               </span>
             )}
              {item.deliveryAt && (
@@ -941,7 +947,7 @@ export default function ProductFlowKanban() {
                 className="text-xs flex items-center gap-1 text-green-600 font-medium"
               >
                 <CheckCircle2 size={12} /> Entrega Realizada:{" "}
-                {new Date(item.deliveryAt).toLocaleDateString()}
+                {formatDateUTC(item.deliveryAt)}
               </span>
             )}
           </div>
@@ -1955,27 +1961,23 @@ export default function ProductFlowKanban() {
                     <span>{previewItem.priority}</span>
                     <span className="text-gray-500">Criado em:</span>
                     <span>
-                      {new Date(previewItem.createdAt).toLocaleDateString()}
+                      {formatDateUTC(previewItem.createdAt)}
                     </span>
                     
                     {/* DATAS NOVAS E EXISTENTES */}
                     <span className="text-gray-500">Prazo (Meta):</span>
                     <span className={previewItem.dueDate && new Date(previewItem.dueDate) < new Date() ? "text-red-500 font-bold" : ""}>
-                      {previewItem.dueDate ? new Date(previewItem.dueDate).toLocaleDateString() : "-"}
+                      {formatDateUTC(previewItem.dueDate)}
                     </span>
 
                     <span className="text-gray-500">Início Produção:</span>
                     <span className="text-blue-600 font-medium">
-                      {previewItem.productionStartedAt 
-                        ? new Date(previewItem.productionStartedAt).toLocaleDateString() 
-                        : "-"}
+                      {formatDateUTC(previewItem.productionStartedAt)}
                     </span>
 
                     <span className="text-gray-500">Entrega Realizada:</span>
                     <span className="text-green-600 font-medium">
-                      {previewItem.deliveryAt 
-                        ? new Date(previewItem.deliveryAt).toLocaleDateString() 
-                        : "-"}
+                      {formatDateUTC(previewItem.deliveryAt)}
                     </span>
                   </div>
                 </div>

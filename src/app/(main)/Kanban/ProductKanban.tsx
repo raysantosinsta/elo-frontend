@@ -55,6 +55,7 @@ import {
   UploadCloud,
   User,
   X,
+  Filter
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -132,6 +133,12 @@ export default function ProductKanban() {
   const [users, setUsers] = useState<Professional[]>([]);
   const [loading, setLoading] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // --- ESTADOS DOS FILTROS ---
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterAssignedTo, setFilterAssignedTo] = useState("all");
+  const [filterHasLocation, setFilterHasLocation] = useState(false);
 
   // Modais
   const [isColumnModal, setIsColumnModal] = useState(false);
@@ -336,7 +343,7 @@ export default function ProductKanban() {
     }
   };
 
-  // --- FETCH DATA (USANDO API AXIOS) ---
+  // --- FETCH DATA ---
   const fetchColumns = useCallback(async () => {
     try {
       const { data } = await api.get("/kanban-columns");
@@ -356,16 +363,30 @@ export default function ProductKanban() {
 
   const fetchTasks = useCallback(async () => {
     try {
-      const { data } = await api.get("/tasks", { params: { limit: 100 } });
+      const params: any = { limit: 100 };
+      
+      if (filterStartDate) params.startDate = new Date(filterStartDate).toISOString();
+      if (filterEndDate) params.endDate = new Date(filterEndDate).toISOString();
+      if (filterAssignedTo && filterAssignedTo !== "all") {
+        params.assignedToId = filterAssignedTo;
+      }
+      if (filterHasLocation) {
+        params.hasLocation = "true";
+      }
+
+      const { data } = await api.get("/tasks", { params });
+      
       let tasksArray = [];
       if (data.data && Array.isArray(data.data)) tasksArray = data.data;
       else if (Array.isArray(data)) tasksArray = data;
       else if (data.tasks && Array.isArray(data.tasks)) tasksArray = data.tasks;
+      
       setTasks(tasksArray);
     } catch (err) {
       setTasks([]);
+      toast.error("Erro ao carregar ou filtrar tarefas");
     }
-  }, []);
+  }, [filterStartDate, filterEndDate, filterAssignedTo, filterHasLocation]);
 
   const fetchUsers = useCallback(async () => {
     if (!user?.company?.id) return;
@@ -466,8 +487,6 @@ export default function ProductKanban() {
   const refreshTask = useCallback(async (taskId: string) => {
     try {
       const { data: updated } = await api.get(`/tasks/${taskId}`);
-      // Se necessário ajustar URL, o interceptor da API não muda o body da resposta,
-      // então sua lógica de ajuste de URL relativa continua válida se o backend não retornar URL absoluta.
       const API_URL =
         process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
@@ -587,7 +606,6 @@ export default function ProductKanban() {
       formData.append("scheduledAt", new Date(taskScheduledDate).toISOString());
     if (taskFinalComment) formData.append("finalComment", taskFinalComment);
 
-    // Endereço + Lat/Long
     if (taskZip && taskStreet && taskNumber) {
       formData.append(
         "address",
@@ -610,7 +628,6 @@ export default function ProductKanban() {
     taskVideos.forEach((f) => formData.append("videos", f));
 
     try {
-      // Axios lida automaticamente com FormData
       const { data: newTask } = await api.post("/tasks", formData);
       setTasks((prev) => [newTask, ...prev]);
       resetTaskForm();
@@ -667,7 +684,6 @@ export default function ProductKanban() {
       let updated = responseData;
 
       if (editTaskZip && editTaskStreet && editTaskNumber) {
-        // Atualiza endereço via POST (conforme seu código original)
         await api.post(`/tasks/${editingTask.id}/address`, {
           cep: editTaskZip,
           endereco: editTaskStreet,
@@ -682,7 +698,6 @@ export default function ProductKanban() {
             : undefined,
         });
 
-        // Refresh após salvar endereço
         const { data: refreshData } = await api.get(`/tasks/${editingTask.id}`);
         updated = refreshData;
       }
@@ -897,7 +912,7 @@ export default function ProductKanban() {
             </p>
           </div>
 
-          {/* --- NOVO: EXIBIÇÃO DO COMENTÁRIO FINAL --- */}
+          {/* --- EXIBIÇÃO DO COMENTÁRIO FINAL --- */}
           {task.finalComment && (
             <div className="bg-amber-50 border border-amber-100 rounded-lg p-2.5">
               <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wide block mb-1">
@@ -908,7 +923,6 @@ export default function ProductKanban() {
               </p>
             </div>
           )}
-          {/* ------------------------------------------ */}
 
           {cover && (
             <div
@@ -951,25 +965,35 @@ export default function ProductKanban() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between mt-2">
-            {/* DATA DE VENCIMENTO */}
-            <div
-              className={cn(
-                "flex items-center gap-2 text-xs font-medium",
-                isOverdue(task.dueDate || "") && task.status !== "COMPLETED"
-                  ? "text-rose-500"
-                  : "text-slate-400"
-              )}
-            >
-              <Flag className="w-3.5 h-3.5" />{" "}
-              <span>
-                {task.dueDate ? formatDateShort(task.dueDate) : "Sem prazo"}
-              </span>
+          {/* --- NOVOS CAMPOS DE DATA COM TOOLTIPS DETALHADOS --- */}
+          <div className="flex items-end justify-between mt-3 gap-2">
+            {/* Coluna de Datas */}
+            <div className="flex flex-col gap-1.5 shrink-0">
+               {/* Agendado */}
+               <div 
+                 className="flex items-center gap-1.5 text-xs text-slate-600 "
+                 title={task.scheduledDate ? `Agendado para: ${formatDateTime(task.scheduledDate)}` : "Não agendado"}
+               >
+                 <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                 <span className="font-medium">{task.scheduledDate ? formatDateShort(task.scheduledDate) : "S/ Data"}</span>
+               </div>
+               
+               {/* Prazo */}
+               <div 
+                 className={cn(
+                   "flex items-center gap-1.5 text-xs font-medium ",
+                   isOverdue(task.dueDate || "") && task.status !== "COMPLETED" ? "text-rose-600" : "text-slate-400"
+                 )} 
+                 title={task.dueDate ? `Prazo Final: ${formatDateTime(task.dueDate)}` : "Sem prazo definido"}
+               >
+                 <Flag className="w-3.5 h-3.5" />
+                 <span>{task.dueDate ? formatDateShort(task.dueDate) : "S/ Prazo"}</span>
+               </div>
             </div>
 
-            {/* ÁREA DOS BADGES (STATUS + PRIORIDADE) */}
-            <div className="flex items-center gap-1.5">
-              <div
+            {/* Coluna de Badges (Status + Prioridade) */}
+            <div className="flex flex-col items-end gap-1">
+               <div
                 className={cn(
                   "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider",
                   getStatusConfig(task.status).style
@@ -1065,6 +1089,93 @@ export default function ProductKanban() {
           </div>
         </div>
       </header>
+
+      {/* BARRA DE FILTROS AVANÇADOS */}
+      <div className="bg-white border-b border-slate-200 px-4 py-3 shadow-sm z-10 sticky top-0 md:static">
+        <div className="flex flex-col md:flex-row md:items-center gap-4 max-w-[1920px] mx-auto w-full">
+          
+          <div className="flex items-center gap-2 text-sm text-slate-500 font-medium min-w-fit">
+            <Filter className="w-4 h-4" /> Filtros:
+          </div>
+
+          {/* Filtro de Data */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+            <div className="grid gap-1">
+              <label className="text-[10px] uppercase font-bold text-slate-400">De</label>
+              <Input 
+                type="date" 
+                className="h-8 text-xs w-32 md:w-36" 
+                value={filterStartDate}
+                onChange={(e) => setFilterStartDate(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-[10px] uppercase font-bold text-slate-400">Até</label>
+              <Input 
+                type="date" 
+                className="h-8 text-xs w-32 md:w-36" 
+                value={filterEndDate}
+                onChange={(e) => setFilterEndDate(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="w-px h-8 bg-slate-200 hidden md:block"></div>
+
+          {/* Filtro de Responsável */}
+          <div className="grid gap-1 min-w-[150px] md:max-w-[200px]">
+            <label className="text-[10px] uppercase font-bold text-slate-400">Responsável</label>
+            <select
+              className="flex h-8 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={filterAssignedTo}
+              onChange={(e) => setFilterAssignedTo(e.target.value)}
+            >
+              <option value="all">Todos</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="w-px h-8 bg-slate-200 hidden md:block"></div>
+
+          {/* Filtro de Geolocalização */}
+          <div className="flex items-center gap-2 h-full pt-4 md:pt-0">
+             <Button
+                variant={filterHasLocation ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterHasLocation(!filterHasLocation)}
+                className={cn(
+                  "text-xs h-8 border-dashed transition-all w-full md:w-auto",
+                  filterHasLocation ? "bg-indigo-600 hover:bg-indigo-700 border-indigo-600 text-white" : "border-slate-300 text-slate-600"
+                )}
+             >
+                <MapPin className={cn("w-3.5 h-3.5 mr-2", filterHasLocation ? "text-white" : "text-indigo-500")} />
+                {filterHasLocation ? "Remover filtro ocalização" : "Filtrar por Localização"}
+             </Button>
+          </div>
+
+          {/* Botão Limpar */}
+          {(filterStartDate || filterEndDate || filterAssignedTo !== "all" || filterHasLocation) && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-8 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 ml-auto"
+              onClick={() => {
+                setFilterStartDate("");
+                setFilterEndDate("");
+                setFilterAssignedTo("all");
+                setFilterHasLocation(false);
+              }}
+            >
+              <X className="w-3.5 h-3.5 mr-1" /> Limpar Filtros
+            </Button>
+          )}
+
+        </div>
+      </div>
 
       {/* BOARD */}
       <main className="flex-1 overflow-x-auto p-4 md:p-6">
@@ -1583,45 +1694,6 @@ export default function ProductKanban() {
                 className="bg-[#D35400] text-white"
               >
                 {isSubmitting ? "Salvando..." : "Salvar"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* --- MODAL COLUNA --- */}
-      <Dialog open={isColumnModal} onOpenChange={setIsColumnModal}>
-        <DialogContent className="sm:max-w-[425px]">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              editingCol ? updateColumn() : createColumn();
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>
-                {editingCol ? "Renomear" : "Nova Coluna"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Título</Label>
-                <Input
-                  value={colTitle}
-                  onChange={(e) => setColTitle(e.target.value)}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsColumnModal(false)}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" className="bg-[#2C3E50] text-white">
-                Salvar
               </Button>
             </DialogFooter>
           </form>

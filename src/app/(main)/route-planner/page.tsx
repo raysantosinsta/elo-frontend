@@ -2,9 +2,10 @@
 'use client';
 
 import { api } from '@/services/api';
-import { Activity, Clock, Loader2, MapPin, Navigation, Timer, Car } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext'; // Importando contexto de autenticação
+import { Activity, Clock, Loader2, MapPin, Navigation, Timer, Car, Filter, X, User, Calendar } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 // --- TIPAGEM ---
 interface TaskAddress {
@@ -20,6 +21,11 @@ interface TaskAddress {
   longitude: number;
 }
 
+interface Professional {
+  id: string;
+  name: string;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -28,6 +34,7 @@ interface Task {
   priority?: number;
   columnId: string;
   taskAddress: TaskAddress;
+  assignedTo?: Professional; // Adicionado para visualização (opcional)
 }
 
 interface RouteStats {
@@ -39,6 +46,7 @@ interface RouteStats {
 
 export default function RoutePlannerPage() {
   const router = useRouter();
+  const { user } = useAuth(); // Usando user do contexto para pegar companyId
 
   // --- ESTADOS ---
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -46,35 +54,68 @@ export default function RoutePlannerPage() {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  
+  // --- ESTADOS DOS FILTROS ---
+  const [users, setUsers] = useState<Professional[]>([]);
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterAssignedTo, setFilterAssignedTo] = useState("all");
 
   // Controle de Ordenação
   const [orderBy, setOrderBy] = useState<'DISTANCE' | 'PRIORITY'>('DISTANCE');
 
-  // NOVO: Resumo da Rota (Tempo e Distância)
+  // Resumo da Rota (Tempo e Distância)
   const [routeSummary, setRouteSummary] = useState<RouteStats | null>(null);
 
-  // 1. Fetch das Tarefas Disponíveis
+  // 1. Carregar Lista de Usuários (Para o Filtro)
   useEffect(() => {
-    async function fetchAvailableTasks() {
+    async function fetchUsers() {
+      if (!user?.company?.id) return;
       try {
-        const { data } = await api.get('/routes/available-tasks');
-        if (Array.isArray(data)) {
-          setTasks(data);
-        } else {
-          setTasks([]);
-        }
-      } catch (error: any) {
-        console.error('Erro ao buscar tarefas', error);
-        const message = error.response?.data?.message || 'Erro ao buscar tarefas';
-        alert(message);
-      } finally {
-        setLoading(false);
+        const { data } = await api.get(`/users/company/${user.company.id}`);
+        setUsers(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Erro ao buscar usuários", err);
       }
     }
-    fetchAvailableTasks();
-  }, [router]);
+    fetchUsers();
+  }, [user?.company?.id]);
 
-  // 2. Pegar Geolocalização
+  // 2. Fetch das Tarefas Disponíveis (Com Filtros)
+  const fetchAvailableTasks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: any = {};
+
+      if (filterStartDate) params.startDate = new Date(filterStartDate).toISOString();
+      if (filterEndDate) params.endDate = new Date(filterEndDate).toISOString();
+      if (filterAssignedTo && filterAssignedTo !== "all") {
+        params.assignedToId = filterAssignedTo;
+      }
+
+      const { data } = await api.get('/routes/available-tasks', { params });
+      
+      if (Array.isArray(data)) {
+        setTasks(data);
+      } else {
+        setTasks([]);
+      }
+    } catch (error: any) {
+      console.error('Erro ao buscar tarefas', error);
+      const message = error.response?.data?.message || 'Erro ao buscar tarefas';
+      // Sugestão: Usar toast aqui ao invés de alert para melhor UX
+      // alert(message); 
+    } finally {
+      setLoading(false);
+    }
+  }, [filterStartDate, filterEndDate, filterAssignedTo]);
+
+  // Dispara a busca quando os filtros mudam
+  useEffect(() => {
+    fetchAvailableTasks();
+  }, [fetchAvailableTasks]);
+
+  // 3. Pegar Geolocalização
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -85,7 +126,7 @@ export default function RoutePlannerPage() {
     }
   }, []);
 
-  // 3. Toggle de Seleção (Checkbox)
+  // 4. Toggle de Seleção (Checkbox)
   const toggleSelection = (id: string) => {
     setRouteSummary(null);
     setSelectedTaskIds((prev) =>
@@ -93,7 +134,7 @@ export default function RoutePlannerPage() {
     );
   };
 
-  // 4. Calcular Rota (Comunicação com Backend)
+  // 5. Calcular Rota (Comunicação com Backend)
   const handleCalculateRoute = async () => {
     if (!userLocation) {
       alert('Aguardando localização do GPS...');
@@ -149,8 +190,7 @@ export default function RoutePlannerPage() {
       localStorage.setItem('rotaAtiva', JSON.stringify(routeForDriver));
       localStorage.removeItem('rotaIndex');
 
-      // --- ATUALIZAÇÃO IMPORTANTE ---
-      // Salva a duração total prevista para usar no cronômetro do Driver
+      // Salva a duração total prevista
       if (stats && stats.totalDurationSeconds) {
           localStorage.setItem('rotaTotalDuration', String(stats.totalDurationSeconds));
       }
@@ -158,7 +198,7 @@ export default function RoutePlannerPage() {
       if (stats) {
         setRouteSummary(stats);
       } else {
-        startNavigation(); // Se não tem stats, vai direto e inicia o timer lá
+        startNavigation();
       }
 
     } catch (error) {
@@ -169,10 +209,8 @@ export default function RoutePlannerPage() {
     }
   };
 
-  // 5. Iniciar Navegação
+  // 6. Iniciar Navegação
   const startNavigation = () => {
-    // --- ATUALIZAÇÃO IMPORTANTE ---
-    // Marca o momento exato do início da rota para o cálculo regressivo
     localStorage.setItem('rotaStartTime', new Date().toISOString());
     router.push('/driver');
   };
@@ -186,6 +224,7 @@ export default function RoutePlannerPage() {
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
       
+      {/* CABEÇALHO */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Planejador de Rotas</h1>
@@ -218,6 +257,78 @@ export default function RoutePlannerPage() {
         </div>
       </div>
 
+      {/* ÁREA DE FILTROS */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex flex-col md:flex-row gap-4 items-end md:items-center">
+            
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 mr-2">
+                <Filter size={18} />
+                Filtros:
+            </div>
+
+            {/* Filtro Data Inicial */}
+            <div className="flex flex-col gap-1 w-full md:w-auto">
+                <label className="text-[10px] uppercase font-bold text-slate-400">Data Inicial</label>
+                <div className="relative">
+                    <input 
+                        type="date" 
+                        value={filterStartDate}
+                        onChange={(e) => setFilterStartDate(e.target.value)}
+                        className="w-full md:w-40 pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <Calendar size={14} className="absolute left-2.5 top-3 text-slate-400" />
+                </div>
+            </div>
+
+            {/* Filtro Data Final */}
+            <div className="flex flex-col gap-1 w-full md:w-auto">
+                <label className="text-[10px] uppercase font-bold text-slate-400">Data Final</label>
+                <div className="relative">
+                    <input 
+                        type="date" 
+                        value={filterEndDate}
+                        onChange={(e) => setFilterEndDate(e.target.value)}
+                        className="w-full md:w-40 pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <Calendar size={14} className="absolute left-2.5 top-3 text-slate-400" />
+                </div>
+            </div>
+
+            {/* Filtro Responsável */}
+            <div className="flex flex-col gap-1 w-full md:w-auto min-w-[200px]">
+                <label className="text-[10px] uppercase font-bold text-slate-400">Responsável</label>
+                <div className="relative">
+                    <select
+                        value={filterAssignedTo}
+                        onChange={(e) => setFilterAssignedTo(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="all">Todos os responsáveis</option>
+                        {users.map((u) => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                    </select>
+                    <User size={14} className="absolute left-2.5 top-3 text-slate-400" />
+                </div>
+            </div>
+
+            {/* Botão Limpar Filtros */}
+            {(filterStartDate || filterEndDate || filterAssignedTo !== "all") && (
+                <button
+                    onClick={() => {
+                        setFilterStartDate("");
+                        setFilterEndDate("");
+                        setFilterAssignedTo("all");
+                    }}
+                    className="mb-0.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1"
+                >
+                    <X size={16} /> Limpar
+                </button>
+            )}
+        </div>
+      </div>
+
+      {/* RESUMO DA ROTA GERADA */}
       {routeSummary && (
         <div className="bg-indigo-600 rounded-2xl p-6 text-white shadow-xl animate-in fade-in slide-in-from-top-4 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-4">
@@ -242,6 +353,7 @@ export default function RoutePlannerPage() {
         </div>
       )}
 
+      {/* BOTÃO DE CALCULAR (só aparece se não tiver rota gerada) */}
       {!routeSummary && (
         <div className="flex justify-end">
             <button
@@ -259,6 +371,7 @@ export default function RoutePlannerPage() {
         </div>
       )}
 
+      {/* TABELA DE TAREFAS */}
       <div className="border rounded-xl shadow-sm bg-white overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 border-b">
@@ -283,7 +396,7 @@ export default function RoutePlannerPage() {
             ) : tasks.length === 0 ? (
               <tr>
                 <td colSpan={5} className="p-8 text-center text-slate-500">
-                  Nenhuma tarefa pendente com endereço cadastrado.
+                  Nenhuma tarefa encontrada com os filtros selecionados.
                 </td>
               </tr>
             ) : (
@@ -308,6 +421,12 @@ export default function RoutePlannerPage() {
                     {task.description && (
                         <div className="text-xs text-slate-500 line-clamp-1 mt-0.5">{task.description}</div>
                     )}
+                    {/* Se quiser mostrar o responsável na tabela, descomente abaixo: */}
+                    {/* {task.assignedTo && (
+                        <div className="text-[10px] text-indigo-600 flex items-center gap-1 mt-1">
+                            <User size={10} /> {task.assignedTo.name}
+                        </div>
+                    )} */}
                   </td>
                   <td className="p-4 text-slate-600">
                     <div className="flex items-center gap-2">
