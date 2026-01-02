@@ -19,13 +19,20 @@ export const api = axios.create({
 
 // --- 1. Interceptador de Request ---
 api.interceptors.request.use((config) => {
-  // Tenta pegar token dos cookies (funciona melhor com SSR/Next) ou localStorage
-  const { access_token: token } = parseCookies();
-  // OU: const token = localStorage.getItem("accessToken");
+  // 1. Tenta pegar do Cookie (nookies) - Prioridade para SSR/Next
+  const { access_token: cookieToken } = parseCookies();
+
+  // 2. Tenta pegar do LocalStorage (fallback) - Garantia para Client Side
+  const localToken =
+    typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+
+  // Usa o que encontrar
+  const token = cookieToken || localToken;
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
   return config;
 });
 

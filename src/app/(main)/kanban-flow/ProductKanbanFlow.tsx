@@ -53,6 +53,8 @@ import {
   X,
   FileAudio,
   CalendarClock,
+  Filter, 
+  Search
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -112,10 +114,15 @@ interface FlowItem {
   description?: string;
   
   // Datas de Controle
-  dueDate?: string;            // Prazo (Meta)
-  productionStartedAt?: string; // Data inicio real
-  deliveryAt?: string;          // Data entrega real
+  dueDate?: string;            
+  productionStartedAt?: string; 
+  deliveryAt?: string;          
+  
+  // Fornecedores / Terceirização
+  supplierId?: string;
+  supplier?: { id: string; name: string; category?: string };
 }
+
 interface ProductFlow {
   id: string;
   name: string;
@@ -168,6 +175,7 @@ export default function ProductFlowKanban() {
   const [selectedFlow, setSelectedFlow] = useState<string>("");
   const [currentFlow, setCurrentFlow] = useState<ProductFlow | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]); // Lista de fornecedores
   const [loading, setLoading] = useState(true);
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -190,6 +198,13 @@ export default function ProductFlowKanban() {
   const [isDeleteStageModal, setIsDeleteStageModal] = useState(false);
   const [isDeleteFlowModal, setIsDeleteFlowModal] = useState(false);
 
+  // Estados de Filtro Avançado
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterDateType, setFilterDateType] = useState("dueDate");
+  const [filterOnlyOutsourced, setFilterOnlyOutsourced] = useState(false);
+  const [filteredItems, setFilteredItems] = useState<FlowItem[] | null>(null); // Se != null, mostra lista ao invés de kanban
+
   // Seleções
   const [stageToDelete, setStageToDelete] = useState<FlowStage | null>(null);
   const [previewItem, setPreviewItem] = useState<FlowItem | null>(null);
@@ -208,6 +223,7 @@ export default function ProductFlowKanban() {
   const [itemProductRef, setItemProductRef] = useState("");
   const [itemQuantity, setItemQuantity] = useState("1");
   const [itemAssignedTo, setItemAssignedTo] = useState("");
+  const [itemSupplier, setItemSupplier] = useState(""); // Novo campo
   const [itemPriority, setItemPriority] = useState("3");
   const [itemStage, setItemStage] = useState("");
   
@@ -227,6 +243,7 @@ export default function ProductFlowKanban() {
   const [editItemProductRef, setEditItemProductRef] = useState("");
   const [editItemQuantity, setEditItemQuantity] = useState("1");
   const [editItemAssignedTo, setEditItemAssignedTo] = useState("");
+  const [editItemSupplier, setEditItemSupplier] = useState(""); // Novo campo
   const [editItemPriority, setEditItemPriority] = useState("3");
   const [editItemStatus, setEditItemStatus] = useState("PENDENTE");
   const [editItemStage, setEditItemStage] = useState("");
@@ -292,12 +309,47 @@ export default function ProductFlowKanban() {
     }
   }, [user?.company?.id]);
 
+  const fetchSuppliers = useCallback(async () => {
+    if (!user?.company?.id) return;
+    try {
+        const { data } = await api.get(`/suppliers?companyId=${user.company.id}`);
+        // Suporte a diferentes formatos de resposta
+        setSuppliers(data.data || (Array.isArray(data) ? data : [])); 
+    } catch (err) { 
+        console.error("Erro ao buscar fornecedores", err); 
+    }
+  }, [user?.company?.id]);
+
+  const applyFilter = async () => {
+    if (!filterStartDate || !filterEndDate) {
+      return showToast("Selecione data inicial e final", "error");
+    }
+
+    setLoading(true);
+    try {
+      const query = new URLSearchParams({
+        startDate: filterStartDate,
+        endDate: filterEndDate,
+        dateField: filterDateType,
+        onlyOutsourced: filterOnlyOutsourced.toString()
+      });
+
+      const { data } = await api.get(`/flow/filter/items?${query.toString()}`);
+      setFilteredItems(data);
+      showToast(`${data.length} itens encontrados`, "success");
+    } catch (err) {
+      showToast("Erro ao filtrar itens", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadInitialData = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    await Promise.all([fetchFlows(), fetchUsers()]);
+    await Promise.all([fetchFlows(), fetchUsers(), fetchSuppliers()]);
     setLoading(false);
-  }, [user, fetchFlows, fetchUsers]);
+  }, [user, fetchFlows, fetchUsers, fetchSuppliers]);
 
   useEffect(() => {
     if (user) loadInitialData();
@@ -437,6 +489,9 @@ export default function ProductFlowKanban() {
         assignedToId: itemAssignedTo || undefined,
         stageId: itemStage || undefined,
         
+        // Novo campo
+        supplierId: itemSupplier || null,
+        
         // Datas
         dueDate: itemDueDate ? new Date(itemDueDate).toISOString() : undefined,
         productionStartedAt: itemProductionStart ? new Date(itemProductionStart).toISOString() : undefined,
@@ -473,6 +528,9 @@ export default function ProductFlowKanban() {
           assignedToId: editItemAssignedTo,
           stageId: editItemStage,
           
+          // Novo campo
+          supplierId: editItemSupplier || null,
+          
           // Datas
           dueDate: editItemDueDate || undefined,
           productionStartedAt: editItemProductionStart ? new Date(editItemProductionStart).toISOString() : undefined,
@@ -492,6 +550,10 @@ export default function ProductFlowKanban() {
       setIsEditItemModal(false);
       resetEditItemForm();
       showToast("Item atualizado!", "success");
+      
+      // Se estiver no modo filtrado, atualiza o filtro também
+      if(filteredItems) applyFilter();
+
     } catch {
       showToast("Erro na atualização.", "error");
     } finally {
@@ -651,6 +713,7 @@ export default function ProductFlowKanban() {
     setItemProductionDelivery("");
     
     setItemAssignedTo("");
+    setItemSupplier(""); // reset fornecedor
     setItemPriority("3");
     setItemImages([]);
     setItemAudios([]);
@@ -671,6 +734,7 @@ export default function ProductFlowKanban() {
     setEditItemProductionDelivery("");
     
     setEditItemAssignedTo("");
+    setEditItemSupplier(""); // reset fornecedor
     setEditItemPriority("3");
     setEditItemStatus("PENDENTE");
     setEditItemStage("");
@@ -717,6 +781,7 @@ export default function ProductFlowKanban() {
 
     setEditItemStatus(item.status);
     setEditItemStage(item.stageId || "");
+    setEditItemSupplier(item.supplierId || ""); // Preenche fornecedor
     setIsEditItemModal(true);
   };
 
@@ -925,29 +990,20 @@ export default function ProductFlowKanban() {
             >
               <Package size={12} /> Qtd: {item.quantity}
             </span>
+            {item.supplier && (
+                <span
+                className="text-xs flex items-center gap-1 text-orange-700 bg-orange-50 px-1 py-0.5 rounded w-fit"
+                >
+                <Factory size={12} /> {item.supplier.name}
+                </span>
+            )}
             {item.dueDate && (
               <span
                 className="text-xs flex items-center gap-1"
                 style={{ color: THEME.colors.secondaryText }}
               >
-                <CalendarClock size={12} /> Prazo (Meta):{" "}
+                <CalendarClock size={12} /> Meta:{" "}
                 {formatDateUTC(item.dueDate)}
-              </span>
-            )}
-             {item.productionStartedAt && (
-              <span
-                className="text-xs flex items-center gap-1 text-blue-600 font-medium"
-              >
-                <Factory size={12} /> Início Produção:{" "}
-                {formatDateUTC(item.productionStartedAt)}
-              </span>
-            )}
-             {item.deliveryAt && (
-              <span
-                className="text-xs flex items-center gap-1 text-green-600 font-medium"
-              >
-                <CheckCircle2 size={12} /> Entrega Realizada:{" "}
-                {formatDateUTC(item.deliveryAt)}
               </span>
             )}
           </div>
@@ -1168,6 +1224,85 @@ export default function ProductFlowKanban() {
         </div>
       )}
 
+      {/* --- ÁREA DE FILTROS --- */}
+      {selectedFlow && (
+      <div className="mx-4 md:mx-6 mt-4 p-4 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-wrap gap-4 items-end">
+        {/* Data Inicial */}
+        <div className="space-y-1">
+            <Label className="text-xs font-semibold text-gray-600">De</Label>
+            <Input 
+            type="date" 
+            className="h-9 w-36" 
+            value={filterStartDate} 
+            onChange={e => setFilterStartDate(e.target.value)} 
+            />
+        </div>
+
+        {/* Data Final */}
+        <div className="space-y-1">
+            <Label className="text-xs font-semibold text-gray-600">Até</Label>
+            <Input 
+            type="date" 
+            className="h-9 w-36" 
+            value={filterEndDate} 
+            onChange={e => setFilterEndDate(e.target.value)} 
+            />
+        </div>
+
+        {/* Tipo de Data */}
+        <div className="space-y-1">
+            <Label className="text-xs font-semibold text-gray-600">Filtrar por data de:</Label>
+            <select 
+            className="h-9 border rounded px-2 text-sm bg-white w-40 focus:ring-2 focus:ring-orange-500 outline-none"
+            value={filterDateType}
+            onChange={e => setFilterDateType(e.target.value)}
+            >
+            <option value="dueDate">Prazo (Meta)</option>
+            <option value="productionStartedAt">Início Produção</option>
+            <option value="deliveryAt">Entrega</option>
+            <option value="enteredAt">Criação</option>
+            </select>
+        </div>
+        
+        {/* Checkbox Terceirizados */}
+        <div className="flex items-center gap-2 pb-2 h-9">
+            <input 
+            type="checkbox" 
+            id="outsourcedCheck"
+            checked={filterOnlyOutsourced}
+            onChange={e => setFilterOnlyOutsourced(e.target.checked)}
+            className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-orange-500"
+            />
+            <Label htmlFor="outsourcedCheck" className="cursor-pointer text-sm font-medium">
+            Apenas Terceirizados
+            </Label>
+        </div>
+
+        {/* Botões */}
+        <div className="flex gap-2 pb-0.5">
+            <Button 
+            size="sm" 
+            onClick={applyFilter}
+            className="bg-gray-800 hover:bg-gray-900 text-white"
+            >
+            <Filter size={14} className="mr-2"/> Filtrar
+            </Button>
+            
+            {filteredItems && (
+            <Button 
+                size="sm" 
+                variant="ghost" 
+                onClick={() => setFilteredItems(null)} // Volta pro Kanban normal
+                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+            >
+                <X size={14} className="mr-2"/> Limpar Filtro
+            </Button>
+            )}
+        </div>
+      </div>
+      )}
+
+      {/* --- CONTEÚDO PRINCIPAL (KANBAN OU LISTA) --- */}
       <main className="flex-1 overflow-x-auto overflow-y-hidden p-4 md:p-6 custom-scrollbar">
         {!selectedFlow ? (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
@@ -1194,92 +1329,152 @@ export default function ProductFlowKanban() {
             </Button>
           </div>
         ) : (
-          <div className="flex h-full gap-6 min-w-max pb-4">
-            {currentFlow?.stages
-              ?.sort((a, b) => a.order - b.order)
-              .map((stage) => (
-                <div
-                  key={stage.id}
-                  className="w-[300px] flex flex-col h-full rounded-xl transition-colors bg-gray-100/50 border border-gray-200"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const id = e.dataTransfer.getData("itemId");
-                    if (id) moveItem(id, stage.id);
-                  }}
-                >
-                  <div
-                    className="p-3 rounded-t-xl flex justify-between items-center text-white shadow-sm"
-                    style={{
-                      backgroundColor: stage.color || THEME.colors.navigation,
-                    }}
-                  >
-                    <div className="flex items-center gap-2 font-bold text-sm uppercase tracking-wide">
-                      {stage.name}{" "}
-                      <Badge
-                        variant="secondary"
-                        className="bg-white/20 text-white border-0 hover:bg-white/30 text-[10px] h-5 px-1.5"
-                      >
-                        {stage.items?.length || 0}
-                      </Badge>
+          <>
+            {filteredItems ? (
+                 // --- MODO LISTA (RESULTADO DO FILTRO) ---
+                <div className="w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+                    <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+                    <h3 className="font-bold text-gray-700">Relatório Filtrado</h3>
+                    <Badge variant="secondary">{filteredItems.length} registros</Badge>
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="text-white/80 hover:text-white transition-colors">
-                          <MoreVertical size={16} />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setEditingStage(stage);
-                            setStageName(stage.name);
-                            setStageColor(stage.color || "");
-                            setIsStageModal(true);
-                          }}
-                        >
-                          <Edit size={14} className="mr-2" /> Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-red-600"
-                          onClick={() => {
-                            setStageToDelete(stage);
-                            setIsDeleteStageModal(true);
-                          }}
-                        >
-                          <Trash2 size={14} className="mr-2" /> Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-2 space-y-3 custom-scrollbar min-h-[150px]">
-                    {stage.items
-                      ?.sort((a, b) => a.priority - b.priority)
-                      .map((item) => (
-                        <KanbanCard key={item.id} item={item} />
-                      ))}
-                    {stage.items?.length === 0 && (
-                      <div className="h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 text-sm">
-                        Vazio
-                      </div>
+                    <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
+                        <tr>
+                            <th className="px-4 py-3">Item</th>
+                            <th className="px-4 py-3">Oficina/Terceirizado</th>
+                            <th className="px-4 py-3">Etapa Atual</th>
+                            <th className="px-4 py-3">Data Ref.</th>
+                            {/* COLUNA AÇÕES REMOVIDA AQUI */}
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {filteredItems.map(item => (
+                            <tr key={item.id} className="border-b hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3">
+                                <div className="font-medium text-gray-900">{item.title}</div>
+                                <div className="text-xs text-gray-500">{item.productRef}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                                {item.supplier ? (
+                                <span className="flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-1 rounded-full text-xs font-medium w-fit">
+                                    <Factory size={12} /> {item.supplier.name}
+                                </span>
+                                ) : (
+                                <span className="text-gray-400 text-xs italic">Interno</span>
+                                )}
+                            </td>
+                            <td className="px-4 py-3">
+                                <Badge variant="outline" style={{borderColor: item.stage?.color, color: item.stage?.color}}>
+                                {item.stage?.name}
+                                </Badge>
+                            </td>
+                            <td className="px-4 py-3 font-mono text-gray-600">
+                                {formatDateUTC(item[filterDateType as keyof FlowItem] as string)}
+                            </td>
+                            {/* CÉLULA AÇÕES REMOVIDA AQUI */}
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                    {filteredItems.length === 0 && (
+                        <div className="p-8 text-center text-gray-500 flex flex-col items-center gap-2">
+                        <Search size={24} className="opacity-20"/>
+                        Nenhum item encontrado com estes filtros.
+                        </div>
                     )}
-                  </div>
+                    </div>
                 </div>
-              ))}
-            <button
-              onClick={() => {
-                resetStageForm();
-                setIsStageModal(true);
-              }}
-              className="w-[300px] h-[100px] border-2 border-dashed rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-all"
-              style={{ borderColor: THEME.colors.secondaryText }}
-            >
-              <div className="flex flex-col items-center gap-2">
-                <Plus size={24} />
-                <span className="font-medium">Adicionar Etapa</span>
-              </div>
-            </button>
-          </div>
+            ) : (
+                // --- MODO KANBAN (ORIGINAL) ---
+                <div className="flex h-full gap-6 min-w-max pb-4">
+                {currentFlow?.stages
+                    ?.sort((a, b) => a.order - b.order)
+                    .map((stage) => (
+                    <div
+                        key={stage.id}
+                        className="w-[300px] flex flex-col h-full rounded-xl transition-colors bg-gray-100/50 border border-gray-200"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                        e.preventDefault();
+                        const id = e.dataTransfer.getData("itemId");
+                        if (id) moveItem(id, stage.id);
+                        }}
+                    >
+                        <div
+                        className="p-3 rounded-t-xl flex justify-between items-center text-white shadow-sm"
+                        style={{
+                            backgroundColor: stage.color || THEME.colors.navigation,
+                        }}
+                        >
+                        <div className="flex items-center gap-2 font-bold text-sm uppercase tracking-wide">
+                            {stage.name}{" "}
+                            <Badge
+                            variant="secondary"
+                            className="bg-white/20 text-white border-0 hover:bg-white/30 text-[10px] h-5 px-1.5"
+                            >
+                            {stage.items?.length || 0}
+                            </Badge>
+                        </div>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                            <button className="text-white/80 hover:text-white transition-colors">
+                                <MoreVertical size={16} />
+                            </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                            <DropdownMenuItem
+                                onClick={() => {
+                                setEditingStage(stage);
+                                setStageName(stage.name);
+                                setStageColor(stage.color || "");
+                                setIsStageModal(true);
+                                }}
+                            >
+                                <Edit size={14} className="mr-2" /> Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                className="text-red-600"
+                                onClick={() => {
+                                setStageToDelete(stage);
+                                setIsDeleteStageModal(true);
+                                }}
+                            >
+                                <Trash2 size={14} className="mr-2" /> Excluir
+                            </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-2 space-y-3 custom-scrollbar min-h-[150px]">
+                        {stage.items
+                            ?.sort((a, b) => a.priority - b.priority)
+                            .map((item) => (
+                            <KanbanCard key={item.id} item={item} />
+                            ))}
+                        {stage.items?.length === 0 && (
+                            <div className="h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 text-sm">
+                            Vazio
+                            </div>
+                        )}
+                        </div>
+                    </div>
+                    ))}
+                <button
+                    onClick={() => {
+                    resetStageForm();
+                    setIsStageModal(true);
+                    }}
+                    className="w-[300px] h-[100px] border-2 border-dashed rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-all"
+                    style={{ borderColor: THEME.colors.secondaryText }}
+                >
+                    <div className="flex flex-col items-center gap-2">
+                    <Plus size={24} />
+                    <span className="font-medium">Adicionar Etapa</span>
+                    </div>
+                </button>
+                </div>
+            )}
+          </>
         )}
       </main>
 
@@ -1389,20 +1584,39 @@ export default function ProductFlowKanban() {
               </div>
             </div>
 
-            <div className="space-y-2">
-                <Label>Responsável</Label>
-                <select
-                  className="w-full border rounded-md p-2 text-sm bg-white"
-                  value={itemAssignedTo}
-                  onChange={(e) => setItemAssignedTo(e.target.value)}
-                >
-                  <option value="">Selecione...</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>Responsável (Interno)</Label>
+                    <select
+                    className="w-full border rounded-md p-2 text-sm bg-white"
+                    value={itemAssignedTo}
+                    onChange={(e) => setItemAssignedTo(e.target.value)}
+                    >
+                    <option value="">Selecione...</option>
+                    {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                        {u.name}
+                        </option>
+                    ))}
+                    </select>
+                </div>
+                
+                {/* SELEÇÃO DE FORNECEDOR */}
+                <div className="space-y-2">
+                    <Label>Oficina / Terceirizado</Label>
+                    <select
+                        className="w-full border rounded-md p-2 text-sm bg-white focus:ring-2 focus:ring-primary"
+                        value={itemSupplier} 
+                        onChange={(e) => setItemSupplier(e.target.value)} 
+                    >
+                        <option value="">Produção Interna</option>
+                        {suppliers.map((sup) => (
+                        <option key={sup.id} value={sup.id}>
+                            {sup.name} {sup.category === 'HYBRID' ? '(Híbrido)' : ''}
+                        </option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
             {/* UPLOAD IMAGENS */}
@@ -1651,6 +1865,22 @@ export default function ProductFlowKanban() {
                   />
                 </div>
               </div>
+
+              <div className="space-y-2">
+                    <Label>Oficina / Terceirizado</Label>
+                    <select
+                        className="w-full border rounded-md p-2 text-sm bg-white focus:ring-2 focus:ring-primary"
+                        value={editItemSupplier} 
+                        onChange={(e) => setEditItemSupplier(e.target.value)} 
+                    >
+                        <option value="">Produção Interna</option>
+                        {suppliers.map((sup) => (
+                        <option key={sup.id} value={sup.id}>
+                            {sup.name} {sup.category === 'HYBRID' ? '(Híbrido)' : ''}
+                        </option>
+                        ))}
+                    </select>
+               </div>
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
@@ -1937,7 +2167,7 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE PREVIEW - CORRIGIDO E UNIFICADO */}
+      {/* MODAL DE PREVIEW */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1978,6 +2208,12 @@ export default function ProductFlowKanban() {
                     <span className="text-gray-500">Entrega Realizada:</span>
                     <span className="text-green-600 font-medium">
                       {formatDateUTC(previewItem.deliveryAt)}
+                    </span>
+                    
+                    {/* Fornecedor */}
+                    <span className="text-gray-500">Produção Por:</span>
+                    <span className="font-medium">
+                      {previewItem.supplier ? previewItem.supplier.name : 'Interno'}
                     </span>
                   </div>
                 </div>
