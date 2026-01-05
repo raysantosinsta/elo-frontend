@@ -45,7 +45,6 @@ import {
   Plus,
   RefreshCw,
   Settings,
-  Square,
   Tag,
   Trash2,
   User,
@@ -53,8 +52,8 @@ import {
   X,
   FileAudio,
   CalendarClock,
-  Filter, 
-  Search
+  Filter,
+  Square
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -169,13 +168,14 @@ const formatDateUTC = (dateString?: string) => {
 
 export default function ProductFlowKanban() {
   const { user, logout, loading: authLoading } = useAuth();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const router = useRouter();
 
   const [flows, setFlows] = useState<ProductFlow[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<string>("");
   const [currentFlow, setCurrentFlow] = useState<ProductFlow | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]); // Lista de fornecedores
+  const [suppliers, setSuppliers] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -203,7 +203,7 @@ export default function ProductFlowKanban() {
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterDateType, setFilterDateType] = useState("dueDate");
   const [filterOnlyOutsourced, setFilterOnlyOutsourced] = useState(false);
-  const [filteredItems, setFilteredItems] = useState<FlowItem[] | null>(null); // Se != null, mostra lista ao invés de kanban
+  const [filteredItems, setFilteredItems] = useState<FlowItem[] | null>(null); // Se != null, filtra o kanban
 
   // Seleções
   const [stageToDelete, setStageToDelete] = useState<FlowStage | null>(null);
@@ -223,7 +223,7 @@ export default function ProductFlowKanban() {
   const [itemProductRef, setItemProductRef] = useState("");
   const [itemQuantity, setItemQuantity] = useState("1");
   const [itemAssignedTo, setItemAssignedTo] = useState("");
-  const [itemSupplier, setItemSupplier] = useState(""); // Novo campo
+  const [itemSupplier, setItemSupplier] = useState(""); 
   const [itemPriority, setItemPriority] = useState("3");
   const [itemStage, setItemStage] = useState("");
   
@@ -243,7 +243,7 @@ export default function ProductFlowKanban() {
   const [editItemProductRef, setEditItemProductRef] = useState("");
   const [editItemQuantity, setEditItemQuantity] = useState("1");
   const [editItemAssignedTo, setEditItemAssignedTo] = useState("");
-  const [editItemSupplier, setEditItemSupplier] = useState(""); // Novo campo
+  const [editItemSupplier, setEditItemSupplier] = useState(""); 
   const [editItemPriority, setEditItemPriority] = useState("3");
   const [editItemStatus, setEditItemStatus] = useState("PENDENTE");
   const [editItemStage, setEditItemStage] = useState("");
@@ -376,6 +376,12 @@ export default function ProductFlowKanban() {
     try {
       await api.delete(`/flow/items/${itemToDelete.id}`);
       await fetchFlowBoard(selectedFlow);
+      
+      // Se tiver filtro ativo, atualiza o filtro removendo o item deletado
+      if (filteredItems) {
+        setFilteredItems(prev => prev ? prev.filter(i => i.id !== itemToDelete.id) : null);
+      }
+
       showToast("Item excluído com sucesso.", "success");
       setIsDeleteItemModal(false);
       setItemToDelete(null);
@@ -1329,136 +1335,87 @@ export default function ProductFlowKanban() {
             </Button>
           </div>
         ) : (
-          <>
-            {filteredItems ? (
-                 // --- MODO LISTA (RESULTADO DO FILTRO) ---
-                <div className="w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4">
-                    <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-700">Relatório Filtrado</h3>
-                    <Badge variant="secondary">{filteredItems.length} registros</Badge>
-                    </div>
-                    <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
-                        <tr>
-                            <th className="px-4 py-3">Item</th>
-                            <th className="px-4 py-3">Oficina/Terceirizado</th>
-                            <th className="px-4 py-3">Etapa Atual</th>
-                            <th className="px-4 py-3">Data Ref.</th>
-                            {/* COLUNA AÇÕES REMOVIDA AQUI */}
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {filteredItems.map(item => (
-                            <tr key={item.id} className="border-b hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3">
-                                <div className="font-medium text-gray-900">{item.title}</div>
-                                <div className="text-xs text-gray-500">{item.productRef}</div>
-                            </td>
-                            <td className="px-4 py-3">
-                                {item.supplier ? (
-                                <span className="flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-1 rounded-full text-xs font-medium w-fit">
-                                    <Factory size={12} /> {item.supplier.name}
-                                </span>
-                                ) : (
-                                <span className="text-gray-400 text-xs italic">Interno</span>
-                                )}
-                            </td>
-                            <td className="px-4 py-3">
-                                <Badge variant="outline" style={{borderColor: item.stage?.color, color: item.stage?.color}}>
-                                {item.stage?.name}
-                                </Badge>
-                            </td>
-                            <td className="px-4 py-3 font-mono text-gray-600">
-                                {formatDateUTC(item[filterDateType as keyof FlowItem] as string)}
-                            </td>
-                            {/* CÉLULA AÇÕES REMOVIDA AQUI */}
-                            </tr>
-                        ))}
-                        </tbody>
-                    </table>
-                    {filteredItems.length === 0 && (
-                        <div className="p-8 text-center text-gray-500 flex flex-col items-center gap-2">
-                        <Search size={24} className="opacity-20"/>
-                        Nenhum item encontrado com estes filtros.
-                        </div>
-                    )}
-                    </div>
-                </div>
-            ) : (
-                // --- MODO KANBAN (ORIGINAL) ---
+                // --- MODO KANBAN (COM FILTRO APLICADO DENTRO DAS COLUNAS) ---
                 <div className="flex h-full gap-6 min-w-max pb-4">
                 {currentFlow?.stages
                     ?.sort((a, b) => a.order - b.order)
-                    .map((stage) => (
-                    <div
-                        key={stage.id}
-                        className="w-[300px] flex flex-col h-full rounded-xl transition-colors bg-gray-100/50 border border-gray-200"
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                        e.preventDefault();
-                        const id = e.dataTransfer.getData("itemId");
-                        if (id) moveItem(id, stage.id);
-                        }}
-                    >
+                    .map((stage) => {
+                    
+                    // Lógica de Filtragem: Se houver filtro ativo, mostrar apenas os itens que estão nele
+                    const itemsToShow = filteredItems
+                        ? stage.items.filter(item => filteredItems.some(f => f.id === item.id))
+                        : stage.items;
+
+                    return (
                         <div
-                        className="p-3 rounded-t-xl flex justify-between items-center text-white shadow-sm"
-                        style={{
-                            backgroundColor: stage.color || THEME.colors.navigation,
-                        }}
+                            key={stage.id}
+                            className="w-[300px] flex flex-col h-full rounded-xl transition-colors bg-gray-100/50 border border-gray-200"
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => {
+                            e.preventDefault();
+                            const id = e.dataTransfer.getData("itemId");
+                            if (id) moveItem(id, stage.id);
+                            }}
                         >
-                        <div className="flex items-center gap-2 font-bold text-sm uppercase tracking-wide">
-                            {stage.name}{" "}
-                            <Badge
-                            variant="secondary"
-                            className="bg-white/20 text-white border-0 hover:bg-white/30 text-[10px] h-5 px-1.5"
+                            <div
+                            className="p-3 rounded-t-xl flex justify-between items-center text-white shadow-sm"
+                            style={{
+                                backgroundColor: stage.color || THEME.colors.navigation,
+                            }}
                             >
-                            {stage.items?.length || 0}
-                            </Badge>
-                        </div>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                            <button className="text-white/80 hover:text-white transition-colors">
-                                <MoreVertical size={16} />
-                            </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                            <DropdownMenuItem
-                                onClick={() => {
-                                setEditingStage(stage);
-                                setStageName(stage.name);
-                                setStageColor(stage.color || "");
-                                setIsStageModal(true);
-                                }}
-                            >
-                                <Edit size={14} className="mr-2" /> Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                                className="text-red-600"
-                                onClick={() => {
-                                setStageToDelete(stage);
-                                setIsDeleteStageModal(true);
-                                }}
-                            >
-                                <Trash2 size={14} className="mr-2" /> Excluir
-                            </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-2 space-y-3 custom-scrollbar min-h-[150px]">
-                        {stage.items
-                            ?.sort((a, b) => a.priority - b.priority)
-                            .map((item) => (
-                            <KanbanCard key={item.id} item={item} />
-                            ))}
-                        {stage.items?.length === 0 && (
-                            <div className="h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 text-sm">
-                            Vazio
+                            <div className="flex items-center gap-2 font-bold text-sm uppercase tracking-wide">
+                                {stage.name}{" "}
+                                <Badge
+                                variant="secondary"
+                                className="bg-white/20 text-white border-0 hover:bg-white/30 text-[10px] h-5 px-1.5"
+                                >
+                                {itemsToShow?.length || 0}
+                                </Badge>
                             </div>
-                        )}
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                <button className="text-white/80 hover:text-white transition-colors">
+                                    <MoreVertical size={16} />
+                                </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                <DropdownMenuItem
+                                    onClick={() => {
+                                    setEditingStage(stage);
+                                    setStageName(stage.name);
+                                    setStageColor(stage.color || "");
+                                    setIsStageModal(true);
+                                    }}
+                                >
+                                    <Edit size={14} className="mr-2" /> Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    className="text-red-600"
+                                    onClick={() => {
+                                    setStageToDelete(stage);
+                                    setIsDeleteStageModal(true);
+                                    }}
+                                >
+                                    <Trash2 size={14} className="mr-2" /> Excluir
+                                </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-3 custom-scrollbar min-h-[150px]">
+                            {itemsToShow
+                                ?.sort((a, b) => a.priority - b.priority)
+                                .map((item) => (
+                                <KanbanCard key={item.id} item={item} />
+                                ))}
+                            {itemsToShow?.length === 0 && (
+                                <div className="h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 text-sm">
+                                {filteredItems ? "Sem resultados" : "Vazio"}
+                                </div>
+                            )}
+                            </div>
                         </div>
-                    </div>
-                    ))}
+                    );
+                    })}
                 <button
                     onClick={() => {
                     resetStageForm();
@@ -1473,8 +1430,6 @@ export default function ProductFlowKanban() {
                     </div>
                 </button>
                 </div>
-            )}
-          </>
         )}
       </main>
 

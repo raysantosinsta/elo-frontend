@@ -6,8 +6,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle,
-  Clock // Importado ícone Clock
-  ,
+  Clock,
   Loader2,
   MapPin,
   Navigation,
@@ -35,6 +34,8 @@ interface RoutePoint {
   endereco: string;
   columnId?: string;
   taskAddress?: any;
+  userAssigned?: { id: string; name: string }; 
+  userAssignedId?: string;
 }
 
 export default function DriverPage() {
@@ -57,12 +58,13 @@ export default function DriverPage() {
   // --- ESTADOS DO MODAL ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionType, setActionType] = useState<"COMPLETED" | "FAILED">("COMPLETED");
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState(""); // Comentário da Finalização (Tarefa Antiga)
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- INPUTS DO FORMULÁRIO ---
+  // --- INPUTS DO FORMULÁRIO (NOVA TAREFA) ---
   const [rescheduleDate, setRescheduleDate] = useState<string>("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDescription, setNewTaskDescription] = useState(""); // Novo campo: Descrição
   const [newTaskDate, setNewTaskDate] = useState("");
 
   const watchIdRef = useRef<number | null>(null);
@@ -80,11 +82,11 @@ export default function DriverPage() {
     }
   }, [router]);
 
-  // 2. CRONÔMETRO DE TEMPO RESTANTE DA ROTA
+  // 2. CRONÔMETRO
   useEffect(() => {
     const updateTimer = () => {
         const storedStartTime = localStorage.getItem("rotaStartTime");
-        const storedDuration = localStorage.getItem("rotaTotalDuration"); // em segundos
+        const storedDuration = localStorage.getItem("rotaTotalDuration"); 
 
         if (!storedStartTime || !storedDuration) return;
 
@@ -92,7 +94,6 @@ export default function DriverPage() {
         const totalDurationMs = Number(storedDuration) * 1000;
         const now = Date.now();
 
-        // Cálculo: (HoraInicio + DuracaoTotal) - Agora
         const endTime = startTime + totalDurationMs;
         const remainingMs = endTime - now;
 
@@ -107,46 +108,35 @@ export default function DriverPage() {
         }
     };
 
-    // Helper para formatar HH:MM:SS
     const formatSeconds = (sec: number) => {
         const h = Math.floor(sec / 3600);
         const m = Math.floor((sec % 3600) / 60);
         const s = Math.floor(sec % 60);
-        
-        // Se tiver hora, mostra HH:MM, senão MM:SS
         if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
         return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
 
-    // Atualiza imediatamente e depois a cada 1s
     updateTimer();
     const intervalId = setInterval(updateTimer, 1000);
-
     return () => clearInterval(intervalId);
   }, []);
 
-  // 3. Monitora GPS Real
+  // 3. Monitora GPS
   useEffect(() => {
     if (!navigator.geolocation || !isGPSActive) return;
-
     watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        setCurrentPosition([pos.coords.latitude, pos.coords.longitude]);
-      },
+      (pos) => setCurrentPosition([pos.coords.latitude, pos.coords.longitude]),
       (err) => console.error("Erro GPS:", err),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-
-    return () => {
-      if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
-    };
+    return () => { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); };
   }, [isGPSActive]);
 
-  // --- SIMULAÇÃO DE MOVIMENTO (Mantida igual) ---
+  // --- SIMULAÇÃO ---
   const startSimulation = () => {
     const destination = routePoints[currentStopIndex];
-    if (!currentPosition) { alert("Aguardando sinal inicial do GPS..."); return; }
-    if (!destination) { alert("Nenhum destino encontrado."); return; }
+    if (!currentPosition) { alert("Aguardando GPS..."); return; }
+    if (!destination) { alert("Sem destino."); return; }
 
     setIsGPSActive(false);
     setIsSimulating(true);
@@ -154,11 +144,8 @@ export default function DriverPage() {
     const steps = 150; 
     const speed = 20; 
     let step = 0;
-
-    const startLat = currentPosition[0];
-    const startLng = currentPosition[1];
-    const endLat = destination.lat;
-    const endLng = destination.lng;
+    const startLat = currentPosition[0], startLng = currentPosition[1];
+    const endLat = destination.lat, endLng = destination.lng;
 
     if (simulationInterval.current) clearInterval(simulationInterval.current);
 
@@ -167,7 +154,6 @@ export default function DriverPage() {
       const progress = step / steps;
       const newLat = startLat + (endLat - startLat) * progress;
       const newLng = startLng + (endLng - startLng) * progress;
-
       setCurrentPosition([newLat, newLng]);
 
       if (step >= steps) {
@@ -178,17 +164,10 @@ export default function DriverPage() {
     }, speed);
   };
 
-  const resumeRealGPS = () => {
-    setIsGPSActive(true);
-  };
+  const resumeRealGPS = () => setIsGPSActive(true);
+  useEffect(() => { return () => { if (simulationInterval.current) clearInterval(simulationInterval.current); }; }, []);
 
-  useEffect(() => {
-    return () => {
-      if (simulationInterval.current) clearInterval(simulationInterval.current);
-    };
-  }, []);
-
-  // --- HANDLERS DO MODAL (Finalização) ---
+  // --- HANDLERS DO MODAL ---
   const handleOpenModal = (type: "COMPLETED" | "FAILED") => {
     setActionType(type);
     setComment("");
@@ -196,6 +175,7 @@ export default function DriverPage() {
     setRescheduleDate(today);
     setNewTaskDate(today);
     setNewTaskTitle("");
+    setNewTaskDescription(""); // Limpa descrição
     setIsModalOpen(true);
   };
 
@@ -207,26 +187,27 @@ export default function DriverPage() {
     const task = routePoints[currentStopIndex];
 
     try {
+      // 1. Atualiza a tarefa ATUAL (Finaliza)
       if (actionType === "FAILED") {
         const formattedDate = rescheduleDate ? `${rescheduleDate}T12:00:00` : undefined;
         await api.patch(`/routes/tasks/${task.id}/finalize`, {
           status: "FAILED",
-          finalComment: comment,
+          finalComment: comment, // Comentário da falha
           scheduledAt: formattedDate ? new Date(formattedDate).toISOString() : undefined,
         });
       } else {
         await api.patch(`/routes/tasks/${task.id}/finalize`, {
           status: "COMPLETED",
-          finalComment: comment,
+          finalComment: comment, // Comentário da conclusão
         });
 
+        // 2. Cria a NOVA tarefa
         if (newTaskTitle) {
           if (!task.columnId) {
              alert("ERRO: Dados desatualizados."); setIsSubmitting(false); return; 
           }
           const newDateFormatted = newTaskDate ? `${newTaskDate}T09:00:00` : undefined;
           
-          // Fallback robusto para endereço
           const addressPayload = task.taskAddress ? {
             cep: task.taskAddress.cep,
             endereco: task.taskAddress.endereco,
@@ -238,7 +219,6 @@ export default function DriverPage() {
             latitude: Number(task.taskAddress.latitude),
             longitude: Number(task.taskAddress.longitude)
           } : {
-             // Fallback simplificado
              cep: "00000-000",
              endereco: task.endereco.split(',')[0],
              numero: task.endereco.split(',')[1],
@@ -246,10 +226,14 @@ export default function DriverPage() {
              latitude: Number(task.lat), longitude: Number(task.lng)
           };
 
+          // Monta a descrição final: O que o usuário digitou + histórico do comentário anterior
+          const finalDescription = `${newTaskDescription}\n\n> Histórico: ${comment || "Sem observações na conclusão anterior."}`;
+
           await api.post('/tasks', {
             title: newTaskTitle,
             columnId: task.columnId,
-            description: `Origem: ${task.title}`,
+            description: finalDescription.trim(),
+            assignedToId: task.userAssigned?.id || task.userAssignedId, // Mantém responsável
             scheduledAt: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
             dueDate: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
             address: addressPayload
@@ -257,13 +241,14 @@ export default function DriverPage() {
         }
       }
 
+      // Avança
       const nextIndex = currentStopIndex + 1;
       if (nextIndex >= routePoints.length) {
         alert("Rota finalizada com sucesso!");
         localStorage.removeItem("rotaAtiva");
         localStorage.removeItem("rotaIndex");
-        localStorage.removeItem("rotaStartTime"); // Limpa timer
-        localStorage.removeItem("rotaTotalDuration"); // Limpa timer
+        localStorage.removeItem("rotaStartTime");
+        localStorage.removeItem("rotaTotalDuration");
         router.push("/");
       } else {
         setCurrentStopIndex(nextIndex);
@@ -284,12 +269,10 @@ export default function DriverPage() {
 
   return (
     <div className="relative h-screen w-full flex flex-col bg-slate-100 overflow-hidden">
-      {/* --- HEADER FLUTUANTE --- */}
+      {/* HEADER ... (Mantido igual) */}
       <div className="absolute top-4 left-4 right-4 z-[500] pointer-events-none">
         <div className="bg-white/95 backdrop-blur shadow-lg rounded-2xl p-4 border border-slate-200 pointer-events-auto">
-          
           <div className="flex justify-between items-start mb-2">
-            {/* Botão Voltar + Indicador de Parada */}
             <div className="flex items-center gap-2">
               <button onClick={() => router.back()} className="text-slate-400 hover:text-slate-600">
                 <ArrowLeft size={20} />
@@ -298,19 +281,11 @@ export default function DriverPage() {
                 {currentStopIndex + 1}/{routePoints.length}
               </span>
             </div>
-            
             <div className="flex gap-2 items-center">
-              {/* --- TIMER NOVO --- */}
-              <div className={`flex items-center gap-1 px-2 py-1.5 rounded-full border text-[10px] font-bold shadow-sm transition-colors
-                 ${isLate 
-                    ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' 
-                    : 'bg-slate-800 text-white border-slate-700'}
-              `}>
+              <div className={`flex items-center gap-1 px-2 py-1.5 rounded-full border text-[10px] font-bold shadow-sm transition-colors ${isLate ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' : 'bg-slate-800 text-white border-slate-700'}`}>
                   <Clock size={10} />
                   <span>{timeRemainingString} {isLate ? 'ATRASADO' : ''}</span>
               </div>
-
-              {/* Controles de Simulação/GPS */}
               {!isGPSActive && !isSimulating && (
                 <button onClick={resumeRealGPS} className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] px-2 py-1.5 rounded-full font-bold border border-slate-200">
                   <Navigation size={10} /> GPS
@@ -323,7 +298,6 @@ export default function DriverPage() {
               )}
             </div>
           </div>
-
           <h2 className="font-bold text-lg text-slate-800 leading-tight">{currentTask.title}</h2>
           <div className="flex items-center gap-1 mt-1 text-slate-500 text-sm">
             <MapPin size={14} className="text-blue-500" />
@@ -332,16 +306,11 @@ export default function DriverPage() {
         </div>
       </div>
 
-      {/* --- MAPA --- */}
       <div className="flex-1 z-0">
-        <DriverMap
-          route={routePoints}
-          myLocation={currentPosition}
-          currentStopIndex={currentStopIndex}
-        />
+        <DriverMap route={routePoints} myLocation={currentPosition} currentStopIndex={currentStopIndex} />
       </div>
 
-      {/* --- FOOTER ACTIONS --- */}
+      {/* FOOTER ACTIONS */}
       <div className="z-[500] bg-white p-6 rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] border-t border-slate-100">
         <h3 className="text-center text-slate-400 text-xs font-semibold uppercase mb-4 tracking-wider">
           Ações da Visita
@@ -358,7 +327,7 @@ export default function DriverPage() {
         </div>
       </div>
 
-      {/* --- MODAL UNIFICADO (Mantido igual, apenas encurtado para visualização) --- */}
+      {/* --- MODAL COM OS CAMPOS SEPARADOS --- */}
       {isModalOpen && (
         <div className="absolute inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -367,22 +336,62 @@ export default function DriverPage() {
                 {actionType === "COMPLETED" ? "Tarefa Concluída!" : "Reportar Problema"}
               </h3>
             </div>
-            {/* Inputs do modal... (código igual ao anterior) */}
+            
+            {/* Se for Problema (Failed) */}
             {actionType === "FAILED" && (
                 <div className="mb-4 bg-red-50 p-3 rounded-xl border border-red-100">
-                    <input type="date" className="w-full p-2 bg-white rounded-lg" value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} />
+                    <label className="text-xs font-bold text-red-700 mb-1 block uppercase">Reagendar Para</label>
+                    <input type="date" className="w-full p-2 bg-white rounded-lg border border-red-200" value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} />
                 </div>
             )}
+
+            {/* Se for Conclusão (Completed) - CAMPOS DA NOVA TAREFA */}
             {actionType === "COMPLETED" && (
                 <div className="mb-4 bg-emerald-50 p-4 rounded-xl border border-emerald-100 space-y-3">
-                    <input type="text" placeholder="Título da Nova Tarefa" className="w-full p-2 rounded-lg" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} />
-                    <input type="date" className="w-full p-2 rounded-lg" value={newTaskDate} onChange={(e) => setNewTaskDate(e.target.value)} />
+                    <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider border-b border-emerald-200 pb-2 mb-2">
+                        Criar Próxima Tarefa
+                    </h4>
+                    
+                    <div>
+                        <label className="text-[10px] font-bold text-emerald-600 block mb-1">Título</label>
+                        <input type="text" placeholder="Ex: Retorno ao Cliente" className="w-full p-2 rounded-lg border border-emerald-200 text-sm" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} />
+                    </div>
+
+                    <div>
+                        <label className="text-[10px] font-bold text-emerald-600 block mb-1">Descrição (Opcional)</label>
+                        <textarea 
+                            placeholder="Detalhes para a próxima visita..." 
+                            className="w-full p-2 rounded-lg border border-emerald-200 text-sm min-h-[60px]" 
+                            value={newTaskDescription} 
+                            onChange={(e) => setNewTaskDescription(e.target.value)} 
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-[10px] font-bold text-emerald-600 block mb-1">Data Agendamento</label>
+                        <input type="date" className="w-full p-2 rounded-lg border border-emerald-200 text-sm" value={newTaskDate} onChange={(e) => setNewTaskDate(e.target.value)} />
+                    </div>
                 </div>
             )}
-            <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full p-3 border rounded-xl mb-4" placeholder="Comentário..." />
+
+            {/* CAMPO DE COMENTÁRIO FINAL (DA TAREFA ATUAL) */}
+            <div>
+                <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                    {actionType === "COMPLETED" ? "Comentário da Finalização (Atual)" : "Motivo do Problema"}
+                </label>
+                <textarea 
+                    value={comment} 
+                    onChange={(e) => setComment(e.target.value)} 
+                    className="w-full p-3 border border-slate-300 rounded-xl mb-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+                    placeholder="Escreva aqui..." 
+                />
+            </div>
+
             <div className="flex gap-3">
-                <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-slate-100 rounded-xl">Cancelar</button>
-                <button onClick={confirmFinalization} disabled={isSubmitting} className={`flex-1 py-3 text-white rounded-xl ${actionType === "COMPLETED" ? "bg-emerald-600" : "bg-red-600"}`}>
+                <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200">
+                    Cancelar
+                </button>
+                <button onClick={confirmFinalization} disabled={isSubmitting} className={`flex-1 py-3 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-all ${actionType === "COMPLETED" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}>
                     {isSubmitting ? "Salvando..." : "Confirmar"}
                 </button>
             </div>

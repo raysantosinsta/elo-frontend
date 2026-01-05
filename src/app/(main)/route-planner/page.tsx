@@ -2,7 +2,7 @@
 'use client';
 
 import { api } from '@/services/api';
-import { useAuth } from '@/contexts/AuthContext'; // Importando contexto de autenticação
+import { useAuth } from '@/contexts/AuthContext';
 import { Activity, Clock, Loader2, MapPin, Navigation, Timer, Car, Filter, X, User, Calendar } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -34,7 +34,8 @@ interface Task {
   priority?: number;
   columnId: string;
   taskAddress: TaskAddress;
-  assignedTo?: Professional; // Adicionado para visualização (opcional)
+  assignedTo?: Professional;
+  userAssigned?: Professional; // Ajuste para compatibilidade com backend
 }
 
 interface RouteStats {
@@ -44,9 +45,23 @@ interface RouteStats {
   formattedDistance: string;
 }
 
+// --- FUNÇÕES AUXILIARES DE FORMATAÇÃO (Frontend Fallback) ---
+const formatDuration = (seconds: number): string => {
+  if (!seconds) return "0 min";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}min`;
+  return `${m}min`;
+};
+
+const formatDistance = (meters: number): string => {
+  if (!meters) return "0 km";
+  return `${(meters / 1000).toFixed(1)} km`;
+};
+
 export default function RoutePlannerPage() {
   const router = useRouter();
-  const { user } = useAuth(); // Usando user do contexto para pegar companyId
+  const { user } = useAuth();
 
   // --- ESTADOS ---
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -67,7 +82,7 @@ export default function RoutePlannerPage() {
   // Resumo da Rota (Tempo e Distância)
   const [routeSummary, setRouteSummary] = useState<RouteStats | null>(null);
 
-  // 1. Carregar Lista de Usuários (Para o Filtro)
+  // 1. Carregar Lista de Usuários
   useEffect(() => {
     async function fetchUsers() {
       if (!user?.company?.id) return;
@@ -81,7 +96,7 @@ export default function RoutePlannerPage() {
     fetchUsers();
   }, [user?.company?.id]);
 
-  // 2. Fetch das Tarefas Disponíveis (Com Filtros)
+  // 2. Fetch das Tarefas Disponíveis
   const fetchAvailableTasks = useCallback(async () => {
     setLoading(true);
     try {
@@ -102,15 +117,11 @@ export default function RoutePlannerPage() {
       }
     } catch (error: any) {
       console.error('Erro ao buscar tarefas', error);
-      const message = error.response?.data?.message || 'Erro ao buscar tarefas';
-      // Sugestão: Usar toast aqui ao invés de alert para melhor UX
-      // alert(message); 
     } finally {
       setLoading(false);
     }
   }, [filterStartDate, filterEndDate, filterAssignedTo]);
 
-  // Dispara a busca quando os filtros mudam
   useEffect(() => {
     fetchAvailableTasks();
   }, [fetchAvailableTasks]);
@@ -126,7 +137,7 @@ export default function RoutePlannerPage() {
     }
   }, []);
 
-  // 4. Toggle de Seleção (Checkbox)
+  // 4. Toggle de Seleção
   const toggleSelection = (id: string) => {
     setRouteSummary(null);
     setSelectedTaskIds((prev) =>
@@ -134,7 +145,7 @@ export default function RoutePlannerPage() {
     );
   };
 
-  // 5. Calcular Rota (Comunicação com Backend)
+  // 5. Calcular Rota (CORRIGIDO)
   const handleCalculateRoute = async () => {
     if (!userLocation) {
       alert('Aguardando localização do GPS...');
@@ -145,12 +156,6 @@ export default function RoutePlannerPage() {
       setIsOptimizing(true);
       setRouteSummary(null);
       
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const payload = {
         taskIds: selectedTaskIds,
         driverLatitude: userLocation.lat,
@@ -158,52 +163,52 @@ export default function RoutePlannerPage() {
         orderBy: orderBy,
       };
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+      // Usando instância da API configurada (axios)
+      const { data } = await api.post('/routes/calculate-best-path', payload);
 
-      const response = await fetch(`${apiUrl}/routes/calculate-best-path`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      console.log("Rota Calculada (Debug):", data); 
 
-      if (!response.ok) throw new Error('Erro ao calcular rota');
-
-      const data = await response.json();
-      
+      // Recupera lista de rota
       const optimizedRoute = data.route || []; 
-      const stats = data.stats;
+      
+      // Recupera estatísticas (com fallback se o backend não mandar formatado)
+      const statsFromApi = data.stats || {};
+      const rawDuration = Number(statsFromApi.totalDurationSeconds || 0);
+      const rawDistance = Number(statsFromApi.totalDistanceMeters || 0);
 
+      const finalStats: RouteStats = {
+          totalDurationSeconds: rawDuration,
+          totalDistanceMeters: rawDistance,
+          formattedDuration: statsFromApi.formattedDuration || formatDuration(rawDuration),
+          formattedDistance: statsFromApi.formattedDistance || formatDistance(rawDistance)
+      };
+
+      // Mapeia para formato do Driver (garantindo responsável)
       const routeForDriver = optimizedRoute.map((t: Task) => ({
         id: t.id,
         title: t.title,
-        lat: t.taskAddress.latitude,
-        lng: t.taskAddress.longitude,
+        lat: Number(t.taskAddress.latitude),
+        lng: Number(t.taskAddress.longitude),
         endereco: `${t.taskAddress.endereco}, ${t.taskAddress.numero}`,
         columnId: t.columnId,
         taskAddress: t.taskAddress,
+        userAssigned: t.userAssigned || t.assignedTo // Fallback para ambas as props
       }));
 
       // Salva no LocalStorage
       localStorage.setItem('rotaAtiva', JSON.stringify(routeForDriver));
       localStorage.removeItem('rotaIndex');
-
-      // Salva a duração total prevista
-      if (stats && stats.totalDurationSeconds) {
-          localStorage.setItem('rotaTotalDuration', String(stats.totalDurationSeconds));
+      
+      if (finalStats.totalDurationSeconds) {
+          localStorage.setItem('rotaTotalDuration', String(finalStats.totalDurationSeconds));
       }
 
-      if (stats) {
-        setRouteSummary(stats);
-      } else {
-        startNavigation();
-      }
+      // IMPORTANTE: Atualiza o estado para exibir o banner azul
+      setRouteSummary(finalStats);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert('Erro ao gerar rota no servidor.');
+      alert('Erro ao gerar rota. Verifique se os endereços possuem coordenadas válidas.');
     } finally {
       setIsOptimizing(false);
     }
@@ -421,12 +426,11 @@ export default function RoutePlannerPage() {
                     {task.description && (
                         <div className="text-xs text-slate-500 line-clamp-1 mt-0.5">{task.description}</div>
                     )}
-                    {/* Se quiser mostrar o responsável na tabela, descomente abaixo: */}
-                    {/* {task.assignedTo && (
+                    {task.userAssigned && (
                         <div className="text-[10px] text-indigo-600 flex items-center gap-1 mt-1">
-                            <User size={10} /> {task.assignedTo.name}
+                            <User size={10} /> {task.userAssigned.name}
                         </div>
-                    )} */}
+                    )}
                   </td>
                   <td className="p-4 text-slate-600">
                     <div className="flex items-center gap-2">

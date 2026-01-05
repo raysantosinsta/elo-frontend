@@ -28,7 +28,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
-// IMPORTANTE: Importe sua instância de API aqui
 import { api } from "@/services/api";
 import {
   AlertCircle,
@@ -102,7 +101,9 @@ interface Task {
   priority: number;
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
   columnId?: string | null;
-  assignedTo?: Professional;
+  
+  // CORREÇÃO: O nome da propriedade deve bater com o retorno do Backend (userAssigned)
+  userAssigned?: Professional; 
   createdBy?: Professional;
 
   taskAddress?: TaskAddress | null;
@@ -229,7 +230,7 @@ export default function ProductKanban() {
     id: string;
   } | null>(null);
 
-  // --- VIACEP (Mantido com fetch nativo pois é API Externa) ---
+  // --- VIACEP ---
   const handleCepSearch = async (isEdit: boolean) => {
     const cep = isEdit ? editTaskZip : taskZip;
     const cleanCep = cep.replace(/\D/g, "");
@@ -293,7 +294,7 @@ export default function ProductKanban() {
     }
   };
 
-  // --- GEOCODING (NOMINATIM / OPENSTREETMAP - Mantido fetch nativo) ---
+  // --- GEOCODING ---
   const handleGeocode = async (isEdit: boolean) => {
     const street = isEdit ? editTaskStreet : taskStreet;
     const number = isEdit ? editTaskNumber : taskNumber;
@@ -782,7 +783,8 @@ export default function ProductKanban() {
         ? new Date(task.scheduledDate).toISOString().slice(0, 16)
         : ""
     );
-    setEditTaskAssignedTo(task.assignedTo?.id || "");
+    // CORREÇÃO: Usar userAssigned ao invés de assignedTo
+    setEditTaskAssignedTo(task.userAssigned?.id || "");
     setEditTaskColumn(task.columnId || "");
     setEditTaskPriority(task.priority.toString());
     setEditTaskStatus(task.status);
@@ -945,25 +947,27 @@ export default function ProductKanban() {
             </div>
           )}
 
+          {/* --- CORREÇÃO: NOME DO RESPONSÁVEL COM 'userAssigned' --- */}
           <div className="flex items-center justify-between py-1">
             <span className="text-slate-500 text-xs font-medium">
-              Assignees:
+              Responsável:
             </span>
-            <div className="flex -space-x-2">
-              {task.assignedTo ? (
-                <div
-                  className="h-6 w-6 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[9px] font-bold text-slate-600"
-                  title={task.assignedTo.name}
+            <div>
+              {task.userAssigned ? (
+                <span 
+                    className="text-xs font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 block truncate max-w-[120px]"
+                    title={task.userAssigned.name}
                 >
-                  {getInitials(task.assignedTo.name)}
-                </div>
+                  {task.userAssigned.name}
+                </span>
               ) : (
-                <div className="h-6 w-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] text-slate-400">
-                  <User className="w-3 h-3" />
-                </div>
+                <span className="text-[10px] text-slate-400 italic">
+                  Não atribuído
+                </span>
               )}
             </div>
           </div>
+          {/* -------------------------------------------------------- */}
 
           {/* --- NOVOS CAMPOS DE DATA COM TOOLTIPS DETALHADOS --- */}
           <div className="flex items-end justify-between mt-3 gap-2">
@@ -1273,6 +1277,48 @@ export default function ProductKanban() {
           )}
         </div>
       </main>
+
+      {/* --- MODAL DE COLUNA (ADICIONADO) --- */}
+      <Dialog open={isColumnModal} onOpenChange={setIsColumnModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>
+              {editingCol ? "Editar Coluna" : "Nova Coluna"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="col-name">Nome da Coluna</Label>
+              <Input
+                id="col-name"
+                value={colTitle}
+                onChange={(e) => setColTitle(e.target.value)}
+                placeholder="Ex: Em Análise"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    editingCol ? updateColumn() : createColumn();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsColumnModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={editingCol ? updateColumn : createColumn}
+              className="bg-[#D35400] text-white hover:bg-[#A04000]"
+            >
+              {editingCol ? "Salvar Alterações" : "Criar Coluna"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* --- MODAL DE TAREFA (CRIAÇÃO/EDIÇÃO) --- */}
       <Dialog
@@ -1733,7 +1779,7 @@ export default function ProductKanban() {
                     </span>
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <User className="w-3 h-3" />{" "}
-                      {previewTask.assignedTo?.name || "-"}
+                      {previewTask.userAssigned?.name || "-"}
                     </div>
                   </div>
                   <div>
