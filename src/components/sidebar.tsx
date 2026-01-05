@@ -32,9 +32,11 @@ import {
   LayoutDashboard,
   MessageSquare,
   RefreshCw,
+  Factory
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { title } from "process";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -53,6 +55,7 @@ const menuItems = [
   { title: "Relatórios produtos", href: "/product/report", icon: BarChart },
   { title: "Gerenciar Empresa", href: "/empresas", icon: Home },
   { title: "Rotas", href: "/route-planner", icon: CarFront },
+  { title: "Gerenciar Fornecedores/Oficina", href: "/suppliers", icon: Factory}
 ];
 
 // --- CONTEÚDO INTERNO (Reutilizável para Mobile e Desktop) ---
