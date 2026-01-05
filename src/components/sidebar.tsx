@@ -25,18 +25,17 @@ import {
   ChevronRight,
   Clock,
   DollarSign,
+  Factory,
   FileText,
   Home,
   KanbanSquare,
   KanbanSquareDashed,
   LayoutDashboard,
   MessageSquare,
-  RefreshCw,
-  Factory
+  RefreshCw
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { title } from "process";
 import { useState } from "react";
 import { toast } from "sonner";
 
