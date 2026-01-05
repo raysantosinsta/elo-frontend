@@ -14,7 +14,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Logística Tracker",
+  title: "ELO PRODUTIVO",
+  description: "ELO Produtivo",
+  icons: {
+    icon: "/favicon.ico",
+  },
+
 };
 
 export default function RootLayout({
