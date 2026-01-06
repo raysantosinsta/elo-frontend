@@ -1,54 +1,49 @@
-// /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/login/page.tsx
 'use client';
 
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { AlertCircle, ArrowRight, Loader2, Lock, LogIn, Mail } from 'lucide-react';
+import { ArrowRight, Loader2, Lock, LogIn, Mail } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Hook personalizado de autenticação
   const { login } = useAuth();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
 
     try {
+      // Tenta fazer o login
       await login(email, password);
-      // Redirecionamento é tratado pelo contexto ou middleware, mas por segurança:
+      
+      // Se der certo, o AuthContext ou Middleware redireciona.
       // router.push('/dashboard'); 
     } catch (err: any) {
-      // Tratamento de erro mais amigável
-      setError(err.message || 'Credenciais inválidas. Por favor, tente novamente.');
-      // Opcional: Limpar senha em caso de erro para UX/Segurança
-      if (err.message?.includes('senha')) setPassword('');
+      // --- A MÁGICA ACONTECE AQUI ---
+      // Não precisamos setar setError ou mostrar Alert.
+      // O axios interceptor JÁ pegou o erro 401/400 e abriu o Dialog Global.
+      
+      // Aqui só fazemos limpeza de UX local, se quiser:
+      setPassword(''); // Limpa a senha para o usuário tentar de novo
     } finally {
       setLoading(false);
     }
   };
 
-  const handleInputChange = () => {
-    // Feedback imediato: limpa o erro assim que o usuário começa a corrigir
-    if (error) setError('');
-  };
-
   return (
-    // 1. Background: Algodão Cru (#F5F0E6) para conforto visual e redução de fadiga
+    // 1. Background: Algodão Cru (#F5F0E6)
     <div className="min-h-screen flex items-center justify-center bg-[#F5F0E6] px-4 py-8 font-sans transition-colors duration-300">
       
       <Card className="w-full max-w-[400px] border-0 shadow-2xl shadow-black/5 bg-white/95 backdrop-blur-sm overflow-hidden">
@@ -57,17 +52,17 @@ export default function LoginPage() {
         <div className="h-2 bg-[#D35400] w-full" /> {/* Faixa decorativa Terracota */}
 
         <CardHeader className="space-y-4 text-center pt-8 pb-6">
-          {/* Ícone da Marca: Azul Petróleo (#2C3E50) para sobriedade */}
+          {/* Ícone da Marca: Azul Petróleo */}
           <div className="mx-auto w-14 h-14 bg-[#2C3E50] rounded-2xl rotate-3 flex items-center justify-center shadow-lg mb-2 group transition-transform hover:rotate-0 duration-300">
             <LogIn className="w-7 h-7 text-white group-hover:scale-110 transition-transform" />
           </div>
 
           <div className="space-y-2">
-            {/* Título: Grafite (#2D3436) para leitura nítida */}
+            {/* Título: Grafite */}
             <CardTitle className="text-2xl font-bold text-[#2D3436] tracking-tight">
               Bem-vindo de volta
             </CardTitle>
-            {/* Descrição: Areia Escuro (#95A5A6) para texto secundário */}
+            {/* Descrição: Areia Escuro */}
             <CardDescription className="text-[#95A5A6] text-base">
               Insira suas credenciais para acessar o painel
             </CardDescription>
@@ -76,18 +71,7 @@ export default function LoginPage() {
 
         <CardContent className="space-y-6 pb-8 px-8">
           
-          {/* Alerta de Erro com Animação */}
-          {error && (
-            <Alert variant="destructive" className="bg-red-50 border-l-4 border-l-red-500 border-t-0 border-r-0 border-b-0 animate-in slide-in-from-top-2 fade-in duration-300">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              <AlertDescription className="text-red-800 font-medium ml-2">
-                {error}
-              </AlertDescription>
-            </Alert>
-            // <DialiogError
-            // errorMessage={error}
-            //  />
-          )}
+          {/* REMOVIDO: O Alert local. O Dialog Global aparecerá sobrepondo tudo se houver erro. */}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Input Email */}
@@ -108,11 +92,7 @@ export default function LoginPage() {
                   required
                   placeholder="seu@email.com"
                   value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    handleInputChange();
-                  }}
-                  // Estilos de Input: Borda suave, Foco em Grafite ou Azul
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 h-12 bg-gray-50/50 border-[#95A5A6]/40 focus:border-[#2C3E50] focus:ring-[#2C3E50] rounded-lg transition-all duration-200"
                 />
               </div>
@@ -141,16 +121,13 @@ export default function LoginPage() {
                   required
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    handleInputChange();
-                  }}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-10 h-12 bg-gray-50/50 border-[#95A5A6]/40 focus:border-[#2C3E50] focus:ring-[#2C3E50] rounded-lg transition-all duration-200"
                 />
               </div>
             </div>
 
-            {/* Botão de Ação: Terracota (#D35400) */}
+            {/* Botão de Ação */}
             <Button
               type="submit"
               disabled={loading || !email || !password}
