@@ -1,15 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
-import { parseCookies, setCookie, destroyCookie } from "nookies"; // Recomendo usar 'nookies' para gerenciar cookies no Next.js (mais seguro que document.cookie manual)
+import { parseCookies, setCookie, destroyCookie } from "nookies";
 
-// Definição da URL Base
-const API_BASE =
-  process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
-// Extensão da tipagem para incluir a flag _retry
 interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
 }
+
+// --- NOVO: Sistema de Observer para Erros ---
+// Isso permite que o React injete a função de abrir o Dialog aqui dentro
+type ErrorHandlerFn = (title: string, message: string, errors?: string[]) => void;
+let globalErrorHandler: ErrorHandlerFn | null = null;
+
+export const registerGlobalErrorListener = (fn: ErrorHandlerFn) => {
+  globalErrorHandler = fn;
+};
+// --------------------------------------------
 
 export const api = axios.create({
   baseURL: API_BASE,
@@ -17,33 +24,23 @@ export const api = axios.create({
   timeout: 60000,
 });
 
-// --- 1. Interceptador de Request ---
 api.interceptors.request.use((config) => {
-  // 1. Tenta pegar do Cookie (nookies) - Prioridade para SSR/Next
   const { access_token: cookieToken } = parseCookies();
-
-  // 2. Tenta pegar do LocalStorage (fallback) - Garantia para Client Side
-  const localToken =
-    typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-
-  // Usa o que encontrar
+  const localToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
   const token = cookieToken || localToken;
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-
   return config;
 });
 
-// --- Variáveis de Controle de Concorrência ---
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (token: string) => void;
   reject: (error: any) => void;
 }> = [];
 
-// Função para processar a fila após o refresh
 const processQueue = (error: any, token: string | null = null) => {
   failedQueue.forEach((prom) => {
     if (error) {
@@ -55,100 +52,87 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
-// --- 2. Interceptador de Response ---
 api.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError) => {
+  async (error: AxiosError<any>) => {
     const originalRequest = error.config as CustomAxiosRequestConfig;
+    const status = error.response?.status;
 
-    // Se a requisição foi cancelada ou não tem config, rejeita direto
-    if (!originalRequest) return Promise.reject(error);
-
-    // Verifica se é erro 401 e se NÃO é uma tentativa repetida
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      // CRÍTICO: Evitar Loop Infinito.
-      // Se a falha ocorreu no LOGIN ou no REFRESH, não tentamos renovar de novo.
-      if (
-        originalRequest.url?.includes("/auth/login") ||
-        originalRequest.url?.includes("/auth/refresh")
-      ) {
-        return Promise.reject(error);
-      }
-
-      // Se já houver um refresh acontecendo, enfileira a requisição
-      if (isRefreshing) {
-        return new Promise<string>((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return api(originalRequest);
+    // --- Lógica de Refresh Token (Mantida a sua, impecável) ---
+    if (status === 401 && !originalRequest._retry) {
+      if (originalRequest.url?.includes("/auth/login") || originalRequest.url?.includes("/auth/refresh")) {
+        // Se falhar no login, deixamos o erro passar para o Dialog tratar abaixo
+        // ou retornamos reject se não quisermos dialog no login incorreto
+        // Vamos deixar passar para o Dialog exibir "Credenciais Inválidas"
+      } else {
+        if (isRefreshing) {
+          return new Promise<string>((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
           })
-          .catch((err) => Promise.reject(err));
+            .then((token) => {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+              return api(originalRequest);
+            })
+            .catch((err) => Promise.reject(err));
+        }
+
+        originalRequest._retry = true;
+        isRefreshing = true;
+
+        try {
+          const refreshToken = localStorage.getItem("refreshToken");
+          if (!refreshToken) throw new Error("No refresh token");
+
+          const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
+          
+          const { accessToken: newAccessToken, refreshToken: newRefreshToken } = data;
+
+          localStorage.setItem("accessToken", newAccessToken);
+          if (newRefreshToken) localStorage.setItem("refreshToken", newRefreshToken);
+          
+          setCookie(null, "access_token", newAccessToken, {
+            maxAge: 30 * 24 * 60 * 60,
+            path: "/",
+            sameSite: "lax",
+          });
+
+          api.defaults.headers.common["Authorization"] = `Bearer ${newAccessToken}`;
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
+          processQueue(null, newAccessToken);
+          return api(originalRequest);
+        } catch (refreshError) {
+          processQueue(refreshError, null);
+          destroyCookie(null, "access_token");
+          localStorage.removeItem("accessToken");
+          localStorage.removeItem("refreshToken");
+          if (typeof window !== "undefined") window.location.href = "/login";
+          return Promise.reject(refreshError);
+        } finally {
+          isRefreshing = false;
+        }
       }
+    }
 
-      originalRequest._retry = true;
-      isRefreshing = true;
+    // --- NOVO: Captura Genérica de Erros para o Dialog ---
+    // Se chegamos aqui, ou não é 401, ou o refresh falhou, ou é erro de validação (400, 422, 500)
+    if (globalErrorHandler) {
+        const errorData = error.response?.data;
+        
+        // Título baseado no status
+        let title = "Erro Inesperado";
+        if (status === 400) title = "Dados Inválidos";
+        if (status === 401) title = "Acesso Negado";
+        if (status === 403) title = "Sem Permissão";
+        if (status === 404) title = "Não Encontrado";
+        if (status === 500) title = "Erro no Servidor";
 
-      try {
-        // Pega o refresh token do storage (ou cookies httpOnly se estiver usando)
-        const refreshToken = localStorage.getItem("refreshToken"); // ou cookies
+        // Mensagem e erros detalhados vindos do Backend
+        const message = errorData?.message || error.message || "Ocorreu um erro desconhecido.";
+        const details = errorData?.errors; // Array de strings vindo do filtro do NestJS
 
-        if (!refreshToken) {
-          throw new Error("Refresh token não encontrado");
-        }
-
-        // Chamada direta ao backend (bypass do interceptor da api)
-        const { data } = await axios.post(`${API_BASE}/auth/refresh`, {
-          refreshToken: refreshToken,
-        });
-
-        const { accessToken: newAccessToken, refreshToken: newRefreshToken } =
-          data;
-
-        // 1. Atualiza LocalStorage (para uso imediato no client)
-        localStorage.setItem("accessToken", newAccessToken);
-        if (newRefreshToken) {
-          localStorage.setItem("refreshToken", newRefreshToken);
-        }
-
-        // 2. Atualiza Cookies (CRÍTICO para o Middleware do Next.js passar nas rotas)
-        setCookie(null, "access_token", newAccessToken, {
-          maxAge: 30 * 24 * 60 * 60,
-          path: "/",
-          sameSite: "lax", // ou 'strict'
-          // secure: process.env.NODE_ENV === 'production' // descomentar em prod
-        });
-
-        // 3. Configura o header padrão para futuras requisições
-        api.defaults.headers.common[
-          "Authorization"
-        ] = `Bearer ${newAccessToken}`;
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-
-        // 4. Processa a fila de requisições que estavam esperando
-        processQueue(null, newAccessToken);
-
-        // 5. Retenta a requisição original
-        return api(originalRequest);
-      } catch (refreshError) {
-        // Se o refresh falhar (expirou ou inválido): LOGOUT TOTAL
-        processQueue(refreshError, null);
-
-        // Limpa tudo
-        destroyCookie(null, "access_token");
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("refreshToken");
-
-        // Redireciona para login (via window para garantir limpeza de estado)
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
-
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
+        // Dispara o Dialog
+        globalErrorHandler(title, message, details);
     }
 
     return Promise.reject(error);

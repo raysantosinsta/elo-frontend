@@ -6,6 +6,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { SidebarProvider } from "@/hooks/SidebarContext";
+import { ErrorProvider } from "@/contexts/error-context";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({
@@ -33,7 +34,9 @@ export default function RootLayout({
       >
         <AuthProvider>
           <SidebarProvider>
-            {children}
+            <ErrorProvider>
+              {children}
+            </ErrorProvider>
             <Toaster position="top-right" richColors closeButton />
           </SidebarProvider>
         </AuthProvider>
