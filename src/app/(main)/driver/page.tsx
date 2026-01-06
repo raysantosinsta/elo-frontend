@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/driver/page.tsx
 "use client";
 
 import { api } from "@/services/api";
+import { useError } from "@/contexts/error-context"; // 🔥 Importamos o hook do contexto
 import {
   AlertTriangle,
   ArrowLeft,
@@ -40,6 +42,7 @@ interface RoutePoint {
 
 export default function DriverPage() {
   const router = useRouter();
+  const { showError } = useError(); // 🔥 Hook para disparar erros manuais (validação)
 
   // --- ESTADOS PRINCIPAIS ---
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
@@ -58,13 +61,13 @@ export default function DriverPage() {
   // --- ESTADOS DO MODAL ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionType, setActionType] = useState<"COMPLETED" | "FAILED">("COMPLETED");
-  const [comment, setComment] = useState(""); // Comentário da Finalização (Tarefa Antiga)
+  const [comment, setComment] = useState(""); 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- INPUTS DO FORMULÁRIO (NOVA TAREFA) ---
   const [rescheduleDate, setRescheduleDate] = useState<string>("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskDescription, setNewTaskDescription] = useState(""); // Novo campo: Descrição
+  const [newTaskDescription, setNewTaskDescription] = useState(""); 
   const [newTaskDate, setNewTaskDate] = useState("");
 
   const watchIdRef = useRef<number | null>(null);
@@ -135,8 +138,14 @@ export default function DriverPage() {
   // --- SIMULAÇÃO ---
   const startSimulation = () => {
     const destination = routePoints[currentStopIndex];
-    if (!currentPosition) { alert("Aguardando GPS..."); return; }
-    if (!destination) { alert("Sem destino."); return; }
+    if (!currentPosition) { 
+        showError("GPS Indisponível", "Aguardando sinal de GPS para iniciar a simulação."); 
+        return; 
+    }
+    if (!destination) { 
+        showError("Erro de Rota", "Destino não encontrado."); 
+        return; 
+    }
 
     setIsGPSActive(false);
     setIsSimulating(true);
@@ -175,13 +184,20 @@ export default function DriverPage() {
     setRescheduleDate(today);
     setNewTaskDate(today);
     setNewTaskTitle("");
-    setNewTaskDescription(""); // Limpa descrição
+    setNewTaskDescription(""); 
     setIsModalOpen(true);
   };
 
   const confirmFinalization = async () => {
-    if (!comment && actionType === "FAILED") { alert("Por favor, descreva o motivo."); return; }
-    if (actionType === "COMPLETED" && !newTaskTitle.trim()) { alert("Informe o título da nova tarefa."); return; }
+    // --- VALIDAÇÃO MANUAL USANDO O GLOBAL DIALOG ---
+    if (!comment && actionType === "FAILED") { 
+        showError("Campo Obrigatório", "Por favor, descreva o motivo do problema."); 
+        return; 
+    }
+    if (actionType === "COMPLETED" && !newTaskTitle.trim()) { 
+        showError("Campo Obrigatório", "Informe o título da nova tarefa para prosseguir."); 
+        return; 
+    }
 
     setIsSubmitting(true);
     const task = routePoints[currentStopIndex];
@@ -192,19 +208,21 @@ export default function DriverPage() {
         const formattedDate = rescheduleDate ? `${rescheduleDate}T12:00:00` : undefined;
         await api.patch(`/routes/tasks/${task.id}/finalize`, {
           status: "FAILED",
-          finalComment: comment, // Comentário da falha
+          finalComment: comment, 
           scheduledAt: formattedDate ? new Date(formattedDate).toISOString() : undefined,
         });
       } else {
         await api.patch(`/routes/tasks/${task.id}/finalize`, {
           status: "COMPLETED",
-          finalComment: comment, // Comentário da conclusão
+          finalComment: comment,
         });
 
         // 2. Cria a NOVA tarefa
         if (newTaskTitle) {
           if (!task.columnId) {
-             alert("ERRO: Dados desatualizados."); setIsSubmitting(false); return; 
+             showError("Erro de Dados", "Dados da tarefa desatualizados. Recarregue a página."); 
+             setIsSubmitting(false); 
+             return; 
           }
           const newDateFormatted = newTaskDate ? `${newTaskDate}T09:00:00` : undefined;
           
@@ -226,14 +244,13 @@ export default function DriverPage() {
              latitude: Number(task.lat), longitude: Number(task.lng)
           };
 
-          // Monta a descrição final: O que o usuário digitou + histórico do comentário anterior
           const finalDescription = `${newTaskDescription}\n\n> Histórico: ${comment || "Sem observações na conclusão anterior."}`;
 
           await api.post('/tasks', {
             title: newTaskTitle,
             columnId: task.columnId,
             description: finalDescription.trim(),
-            assignedToId: task.userAssigned?.id || task.userAssignedId, // Mantém responsável
+            assignedToId: task.userAssigned?.id || task.userAssignedId, 
             scheduledAt: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
             dueDate: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
             address: addressPayload
@@ -244,7 +261,7 @@ export default function DriverPage() {
       // Avança
       const nextIndex = currentStopIndex + 1;
       if (nextIndex >= routePoints.length) {
-        alert("Rota finalizada com sucesso!");
+        // Sucesso Final - Redireciona
         localStorage.removeItem("rotaAtiva");
         localStorage.removeItem("rotaIndex");
         localStorage.removeItem("rotaStartTime");
@@ -256,9 +273,10 @@ export default function DriverPage() {
         setIsModalOpen(false);
       }
 
-    } catch (error: any) {
-      console.error(error);
-      alert(error.response?.data?.message || "Erro ao salvar.");
+    } catch (error) {
+      // --- REMOVIDO ALERT MANUAL ---
+      // O Interceptor do Axios já disparou o Dialog Global.
+      console.error("Erro na finalização:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -327,7 +345,7 @@ export default function DriverPage() {
         </div>
       </div>
 
-      {/* --- MODAL COM OS CAMPOS SEPARADOS --- */}
+      {/* --- MODAL --- */}
       {isModalOpen && (
         <div className="absolute inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -337,7 +355,6 @@ export default function DriverPage() {
               </h3>
             </div>
             
-            {/* Se for Problema (Failed) */}
             {actionType === "FAILED" && (
                 <div className="mb-4 bg-red-50 p-3 rounded-xl border border-red-100">
                     <label className="text-xs font-bold text-red-700 mb-1 block uppercase">Reagendar Para</label>
@@ -345,7 +362,6 @@ export default function DriverPage() {
                 </div>
             )}
 
-            {/* Se for Conclusão (Completed) - CAMPOS DA NOVA TAREFA */}
             {actionType === "COMPLETED" && (
                 <div className="mb-4 bg-emerald-50 p-4 rounded-xl border border-emerald-100 space-y-3">
                     <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider border-b border-emerald-200 pb-2 mb-2">
@@ -374,7 +390,6 @@ export default function DriverPage() {
                 </div>
             )}
 
-            {/* CAMPO DE COMENTÁRIO FINAL (DA TAREFA ATUAL) */}
             <div>
                 <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
                     {actionType === "COMPLETED" ? "Comentário da Finalização (Atual)" : "Motivo do Problema"}

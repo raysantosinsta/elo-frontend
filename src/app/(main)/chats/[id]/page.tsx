@@ -8,7 +8,7 @@ import {
   ArrowLeft, 
   Calendar, 
   Loader2, 
-  AlertCircle, 
+  // AlertCircle, -> REMOVIDO
   MessageSquare 
 } from "lucide-react";
 
@@ -19,33 +19,32 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 // Hooks & Services
-import { useAuth } from "@/contexts/AuthContext"; // Usar o contexto em vez de decodificar token na mão
+import { useAuth } from "@/contexts/AuthContext";
 import { useChatSocket } from "@/hooks/use-chat-socket";
-import { chatService } from "@/services/chatService"; // Importe o service correto
+import { chatService } from "@/services/chatService";
 import { Chat, ChatMessage } from "@/types/chat";
 
 export default function ChatPage() {
   // --- HOOKS & STATE ---
   const params = useParams();
   const chatId = params.id as string;
-  const { user, loading: authLoading } = useAuth(); // Pega o usuário do contexto
+  const { user, loading: authLoading } = useAuth();
 
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  
+  // REMOVIDO: const [error, setError] = useState<string | null>(null);
 
   // --- DATA FETCHING ---
   const loadChatData = useCallback(async () => {
-    // Só carrega se tivermos o ID do chat e o usuário logado
     if (!chatId || !user) return;
 
     try {
       setLoading(true);
-      setError(null);
+      // REMOVIDO: setError(null);
       
-      // Promise.all para carregar chat e mensagens em paralelo
       const [chatData, messagesData] = await Promise.all([
         chatService.getChat(chatId),
         chatService.getChatMessages(chatId),
@@ -54,8 +53,9 @@ export default function ChatPage() {
       setChat(chatData);
       setMessages(messagesData);
     } catch (error) {
-      console.error("Erro no carregamento:", error);
-      setError("Não foi possível carregar a conversa.");
+      // O Interceptor do Axios já abriu o Dialog Global.
+      // Aqui só logamos para debug.
+      console.error("Erro silencioso (tratado pelo Global Dialog):", error);
     } finally {
       setLoading(false);
     }
@@ -75,7 +75,6 @@ export default function ChatPage() {
       return [...prev, newMessage];
     });
 
-    // Notificação de menção
     if (user && newMessage.mentionedProfessionalId === user.id) {
       toast.info(`@${newMessage.sender.name || 'Alguém'} mencionou você`, {
         description: newMessage.message,
@@ -88,15 +87,14 @@ export default function ChatPage() {
     }
   }, [user]);
 
-  // Hook do Socket
   useChatSocket({
     chatId,
     currentUserId: user?.id || "",
-    companyId: user?.company?.id || "", // Pega direto do objeto User
+    companyId: user?.company?.id || "",
     onNewMessage: handleNewMessage,
     onUserNotification: (notification) => {
       if (notification.type === 'mention' || notification.title?.includes('mencionado')) {
-         toast.info(notification.title || "Nova menção", { description: notification.message });
+          toast.info(notification.title || "Nova menção", { description: notification.message });
       }
     },
   });
@@ -116,8 +114,9 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, newMessage]);
     } catch (error) {
+      // REMOVIDO: toast.error(...);
+      // Se falhar (ex: internet caiu, erro 500), o Dialog Global aparece.
       console.error("Falha no envio:", error);
-      toast.error("Não foi possível enviar a mensagem.");
     } finally {
       setSending(false);
     }
@@ -137,30 +136,12 @@ export default function ChatPage() {
     );
   }
 
-  // --- RENDER: ERROR STATE ---
-  if (error) {
-    return (
-      <div className="flex h-[100dvh] w-full items-center justify-center bg-[#F5F0E6] p-4">
-        <div className="flex w-full max-w-md flex-col items-center gap-6 rounded-2xl border border-[#95A5A6]/20 bg-white p-8 text-center shadow-sm">
-          <div className="rounded-full bg-red-50 p-4">
-            <AlertCircle className="h-10 w-10 text-red-500" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold text-[#2D3436]">Ops, algo deu errado</h2>
-            <p className="text-sm text-[#95A5A6]">{error}</p>
-          </div>
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => window.location.reload()} className="border-[#95A5A6]/30 text-[#2D3436]">
-              Tentar novamente
-            </Button>
-            <Button asChild className="bg-[#2C3E50] text-white hover:bg-[#2C3E50]/90">
-              <Link href="/chats">Voltar para Chats</Link>
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // REMOVIDO: Bloco if (error) { ... } inteiro.
+
+  // --- SAFETY CHECK ---
+  // Se parou de carregar mas o chat continua null (deu erro), retornamos null.
+  // O usuário estará vendo o Dialog Global de erro neste momento.
+  if (!chat) return null;
 
   // --- RENDER: MAIN CHAT UI ---
   return (
@@ -185,7 +166,7 @@ export default function ChatPage() {
             <div className="flex items-center gap-2 text-xs text-[#95A5A6]">
               <span className="flex items-center gap-1">
                  <Calendar className="h-3 w-3" />
-                 {chat ? new Date(chat.createdAt).toLocaleDateString('pt-BR') : '...'}
+                 {new Date(chat.createdAt).toLocaleDateString('pt-BR')}
               </span>
               <span>•</span>
               <span>{messages.length} msgs</span>
@@ -216,7 +197,7 @@ export default function ChatPage() {
         <div className="mx-auto max-w-4xl">
           <ChatMessages
             messages={messages}
-            currentUserId={user?.id || ""} // Passa o ID vindo do hook
+            currentUserId={user?.id || ""}
           />
         </div>
       </section>

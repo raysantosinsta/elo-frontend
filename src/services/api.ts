@@ -36,6 +36,7 @@ api.interceptors.request.use((config) => {
 });
 
 let isRefreshing = false;
+
 let failedQueue: Array<{
   resolve: (token: string) => void;
   reject: (error: any) => void;
@@ -131,7 +132,7 @@ api.interceptors.response.use(
         const message = errorData?.message || error.message || "Ocorreu um erro desconhecido.";
         const details = errorData?.errors; // Array de strings vindo do filtro do NestJS
 
-        // Dispara o Dialog
+        // Dispara o Dialog - === showError
         globalErrorHandler(title, message, details);
     }
 

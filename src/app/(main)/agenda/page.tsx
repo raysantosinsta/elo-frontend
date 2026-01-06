@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { api } from '@/services/api';
+import { api } from '@/services/api'; // Sua instância com o interceptor
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   Calendar as CalendarIcon, 
@@ -15,7 +15,6 @@ import {
   ChevronRight, 
   RefreshCw, 
   Star, 
-  AlertTriangle,
   CheckCircle2,
   Clock
 } from 'lucide-react';
@@ -55,7 +54,6 @@ const COLORS = {
 
 export default function AgendaPage() {
   // --- Hooks & Context ---
-  // 2. CORREÇÃO: Removemos authFetch e token daqui
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -63,7 +61,9 @@ export default function AgendaPage() {
   // --- Local State ---
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
+  
+  // 1. REMOVIDO: const [error, setError] = useState(''); -> O Dialog Global cuida disso agora.
+  
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [highlightedTask, setHighlightedTask] = useState<string | null>(null);
 
@@ -94,11 +94,10 @@ export default function AgendaPage() {
     if (!user) return;
 
     setLoading(true);
-    setError('');
+    // 2. REMOVIDO: setError('');
     
     try {
-      // 3. CORREÇÃO: Usar api.get
-      // O Axios injeta a BaseURL e o Token automaticamente
+      // Se der erro aqui (400, 500, etc), o Interceptor do Axios dispara o Dialog Global automaticamente.
       const response = await api.get('/tasks');
       const data = response.data;
       
@@ -127,13 +126,9 @@ export default function AgendaPage() {
 
       setTasks(filtered);
     } catch (err: any) {
-      console.error('❌ Erro na agenda:', err);
-      // Se for 401, o interceptor do axios já lidou, mas podemos exibir msg
-      if (err.response?.status === 401) {
-         setError('Sessão expirada. Redirecionando...');
-      } else {
-         setError('Não foi possível carregar as tarefas.');
-      }
+      // 3. LIMPEZA: O catch agora só serve para parar o loading e logar no console.
+      // Nenhuma lógica visual é necessária aqui.
+      console.error('❌ Erro silencioso (tratado pelo Global Dialog):', err);
     } finally {
       setLoading(false);
     }
@@ -256,18 +251,9 @@ export default function AgendaPage() {
           </div>
         </header>
 
-        {/* --- Feedback Section --- */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-md flex items-center justify-between animate-in fade-in slide-in-from-top-2">
-            <div className="flex items-center gap-3 text-red-700">
-              <AlertTriangle className="h-5 w-5" />
-              <span className="font-medium">{error}</span>
-            </div>
-            <Button onClick={fetchTasks} variant="outline" size="sm" className="text-red-700 border-red-200 hover:bg-red-100">
-              Tentar novamente
-            </Button>
-          </div>
-        )}
+        {/* 4. REMOVIDO: Feedback Section de Erro manual.
+            O {error && ...} foi deletado pois o Dialog sobrepõe tudo.
+        */}
 
         {highlightedTask && tasks.find(t => t.id === highlightedTask) && (
           <div className="mb-6 bg-[#FEF9E7] border border-yellow-200 rounded-lg p-4 flex items-center gap-4 shadow-sm animate-in zoom-in-95">

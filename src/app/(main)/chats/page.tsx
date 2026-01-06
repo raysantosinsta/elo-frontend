@@ -1,62 +1,31 @@
 "use client";
 
-import { ChatList } from "@/components/chat/chat-list";
-import { useEffect, useState } from "react";
-import { jwtDecode } from "jwt-decode";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-// --- TYPE DEFINITIONS ---
-interface JwtPayload {
-  sub: string;
-  email: string;
-  role: string; // 🔥 CRUCIAL: Agora capturamos o cargo
-  companyId: string;
-  iat: number;
-  exp: number;
-}
+// Components
+import { ChatList } from "@/components/chat/chat-list";
+
+// Hooks
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function ChatsPage() {
   // --- STATE MANAGEMENT ---
-  const [currentUserId, setCurrentUserId] = useState<string>("");
-  const [companyId, setCompanyId] = useState<string>("");
-  const [userRole, setUserRole] = useState<string>(""); // Estado para o cargo
-  const [loading, setLoading] = useState(true);
+  // Substituímos toda a lógica manual de jwtDecode pelo hook useAuth.
+  // Isso garante consistência: se o AuthContext diz que está logado, está logado.
+  const { user, loading } = useAuth();
+  const router = useRouter();
 
-  // --- LOGIC / EFFECTS ---
+  // --- PROTECTED ROUTE CHECK ---
   useEffect(() => {
-    const getTokenData = () => {
-      try {
-        if (process.env.NODE_ENV === 'development') {
-           console.log("🔍 Iniciando validação de sessão...");
-        }
+    // Se terminou de carregar e não tem usuário, manda pro login
+    if (!loading && !user) {
+      router.push("/login");
+    }
+  }, [user, loading, router]);
 
-        const token = localStorage.getItem("accessToken");
-        
-        if (token) {
-          const decoded = jwtDecode<JwtPayload>(token);
-          
-          if (process.env.NODE_ENV === 'development') {
-            console.log("✅ Sessão válida. User:", decoded.sub, "Role:", decoded.role);
-          }
-
-          setCurrentUserId(decoded.sub);
-          setCompanyId(decoded.companyId);
-          setUserRole(decoded.role || ""); // Garante que não seja undefined
-        } else {
-          console.warn("⚠️ Token não encontrado. Redirecionando para login...");
-          // Aqui você poderia adicionar um router.push('/login')
-        }
-      } catch (error) {
-        console.error("❌ Erro crítico na sessão:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    getTokenData();
-  }, []);
-
-  // --- RENDER: LOADING STATE (UX: Feedback Imediato) ---
+  // --- RENDER: LOADING STATE ---
   if (loading) {
     return (
       <div 
@@ -74,13 +43,13 @@ export default function ChatsPage() {
     );
   }
 
+  // Se não estiver carregando e não tiver usuário, retorna null enquanto redireciona
+  if (!user) return null;
+
   // --- RENDER: MAIN CONTENT ---
   return (
     <main className="min-h-screen w-full bg-[#F5F0E6] text-[#2D3436]">
-      {/* Container Centralizado
-         Mobile-First: Padding pequeno (p-4).
-         Desktop: Padding maior e largura controlada (max-w-4xl) para leitura confortável.
-      */}
+      {/* Container Centralizado */}
       <div className="mx-auto flex h-screen max-w-4xl flex-col p-4 md:p-6 lg:p-8">
         
         <section 
@@ -88,14 +57,15 @@ export default function ChatsPage() {
           aria-label="Gerenciamento de Chats"
         >
           <div className="flex-1 overflow-y-auto">
-             {/* 🔥 AQUI ESTÁ A MÁGICA:
-                Passamos o userRole para a ChatList. 
-                Se for ADM/MASTER, o botão de lixeira aparecerá.
+             {/* 🔥 AQUI ESTÁ A INTEGRAÇÃO:
+                1. Passamos os dados direto do objeto `user` do contexto.
+                2. O componente ChatList fará chamadas API (ex: api.get('/chats')).
+                3. Se essas chamadas falharem, o Axios Interceptor disparará o GlobalErrorDialog automaticamente.
              */}
              <ChatList 
-               currentUserId={currentUserId} 
-               companyId={companyId} 
-               userRole={userRole}
+               currentUserId={user.id} 
+               companyId={user.company?.id || ""} // Ajuste conforme sua interface de User
+               userRole={user.role} // O AuthContext deve fornecer isso
              />
           </div>
         </section>
