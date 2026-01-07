@@ -5,16 +5,17 @@ import React, { useEffect, useState, useCallback } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { 
-  Plus, MoreHorizontal, Search, Building2, MapPin, Phone, 
+import {
+  Plus, MoreHorizontal, Search, Building2, MapPin, Phone,
   Edit, Trash2, Power, Loader2, AlertTriangle, CheckCircle2, Search as SearchIcon
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "sonner" // Usaremos toast apenas para Sucesso agora
 import { useRouter } from "next/navigation"
 
-// 1. CORREÇÃO: Importar api diretamente do serviço
+// Serviços e Contextos
 import { api } from "@/services/api"
-// import { useAuth } from "@/contexts/AuthContext" // Opcional se for usar apenas para redirecionamento
+// 🔥 1. Importação do Hook de Erro
+import { useError } from "@/contexts/error-context" // Ajuste o caminho se necessário (ex: ErrorProvider)
 
 // UI Components
 import { Button } from "@/components/ui/button"
@@ -24,14 +25,14 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, 
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -76,14 +77,15 @@ const companyFormSchema = z.object({
 type CompanyFormValues = z.infer<typeof companyFormSchema>
 
 export default function CompanyManagementPage() {
-  // 2. CORREÇÃO: Removemos api do useAuth
   const router = useRouter()
+  // 🔥 2. Instanciando o hook de erro
+  const { showError } = useError()
 
   // --- States ---
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  
+
   // Edit Modal States
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
@@ -105,18 +107,45 @@ export default function CompanyManagementPage() {
     },
   })
 
-  // --- Helpers (Safe against undefined) ---
+  // --- Helpers ---
   const formatCNPJ = (v: string | null | undefined) => {
     if (!v) return ""
-    return v.replace(/\D/g,"").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5").substring(0, 18)
+    return v.replace(/\D/g, "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5").substring(0, 18)
   }
   const formatPhone = (v: string | null | undefined) => {
     if (!v) return ""
-    return v.replace(/\D/g,"").replace(/^(\d{2})(\d)(\d{4})(\d{4})/, "($1) $2 $3-$4").substring(0, 15)
+
+    // 1. Limpa tudo que não é número
+    const r = v.replace(/\D/g, "")
+
+    // 2. Garante que só pegamos os primeiros 11 dígitos (DDD + 9 números)
+    const numbers = r.substring(0, 11)
+
+    // 3. Aplica a máscara
+
+    // Se tiver 11 dígitos (Celular): (85) 9 8437-2869
+    if (numbers.length === 11) {
+      return numbers.replace(/^(\d{2})(\d{1})(\d{4})(\d{4})/, "($1) $2 $3-$4")
+    }
+
+    // Se tiver 10 dígitos (Fixo): (85) 3333-4444
+    if (numbers.length === 10) {
+      return numbers.replace(/^(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
+    }
+
+    // Máscara parcial enquanto digita (para não ficar feio antes de terminar)
+    if (numbers.length > 5) {
+      return numbers.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3")
+    }
+    if (numbers.length > 2) {
+      return numbers.replace(/^(\d{2})/, "($1) ")
+    }
+
+    return numbers
   }
   const formatCEP = (v: string | null | undefined) => {
     if (!v) return ""
-    return v.replace(/\D/g,"").replace(/^(\d{5})(\d)/, "$1-$2").substring(0, 9)
+    return v.replace(/\D/g, "").replace(/^(\d{5})(\d)/, "$1-$2").substring(0, 9)
   }
 
   // --- API: Fetch Companies ---
@@ -126,7 +155,10 @@ export default function CompanyManagementPage() {
       const response = await api.get<{ data: Company[] }>("/companies?limit=100")
       setCompanies(response.data.data || [])
     } catch (error) {
-      toast.error("Erro ao carregar lista de empresas")
+      // 🔥 3. Erro silencioso aqui pois o Interceptor do Axios já vai abrir o Dialog
+      // Se quiser garantir que abra algo mesmo se não for erro de HTTP (ex: erro de rede), o axios também pega.
+      // Apenas limpamos o loading.
+      console.error("Erro no fetch:", error)
     } finally {
       setLoading(false)
     }
@@ -138,24 +170,37 @@ export default function CompanyManagementPage() {
   const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const rawCep = e.target.value.replace(/\D/g, "")
     if (rawCep.length !== 8) return
+
     setIsCepLoading(true)
     try {
+      // Como usamos fetch nativo, o Interceptor do Axios NÃO funciona aqui.
+      // Precisamos chamar o showError manualmente se der erro.
       const res = await fetch(`https://viacep.com.br/ws/${rawCep}/json/`)
       const data = await res.json()
-      if (!data.erro) {
-        form.setValue("endereco", data.logradouro)
-        form.setValue("bairro", data.bairro)
-        form.setValue("cidade", data.localidade)
-        form.setValue("estado", data.uf)
-        form.setFocus("numero")
+
+      if (data.erro) {
+        // 🔥 4. Uso manual do Dialog para erros de negócio (CEP não existe)
+        showError("CEP Inválido", "O CEP informado não foi encontrado na base de dados.")
+        return
       }
-    } catch {} finally { setIsCepLoading(false) }
+
+      form.setValue("endereco", data.logradouro)
+      form.setValue("bairro", data.bairro)
+      form.setValue("cidade", data.localidade)
+      form.setValue("estado", data.uf)
+      form.setFocus("numero")
+
+    } catch (err) {
+      // 🔥 5. Uso manual para erros de rede no fetch
+      showError("Erro na Busca", "Não foi possível consultar o CEP. Verifique sua conexão.")
+    } finally {
+      setIsCepLoading(false)
+    }
   }
 
   // --- Modal Actions ---
   const openEditModal = (company: Company) => {
     setEditingCompany(company)
-    // Populate form with company data
     form.reset({
       name: company.name || "",
       cnpj: formatCNPJ(company.cnpj),
@@ -179,58 +224,46 @@ export default function CompanyManagementPage() {
     setIsFormLoading(true)
     try {
       // UPDATE (PATCH)
+      // Se der erro (400, 403, 500), o Interceptor do Axios abre o Dialog automaticamente.
       await api.patch(`/companies/${editingCompany.id}`, values)
+
       toast.success("Empresa atualizada com sucesso!")
-      
-      // Update local list to avoid refetch
+
       setCompanies(prev => prev.map(c => c.id === editingCompany.id ? { ...c, ...values } : c))
-      
       setIsEditModalOpen(false)
     } catch (error: any) {
-      console.error(error)
-      // Specific error handling for permission
-      if (error.response?.status === 400 || error.response?.status === 403) {
-        toast.error("Erro de Permissão", { description: "Verifique se seu usuário é ADMIN ou MASTER." })
-      } else {
-        const msg = error.response?.data?.message
-        toast.error("Falha ao salvar", { description: Array.isArray(msg) ? msg[0] : msg })
-      }
+      // 🔥 6. Removemos os toasts de erro manuais.
+      // O catch serve apenas para garantir que o loading pare.
+      console.error("Erro ao editar", error)
     } finally {
       setIsFormLoading(false)
     }
   }
 
-// --- Action: Toggle Status (Activate/Deactivate) ---
-const handleToggleStatus = async (id: string, currentStatus: string) => {
-  // Convert to API format (ACTIVE/INACTIVE) and toggle
-  const apiStatus = currentStatus === "ACTIVE" ? "ACTIVE" : "INACTIVE";
-  const newApiStatus = apiStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-  // Convert back to UI format (ATIVO/INATIVO)
-  const newStatus = newApiStatus === "ACTIVE" ? "ACTIVE" : "INACTIVE";
+  // --- Action: Toggle Status ---
+  const handleToggleStatus = async (id: string, currentStatus: string) => {
+    const apiStatus = currentStatus === "ACTIVE" ? "ACTIVE" : "INACTIVE";
+    const newApiStatus = apiStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    const newStatus = newApiStatus === "ACTIVE" ? "ACTIVE" : "INACTIVE";
 
-  try {
-    // Call API with API format
-    await api.patch(`/companies/${id}`, { status: newApiStatus });
+    try {
+      await api.patch(`/companies/${id}`, { status: newApiStatus });
+      toast.success("Status atualizado com sucesso");
 
-    toast.success("Status atualizado com sucesso");
-
-    // Update UI with correct status type
-    setCompanies((prevCompanies) => 
-      prevCompanies.map((company) => 
-        company.id === id 
-          ? { ...company, status: newStatus }
-          : company
-      )
-    );
-
-  } catch (error) {
-    console.error("Erro ao atualizar", error);
-    toast.error("Não foi possível atualizar o status.");
-  }
-};
+      setCompanies((prevCompanies) =>
+        prevCompanies.map((company) =>
+          company.id === id ? { ...company, status: newStatus } : company
+        )
+      );
+    } catch (error) {
+      // 🔥 7. Sem toast de erro, o Dialog Global assume.
+      console.error("Erro ao atualizar status", error);
+    }
+  };
 
   // --- Action: Delete ---
   const confirmDelete = (id: string) => { setDeleteId(id); setIsDeleteOpen(true) }
+
   const handleDelete = async () => {
     if (!deleteId) return
     setIsDeleting(true)
@@ -238,30 +271,35 @@ const handleToggleStatus = async (id: string, currentStatus: string) => {
       await api.delete(`/companies/${deleteId}`)
       setCompanies(prev => prev.filter(c => c.id !== deleteId))
       toast.success("Empresa removida.")
+      setIsDeleteOpen(false)
+      setDeleteId(null)
     } catch (error) {
-      toast.error("Erro ao excluir", { description: "Verifique vínculos existentes." })
+      // 🔥 8. Sem toast de erro. Se houver vínculo, o backend retorna 400/409 e o Dialog mostra a msg do backend.
+      console.error("Erro ao excluir", error)
+      // Opcional: fechar o modal de confirmação mesmo com erro, ou deixar aberto
+      setIsDeleteOpen(false)
     } finally {
-      setIsDeleting(false); setIsDeleteOpen(false); setDeleteId(null)
+      setIsDeleting(false)
     }
   }
 
   // --- Filter ---
-  const filteredCompanies = companies.filter(c => 
+  const filteredCompanies = companies.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.cnpj.includes(searchTerm)
   )
 
   return (
     <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-        
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-[#2D3436]">Empresas</h1>
             <p className="text-[#95A5A6]">Gerencie seus parceiros comerciais.</p>
           </div>
-          <Button 
-            onClick={() => router.push('/registrar-empresa')} // Redirect to existing page
+          <Button
+            onClick={() => router.push('/registrar-empresa')}
             className="bg-[#D35400] hover:bg-[#D35400]/90 text-white shadow-md transition-transform hover:scale-105"
           >
             <Plus className="mr-2 h-4 w-4" /> Nova Empresa
@@ -298,7 +336,7 @@ const handleToggleStatus = async (id: string, currentStatus: string) => {
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    Array.from({length: 5}).map((_, i) => (
+                    Array.from({ length: 5 }).map((_, i) => (
                       <TableRow key={i}><TableCell colSpan={5} className="h-12"><div className="h-4 bg-gray-100 rounded w-full animate-pulse" /></TableCell></TableRow>
                     ))
                   ) : filteredCompanies.length === 0 ? (
@@ -362,11 +400,11 @@ const handleToggleStatus = async (id: string, currentStatus: string) => {
         </Card>
       </div>
 
-      {/* --- MODAL UNIFICADO (CRIAR / EDITAR) --- */}
+      {/* --- MODAL UNIFICADO (EDITAR) --- */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 overflow-hidden bg-white border-[#F5F0E6]">
-          
-          {/* CABEÇALHO (Fixo no topo) */}
+
+          {/* CABEÇALHO */}
           <DialogHeader className="px-6 py-4 border-b border-[#F5F0E6] bg-[#F5F0E6]/30 shrink-0">
             <div className="flex items-center gap-2">
               <div className="p-2 bg-[#F5F0E6] rounded text-[#D35400]">
@@ -382,13 +420,13 @@ const handleToggleStatus = async (id: string, currentStatus: string) => {
               </div>
             </div>
           </DialogHeader>
-          
-          {/* CORPO (Rolagem automática no meio) */}
-          <div className="flex-1 overflow-hidden"> 
+
+          {/* CORPO */}
+          <div className="flex-1 overflow-hidden">
             <ScrollArea className="h-full px-6 py-4">
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmitEdit)} className="space-y-6 pb-4">
-                  
+
                   {/* Grupo 1: Dados Principais */}
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold text-[#2C3E50] uppercase tracking-wider flex items-center gap-2">
@@ -419,7 +457,15 @@ const handleToggleStatus = async (id: string, currentStatus: string) => {
                       <FormField control={form.control} name="telefone" render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-[#2D3436]">Telefone</FormLabel>
-                          <FormControl><Input placeholder="(00) 00000-0000" maxLength={15} {...field} onChange={e => field.onChange(formatPhone(e.target.value))} className="focus-visible:ring-[#2C3E50]" /></FormControl>
+                          <FormControl>
+                            <Input
+                              placeholder="(00) 9 0000-0000"
+                              maxLength={16} // Isso está correto (16 caracteres contando espaços e traços)
+                              {...field}
+                              onChange={e => field.onChange(formatPhone(e.target.value))}
+                              className="focus-visible:ring-[#2C3E50]"
+                            />
+                          </FormControl>
                           <FormMessage className="text-[#D35400]" />
                         </FormItem>
                       )} />
@@ -503,11 +549,11 @@ const handleToggleStatus = async (id: string, currentStatus: string) => {
             </ScrollArea>
           </div>
 
-          {/* RODAPÉ (Fixo no fundo, com shrink-0 para não sumir) */}
+          {/* RODAPÉ */}
           <div className="px-6 py-4 border-t border-[#F5F0E6] bg-[#F5F0E6]/30 flex justify-end gap-3 shrink-0">
             <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="border-[#95A5A6] text-[#2D3436]">Cancelar</Button>
-            <Button 
-              onClick={() => form.handleSubmit(onSubmitEdit)()} 
+            <Button
+              onClick={() => form.handleSubmit(onSubmitEdit)()}
               disabled={isFormLoading}
               className="bg-[#D35400] hover:bg-[#D35400]/90 text-white min-w-[120px]"
             >
