@@ -4,11 +4,8 @@ import type { NextRequest } from 'next/server';
 
 // 1. Defina as rotas VISUAIS que precisam de login (Páginas do Next.js)
 const PROTECTED_ROUTES = [
-  '/dashboard',
   '/Kanban',
   '/tasks', // Supondo que exista uma página meusite.com/tasks
-  '/budgets',
-  '/profile',
   'kanban-flow',
   'chats',
   'agenda',
@@ -18,7 +15,6 @@ const PROTECTED_ROUTES = [
   'empresas',
   '/route-planner',
   '/driver',
-
 ];
 
 // 2. Defina as rotas que são PÚBLICAS (Login, Cadastro, Home pública)

@@ -92,7 +92,7 @@ export default function AdminSignupPage() {
     if (!authLoading && user) {
       if (!["MASTER", "ADMIN"].includes(user.role)) {
         toast.error("Acesso negado.");
-        router.push("/dashboard");
+        router.push("/");
       }
       
       // Auto-preencher a empresa do usuário logado

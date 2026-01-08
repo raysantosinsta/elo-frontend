@@ -45,6 +45,7 @@ export interface CreateChatMessageDto {
 
 // types/chat.ts - Adicionar tipos faltantes
 export interface User {
+  companyId: string;
   id: string;
   name: string;
   email: string;

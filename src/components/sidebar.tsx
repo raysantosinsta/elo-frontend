@@ -32,11 +32,12 @@ import {
   KanbanSquareDashed,
   LayoutDashboard,
   MessageSquare,
-  RefreshCw
+  RefreshCw,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 
 const menuItems = [
@@ -54,10 +55,14 @@ const menuItems = [
   { title: "Relatórios produtos", href: "/product/report", icon: BarChart },
   { title: "Gerenciar Empresa", href: "/empresas", icon: Home },
   { title: "Rotas", href: "/route-planner", icon: CarFront },
-  { title: "Gerenciar Fornecedores/Oficina", href: "/suppliers", icon: Factory}
+  {
+    title: "Gerenciar Fornecedores/Oficina",
+    href: "/suppliers",
+    icon: Factory,
+  },
+  { title: "Usuários", href: "/users", icon: Users },
 ];
 
-// --- CONTEÚDO INTERNO (Reutilizável para Mobile e Desktop) ---
 function SidebarContent({
   collapsed,
   onItemClick,
@@ -67,6 +72,37 @@ function SidebarContent({
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
+
+  // 🔥 LÓGICA DE FILTRAGEM CORRIGIDA
+  const filteredMenuItems = useMemo(() => {
+    if (!user) return [];
+
+    return menuItems.filter((item) => {
+      // 1. REGRA PARA MASTER:
+      // Vê APENAS: Dashboard, Empresas e Usuários.
+      if (user.role === "MASTER") {
+        // Lista branca de rotas permitidas para Master
+        const allowedForMaster = ["/", "/empresas", "/users"];
+        return allowedForMaster.includes(item.href);
+      }
+
+      // 2. REGRA PARA ADMIN:
+      // Vê TUDO, EXCETO Empresas.
+      if (user.role === "ADMIN") {
+        return item.href !== "/empresas";
+      }
+
+      // 3. REGRA PARA EMPLOYER (e outros):
+      // Vê TUDO, EXCETO Empresas e Usuários.
+      if (user.role === "EMPLOYER") {
+        return item.href !== "/empresas" && item.href !== "/users";
+      }
+
+      // Fallback padrão (segurança): esconde tudo que for sensível se cargo desconhecido
+      return item.href !== "/empresas" && item.href !== "/users";
+    });
+  }, [user]);
+
   const {
     notifications,
     unreadCount,
@@ -219,7 +255,7 @@ function SidebarContent({
       {/* Menu Navigation */}
       <ScrollArea className="flex-1 px-4 py-6">
         <div className="space-y-1.5">
-          {menuItems.map((item) => {
+          {filteredMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -274,19 +310,16 @@ function SidebarContent({
   );
 }
 
-// --- COMPONENTE PRINCIPAL ---
 interface SidebarProps {
   className?: string;
 }
 
 export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
-  // Usa o contexto para controlar o mobile
   const { isOpen, close } = useSidebar();
 
   return (
     <>
-      {/* VERSÃO DESKTOP (Fixa) */}
       <div
         className={cn(
           "hidden md:flex flex-col h-full border-r border-white/10 transition-all duration-300 bg-[#2C3E50]",
@@ -295,7 +328,6 @@ export function Sidebar({ className }: SidebarProps) {
         )}
       >
         <SidebarContent collapsed={collapsed} />
-        {/* Botão de Colapsar (Apenas Desktop) */}
         <div className="bg-[#2C3E50] p-2 flex justify-center border-t border-white/10">
           <Button
             variant="ghost"
@@ -312,7 +344,6 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
       </div>
 
-      {/* VERSÃO MOBILE (Sheet/Drawer) */}
       <Sheet open={isOpen} onOpenChange={close}>
         <SheetContent
           side="left"
