@@ -68,8 +68,6 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { GenericTable, type Column } from "@/components/generic-table";
 
-// 🔥 IMPORTAÇÃO DA TABELA GENÉRICA
-
 // --- Types ---
 interface Company {
   id: string;
@@ -96,7 +94,10 @@ const companyFormSchema = z.object({
     .min(14, "CNPJ inválido")
     .transform((v) => v.replace(/\D/g, "")),
   email: z.string().email("E-mail inválido"),
-  telefone: z.string().min(10, "Telefone inválido"),
+  telefone: z
+    .string()
+    .min(10, "Telefone inválido")
+    .transform((v) => v.replace(/\D/g, "")),
   cep: z
     .string()
     .min(8, "CEP inválido")
@@ -115,71 +116,106 @@ type CompanyFormValues = z.infer<typeof companyFormSchema>;
 export default function CompanyManagementPage() {
   const router = useRouter();
   const { showError } = useError();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   // --- States ---
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Edit Modal States
+  // Control States
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [isFormLoading, setIsFormLoading] = useState(false);
   const [isCepLoading, setIsCepLoading] = useState(false);
-
-  // Delete Modal States
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // --- Permissions Check ---
+  const isMaster = user?.role === "MASTER";
+  const isAdmin = user?.role === "ADMIN";
 
   // --- Hook Form ---
   const form = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
     defaultValues: {
-      name: "", cnpj: "", email: "", telefone: "", cep: "",
-      endereco: "", numero: "", complemento: "", bairro: "",
-      cidade: "", estado: "", ramoAtividade: "",
+      name: "",
+      cnpj: "",
+      email: "",
+      telefone: "",
+      cep: "",
+      endereco: "",
+      numero: "",
+      complemento: "",
+      bairro: "",
+      cidade: "",
+      estado: "",
+      ramoAtividade: "",
     },
   });
 
-  // --- Helpers Formatters ---
-  const formatCNPJ = (v: string | null | undefined) => {
+  // --- 🔥 FORMATTERS (Atualizados) ---
+
+  const formatCNPJ = (v: string | undefined) => {
     if (!v) return "";
     return v.replace(/\D/g, "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5").substring(0, 18);
   };
-  const formatPhone = (v: string | null | undefined) => {
+
+  const formatPhone = (v: string | undefined) => {
     if (!v) return "";
-    const r = v.replace(/\D/g, "");
-    const numbers = r.substring(0, 11);
-    if (numbers.length === 11) return numbers.replace(/^(\d{2})(\d{1})(\d{4})(\d{4})/, "($1) $2 $3-$4");
-    if (numbers.length === 10) return numbers.replace(/^(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
-    return numbers;
+
+    // 1. Remove tudo que não é número
+    let r = v.replace(/\D/g, "");
+
+    // 2. Garante limite de 11 dígitos
+    if (r.length > 11) r = r.substring(0, 11);
+
+    // 3. Aplica a máscara baseada no tamanho
+    if (r.length > 10) {
+      // 11 DÍGITOS (Celular): (XX) XXXXX-XXXX
+      // Note que o grupo do meio ($2) pega 5 dígitos
+      return r.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+    } else if (r.length > 5) {
+      // 6 a 10 DÍGITOS (Fixo ou digitando): (XX) XXXX-XXXX
+      // O grupo do meio ($2) pega 4 dígitos
+      return r.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+    } else if (r.length > 2) {
+      // 3 a 5 DÍGITOS (Apenas DDD e início): (XX) ...
+      return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
+    } else {
+      // 1 ou 2 DÍGITOS: (XX
+      return r.replace(/^(\d*)/, "($1");
+    }
   };
-  const formatCEP = (v: string | null | undefined) => {
+
+  const formatCEP = (v: string | undefined) => {
     if (!v) return "";
     return v.replace(/\D/g, "").replace(/^(\d{5})(\d)/, "$1-$2").substring(0, 9);
   };
 
   // --- API Actions ---
   const fetchCompanies = useCallback(async () => {
-    if (user?.role !== 'MASTER') return;
+    if (!isMaster && !isAdmin) return;
+
     try {
       setLoading(true);
       const response = await api.get<{ data: Company[] }>("/companies?limit=100");
       setCompanies(response.data.data || []);
     } catch (error: any) {
-      if (error.response?.status === 403) router.push("/");
-      console.error("Erro no fetch:", error);
+      console.error("Erro fetch:", error);
     } finally {
       setLoading(false);
     }
-  }, [user, router]);
+  }, [isMaster, isAdmin]);
 
   useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
+    if (user) {
+      fetchCompanies();
+    }
+  }, [fetchCompanies, user]);
 
+  // --- CEP Lookup ---
   const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const rawCep = e.target.value.replace(/\D/g, "");
     if (rawCep.length !== 8) return;
@@ -203,20 +239,21 @@ export default function CompanyManagementPage() {
     }
   };
 
+  // --- Actions ---
   const openEditModal = (company: Company) => {
     setEditingCompany(company);
     form.reset({
-      name: company.name || "",
+      name: company.name,
       cnpj: formatCNPJ(company.cnpj),
-      email: company.email || "",
+      email: company.email,
       telefone: formatPhone(company.telefone),
       cep: formatCEP(company.cep),
-      endereco: company.endereco || "",
-      numero: company.numero || "",
+      endereco: company.endereco,
+      numero: company.numero,
       complemento: company.complemento || "",
-      bairro: company.bairro || "",
-      cidade: company.cidade || "",
-      estado: company.estado || "",
+      bairro: company.bairro,
+      cidade: company.cidade,
+      estado: company.estado,
       ramoAtividade: company.ramoAtividade || "",
     });
     setIsEditModalOpen(true);
@@ -228,29 +265,35 @@ export default function CompanyManagementPage() {
     try {
       await api.patch(`/companies/${editingCompany.id}`, values);
       toast.success("Empresa atualizada com sucesso!");
-      setCompanies((prev) => prev.map((c) => (c.id === editingCompany.id ? { ...c, ...values } : c)));
+
+      setCompanies((prev) =>
+        prev.map((c) => (c.id === editingCompany.id ? { ...c, ...values } as Company : c))
+      );
+
       setIsEditModalOpen(false);
     } catch (error) {
-      // Interceptor trata o erro visual
+      // Interceptor
     } finally {
       setIsFormLoading(false);
     }
   };
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
+    if (!isMaster) {
+      toast.error("Apenas Master pode alterar o status.");
+      return;
+    }
+
     const newApiStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    const newStatus = newApiStatus === "ACTIVE" ? "ACTIVE" : "INACTIVE";
     try {
       await api.patch(`/companies/${id}`, { status: newApiStatus });
       toast.success("Status atualizado");
-      setCompanies((prev) => prev.map((c) => c.id === id ? { ...c, status: newStatus } : c));
+      setCompanies((prev) => prev.map((c) => c.id === id ? { ...c, status: newApiStatus } : c));
     } catch (error) { /* Interceptor */ }
   };
 
-  const confirmDelete = (id: string) => { setDeleteId(id); setIsDeleteOpen(true); };
-
   const handleDelete = async () => {
-    if (!deleteId) return;
+    if (!deleteId || !isMaster) return;
     setIsDeleting(true);
     try {
       await api.delete(`/companies/${deleteId}`);
@@ -258,7 +301,11 @@ export default function CompanyManagementPage() {
       toast.success("Empresa removida.");
       setIsDeleteOpen(false);
       setDeleteId(null);
-    } catch (error) { setIsDeleteOpen(false); } finally { setIsDeleting(false); }
+    } catch (error) {
+      setIsDeleteOpen(false);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // --- Filter ---
@@ -266,114 +313,131 @@ export default function CompanyManagementPage() {
     (c) => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.cnpj.includes(searchTerm)
   ), [companies, searchTerm]);
 
-  // 🔥 DEFINIÇÃO DAS COLUNAS DA TABELA
-  const tableColumns: Column<Company>[] = [
-    {
-      header: "Empresa",
-      className: "w-[280px]",
-      cell: (company) => (
-        <div className="flex flex-col">
-          <span className="font-medium text-[#2D3436]">{company.name}</span>
-          <span className="text-xs text-[#95A5A6] flex items-center gap-1 mt-0.5">
-            <Building2 className="h-3 w-3" /> {formatCNPJ(company.cnpj)}
+  // --- Table Columns ---
+  const tableColumns: Column<Company>[] = useMemo(() => {
+    const cols: Column<Company>[] = [
+      {
+        header: "Empresa",
+        className: "w-[280px]",
+        cell: (company) => (
+          <div className="flex flex-col">
+            <span className="font-medium text-[#2D3436]">{company.name}</span>
+            <span className="text-xs text-[#95A5A6] flex items-center gap-1 mt-0.5">
+              <Building2 className="h-3 w-3" /> {formatCNPJ(company.cnpj)}
+            </span>
+          </div>
+        ),
+      },
+      {
+        header: "Contato",
+        cell: (company) => (
+          <div className="text-sm text-[#2C3E50] flex flex-col gap-1">
+            <span className="flex items-center gap-1">✉️ {company.email}</span>
+            <span className="flex items-center gap-1 text-[#95A5A6]">
+              <Phone className="h-3 w-3" /> {formatPhone(company.telefone)}
+            </span>
+          </div>
+        ),
+      },
+      {
+        header: "Localização",
+        cell: (company) => (
+          <span className="text-sm text-[#2C3E50] flex items-center gap-1">
+            <MapPin className="h-3 w-3 text-[#D35400]" /> {company.cidade}/{company.estado}
           </span>
-        </div>
-      ),
-    },
-    {
-      header: "Contato",
-      cell: (company) => (
-        <div className="text-sm text-[#2C3E50] flex flex-col gap-1">
-          <span className="flex items-center gap-1">✉️ {company.email}</span>
-          <span className="flex items-center gap-1 text-[#95A5A6]">
-            <Phone className="h-3 w-3" /> {formatPhone(company.telefone)}
-          </span>
-        </div>
-      ),
-    },
-    {
-      header: "Localização",
-      cell: (company) => (
-        <span className="text-sm text-[#2C3E50] flex items-center gap-1">
-          <MapPin className="h-3 w-3 text-[#D35400]" /> {company.cidade}/{company.estado}
-        </span>
-      ),
-    },
-    {
-      header: "Status",
-      cell: (company) => (
-        <Badge
-          variant="outline"
-          className={
-            company.status === "ACTIVE"
-              ? "bg-green-50 text-green-700 border-green-200"
-              : "bg-gray-100 text-gray-500 border-gray-200"
-          }
-        >
-          {company.status === "ACTIVE" ? "Ativo" : "Inativo"}
-        </Badge>
-      ),
-    },
-    {
-      header: "Ações",
-      className: "text-right",
-      cell: (company) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 w-8 p-0 text-[#2C3E50] hover:text-[#D35400] hover:bg-transparent">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Opções</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => openEditModal(company)}>
-              <Edit className="mr-2 h-4 w-4" /> Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleToggleStatus(company.id, company.status)}>
-              <Power className="mr-2 h-4 w-4" /> {company.status === "ACTIVE" ? "Desativar" : "Ativar"}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => confirmDelete(company.id)}>
-              <Trash2 className="mr-2 h-4 w-4" /> Excluir
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
-  ];
+        ),
+      },
+      {
+        header: "Status",
+        cell: (company) => (
+          <Badge
+            variant="outline"
+            className={
+              company.status === "ACTIVE"
+                ? "bg-green-50 text-green-700 border-green-200"
+                : "bg-gray-100 text-gray-500 border-gray-200"
+            }
+          >
+            {company.status === "ACTIVE" ? "Ativo" : "Inativo"}
+          </Badge>
+        ),
+      },
+    ];
 
-  // Renderização de Segurança
-  if (!user || user.role !== "MASTER") {
+    if (isMaster || isAdmin) {
+      cols.push({
+        header: "Ações",
+        className: "text-right",
+        cell: (company) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0 text-[#2C3E50] hover:text-[#D35400] hover:bg-transparent">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Opções</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => openEditModal(company)}>
+                <Edit className="mr-2 h-4 w-4" /> Editar
+              </DropdownMenuItem>
+              {isMaster && (
+                <DropdownMenuItem onClick={() => handleToggleStatus(company.id, company.status)}>
+                  <Power className="mr-2 h-4 w-4" /> {company.status === "ACTIVE" ? "Desativar" : "Ativar"}
+                </DropdownMenuItem>
+              )}
+              {isMaster && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => { setDeleteId(company.id); setIsDeleteOpen(true); }}>
+                    <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+      });
+    }
+
+    return cols;
+  }, [isMaster, isAdmin]);
+
+  if (authLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-[#F5F0E6]">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
-          <p className="text-[#95A5A6]">Verificando permissões...</p>
-        </div>
+        <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
       </div>
     );
+  }
+
+  if (!user || (user.role !== "MASTER" && user.role !== "ADMIN")) {
+    if (typeof window !== "undefined") router.push("/");
+    return null;
   }
 
   return (
     <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-        
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-[#2D3436]">Empresas</h1>
             <p className="text-[#95A5A6]">Gerencie seus parceiros comerciais.</p>
           </div>
-          <Button
-            onClick={() => router.push("/registrar-empresa")}
-            className="bg-[#D35400] hover:bg-[#D35400]/90 text-white shadow-md transition-transform hover:scale-105"
-          >
-            <Plus className="mr-2 h-4 w-4" /> Nova Empresa
-          </Button>
+
+          {isMaster && (
+            <Button
+              onClick={() => router.push("/registrar-empresa")}
+              className="bg-[#D35400] hover:bg-[#D35400]/90 text-white shadow-md transition-transform hover:scale-105"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Nova Empresa
+            </Button>
+          )}
         </div>
 
         {/* TABELA GENÉRICA */}
-        <GenericTable 
+        <GenericTable
           title="Listagem"
           data={filteredCompanies}
           columns={tableColumns}
@@ -399,7 +463,8 @@ export default function CompanyManagementPage() {
               <ScrollArea className="h-full px-6 py-4">
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmitEdit)} className="space-y-6 pb-4">
-                    {/* Campos do Formulário (Resumido para brevidade, mas mantendo a estrutura) */}
+
+                    {/* Dados Básicos */}
                     <div className="space-y-4">
                       <h3 className="text-sm font-semibold text-[#2C3E50] uppercase tracking-wider flex items-center gap-2">
                         <span className="w-1 h-4 bg-[#D35400] rounded-full" /> Identificação
@@ -414,15 +479,33 @@ export default function CompanyManagementPage() {
                         <FormField control={form.control} name="email" render={({ field }) => (
                           <FormItem><FormLabel className="text-[#2D3436]">E-mail</FormLabel><FormControl><Input {...field} className="focus-visible:ring-[#2C3E50]" /></FormControl><FormMessage className="text-[#D35400]" /></FormItem>
                         )} />
+
+                        {/* 🔥 MÁSCARA APLICADA AQUI COM maxLength=15 */}
                         <FormField control={form.control} name="telefone" render={({ field }) => (
-                          <FormItem><FormLabel className="text-[#2D3436]">Telefone</FormLabel><FormControl><Input {...field} maxLength={16} onChange={e => field.onChange(formatPhone(e.target.value))} className="focus-visible:ring-[#2C3E50]" /></FormControl><FormMessage className="text-[#D35400]" /></FormItem>
+                          <FormItem>
+                            <FormLabel className="text-[#2D3436]">Telefone</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                maxLength={15} // (XX) XXXXX-XXXX são 15 caracteres
+                                onChange={e => field.onChange(formatPhone(e.target.value))}
+                                className="focus-visible:ring-[#2C3E50]"
+                                placeholder="(00) 00000-0000"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-[#D35400]" />
+                          </FormItem>
                         )} />
+
                         <FormField control={form.control} name="ramoAtividade" render={({ field }) => (
                           <FormItem className="md:col-span-2"><FormLabel className="text-[#2D3436]">Ramo de Atividade</FormLabel><FormControl><Input {...field} className="focus-visible:ring-[#2C3E50]" /></FormControl><FormMessage className="text-[#D35400]" /></FormItem>
                         )} />
                       </div>
                     </div>
+
                     <Separator className="bg-[#95A5A6]/20" />
+
+                    {/* Endereço */}
                     <div className="space-y-4">
                       <h3 className="text-sm font-semibold text-[#2C3E50] uppercase tracking-wider flex items-center gap-2">
                         <span className="w-1 h-4 bg-[#D35400] rounded-full" /> Endereço
