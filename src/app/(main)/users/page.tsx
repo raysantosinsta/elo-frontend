@@ -78,7 +78,7 @@ import { Separator } from "@/components/ui/separator";
 
 // Componentes Customizados
 import { GenericTable, Column } from "@/components/generic-table";
-import { CompanyFilter } from "@/components/company-filter"; // 🔥 Seu novo componente
+import { CompanyFilter } from "@/components/company-filter";
 
 // --- Enums & Types ---
 enum UserRole {
@@ -100,19 +100,20 @@ interface User {
   createdAt: string;
 }
 
-// --- Helpers de Máscara (Visual) ---
+// --- Helpers de Máscara (Padronizado) ---
 const formatPhone = (v: string | undefined) => {
   if (!v) return "";
-  const r = v.replace(/\D/g, ""); 
-  
-  if (r.length > 10) { // (11) 9 1234-5678
-    return r.replace(/^(\d{2})(\d{5})(\d{4}).*/, "($1) $2-$3");
-  } else if (r.length > 6) { // (11) 1234-5678
-    return r.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, "($1) $2-$3");
-  } else if (r.length > 2) { // (11) 123...
+  let r = v.replace(/\D/g, "");
+  if (r.length > 11) r = r.substring(0, 11);
+
+  if (r.length > 10) { // (11) 98888-8888
+    return r.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+  } else if (r.length > 5) { // (11) 8888-8888
+    return r.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+  } else if (r.length > 2) {
     return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
   }
-  return r;
+  return r.replace(/^(\d*)/, "($1");
 };
 
 const formatCPF = (v: string | undefined) => {
@@ -125,10 +126,9 @@ const formatCPF = (v: string | undefined) => {
     .replace(/(-\d{2})\d+?$/, "$1");
 };
 
-// --- Helper de Limpeza (Para Salvar) ---
 const cleanMask = (value: string | undefined) => {
   if (!value) return "";
-  return value.replace(/\D/g, ""); // Retorna apenas números
+  return value.replace(/\D/g, "");
 };
 
 // --- Zod Schemas ---
@@ -154,7 +154,7 @@ export default function UserManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   
-  // 🔥 Filtro de Empresa (Novo)
+  // Filtro de Empresa
   const [filterCompanyId, setFilterCompanyId] = useState<string | undefined>(undefined);
 
   // Control States
@@ -168,9 +168,8 @@ export default function UserManagementPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // --- Permission Logic (RBAC) ---
-  const canManage = useMemo(() => {
-    return currentUser?.role === "MASTER" || currentUser?.role === "ADMIN";
-  }, [currentUser]);
+  const isMaster = currentUser?.role === "MASTER";
+  const canManage = isMaster || currentUser?.role === "ADMIN";
 
   // --- Form Setup ---
   const form = useForm<UserFormValues>({
@@ -191,9 +190,10 @@ export default function UserManagementPage() {
     try {
       setLoading(true);
       
-      // 🔥 Integração do Filtro na Query
       const params = new URLSearchParams();
       params.append("limit", "100");
+      // Se tiver filtro selecionado E for Master, envia na query.
+      // Se for Admin, o backend ignora a query e usa o token.
       if (filterCompanyId) {
         params.append("companyId", filterCompanyId);
       }
@@ -201,22 +201,19 @@ export default function UserManagementPage() {
       const response = await api.get<{ data: User[] }>(`/users?${params.toString()}`);
       setUsers(Array.isArray(response.data) ? response.data : []); 
     } catch (error: any) {
-      if (error.response?.status === 403) {
-        // Se for proibido, redireciona ou mostra erro
-        // O GlobalErrorDialog já vai aparecer pelo interceptor
-      }
       console.error("Erro fetch:", error);
     } finally {
       setLoading(false);
     }
-  }, [filterCompanyId]); // Re-executa quando o filtro muda
+  }, [filterCompanyId]);
 
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    if (currentUser) fetchUsers();
+  }, [fetchUsers, currentUser]);
 
   // --- Submit (Create or Update) ---
   const onSubmit = async (values: UserFormValues) => {
+    // Validação de senha na criação
     if (!isEditing && (!values.password || values.password.length < 6)) {
       form.setError("password", { message: "Senha obrigatória (min. 6 caracteres)" });
       return;
@@ -227,15 +224,26 @@ export default function UserManagementPage() {
         return;
     }
 
-    // 🔥 LIMPEZA DAS MÁSCARAS ANTES DE SALVAR
-    const payload = {
+    // 🔥 REGRA DO MASTER: Precisa selecionar a empresa no filtro antes de criar
+    if (!isEditing && isMaster && !filterCompanyId) {
+        toast.error("Como Master, selecione uma empresa no filtro superior para criar um usuário nela.");
+        return;
+    }
+
+    // Preparação do Payload
+    const payload: any = {
         ...values,
         contact: cleanMask(values.contact),
         document: cleanMask(values.document),
-        // Se estiver filtrando por empresa e for MASTER criando, 
-        // o backend pega o companyId do DTO ou do usuario logado.
-        // Se quiser forçar a criação na empresa filtrada, adicione companyId: filterCompanyId aqui.
     };
+
+    // 🔥 INJEÇÃO DE CONTEXTO PARA MASTER
+    // Se for Master criando, injetamos o ID da empresa selecionada no filtro
+    if (!isEditing && isMaster && filterCompanyId) {
+        payload.companyId = filterCompanyId;
+    }
+
+    // Se for ADMIN, não enviamos companyId. O Backend pega do token.
 
     setIsFormLoading(true);
     try {
@@ -244,7 +252,7 @@ export default function UserManagementPage() {
         await api.patch(`/users/${editingId}`, payload);
         toast.success("Usuário atualizado com sucesso!");
         
-        // Atualização Otimista da Tabela (mantendo os dados limpos no state)
+        // Atualização Otimista
         setUsers((prev) => prev.map((u) => u.id === editingId ? { ...u, ...payload, role: values.role } as User : u));
       } else {
         // POST
@@ -304,7 +312,6 @@ export default function UserManagementPage() {
   const handleOpenEdit = (user: User) => {
     setIsEditing(true);
     setEditingId(user.id);
-    // 🔥 APLICA A MÁSCARA PARA VISUALIZAÇÃO
     form.reset({
       name: user.name,
       email: user.email,
@@ -454,7 +461,7 @@ export default function UserManagementPage() {
           
           <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
             
-            {/* 🔥 FILTRO DE EMPRESA: Só aparece para quem pode gerenciar */}
+            {/* 🔥 FILTRO DE EMPRESA: Se Master mudar aqui, define onde o user será criado */}
             {canManage && (
               <CompanyFilter 
                 value={filterCompanyId} 

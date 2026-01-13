@@ -82,7 +82,7 @@ function SidebarContent({
       // Vê APENAS: Dashboard, Empresas e Usuários.
       if (user.role === "MASTER") {
         // Lista branca de rotas permitidas para Master
-        const allowedForMaster = ["/", "/empresas", "/users"];
+        const allowedForMaster = ["/empresas", "/users"];
         return allowedForMaster.includes(item.href);
       }
 
