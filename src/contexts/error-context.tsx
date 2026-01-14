@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
-// Importe o componente separado que você criou
+// Importamos o seu Dialog original
 import { GlobalErrorDialog } from "@/components/global-error-dialog"; 
 import { registerGlobalErrorListener } from "@/services/api";
 
@@ -12,33 +12,41 @@ interface ErrorContextType {
 const ErrorContext = createContext<ErrorContextType | undefined>(undefined);
 
 export function ErrorProvider({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+  // Controle de estado local do Dialog
+  const [isOpen, setIsOpen] = useState(false);
+  
   const [errorState, setErrorState] = useState<{
     title: string;
     message: string;
     errors?: string[];
   }>({ title: "", message: "", errors: [] });
 
-  // 🔥 CORREÇÃO AQUI: Adicionado useCallback
+  // Função que atualiza o estado e abre o modal
   const showError = useCallback((title: string, message: string, errors?: string[]) => {
     setErrorState({ title, message, errors });
-    setOpen(true);
-  }, []); // Dependências vazias, pois setErrorState e setOpen são estáveis do React
+    setIsOpen(true);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setIsOpen(false);
+  }, []);
 
   useEffect(() => {
-    // Conecta o React ao Axios
+    // Registra esta função no interceptor do Axios (api.ts)
+    // Quando a API der erro, ela chamará esta função automaticamente
     registerGlobalErrorListener((title, message, errors) => {
       showError(title, message, errors);
     });
-  }, [showError]); // Agora é seguro colocar showError aqui
+  }, [showError]);
 
   return (
     <ErrorContext.Provider value={{ showError }}>
       {children}
       
+      {/* O Dialog é renderizado aqui, controlado pelo estado local */}
       <GlobalErrorDialog 
-        isOpen={open}
-        onClose={() => setOpen(false)}
+        isOpen={isOpen}
+        onClose={handleClose}
         title={errorState.title}
         message={errorState.message}
         errors={errorState.errors}

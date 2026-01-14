@@ -19,12 +19,12 @@ import {
   CheckCircle2,
   Search as SearchIcon,
 } from "lucide-react";
-import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner"; // 🔥 Toast apenas para sucesso
 
 // Serviços e Contextos
 import { api } from "@/services/api";
-import { useError } from "@/contexts/error-context";
+import { useError } from "@/contexts/error-context"; // 🔥 Dialog para erros
 import { useAuth } from "@/contexts/AuthContext";
 
 // Componentes UI
@@ -86,22 +86,21 @@ interface Company {
   status: "ACTIVE" | "INACTIVE";
 }
 
-// --- 🔥 Helpers de Formatação e Limpeza ---
+// --- Helpers de Formatação e Limpeza ---
 
 const cleanMask = (value: string | undefined) => {
   if (!value) return "";
   return value.replace(/\D/g, "");
 };
 
-// Formatação (XX) XXXXX-XXXX
 const formatPhone = (v: string | undefined) => {
   if (!v) return "";
   let r = v.replace(/\D/g, "");
   if (r.length > 11) r = r.substring(0, 11);
 
-  if (r.length > 10) { // (11) 98888-8888
+  if (r.length > 10) { 
     return r.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-  } else if (r.length > 5) { // (11) 8888-8888
+  } else if (r.length > 5) { 
     return r.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
   } else if (r.length > 2) {
     return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
@@ -148,6 +147,7 @@ type CompanyFormValues = z.infer<typeof companyFormSchema>;
 
 export default function CompanyManagementPage() {
   const router = useRouter();
+  // 🔥 Hooks: Erro -> Dialog, Sucesso -> Toast
   const { showError } = useError();
   const { user, loading: authLoading } = useAuth();
 
@@ -156,9 +156,9 @@ export default function CompanyManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Control States (Unificados para Criação e Edição)
+  // Control States
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false); // 🔥 Novo estado
+  const [isEditing, setIsEditing] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   
   const [isFormLoading, setIsFormLoading] = useState(false);
@@ -198,6 +198,7 @@ export default function CompanyManagementPage() {
       const response = await api.get<{ data: Company[] }>("/companies?limit=100");
       setCompanies(response.data.data || []);
     } catch (error: any) {
+      // Interceptor chama showError automaticamente
       console.error("Erro fetch:", error);
     } finally {
       setLoading(false);
@@ -218,7 +219,8 @@ export default function CompanyManagementPage() {
       const res = await fetch(`https://viacep.com.br/ws/${rawCep}/json/`);
       const data = await res.json();
       if (data.erro) {
-        showError("CEP Inválido", "O CEP informado não foi encontrado.");
+        // 🔥 Erro de validação manual -> showError (Dialog)
+        showError("CEP Inválido", "O CEP informado não foi encontrado na base de dados.");
         return;
       }
       form.setValue("endereco", data.logradouro);
@@ -227,15 +229,13 @@ export default function CompanyManagementPage() {
       form.setValue("estado", data.uf);
       form.setFocus("numero");
     } catch (err) {
-      showError("Erro na Busca", "Verifique sua conexão.");
+      showError("Erro na Busca", "Não foi possível consultar o CEP. Verifique sua conexão.");
     } finally {
       setIsCepLoading(false);
     }
   };
 
   // --- Modal Controllers ---
-
-  // 🔥 Abre o Modal para CRIAÇÃO
   const handleOpenCreate = () => {
     setIsEditing(false);
     setEditingCompany(null);
@@ -256,7 +256,6 @@ export default function CompanyManagementPage() {
     setIsModalOpen(true);
   };
 
-  // 🔥 Abre o Modal para EDIÇÃO
   const handleOpenEdit = (company: Company) => {
     setIsEditing(true);
     setEditingCompany(company);
@@ -286,7 +285,6 @@ export default function CompanyManagementPage() {
   const onSubmit = async (values: CompanyFormValues) => {
     setIsFormLoading(true);
 
-    // Limpeza de máscaras antes do envio
     const payload = {
         ...values,
         cnpj: cleanMask(values.cnpj),
@@ -296,25 +294,28 @@ export default function CompanyManagementPage() {
 
     try {
       if (isEditing && editingCompany) {
-        // --- MODO EDIÇÃO (PATCH) ---
+        // --- PATCH ---
         await api.patch(`/companies/${editingCompany.id}`, payload);
+        
+        // 🟢 Sucesso -> Toast Sonner
         toast.success("Empresa atualizada com sucesso!");
         
         setCompanies((prev) => 
           prev.map((c) => (c.id === editingCompany.id ? { ...c, ...payload } as Company : c))
         );
       } else {
-        // --- MODO CRIAÇÃO (POST) ---
+        // --- POST ---
         const { data: newCompany } = await api.post<Company>("/companies", payload);
+        
+        // 🟢 Sucesso -> Toast Sonner
         toast.success("Empresa criada com sucesso!");
         
-        // Adiciona à lista
         setCompanies((prev) => [newCompany, ...prev]);
       }
       
       handleCloseModal();
     } catch (error) {
-      // O interceptor já trata erros visuais
+      // 🔴 Erro -> GlobalErrorDialog (automático via api.ts)
     } finally {
       setIsFormLoading(false);
     }
@@ -322,13 +323,17 @@ export default function CompanyManagementPage() {
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     if (!isMaster) {
-        toast.error("Apenas Master pode alterar o status.");
+        // 🔥 Erro de permissão -> Dialog
+        showError("Permissão Negada", "Apenas Master pode alterar o status.");
         return;
     }
     const newApiStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     try {
       await api.patch(`/companies/${id}`, { status: newApiStatus });
-      toast.success("Status atualizado");
+      
+      // 🟢 Sucesso -> Toast
+      toast.success(`Status alterado para ${newApiStatus}`);
+      
       setCompanies((prev) => prev.map((c) => c.id === id ? { ...c, status: newApiStatus } : c));
     } catch (error) { }
   };
@@ -339,10 +344,14 @@ export default function CompanyManagementPage() {
     try {
       await api.delete(`/companies/${deleteId}`);
       setCompanies((prev) => prev.filter((c) => c.id !== deleteId));
-      toast.success("Empresa removida.");
+      
+      // 🟢 Sucesso -> Toast
+      toast.success("Empresa removida com sucesso.");
+      
       setIsDeleteOpen(false);
       setDeleteId(null);
     } catch (error) { 
+        // 🔴 Erro -> GlobalErrorDialog
         setIsDeleteOpen(false); 
     } finally { 
         setIsDeleting(false); 
@@ -467,7 +476,6 @@ export default function CompanyManagementPage() {
           
           {isMaster && (
             <Button
-                // 🔥 AQUI: Mudamos de router.push para handleOpenCreate
                 onClick={handleOpenCreate} 
                 className="bg-[#D35400] hover:bg-[#D35400]/90 text-white shadow-md transition-transform hover:scale-105"
             >
@@ -493,12 +501,10 @@ export default function CompanyManagementPage() {
             <DialogHeader className="px-6 py-4 border-b border-[#F5F0E6] bg-[#F5F0E6]/30 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-[#F5F0E6] rounded text-[#D35400]">
-                    {/* Ícone muda conforme ação */}
                     {isEditing ? <Edit size={20} /> : <Plus size={20} />}
                 </div>
                 <div>
                   <DialogTitle className="text-[#2D3436] text-xl">
-                    {/* Título muda conforme ação */}
                     {isEditing ? "Editar Empresa" : "Nova Empresa"}
                   </DialogTitle>
                   <DialogDescription className="text-[#95A5A6]">
@@ -528,14 +534,13 @@ export default function CompanyManagementPage() {
                           <FormItem><FormLabel className="text-[#2D3436]">E-mail</FormLabel><FormControl><Input {...field} className="focus-visible:ring-[#2C3E50]" /></FormControl><FormMessage className="text-[#D35400]" /></FormItem>
                         )} />
                         
-                        {/* Campo Telefone com Máscara e MaxLength Corretos */}
                         <FormField control={form.control} name="telefone" render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-[#2D3436]">Telefone</FormLabel>
                             <FormControl>
                                 <Input 
                                     {...field} 
-                                    maxLength={15} // (XX) XXXXX-XXXX
+                                    maxLength={15}
                                     onChange={e => field.onChange(formatPhone(e.target.value))} 
                                     className="focus-visible:ring-[#2C3E50]" 
                                     placeholder="(00) 00000-0000"
