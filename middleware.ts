@@ -22,7 +22,7 @@ const PROTECTED_ROUTES = [
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
+
   // Recupera o token
   const token = getToken(request);
 
@@ -35,7 +35,7 @@ export async function middleware(request: NextRequest) {
     if (!token || !(await isTokenValid(token))) {
       const loginUrl = new URL('/login', request.url);
       // Dica: Salva onde ele queria ir pra redirecionar depois do login
-      loginUrl.searchParams.set('callbackUrl', pathname); 
+      loginUrl.searchParams.set('callbackUrl', pathname);
       return NextResponse.redirect(loginUrl);
     }
   }
@@ -61,6 +61,11 @@ function getToken(request: NextRequest): string | null {
 
 async function isTokenValid(token: string): Promise<boolean> {
   try {
+
+    console.log("Middleware checking URL:", process.env.NEXT_PUBLIC_NESTJS_API_URL);
+    console.log("Middleware checking token:", token);
+
+
     const res = await fetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL}/auth/verify-token`, {
       method: 'POST',
       headers: {
@@ -68,10 +73,14 @@ async function isTokenValid(token: string): Promise<boolean> {
         'Content-Type': 'application/json',
       },
     });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      console.error("Middleware Auth Failed. Status:", res.status); // <--- LOG DE ERRO
+      return false;
+    }
     const data = await res.json();
     return data.valid === true;
-  } catch {
+  } catch(error) {
+    console.error("Middleware Fetch Error:", error); // <--- LOG CRÍTICO
     return false;
   }
 }

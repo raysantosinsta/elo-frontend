@@ -36,11 +36,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("accessToken", data.accessToken);
       localStorage.setItem("refreshToken", data.refreshToken);
 
-      // Para isto (Adicionando Secure):
       const isProduction = process.env.NODE_ENV === 'production';
-      const secureAttribute = isProduction ? '; Secure' : '';
-      // SameSite=Lax costuma funcionar bem para navegação, mas se falhar, use SameSite=None
-      document.cookie = `access_token=${data.accessToken}; path=/; max-age=86400; SameSite=Lax${secureAttribute}`;
+      const secureFlag = isProduction ? '; Secure' : '';
+
+      // Mantivemos SameSite=Lax, que é bom para navegação padrão.
+      // O 'Secure' é OBRIGATÓRIO para o cookie funcionar no https da Vercel.
+      document.cookie = `access_token=${data.accessToken}; path=/; max-age=86400; SameSite=Lax${secureFlag}`;
 
       setUser(data.user);
       router.push("/");
