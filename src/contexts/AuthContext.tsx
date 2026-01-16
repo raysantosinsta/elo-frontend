@@ -32,11 +32,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     try {
       const { data } = await api.post("/auth/login", { email, password });
-      
+
       localStorage.setItem("accessToken", data.accessToken);
       localStorage.setItem("refreshToken", data.refreshToken);
-      document.cookie = `access_token=${data.accessToken}; path=/; max-age=86400; SameSite=Lax`;
-      
+
+      // Para isto (Adicionando Secure):
+      const isProduction = process.env.NODE_ENV === 'production';
+      const secureAttribute = isProduction ? '; Secure' : '';
+      // SameSite=Lax costuma funcionar bem para navegação, mas se falhar, use SameSite=None
+      document.cookie = `access_token=${data.accessToken}; path=/; max-age=86400; SameSite=Lax${secureAttribute}`;
+
       setUser(data.user);
       router.push("/");
     } catch (error) {
