@@ -41,8 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Mantivemos SameSite=Lax, que é bom para navegação padrão.
       // O 'Secure' é OBRIGATÓRIO para o cookie funcionar no https da Vercel.
-      document.cookie = `access_token=${data.accessToken}; path=/; max-age=86400; SameSite=Lax${secureFlag}`;
-
+      document.cookie = `access_token=${data.accessToken}; path=/; max-age=86400; SameSite=None; Secure`;
+      
       setUser(data.user);
       router.push("/");
     } catch (error) {

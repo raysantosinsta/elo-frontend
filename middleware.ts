@@ -61,26 +61,25 @@ function getToken(request: NextRequest): string | null {
 
 async function isTokenValid(token: string): Promise<boolean> {
   try {
-
-    console.log("Middleware checking URL:", process.env.NEXT_PUBLIC_NESTJS_API_URL);
-    console.log("Middleware checking token:", token);
-
-
     const res = await fetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL}/auth/verify-token`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token}`, // Pode deixar, mas o importante é o body abaixo
         'Content-Type': 'application/json',
       },
+      // 🚨 ADICIONE ESTA LINHA: Envia o token no formato que o DTO do Nest espera
+      body: JSON.stringify({ token: token }),
     });
+
     if (!res.ok) {
-      console.error("Middleware Auth Failed. Status:", res.status); // <--- LOG DE ERRO
+      // Dica: Adicione esse log pra ver o erro na Vercel se continuar falhando
+      console.error(`Middleware Auth Error: ${res.status}`);
       return false;
     }
     const data = await res.json();
     return data.valid === true;
-  } catch(error) {
-    console.error("Middleware Fetch Error:", error); // <--- LOG CRÍTICO
+  } catch (error) {
+    console.error("Middleware Fetch Error:", error);
     return false;
   }
 }
