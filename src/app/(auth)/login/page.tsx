@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
+import { ForgotPasswordModal } from '@/components/auth/forgot-password-modal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,14 +28,14 @@ export default function LoginPage() {
     try {
       // Tenta fazer o login
       await login(email, password);
-      
+
       // Se der certo, o AuthContext ou Middleware redireciona.
       // router.push('/dashboard'); 
     } catch (err: any) {
       // --- A MÁGICA ACONTECE AQUI ---
       // Não precisamos setar setError ou mostrar Alert.
       // O axios interceptor JÁ pegou o erro 401/400 e abriu o Dialog Global.
-      
+
       // Aqui só fazemos limpeza de UX local, se quiser:
       setPassword(''); // Limpa a senha para o usuário tentar de novo
     } finally {
@@ -45,9 +46,9 @@ export default function LoginPage() {
   return (
     // 1. Background: Algodão Cru (#F5F0E6)
     <div className="min-h-screen flex items-center justify-center bg-[#F5F0E6] px-4 py-8 font-sans transition-colors duration-300">
-      
+
       <Card className="w-full max-w-[400px] border-0 shadow-2xl shadow-black/5 bg-white/95 backdrop-blur-sm overflow-hidden">
-        
+
         {/* Header Visual */}
         <div className="h-2 bg-[#D35400] w-full" /> {/* Faixa decorativa Terracota */}
 
@@ -70,14 +71,14 @@ export default function LoginPage() {
         </CardHeader>
 
         <CardContent className="space-y-6 pb-8 px-8">
-          
+
           {/* REMOVIDO: O Alert local. O Dialog Global aparecerá sobrepondo tudo se houver erro. */}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Input Email */}
             <div className="space-y-2 group">
-              <Label 
-                htmlFor="email" 
+              <Label
+                htmlFor="email"
                 className="text-sm font-semibold text-[#2D3436] group-focus-within:text-[#D35400] transition-colors"
               >
                 E-mail Corporativo
@@ -101,15 +102,20 @@ export default function LoginPage() {
             {/* Input Senha */}
             <div className="space-y-2 group">
               <div className="flex items-center justify-between">
-                <Label 
-                  htmlFor="password" 
+                <Label
+                  htmlFor="password"
                   className="text-sm font-semibold text-[#2D3436] group-focus-within:text-[#D35400] transition-colors"
                 >
                   Senha
                 </Label>
-                <a href="#" className="text-xs font-medium text-[#D35400] hover:text-[#A04000] hover:underline transition-colors">
-                  Esqueceu a senha?
-                </a>
+                <ForgotPasswordModal>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-[#D35400] hover:text-[#A04000] hover:underline transition-colors outline-none"
+                  >
+                    Esqueceu a senha?
+                  </button>
+                </ForgotPasswordModal>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-3.5 h-5 w-5 text-[#95A5A6] group-focus-within:text-[#2C3E50] transition-colors duration-200" />
@@ -148,7 +154,7 @@ export default function LoginPage() {
             </Button>
           </form>
         </CardContent>
-        
+
         {/* Footer do Card */}
         <div className="bg-gray-50 px-8 py-4 text-center border-t border-gray-100">
           <p className="text-xs text-[#95A5A6]">

@@ -5,20 +5,26 @@ import type { NextRequest } from 'next/server';
 // 1. Defina as rotas VISUAIS que precisam de login (Páginas do Next.js)
 const PROTECTED_ROUTES = [
   '/Kanban',
-  '/tasks', // Supondo que exista uma página meusite.com/tasks
-  'kanban-flow',
-  'chats',
-  'agenda',
-  'professionals/report',
-  'tasks/report',
-  'product/report',
-  'empresas',
+  '/tasks',
+  '/kanban-flow',
+  '/chats',
+  '/agenda',
+  '/professionals/report',
+  '/tasks/report',
+  '/product/report',
+  '/empresas',
   '/route-planner',
   '/driver',
 ];
 
-// 2. Defina as rotas que são PÚBLICAS (Login, Cadastro, Home pública)
-// const PUBLIC_ROUTES = ['/login', '/register', '/'];
+// 2. Defina as rotas que são PÚBLICAS
+// ADICIONADO: '/reset-password' (Para o link do email funcionar)
+// ADICIONADO: '/password/forgot' (Caso decida usar página em vez de modal no futuro)
+const PUBLIC_ROUTES = [
+  '/login', 
+  '/reset-password', 
+  '/password/forgot'
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -26,23 +32,31 @@ export async function middleware(request: NextRequest) {
   // Recupera o token
   const token = getToken(request);
 
-  // Lógica 1: Se o cara tá tentando entrar numa rota protegida
-  // Verifica se o caminho começa com algum dos itens da lista
+  // --- Lógica 1: Redirecionamento de usuário JÁ LOGADO ---
+  // Se o cara JÁ TEM token válido e tenta entrar no Login ou Register, manda pro Kanban
+  if ((pathname === '/login' || pathname === '/register') && token) {
+     const isValid = await isTokenValid(token);
+     if (isValid) {
+       return NextResponse.redirect(new URL('/Kanban', request.url));
+     }
+  }
+
+  // --- Lógica 2: Proteção de Rotas ---
+  
+  // Verifica se o caminho atual é uma rota protegida
   const isProtectedRoute = PROTECTED_ROUTES.some(path => pathname.startsWith(path));
 
-  if (isProtectedRoute) {
-    // Se não tem token ou token inválido -> Manda pro Login
+  // Verifica se é uma rota pública (para garantir que não bloqueie reset de senha)
+  const isPublicRoute = PUBLIC_ROUTES.some(path => pathname.startsWith(path));
+
+  // Se for protegida E não tiver token (ou token inválido)
+  if (isProtectedRoute && !isPublicRoute) {
     if (!token || !(await isTokenValid(token))) {
       const loginUrl = new URL('/login', request.url);
-      // Dica: Salva onde ele queria ir pra redirecionar depois do login
+      // Salva onde ele queria ir pra redirecionar depois do login
       loginUrl.searchParams.set('callbackUrl', pathname);
       return NextResponse.redirect(loginUrl);
     }
-  }
-
-  // Lógica 2: Se o cara JÁ TEM token e tenta entrar no Login -> Manda pro Kanban
-  if (pathname === '/login' && token && (await isTokenValid(token))) {
-    return NextResponse.redirect(new URL('/Kanban', request.url));
   }
 
   return NextResponse.next();
@@ -64,16 +78,15 @@ async function isTokenValid(token: string): Promise<boolean> {
     const res = await fetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL}/auth/verify-token`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`, // Pode deixar, mas o importante é o body abaixo
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      // 🚨 ADICIONE ESTA LINHA: Envia o token no formato que o DTO do Nest espera
+      // Envia o token no body conforme ajustamos antes
       body: JSON.stringify({ token: token }),
     });
 
     if (!res.ok) {
-      // Dica: Adicione esse log pra ver o erro na Vercel se continuar falhando
-      console.error(`Middleware Auth Error: ${res.status}`);
+      // Ignora erro se for só token expirado, apenas retorna false
       return false;
     }
     const data = await res.json();
@@ -85,8 +98,5 @@ async function isTokenValid(token: string): Promise<boolean> {
 }
 
 export const config = {
-  /* O matcher deve pegar tudo, exceto arquivos estáticos (_next, imagens, favicon).
-     Assim garantimos que o middleware avalie todas as navegações.
-  */
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
