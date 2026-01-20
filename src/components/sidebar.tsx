@@ -53,7 +53,7 @@ const menuItems = [
   },
   { title: "Relatórios Tarefas", href: "/tasks/report", icon: BarChart2 },
   { title: "Relatórios produtos", href: "/product/report", icon: BarChart },
-  { title: "Gerenciar Empresa", href: "/empresas", icon: Home },
+  { title: "Empresas", href: "/empresas", icon: Home },
   { title: "Rotas", href: "/route-planner", icon: CarFront },
   {
     title: "Gerenciar Fornecedores/Oficina",

@@ -1,14 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertTriangle,
   Briefcase,
   Building2,
-  CheckCircle2,
   Edit,
-  Key,
   Loader2,
   Mail,
   MoreHorizontal,
@@ -19,16 +16,14 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import * as z from "zod";
 
 // --- Imports de Serviços e Contextos ---
 import { useAuth } from "@/contexts/AuthContext";
 import { useError } from "@/contexts/error-context";
 import { api } from "@/services/api";
 
-// --- Imports de Componentes UI (Shadcn/UI) ---
+// --- Imports de Componentes UI ---
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,13 +37,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -57,27 +45,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-// --- Componentes Customizados (Tabela e Filtro) ---
+// --- Componentes Customizados ---
 import { CompanyFilter } from "@/components/company-filter";
 import { Column, GenericTable } from "@/components/generic-table";
+import { PageHeader } from "@/components/page-header";
+import { UserFormModal } from "@/components/modals/user-form-modal"; // ✅ IMPORTA O NOVO MODAL
 
 // --- Enums & Interfaces ---
 enum UserRole {
@@ -105,7 +83,7 @@ interface CompanyOption {
   name: string;
 }
 
-// --- Helpers de Máscaras ---
+// Helpers
 const formatPhone = (v: string | undefined) => {
   if (!v) return "";
   let r = v.replace(/\D/g, "");
@@ -128,21 +106,8 @@ const formatCPF = (v: string | undefined) => {
 
 const cleanMask = (value: string | undefined) => value ? value.replace(/\D/g, "") : "";
 
-// --- Zod Schema ---
-const userFormSchema = z.object({
-  name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
-  email: z.string().email("E-mail inválido"),
-  role: z.nativeEnum(UserRole, { error: "Permissão inválida" }),
-  contact: z.string().refine((val) => cleanMask(val).length >= 10, "Telefone inválido"),
-  document: z.string().optional(),
-  professionalRole: z.string().optional(),
-  password: z.string().optional(),
-  companyId: z.string().optional(),
-});
+const ITEMS_PER_PAGE = 10;
 
-type UserFormValues = z.infer<typeof userFormSchema>;
-
-// --- Componente Principal ---
 export default function UserManagementPage() {
   const router = useRouter();
   const { showError } = useError();
@@ -152,15 +117,15 @@ export default function UserManagementPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [companiesList, setCompaniesList] = useState<CompanyOption[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Estados de Filtro e Paginação
   const [searchTerm, setSearchTerm] = useState("");
-
-  // Filtro de Empresa (Lista Principal)
+  const [currentPage, setCurrentPage] = useState(1);
   const [filterCompanyId, setFilterCompanyId] = useState<string | undefined>(undefined);
 
-  // Estados de UI (Modais)
+  // Estados de UI
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isFormLoading, setIsFormLoading] = useState(false);
 
   // Estado de Delete
@@ -171,27 +136,12 @@ export default function UserManagementPage() {
   const isMaster = currentUser?.role === "MASTER";
   const canManage = isMaster || currentUser?.role === "ADMIN";
 
-  const form = useForm<UserFormValues>({
-    resolver: zodResolver(userFormSchema),
-    defaultValues: {
-      name: "", email: "", role: UserRole.EMPLOYER,
-      contact: "", document: "", professionalRole: "", password: "", companyId: ""
-    },
-  });
-
-  // --- 1. Carregar lista de empresas (Select) ---
-  // --- 1. Carregar lista de empresas (Select) ---
+  // --- 1. Carregar lista de empresas ---
   useEffect(() => {
     if (isMaster) {
-      // Adicionamos '&page=1' para garantir que vem do início
       api.get('/companies?limit=100&page=1').then((response) => {
-        // O backend retorna { data: [...], total: ... }
-        // Precisamos garantir que estamos pegando o array .data
         const data = response.data.data || [];
-
-        // Ordenação para ficar bonito no Select (Opcional)
         const sortedData = data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-
         setCompaniesList(sortedData);
       }).catch(err => {
         console.error("Erro ao carregar empresas", err);
@@ -234,22 +184,44 @@ export default function UserManagementPage() {
     fetchUsers();
   }, [fetchUsers]);
 
-  // --- 3. Submit (Create / Update) ---
-  const onSubmit = async (values: UserFormValues) => {
-    console.log("📝 [Frontend] Iniciando Submit. Valores brutos:", values);
+  // --- Filtro e Paginação ---
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterCompanyId]);
 
-    if (!isEditing && (!values.password || values.password.length < 6)) {
-      form.setError("password", { message: "Senha obrigatória (mín. 6 dígitos)" });
-      return;
-    }
+  const filteredUsers = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return users.filter(u => u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term));
+  }, [users, searchTerm]);
 
-    // Regra: Master deve selecionar empresa
-    if (!isEditing && isMaster && !values.companyId && values.role !== UserRole.MASTER) {
-      console.warn("⚠️ [Frontend] Master tentou criar sem selecionar empresa.");
-      form.setError("companyId", { message: "Selecione a empresa para este usuário." });
-      return;
-    }
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return filteredUsers.slice(startIndex, endIndex);
+  }, [filteredUsers, currentPage]);
 
+  const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
+
+  // --- Handlers de Modal ---
+  const handleOpenCreate = () => {
+    // Se for Master e tiver filtro ativo, pré-preenche a empresa
+    const initialData = (isMaster && filterCompanyId) ? { companyId: filterCompanyId } : null;
+    setEditingUser(initialData as any); 
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (user: User) => {
+    setEditingUser(user);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingUser(null);
+  };
+
+  // --- Submit do Formulário ---
+  const handleFormSubmit = async (values: any) => {
     setIsFormLoading(true);
 
     const payload: any = {
@@ -258,27 +230,23 @@ export default function UserManagementPage() {
       document: cleanMask(values.document),
     };
 
-    // Lógica de envio do ID
     if (isMaster) {
       payload.companyId = values.companyId;
-      console.log("👑 [Frontend] Usuário é MASTER. Enviando companyId:", payload.companyId);
     } else {
       delete payload.companyId;
-      console.log("👤 [Frontend] Usuário é ADMIN. Removendo companyId (Backend injeta).");
     }
 
-    console.log("🚀 [Frontend] Payload Final enviado para API:", payload);
-
     try {
-      if (isEditing && editingId) {
-        await api.patch(`/users/${editingId}`, payload);
+      if (editingUser && editingUser.id) {
+        // Update
+        await api.patch(`/users/${editingUser.id}`, payload);
         toast.success("Usuário atualizado!");
         fetchUsers();
       } else {
+        // Create
         const { data: newUser } = await api.post<User>("/users", payload);
         toast.success("Usuário criado!");
-        console.log("✅ [Frontend] Usuário criado com sucesso:", newUser);
-
+        
         const shouldShow =
           (!isMaster) ||
           (isMaster && !filterCompanyId) ||
@@ -290,13 +258,13 @@ export default function UserManagementPage() {
       }
       handleCloseModal();
     } catch (error) {
-      console.error("❌ [Frontend] Erro na requisição:", error);
+      console.error("Erro na requisição:", error);
     } finally {
       setIsFormLoading(false);
     }
   };
 
-  // --- Actions ---
+  // --- Outras Ações ---
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     setUsers(prev => prev.map(u => u.id === id ? { ...u, status: newStatus as any } : u));
@@ -323,46 +291,6 @@ export default function UserManagementPage() {
     }
   };
 
-  // --- Modais Helpers ---
-  const handleOpenCreate = () => {
-    setIsEditing(false);
-    setEditingId(null);
-    // Se estiver filtrando na tela, já abre o modal com a empresa selecionada
-    form.reset({
-      name: "", email: "", role: UserRole.EMPLOYER,
-      contact: "", document: "", professionalRole: "", password: "",
-      companyId: (isMaster && filterCompanyId) ? filterCompanyId : ""
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEdit = (user: User) => {
-    setIsEditing(true);
-    setEditingId(user.id);
-    form.reset({
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      contact: formatPhone(user.contact),
-      document: formatCPF(user.document || ""),
-      professionalRole: user.professionalRole || "",
-      password: "",
-      companyId: user.companyId || ""
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    form.reset();
-  };
-
-  const filteredUsers = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return users.filter(u => u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term));
-  }, [users, searchTerm]);
-
-  // --- Colunas ---
   const columns: Column<User>[] = useMemo(() => {
     const cols: Column<User>[] = [
       {
@@ -467,161 +395,65 @@ export default function UserManagementPage() {
     <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-[#2D3436]">Usuários</h1>
-            <p className="text-[#95A5A6]">Gerencie o acesso ao sistema.</p>
-          </div>
+        <PageHeader 
+          title="Usuários" 
+          description="Gerencie o acesso ao sistema."
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Buscar por nome ou e-mail..."
+        >
+          {isMaster && (
+            <CompanyFilter value={filterCompanyId} onChange={setFilterCompanyId} />
+          )}
 
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-            {/* Filtro da Lista */}
-            {isMaster && (
-              <CompanyFilter value={filterCompanyId} onChange={setFilterCompanyId} />
-            )}
+          {canManage && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    onClick={handleOpenCreate} 
+                    size="icon" 
+                    className="bg-[#D35400] hover:bg-[#D35400]/90 text-white shadow-md transition-transform hover:scale-105 rounded-full h-10 w-10"
+                  >
+                    <Plus className="h-5 w-5" />
+                    <span className="sr-only">Adicionar novo usuário</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Adicionar novo usuário</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </PageHeader>
 
-            {canManage && (
-              <Button onClick={handleOpenCreate} className="bg-[#D35400] hover:bg-[#D35400]/90 text-white w-full sm:w-auto">
-                <Plus className="mr-2 h-4 w-4" /> Novo Usuário
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Tabela */}
         <GenericTable
-          title="Lista de Usuários"
-          data={filteredUsers}
+          title="Listagem"
+          data={paginatedUsers}
           columns={columns}
           isLoading={loading}
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
+          onSearchChange={undefined} 
           emptyMessage="Nenhum usuário encontrado."
+          pagination={{
+            currentPage: currentPage,
+            totalPages: totalPages,
+            onPageChange: (page) => setCurrentPage(page),
+            totalItems: filteredUsers.length,
+            itemsPerPage: ITEMS_PER_PAGE
+          }}
         />
 
-        {/* Modal */}
-        <Dialog open={isModalOpen} onOpenChange={handleCloseModal}>
-          <DialogContent className="max-w-3xl h-[90vh] flex flex-col p-0 bg-white">
-            <DialogHeader className="px-6 py-4 border-b bg-slate-50">
-              <DialogTitle>{isEditing ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
-              <DialogDescription>{isEditing ? "Atualize os dados abaixo." : "Preencha para criar um novo acesso."}</DialogDescription>
-            </DialogHeader>
+        {/* 🔥 USANDO O NOVO COMPONENTE DO MODAL */}
+        <UserFormModal 
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          initialData={editingUser as any}
+          onSubmit={handleFormSubmit}
+          isLoading={isFormLoading}
+          companies={companiesList}
+          currentUserRole={currentUser?.role} // 🔥 Passa o cargo para a regra de negócio
+        />
 
-            <div className="flex-1 overflow-hidden">
-              <ScrollArea className="h-full px-6 py-4">
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-
-                    {/* 🔥 SELECÃO DE EMPRESA (APENAS MASTER) */}
-                    {isMaster && (
-                      <div className="space-y-4 p-4 bg-orange-50 border border-orange-100 rounded-md">
-                        <h3 className="text-sm font-bold text-orange-800 uppercase flex items-center gap-2">
-                          <Building2 className="h-4 w-4" /> Vínculo Empresarial
-                        </h3>
-                        <FormField control={form.control} name="companyId" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Empresa</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger className="bg-white">
-                                  <SelectValue placeholder="Selecione a empresa" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {companiesList.map((company) => (
-                                  <SelectItem key={company.id} value={company.id}>
-                                    {company.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                      </div>
-                    )}
-
-                    {/* Dados Pessoais */}
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
-                        <span className="w-1 h-4 bg-orange-500 rounded-full" /> Dados Pessoais
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <FormField control={form.control} name="name" render={({ field }) => (
-                          <FormItem><FormLabel>Nome Completo</FormLabel><FormControl><Input placeholder="Ex: Ana Silva" {...field} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                        <FormField control={form.control} name="document" render={({ field }) => (
-                          <FormItem><FormLabel>CPF</FormLabel><FormControl><Input placeholder="000.000.000-00" {...field} maxLength={14} onChange={e => field.onChange(formatCPF(e.target.value))} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Acesso e Cargo */}
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
-                        <span className="w-1 h-4 bg-orange-500 rounded-full" /> Acesso
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <FormField control={form.control} name="email" render={({ field }) => (
-                          <FormItem><FormLabel>E-mail</FormLabel><FormControl><Input placeholder="email@empresa.com" {...field} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                        <FormField control={form.control} name="contact" render={({ field }) => (
-                          <FormItem><FormLabel>Telefone</FormLabel><FormControl><Input placeholder="(00) 00000-0000" {...field} maxLength={15} onChange={e => field.onChange(formatPhone(e.target.value))} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                        <FormField control={form.control} name="role" render={({ field }) => (
-                          <FormItem><FormLabel>Permissão</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                              <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                              <SelectContent>
-                                {currentUser?.role === 'MASTER' && <SelectItem value={UserRole.MASTER}>Master</SelectItem>}
-                                <SelectItem value={UserRole.ADMIN}>Admin</SelectItem>
-                                <SelectItem value={UserRole.EMPLOYER}>Colaborador</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage /></FormItem>
-                        )} />
-                        <FormField control={form.control} name="professionalRole" render={({ field }) => (
-                          <FormItem><FormLabel>Cargo Profissional</FormLabel><FormControl><Input placeholder="Ex: Vendedor" {...field} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Segurança */}
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
-                        <span className="w-1 h-4 bg-orange-500 rounded-full" /> Segurança
-                      </h3>
-                      <FormField control={form.control} name="password" render={({ field }) => (
-                        <FormItem className="max-w-md">
-                          <FormLabel>{isEditing ? "Nova Senha (Opcional)" : "Senha Inicial"}</FormLabel>
-                          <div className="relative">
-                            <Key className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                            <FormControl><Input type="password" placeholder="Mínimo 6 caracteres" className="pl-9" {...field} /></FormControl>
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                    </div>
-                  </form>
-                </Form>
-              </ScrollArea>
-            </div>
-
-            <div className="px-6 py-4 border-t bg-slate-50 flex justify-end gap-2">
-              <Button variant="outline" onClick={handleCloseModal}>Cancelar</Button>
-              <Button onClick={() => form.handleSubmit(onSubmit)()} disabled={isFormLoading} className="bg-[#D35400] hover:bg-[#D35400]/90 text-white">
-                {isFormLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                {isEditing ? "Salvar" : "Criar"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Alerta de Exclusão */}
         <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>

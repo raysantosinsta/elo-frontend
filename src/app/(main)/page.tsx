@@ -6,11 +6,27 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { AlertTriangle, Calendar, Clock, LogOut, Search, User, ArrowRight, Image, Video, Music, Users, Plus } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'; // Certifique-se de ter este componente instalado
+import { 
+  AlertTriangle, 
+  Calendar, 
+  Clock, 
+  Search, 
+  User, 
+  ArrowRight, 
+  Image, 
+  Video, 
+  Music, 
+  RefreshCcw // Ícone de recarregar
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { api } from '@/services/api'; // <--- IMPORTANTE: Importando a instância do Axios
-// import { useAuth } from '@/contexts/AuthContext'; // Opcional se for usar apenas para logout do contexto
+import { api } from '@/services/api';
 
 // Tipos: Mantidos
 interface Task {
@@ -121,8 +137,6 @@ export default function DashboardPage() {
   const [filter, setFilter] = useState('all');
   const [error, setError] = useState<string>('');
   const router = useRouter();
-  
-  // REMOVIDO: const { authFetch } = useAuth(); 
 
   // Lógicas de Negócio (Mantidas)
   const isTaskOverdue = (task: Task) => {
@@ -182,7 +196,6 @@ export default function DashboardPage() {
     setLoading(true);
     setError('');
     try {
-      // O Axios (api) já injeta a URL Base e o Token
       const response = await api.get('/tasks');
       
       const data = response.data;
@@ -200,14 +213,12 @@ export default function DashboardPage() {
       setAllTasks(tasksWithDefaults);
 
     } catch (error: any) {
-      // Axios lança erro se status não for 2xx
       if (error.response?.status === 404 || error.response?.status === 400) {
         setAllTasks([]);
         return;
       }
       
       if (error.response?.status === 401) {
-        // O interceptor do Axios já deve ter redirecionado, mas por segurança:
         localStorage.removeItem('accessToken');
         router.push('/login');
         return;
@@ -230,16 +241,11 @@ export default function DashboardPage() {
       }
 
       try {
-        // Busca perfil usando api
         const { data: userData } = await api.get('/auth/profile');
         setUser(userData);
-        
-        // Busca tarefas
         await fetchAllTasks(); 
-
       } catch (error) {
         console.error('❌ Erro na autenticação:', error);
-        // Deixa o interceptor lidar ou remove token
       }
     };
     
@@ -252,29 +258,6 @@ export default function DashboardPage() {
       ? new Date(task.dueDate || task.createdAt!).toISOString().split('T')[0]
       : new Date().toISOString().split('T')[0];
     router.push(`/agenda?focusDate=${focusDate}&highlightTask=${task.id}`);
-  };
-
-  const navigateToKanban = () => {
-    router.push('/Kanban');
-  };
-
-  const navigateToUserManagement = () => {
-    router.push('/signup');
-  };
-
-  const logout = async () => {
-    try {
-      // Usa api.post para manter o token no header
-      await api.post('/auth/logout');
-    } catch (error) {
-      console.log('Logout local...');
-    } finally {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      // Limpa cookies se necessário
-      document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-      router.push('/login');
-    }
   };
 
   // Funções de Busca e Filtro
@@ -356,43 +339,31 @@ export default function DashboardPage() {
               <p className="text-sm text-[#95A5A6]">Empresa: {user.company.name}</p>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {(user.role === 'ADMIN' || user.role === 'MASTER') && (
-              <Button
-                onClick={navigateToUserManagement}
-                aria-label="Gerenciar Usuários"
-                className="flex items-center gap-2 bg-[#2C3E50] text-white hover:bg-[#2C3E50]/90 transition-all duration-300"
-              >
-                <Users className="h-4 w-4" />
-                Gerenciar Usuários
-              </Button>
-            )}
-            <Button
-              onClick={navigateToKanban}
-              aria-label="Ver Kanban (Quadro de Tarefas)"
-              className="flex items-center gap-2 bg-[#D35400] text-white hover:bg-[#D35400]/90 transition-all duration-300"
-            >
-              Kanban
-            </Button>
-            <Button
-              onClick={fetchAllTasks} 
-              variant="outline"
-              size="sm"
-              disabled={loading}
-              aria-label="Atualizar lista de tarefas"
-              className={`border-[#95A5A6] text-[#2D3436] hover:bg-[#95A5A6]/30 transition-all duration-300 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
-            >
-              {loading ? 'Carregando...' : 'Atualizar'}
-            </Button>
-            <Button 
-              onClick={logout} 
-              variant="outline" 
-              className="flex items-center gap-2 border-[#95A5A6] text-[#2D3436] hover:bg-[#95A5A6]/30 transition-all duration-300"
-              aria-label="Sair da aplicação"
-            >
-              <LogOut className="h-4 w-4" />
-              Sair
-            </Button>
+          
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* Botões antigos removidos (User, Kanban, Sair) */}
+            
+            {/* Botão de Atualizar Novo */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={fetchAllTasks}
+                    variant="outline"
+                    size="icon"
+                    disabled={loading}
+                    className={`border-[#95A5A6] text-[#2D3436] hover:bg-[#95A5A6]/30 transition-all duration-300 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                    aria-label="Recarregar página"
+                  >
+                    <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Recarregar página</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
           </div>
         </header>
 

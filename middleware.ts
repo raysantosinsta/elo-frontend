@@ -72,7 +72,7 @@ function getToken(request: NextRequest): string | null {
 
   return null;
 }
-
+// usar joi
 async function isTokenValid(token: string): Promise<boolean> {
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_NESTJS_API_URL}/auth/verify-token`, {
