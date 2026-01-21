@@ -97,7 +97,7 @@ interface FlowItemModalProps {
     stages: { id: string; name: string; order: number }[];
 }
 
-// Schema com coerce para lidar com inputs HTML que retornam string
+// Schema
 const itemSchema = z.object({
     title: z.string().min(1, "Título é obrigatório"),
     description: z.string().optional(),
@@ -159,11 +159,9 @@ export function FlowItemModal({
         },
     });
 
-    // 🔥 CORREÇÃO AQUI: Dependências ajustadas para evitar loop de renderização
     useEffect(() => {
         if (!isOpen) return;
 
-        // Reset de mídias locais
         setImages([]);
         setVideos([]);
         setAudios([]);
@@ -173,7 +171,6 @@ export function FlowItemModal({
         setIsRecording(false);
 
         if (initialData) {
-            // Modo edição
             form.reset({
                 title: initialData.title,
                 description: initialData.description || "",
@@ -183,8 +180,8 @@ export function FlowItemModal({
                 priority: initialData.priority,
                 status: initialData.status,
                 stageId: initialData.stageId || "",
-                assignedToId: initialData.assignedTo?.id || "",
-                supplierId: initialData.supplierId || "",
+                assignedToId: initialData.assignedTo?.id || "unassigned", // Ajustado para evitar valor vazio se não tiver
+                supplierId: initialData.supplierId || "internal", // Ajustado para evitar valor vazio se não tiver
                 dueDate: initialData.dueDate
                     ? new Date(initialData.dueDate).toISOString().split("T")[0]
                     : "",
@@ -196,7 +193,6 @@ export function FlowItemModal({
                     : "",
             });
         } else {
-            // Modo criação
             form.reset({
                 title: "",
                 description: "",
@@ -206,15 +202,15 @@ export function FlowItemModal({
                 priority: 3,
                 status: "PENDENTE",
                 stageId: stages.length > 0 ? stages[0].id : "",
-                assignedToId: "",
-                supplierId: "",
+                assignedToId: "unassigned", // Valor padrão seguro
+                supplierId: "internal",     // Valor padrão seguro
                 dueDate: "",
                 productionStartedAt: "",
                 deliveryAt: "",
             });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen, initialData]); // Removido 'stages' e 'form' para evitar loops
+    }, [isOpen, initialData]); 
 
     // ── Gravador de áudio ────────────────────────────────────────────────
     const startRecording = async () => {
@@ -255,11 +251,11 @@ export function FlowItemModal({
     };
 
     const handleSubmit = async (values: ItemFormValues) => {
-        // Limpeza de campos vazios para null
+        // 🔥 CORREÇÃO: Converte os valores "especiais" de volta para NULL antes de enviar
         const payload = {
             ...values,
-            supplierId: values.supplierId || null,
-            assignedToId: values.assignedToId || null,
+            supplierId: (values.supplierId === "internal" || !values.supplierId) ? null : values.supplierId,
+            assignedToId: (values.assignedToId === "unassigned" || !values.assignedToId) ? null : values.assignedToId,
             dueDate: values.dueDate || null,
             productionStartedAt: values.productionStartedAt || null,
             deliveryAt: values.deliveryAt || null,
@@ -382,7 +378,8 @@ export function FlowItemModal({
                                                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                                                         <FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl>
                                                         <SelectContent>
-                                                            <SelectItem value="">Nenhum</SelectItem>
+                                                            {/* 🔥 CORREÇÃO: Valor deve ser string válida */}
+                                                            <SelectItem value="unassigned">Nenhum</SelectItem>
                                                             {users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                                                         </SelectContent>
                                                     </Select>
@@ -395,7 +392,8 @@ export function FlowItemModal({
                                                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                                                         <FormControl><SelectTrigger><SelectValue placeholder="Produção Interna" /></SelectTrigger></FormControl>
                                                         <SelectContent>
-                                                            <SelectItem value="">Produção Interna</SelectItem>
+                                                            {/* 🔥 CORREÇÃO: Valor deve ser string válida */}
+                                                            <SelectItem value="internal">Produção Interna</SelectItem>
                                                             {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} {s.category === 'HYBRID' ? '(Híbrido)' : ''}</SelectItem>)}
                                                         </SelectContent>
                                                     </Select>
@@ -518,9 +516,13 @@ export function FlowItemModal({
                                                     <div className="flex flex-col gap-2">
                                                         {audios.map((a, i) => (
                                                             <div key={i} className="flex items-center gap-3 bg-blue-50 p-2 rounded border border-blue-100">
-                                                                <PlayCircle size={16} className="text-blue-600" />
-                                                                <span className="text-xs truncate flex-1">{a.name}</span>
-                                                                <audio src={URL.createObjectURL(a)} controls className="h-6 w-32" />
+                                                                <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                                                                    <PlayCircle size={16} className="text-blue-600" />
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-[10px] font-medium text-slate-700 truncate">{a.name}</p>
+                                                                    <audio src={URL.createObjectURL(a)} controls className="w-full h-6 mt-1" />
+                                                                </div>
                                                                 <button type="button" onClick={() => handleRemoveNewFile(i, 'audio')} className="text-blue-400 hover:text-red-500"><X size={14} /></button>
                                                             </div>
                                                         ))}

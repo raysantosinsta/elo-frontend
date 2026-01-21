@@ -3,29 +3,23 @@
 "use client";
 
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import {
-  AlertCircle,
   CalendarClock,
   Factory,
   Filter,
   Layers,
-  LogOut,
   Menu,
-  MoreVertical,
   Package,
   Plus,
-  RefreshCw,
   Settings,
-  Tag,
   Trash2,
-  X,
+  X
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -33,8 +27,8 @@ import { toast } from "sonner";
 
 // Componentes do Kanban
 import { KanbanBoard } from "@/components/kanban/kanban-board";
-import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { KanbanCard } from "@/components/kanban/kanban-card";
+import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { useKanbanDrag } from "@/hooks/use-kanban-drag";
 
 // 🔥 CORREÇÃO: Importamos APENAS o componente, NÃO a interface (para usar a local)

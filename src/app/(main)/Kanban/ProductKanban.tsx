@@ -153,49 +153,55 @@ export default function ProductKanban() {
   };
 
   // CRUD Tasks via modal
+ // CRUD Tasks via modal
   const handleTaskSubmit = async (values: any, files: any, removedMedia: any) => {
     setIsSubmitting(true);
     const formData = new FormData();
 
+    // 1. Adiciona os campos normais (excluindo o objeto de endereço para tratar manualmente)
     Object.keys(values).forEach(key => {
-      if (values[key] !== undefined && values[key] !== null && values[key] !== "") {
+      if (key !== 'taskAddress' && values[key] !== undefined && values[key] !== null && values[key] !== "") {
         formData.append(key, values[key]);
       }
     });
 
-    if (values.cep && values.street) {
-      const addressData = {
-        cep: values.cep, endereco: values.street, numero: values.number, bairro: values.neighborhood,
-        cidade: values.city, estado: values.state, complemento: values.complement,
-        latitude: values.latitude ? parseFloat(values.latitude) : undefined,
-        longitude: values.longitude ? parseFloat(values.longitude) : undefined,
-      };
-      formData.append("address", JSON.stringify(addressData));
-      ['cep', 'street', 'number', 'neighborhood', 'city', 'state', 'complement', 'latitude', 'longitude'].forEach(k => formData.delete(k));
+    // 2. CORREÇÃO AQUI: Verifica se veio o objeto 'taskAddress' do Modal
+    if (values.taskAddress) {
+      // O Backend espera o campo 'address' (conforme seu CreateTaskDto)
+      // O Modal envia como 'taskAddress', então fazemos o mapeamento aqui
+      formData.append("address", JSON.stringify(values.taskAddress));
     }
 
+    // Adiciona IDs de contexto
     if (user?.company?.id) formData.append("companyId", user.company.id);
     if (!editingTask && user?.id) formData.append("createdById", user.id);
 
+    // Adiciona Arquivos
     files.images.forEach((f: File) => formData.append("images", f));
     files.audios.forEach((f: File) => formData.append("audios", f));
     files.videos.forEach((f: File) => formData.append("videos", f));
 
+    // Adiciona Remoções
     if (removedMedia.images.length) formData.append("removeImageIds", JSON.stringify(removedMedia.images));
     if (removedMedia.audios.length) formData.append("removeAudioIds", JSON.stringify(removedMedia.audios));
     if (removedMedia.videos.length) formData.append("removeVideoIds", JSON.stringify(removedMedia.videos));
 
     try {
       if (editingTask) {
+        // Update
         const { data: updated } = await api.put(`/tasks/${editingTask.id}`, formData);
-        if (values.cep) {
-          await api.post(`/tasks/${editingTask.id}/address`, JSON.parse(formData.get("address") as string));
+        
+        // Se houver endereço na edição, forçamos a atualização dele também
+        if (values.taskAddress) {
+           await api.post(`/tasks/${editingTask.id}/address`, values.taskAddress);
         }
+
         setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...updated } : t));
         await refreshTask(editingTask.id);
         toast.success("Tarefa atualizada!");
         setIsEditTaskModal(false);
       } else {
+        // Create
         const { data: newTask } = await api.post("/tasks", formData, { headers: { "Content-Type": "multipart/form-data" } });
         setTasks(prev => [newTask, ...prev]);
         toast.success("Tarefa criada!");
