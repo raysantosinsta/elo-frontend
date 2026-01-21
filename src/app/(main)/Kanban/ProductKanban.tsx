@@ -1,427 +1,406 @@
-/* eslint-disable prefer-const */
 /* eslint-disable @next/next/no-img-element */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
-import { useError } from "@/contexts/error-context";
-import { api } from "@/services/api";
-import {
-  Filter,
-  Flag,
-  Layout,
-  MapPin,
-  Menu,
-  Paperclip,
-  Plus,
-  RefreshCw,
-  Settings,
-  X
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { 
+  Layout, 
+  Plus, 
+  Columns, 
+  MapPin, 
+  Flag, 
+  Paperclip, 
+  Calendar,
+  Filter as FilterIcon,
+  RefreshCw
+} from "lucide-react";
 
-// Componentes do Kanban
-import { KanbanBoard } from "@/components/kanban/kanban-board";
-import { KanbanCard } from "@/components/kanban/kanban-card";
-import { KanbanColumn } from "@/components/kanban/kanban-column";
-import { TaskFormModal } from "@/components/modals/task-form-modal";
+// --- Imports de Infraestrutura ---
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/services/api";
 import { useKanbanDrag } from "@/hooks/use-kanban-drag";
 
-// Interfaces
-interface Professional { id: string; name: string; email: string; role?: string; }
-interface TaskImage { id: string; url: string; filename: string; size?: number; }
-interface TaskAddress { id: string; cep: string; endereco: string; numero: string; bairro: string; cidade: string; estado: string; complemento?: string; latitude?: number; longitude?: number; }
+// --- Imports dos Componentes Base (Refatorados) ---
+import { KanbanLayout } from "@/components/kanban/kanban-layout";
+import { KanbanHeader } from "@/components/kanban/kanban-header";
+import { KanbanFilter } from "@/components/kanban/kanban-filter";
+import { KanbanBoard } from "@/components/kanban/kanban-board";
+import { KanbanColumn } from "@/components/kanban/kanban-column";
+import { KanbanCard } from "@/components/kanban/kanban-card";
+
+// --- Imports de UI Genéricos ---
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+
+// --- Imports de Modais Específicos ---
+import { TaskFormModal } from "@/components/modals/task-form-modal";
+import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
+
+// --- Tipagens Locais ---
+interface Professional { id: string; name: string; email: string; }
+interface TaskImage { id: string; url: string; }
+interface TaskAddress { bairro: string; cidade: string; estado: string; }
 interface Task {
   id: string;
   title: string;
   description?: string;
-  finalComment?: string;
-  scheduledDate?: string;
-  completionDate?: string;
-  dueDate?: string;
   priority: number;
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
+  status: string;
   columnId?: string | null;
   userAssigned?: Professional;
-  createdBy?: Professional;
+  dueDate?: string;
   taskAddress?: TaskAddress | null;
   taskImages: TaskImage[];
   taskAudios: any[];
   taskVideos: any[];
-  createdAt: string;
-  updatedAt: string;
 }
-interface Column { id: string; title: string; order: number; tasks: Task[]; status?: "PENDING" | "FINISHED"; }
+interface Column { id: string; title: string; order: number; }
 
-// Utils
-const formatDateTime = (d: string) => new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-const formatDateShort = (d: string) => new Date(d).toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" });
+// --- Helpers ---
+const formatDateShort = (d: string) => new Date(d).toLocaleDateString("pt-BR", { day: "numeric", month: "short" });
 const isOverdue = (d: string) => new Date(d) < new Date();
-const getPriorityColor = (p: number) => { if (p === 1) return "#E74C3C"; if (p === 2) return "#F1C40F"; return "#27AE60"; };
+const getPriorityColor = (p: number) => { 
+  if (p === 1) return "#E74C3C"; // Alta
+  if (p === 2) return "#F1C40F"; // Média
+  return "#27AE60"; // Baixa
+};
 
 export default function ProductKanban() {
-  const { user, loading: authLoading } = useAuth();
-  const { showError } = useError();
-  const router = useRouter();
+  const { user } = useAuth();
 
+  // --- Estados de Dados ---
   const [tasks, setTasks] = useState<Task[]>([]);
   const [columns, setColumns] = useState<Column[]>([]);
   const [users, setUsers] = useState<Professional[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isColumnModal, setIsColumnModal] = useState(false);
+  // --- Estados de Controle de UI/Modais ---
   const [isTaskModal, setIsTaskModal] = useState(false);
   const [isEditTaskModal, setIsEditTaskModal] = useState(false);
+  const [isColumnModal, setIsColumnModal] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isPreviewModal, setIsPreviewModal] = useState(false);
 
+  // --- Estados de Edição/Seleção ---
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
   const [editingCol, setEditingCol] = useState<Column | null>(null);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [colTitle, setColTitle] = useState("");
-  const [itemToDelete, setItemToDelete] = useState<{ type: "column" | "task"; id: string; } | null>(null);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ type: "column" | "task"; id: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- Estados de Filtro ---
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterAssignedTo, setFilterAssignedTo] = useState("all");
-  const [filterHasLocation, setFilterHasLocation] = useState(false);
 
-  // Hook de Drag & Drop – só pegamos o que usamos
-  const { moveItem, onDragStart: handleDragStart } = useKanbanDrag({
+  // --- Hook de Drag & Drop ---
+  const { moveItem, onDragStart } = useKanbanDrag({
     items: tasks,
     setItems: setTasks,
-    idField: "columnId",
+    idField: "columnId", // Campo identificador no Kanban de Tarefas
     moveCallback: async (itemId, newColId) => {
       await api.patch(`/tasks/${itemId}/status`, { columnId: newColId });
-      await refreshTask(itemId);
     }
   });
 
-  // Fetch data
-  const fetchColumns = useCallback(async () => {
-    try {
-      const { data } = await api.get("/kanban-columns");
-      let cols = Array.isArray(data) ? data : data.columns || [];
-      if (cols.length > 0) setColumns(cols.sort((a: any, b: any) => (a.order || 0) - (b.order || 0)));
-      else setColumns([]);
-    } catch (err) { setColumns([]); }
-  }, []);
-
-  const fetchTasks = useCallback(async () => {
-    try {
-      const params: any = { limit: 100 };
-      if (filterStartDate) params.startDate = new Date(filterStartDate).toISOString();
-      if (filterEndDate) params.endDate = new Date(filterEndDate).toISOString();
-      if (filterAssignedTo && filterAssignedTo !== "all") params.assignedToId = filterAssignedTo;
-      if (filterHasLocation) params.hasLocation = "true";
-      const { data } = await api.get("/tasks", { params });
-      const tasksArray = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : data.tasks || []);
-      setTasks(tasksArray);
-    } catch (err) { setTasks([]); toast.error("Erro ao carregar tarefas"); }
-  }, [filterStartDate, filterEndDate, filterAssignedTo, filterHasLocation]);
-
-  const fetchUsers = useCallback(async () => {
+  // --- Data Fetching ---
+  const fetchData = useCallback(async () => {
     if (!user?.company?.id) return;
+    setLoading(true);
     try {
-      const { data } = await api.get(`/users/company/${user.company.id}`);
-      setUsers(Array.isArray(data) ? data : []);
-    } catch (err) { }
-  }, [user?.company?.id]);
+      const [colsRes, tasksRes, usersRes] = await Promise.all([
+        api.get("/kanban-columns"),
+        api.get("/tasks", { params: { 
+            limit: 100,
+            startDate: filterStartDate ? new Date(filterStartDate).toISOString() : undefined,
+            endDate: filterEndDate ? new Date(filterEndDate).toISOString() : undefined,
+            assignedToId: filterAssignedTo !== "all" ? filterAssignedTo : undefined
+        }}),
+        api.get(`/users/company/${user.company.id}`)
+      ]);
+
+      const colsData = Array.isArray(colsRes.data) ? colsRes.data : colsRes.data.columns || [];
+      setColumns(colsData.sort((a: any, b: any) => (a.order || 0) - (b.order || 0)));
+
+      const tasksData = Array.isArray(tasksRes.data.data) ? tasksRes.data.data : tasksRes.data.tasks || [];
+      setTasks(tasksData);
+
+      setUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao carregar dados");
+    } finally {
+      setLoading(false);
+    }
+  }, [user, filterStartDate, filterEndDate, filterAssignedTo]);
 
   useEffect(() => {
-    if (user) {
-      setLoading(true);
-      Promise.all([fetchColumns(), fetchTasks(), fetchUsers()]).finally(() => setLoading(false));
+    fetchData();
+  }, [fetchData]);
+
+  // --- Actions Definition (Header Configuration) ---
+  // Aqui definimos as ações que aparecem na engrenagem do header
+  const headerConfigActions = [
+    { 
+      label: 'Criar Tarefa', 
+      onClick: () => { setEditingTask(null); setIsTaskModal(true); },
+      icon: <Plus className="w-4 h-4 mr-2" />
+    },
+    { 
+      label: 'Nova Coluna', 
+      onClick: () => { setEditingCol(null); setColTitle(""); setIsColumnModal(true); },
+      icon: <Columns className="w-4 h-4 mr-2" />
     }
-  }, [user, fetchColumns, fetchTasks, fetchUsers]);
+  ];
 
-  const refreshTask = async (taskId: string) => {
-    try {
-      const { data: updated } = await api.get(`/tasks/${taskId}`);
-      setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
-    } catch (err) { console.error(err); }
-  };
+  // --- CRUD Handlers ---
 
-  // CRUD Tasks via modal
- // CRUD Tasks via modal
   const handleTaskSubmit = async (values: any, files: any, removedMedia: any) => {
     setIsSubmitting(true);
     const formData = new FormData();
-
-    // 1. Adiciona os campos normais (excluindo o objeto de endereço para tratar manualmente)
+    
+    // ... (Lógica de montagem do FormData igual ao original)
     Object.keys(values).forEach(key => {
       if (key !== 'taskAddress' && values[key] !== undefined && values[key] !== null && values[key] !== "") {
         formData.append(key, values[key]);
       }
     });
-
-    // 2. CORREÇÃO AQUI: Verifica se veio o objeto 'taskAddress' do Modal
-    if (values.taskAddress) {
-      // O Backend espera o campo 'address' (conforme seu CreateTaskDto)
-      // O Modal envia como 'taskAddress', então fazemos o mapeamento aqui
-      formData.append("address", JSON.stringify(values.taskAddress));
-    }
-
-    // Adiciona IDs de contexto
+    if (values.taskAddress) formData.append("address", JSON.stringify(values.taskAddress));
     if (user?.company?.id) formData.append("companyId", user.company.id);
     if (!editingTask && user?.id) formData.append("createdById", user.id);
 
-    // Adiciona Arquivos
+    // Files
     files.images.forEach((f: File) => formData.append("images", f));
     files.audios.forEach((f: File) => formData.append("audios", f));
     files.videos.forEach((f: File) => formData.append("videos", f));
-
-    // Adiciona Remoções
+    
+    // Removals
     if (removedMedia.images.length) formData.append("removeImageIds", JSON.stringify(removedMedia.images));
     if (removedMedia.audios.length) formData.append("removeAudioIds", JSON.stringify(removedMedia.audios));
     if (removedMedia.videos.length) formData.append("removeVideoIds", JSON.stringify(removedMedia.videos));
 
     try {
       if (editingTask) {
-        // Update
-        const { data: updated } = await api.put(`/tasks/${editingTask.id}`, formData);
-        
-        // Se houver endereço na edição, forçamos a atualização dele também
-        if (values.taskAddress) {
-           await api.post(`/tasks/${editingTask.id}/address`, values.taskAddress);
-        }
-
-        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...updated } : t));
-        await refreshTask(editingTask.id);
+        await api.put(`/tasks/${editingTask.id}`, formData);
+        if (values.taskAddress) await api.post(`/tasks/${editingTask.id}/address`, values.taskAddress);
         toast.success("Tarefa atualizada!");
-        setIsEditTaskModal(false);
       } else {
-        // Create
-        const { data: newTask } = await api.post("/tasks", formData, { headers: { "Content-Type": "multipart/form-data" } });
-        setTasks(prev => [newTask, ...prev]);
+        await api.post("/tasks", formData, { headers: { "Content-Type": "multipart/form-data" } });
         toast.success("Tarefa criada!");
-        setIsTaskModal(false);
       }
-    } catch (err: any) {
+      setIsTaskModal(false);
+      setIsEditTaskModal(false);
+      fetchData(); // Recarrega tudo para garantir consistência
+    } catch (err) {
       toast.error("Erro ao salvar tarefa");
-      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // CRUD Columns
-  const createColumn = async () => {
+  const handleColumnSubmit = async () => {
     if (!colTitle.trim()) return toast.error("Título obrigatório");
     try {
-      const { data: newColumn } = await api.post("/kanban-columns", { title: colTitle });
-      setColumns(prev => [...prev, newColumn]);
-      setColTitle("");
-      setIsColumnModal(false);
-      toast.success("Coluna criada");
-    } catch (err) { toast.error("Erro ao criar coluna"); }
-  };
-
-  const updateColumn = async () => {
-    if (!editingCol || !colTitle.trim()) return;
-    try {
-      const { data: updated } = await api.put(`/kanban-columns/${editingCol.id}`, { title: colTitle });
-      setColumns(prev => prev.map(c => c.id === editingCol.id ? updated : c));
-      setColTitle("");
-      setEditingCol(null);
-      setIsColumnModal(false);
-      toast.success("Coluna atualizada");
-    } catch (err) { toast.error("Erro ao atualizar"); }
-  };
-
-  const deleteItem = async () => {
-    if (!itemToDelete) return;
-    setIsDeleting(true);
-    try {
-      if (itemToDelete.type === "column") {
-        if (tasks.some(t => t.columnId === itemToDelete.id)) {
-          toast.error("Coluna possui tarefas vinculadas.");
-          return;
-        }
-        await api.delete(`/kanban-columns/${itemToDelete.id}`);
-        setColumns(prev => prev.filter(c => c.id !== itemToDelete.id));
-        toast.success("Coluna excluída");
+      if (editingCol) {
+        await api.put(`/kanban-columns/${editingCol.id}`, { title: colTitle });
+        toast.success("Coluna atualizada");
       } else {
-        await api.delete(`/tasks/${itemToDelete.id}`);
-        setTasks(prev => prev.filter(t => t.id !== itemToDelete.id));
-        toast.success("Tarefa excluída");
-        if (isPreviewModal) setIsPreviewModal(false);
+        await api.post("/kanban-columns", { title: colTitle });
+        toast.success("Coluna criada");
       }
-      setDeleteModalOpen(false);
-      setItemToDelete(null);
+      setIsColumnModal(false);
+      fetchData();
     } catch (err) {
-      toast.error("Erro ao excluir");
-    } finally {
-      setIsDeleting(false);
+      toast.error("Erro ao salvar coluna");
     }
   };
 
-  if (authLoading || loading) return (
-    <div className="flex h-screen items-center justify-center bg-[#F5F0E6]">
-      <RefreshCw className="h-10 w-10 text-[#D35400] animate-spin" />
-    </div>
-  );
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
+    try {
+      if (itemToDelete.type === "column") {
+         if (tasks.some(t => t.columnId === itemToDelete.id)) {
+           return toast.error("Coluna não está vazia.");
+         }
+         await api.delete(`/kanban-columns/${itemToDelete.id}`);
+      } else {
+         await api.delete(`/tasks/${itemToDelete.id}`);
+      }
+      setDeleteModalOpen(false);
+      setItemToDelete(null);
+      fetchData();
+      toast.success("Excluído com sucesso");
+    } catch (err) {
+      toast.error("Erro ao excluir");
+    }
+  };
 
-  if (!user) return null;
+  // --- Render ---
+
+  if (loading && tasks.length === 0) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
+        <RefreshCw className="animate-spin text-[#D35400]" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-[100dvh] bg-[#F5F0E6] flex flex-col font-sans">
-      {/* Header */}
-      <header className="bg-[#2C3E50] text-white px-4 py-3 shadow-md border-b border-[#2C3E50] z-20">
-        <div className="flex justify-between items-center max-w-[1920px] mx-auto w-full">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="md:hidden text-white" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-              {isMobileMenuOpen ? <X /> : <Menu />}
-            </Button>
-            <div className="flex items-center gap-2">
-              <Layout className="w-5 h-5 text-[#D35400]" />
-              <h1 className="text-lg font-bold">Fluxo de Tarefas</h1>
-            </div>
+    <KanbanLayout>
+      
+      {/* 1. Header Genérico */}
+      <KanbanHeader
+        title="Fluxo de Tarefas"
+        icon={<Layout className="w-5 h-5 text-[#D35400]" />}
+        configActions={headerConfigActions}
+        rightContent={
+          <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs text-gray-300">
+             <span>{tasks.length} Tarefas</span>
+             <span className="w-px h-3 bg-white/20"></span>
+             <span>{columns.length} Colunas</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden md:flex items-center gap-2 mr-4 bg-white/5 px-3 py-1 rounded-full border border-white/10 text-xs text-gray-300">
-              <span>{tasks.length} Tarefas</span>
-              <span className="w-px h-3 bg-white/20"></span>
-              <span>{columns.length} Colunas</span>
-            </div>
-            <Button onClick={() => { setEditingCol(null); setColTitle(""); setIsColumnModal(true); }} variant="outline" className="hidden sm:flex border-white/20 text-white hover:bg-white/10 bg-transparent text-xs h-9">
-              <Settings className="w-3.5 h-3.5 mr-2" /> Colunas
-            </Button>
-            <Button onClick={() => setIsTaskModal(true)} className="bg-[#D35400] hover:bg-[#A04000] text-white text-xs h-9 font-semibold">
-              <Plus className="w-4 h-4 mr-1.5" /> Nova Tarefa
-            </Button>
-          </div>
-        </div>
-      </header>
+        }
+      />
 
-      {/* Filters */}
-      <div className="bg-white border-b border-slate-200 px-4 py-3 shadow-sm z-10 sticky top-0 md:static">
-        <div className="flex flex-col md:flex-row md:items-center gap-4 max-w-[1920px] mx-auto w-full">
-          <div className="flex items-center gap-2 text-sm text-slate-500 font-medium min-w-fit">
-            <Filter className="w-4 h-4" /> Filtros:
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="grid gap-1">
-              <label className="text-[10px] uppercase font-bold text-slate-400">De</label>
-              <Input type="date" className="h-8 text-xs w-32" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-[10px] uppercase font-bold text-slate-400">Até</label>
-              <Input type="date" className="h-8 text-xs w-32" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
-            </div>
-          </div>
-          <div className="w-px h-8 bg-slate-200 hidden md:block" />
-          <div className="grid gap-1 min-w-[150px]">
+      {/* 2. Filtro Genérico */}
+      <KanbanFilter>
+         <div className="grid gap-1">
+            <label className="text-[10px] uppercase font-bold text-slate-400">De</label>
+            <Input 
+              type="date" 
+              className="h-8 text-xs w-32" 
+              value={filterStartDate} 
+              onChange={e => setFilterStartDate(e.target.value)} 
+            />
+         </div>
+         <div className="grid gap-1">
+            <label className="text-[10px] uppercase font-bold text-slate-400">Até</label>
+            <Input 
+              type="date" 
+              className="h-8 text-xs w-32" 
+              value={filterEndDate} 
+              onChange={e => setFilterEndDate(e.target.value)} 
+            />
+         </div>
+         <div className="grid gap-1 min-w-[150px]">
             <label className="text-[10px] uppercase font-bold text-slate-400">Responsável</label>
-            <select className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs" value={filterAssignedTo} onChange={e => setFilterAssignedTo(e.target.value)}>
-              <option value="all">Todos</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            <select 
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs" 
+              value={filterAssignedTo} 
+              onChange={e => setFilterAssignedTo(e.target.value)}
+            >
+               <option value="all">Todos</option>
+               {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
-          </div>
-          <div className="flex items-center gap-2 pt-4 md:pt-0">
-            <Button variant={filterHasLocation ? "default" : "outline"} size="sm" onClick={() => setFilterHasLocation(!filterHasLocation)} className="text-xs h-8">
-              <MapPin className="w-3.5 h-3.5 mr-2" /> {filterHasLocation ? "Com Local" : "Filtrar Local"}
+         </div>
+         <div className="flex items-center gap-2 pt-4">
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={fetchData}>
+              <FilterIcon className="w-3 h-3 mr-2"/> Filtrar
             </Button>
-          </div>
-        </div>
-      </div>
+         </div>
+      </KanbanFilter>
 
-      {/* Kanban Board */}
-      <KanbanBoard className="bg-[#F5F0E6] p-4 md:p-6">
-        {columns.map(col => (
-          <KanbanColumn
-            key={col.id}
-            id={col.id}
-            title={col.title}
-            count={tasks.filter(t => t.columnId === col.id).length}
-            onEditClick={() => { setEditingCol(col); setColTitle(col.title); setIsColumnModal(true); }}
-            onDeleteClick={() => { setItemToDelete({ type: "column", id: col.id }); setDeleteModalOpen(true); }}
-            onAddClick={() => setIsTaskModal(true)}
-            onDropItem={moveItem}
-          >
-            {tasks.filter(t => t.columnId === col.id).map(task => (
-              <KanbanCard
-                key={task.id}
-                id={task.id}
-                title={task.title}
-                priorityColor={getPriorityColor(task.priority)}
-                coverImage={task.taskImages[0]?.url}
-                imagesCount={task.taskImages.length}
-                onView={() => { setPreviewTask(task); setIsPreviewModal(true); }}
-                onEdit={() => { setEditingTask(task); setIsEditTaskModal(true); }}
-                onDelete={() => { setItemToDelete({ type: "task", id: task.id }); setDeleteModalOpen(true); }}
-                onDragStart={(e) => handleDragStart(e, task.id)}  // ← Aqui está o ajuste principal
-                footer={
-                  <>
-                    <div className="flex gap-2 text-slate-400 text-xs">
-                      {(task.taskImages.length + task.taskVideos.length + task.taskAudios.length) > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Paperclip size={12} /> {task.taskImages.length + task.taskVideos.length + task.taskAudios.length}
-                        </span>
-                      )}
-                      {task.dueDate && (
-                        <span className={`flex items-center gap-1 ${isOverdue(task.dueDate) ? 'text-red-500' : ''}`}>
-                          <Flag size={12} /> {formatDateShort(task.dueDate)}
-                        </span>
-                      )}
-                    </div>
-                    {task.userAssigned && (
-                      <div className="bg-slate-200 px-2 py-0.5 rounded-full text-[10px] text-slate-700">
-                        {task.userAssigned.name.split(" ")[0]}
+      {/* 3. Board Genérico */}
+      <KanbanBoard>
+        {columns.map(col => {
+          const colTasks = tasks.filter(t => t.columnId === col.id);
+          return (
+            <KanbanColumn
+              key={col.id}
+              id={col.id}
+              title={col.title}
+              count={colTasks.length}
+              onDropItem={moveItem}
+              // Ações específicas da Coluna
+              onEditClick={() => { setEditingCol(col); setColTitle(col.title); setIsColumnModal(true); }}
+              onDeleteClick={() => { setItemToDelete({ type: "column", id: col.id }); setDeleteModalOpen(true); }}
+              onAddClick={() => { setEditingTask(null); setIsTaskModal(true); }}
+            >
+              {colTasks.map(task => (
+                <KanbanCard
+                  key={task.id}
+                  id={task.id}
+                  title={task.title}
+                  priorityColor={getPriorityColor(task.priority)}
+                  coverImage={task.taskImages[0]?.url}
+                  imagesCount={task.taskImages.length}
+                  onDragStart={(e) => onDragStart(e, task.id)}
+                  
+                  // Ações do Card
+                  onView={() => { setPreviewTask(task); setIsPreviewModal(true); }}
+                  onEdit={() => { setEditingTask(task); setIsEditTaskModal(true); }}
+                  onDelete={() => { setItemToDelete({ type: "task", id: task.id }); setDeleteModalOpen(true); }}
+                  
+                  // Footer Específico de Tarefa
+                  footer={
+                    <>
+                      <div className="flex gap-2 text-slate-400 text-xs items-center">
+                         {(task.taskImages.length + task.taskVideos.length + task.taskAudios.length) > 0 && (
+                            <span className="flex items-center gap-1">
+                               <Paperclip size={10} /> {task.taskImages.length + task.taskVideos.length + task.taskAudios.length}
+                            </span>
+                         )}
+                         {task.dueDate && (
+                            <span className={`flex items-center gap-1 ${isOverdue(task.dueDate) ? 'text-red-500 font-bold' : ''}`}>
+                               <Flag size={10} /> {formatDateShort(task.dueDate)}
+                            </span>
+                         )}
                       </div>
-                    )}
-                  </>
-                }
-              >
-                <p className="line-clamp-2 mb-1 text-sm text-slate-600">{task.description || "Sem descrição"}</p>
-                {task.taskAddress && (
-                  <div className="flex items-center gap-1 text-[10px] text-blue-600">
-                    <MapPin size={10} /> {task.taskAddress.bairro}
-                  </div>
-                )}
-              </KanbanCard>
-            ))}
-          </KanbanColumn>
-        ))}
+                      {task.userAssigned && (
+                         <div className="bg-slate-200 px-2 py-0.5 rounded-full text-[10px] text-slate-700 font-medium truncate max-w-[80px]">
+                            {task.userAssigned.name.split(" ")[0]}
+                         </div>
+                      )}
+                    </>
+                  }
+                >
+                  {/* Conteúdo Central Específico de Tarefa */}
+                  <p className="line-clamp-2 mb-2 text-xs text-slate-600">
+                    {task.description || "Sem descrição"}
+                  </p>
+                  {task.taskAddress && (
+                     <div className="flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 p-1 rounded w-fit">
+                        <MapPin size={10} /> {task.taskAddress.bairro} - {task.taskAddress.cidade}
+                     </div>
+                  )}
+                </KanbanCard>
+              ))}
+            </KanbanColumn>
+          );
+        })}
 
-        {/* Coluna "Não Classificado" */}
-        {tasks.filter(t => !t.columnId).length > 0 && (
-          <KanbanColumn
-            id="null"
-            title="Não Classificado"
-            count={tasks.filter(t => !t.columnId).length}
-            color="#E67E22"
-            onDropItem={moveItem}
-          >
-            {tasks.filter(t => !t.columnId).map(task => (
-              <KanbanCard
-                key={task.id}
-                id={task.id}
-                title={task.title}
-                priorityColor={getPriorityColor(task.priority)}
-                onView={() => { setPreviewTask(task); setIsPreviewModal(true); }}
-                onEdit={() => { setEditingTask(task); setIsEditTaskModal(true); }}
-                onDelete={() => { setItemToDelete({ type: "task", id: task.id }); setDeleteModalOpen(true); }}
-                onDragStart={(e) => handleDragStart(e, task.id)}  // ← Aqui também
-              >
-                <p className="text-sm text-slate-600">{task.description || "Sem descrição"}</p>
-              </KanbanCard>
-            ))}
-          </KanbanColumn>
+        {/* Coluna "Não Classificado" (opcional, para tarefas sem coluna) */}
+        {tasks.some(t => !t.columnId) && (
+           <KanbanColumn 
+              id="null" 
+              title="Não Classificado" 
+              count={tasks.filter(t => !t.columnId).length} 
+              color="#E67E22"
+              onDropItem={moveItem}
+           >
+              {tasks.filter(t => !t.columnId).map(task => (
+                 <KanbanCard 
+                    key={task.id} 
+                    id={task.id} 
+                    title={task.title} 
+                    priorityColor={getPriorityColor(task.priority)}
+                    onDragStart={(e) => onDragStart(e, task.id)}
+                    onEdit={() => { setEditingTask(task); setIsEditTaskModal(true); }}
+                 >
+                    <p className="text-xs text-red-500">Mova para uma coluna</p>
+                 </KanbanCard>
+              ))}
+           </KanbanColumn>
         )}
       </KanbanBoard>
 
-      {/* Modal de Tarefa */}
+      {/* --- MODAIS (Lógica Específica) --- */}
+      
+      {/* 1. Modal de Tarefa */}
       <TaskFormModal
         isOpen={isTaskModal || isEditTaskModal}
         onClose={() => {
@@ -429,14 +408,14 @@ export default function ProductKanban() {
           setIsEditTaskModal(false);
           setEditingTask(null);
         }}
-        initialData={editingTask}
+        initialData={editingTask as any}
         onSubmit={handleTaskSubmit}
         isLoading={isSubmitting}
         users={users}
         columns={columns}
       />
 
-      {/* Modal Nova/Editar Coluna */}
+      {/* 2. Modal de Coluna */}
       <Dialog open={isColumnModal} onOpenChange={setIsColumnModal}>
         <DialogContent>
           <DialogHeader>
@@ -448,58 +427,50 @@ export default function ProductKanban() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsColumnModal(false)}>Cancelar</Button>
-            <Button onClick={editingCol ? updateColumn : createColumn} className="bg-[#D35400] hover:bg-[#A04000]">
-              {editingCol ? "Atualizar" : "Criar"}
-            </Button>
+            <Button onClick={handleColumnSubmit} className="bg-[#D35400] hover:bg-[#A04000]">Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Preview (simplificado) */}
-      <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{previewTask?.title}</DialogTitle>
-          </DialogHeader>
-          {previewTask && (
-            <div className="space-y-4 py-4">
-              <p className="text-sm text-gray-600">{previewTask.description || "Sem descrição"}</p>
-              {previewTask.taskAddress && (
-                <div className="bg-slate-50 p-4 rounded-lg">
-                  <p className="font-medium flex items-center gap-2 mb-2">
-                    <MapPin size={16} className="text-blue-600" /> Localização
-                  </p>
-                  <p className="text-sm">
-                    {previewTask.taskAddress.endereco}, {previewTask.taskAddress.numero} - {previewTask.taskAddress.bairro}<br />
-                    {previewTask.taskAddress.cidade} / {previewTask.taskAddress.estado} - CEP {previewTask.taskAddress.cep}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPreviewModal(false)}>Fechar</Button>
-            {previewTask && (
-              <Button onClick={() => {
-                setIsPreviewModal(false);
-                setEditingTask(previewTask);
-                setIsEditTaskModal(true);
-              }}>
-                Editar
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      {/* 3. Modal de Exclusão */}
       <ConfirmDeleteModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
-        onConfirm={deleteItem}
-        loading={isDeleting}
+        onConfirm={handleDeleteItem}
+        loading={loading} // Reutilizando loading state para simplicidade
         title="Confirmar exclusão"
-        description="Esta ação não pode ser desfeita. Deseja continuar?"
+        description="Esta ação não pode ser desfeita."
       />
-    </div>
+
+      {/* 4. Modal de Visualização Rápida */}
+      <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
+         <DialogContent className="max-w-2xl">
+            <DialogHeader>
+               <DialogTitle>{previewTask?.title}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+               <p className="text-sm text-gray-600">{previewTask?.description || "Sem descrição"}</p>
+               {previewTask?.taskAddress && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-3 rounded-md">
+                     <MapPin size={16} /> 
+                     {previewTask.taskAddress.bairro}, {previewTask.taskAddress.cidade} - {previewTask.taskAddress.estado}
+                  </div>
+               )}
+               {previewTask?.dueDate && (
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                     <Calendar size={16} /> Prazo: {formatDateShort(previewTask.dueDate)}
+                  </div>
+               )}
+            </div>
+            <DialogFooter>
+               <Button variant="outline" onClick={() => setIsPreviewModal(false)}>Fechar</Button>
+               <Button onClick={() => { setIsPreviewModal(false); setEditingTask(previewTask); setIsEditTaskModal(true); }}>
+                  Editar
+               </Button>
+            </DialogFooter>
+         </DialogContent>
+      </Dialog>
+
+    </KanbanLayout>
   );
 }
