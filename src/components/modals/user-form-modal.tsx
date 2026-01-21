@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -11,6 +12,7 @@ import {
   CheckCircle2,
   Key,
   Building2,
+  Briefcase,
 } from "lucide-react";
 
 import {
@@ -40,6 +42,43 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
+// --- DADOS DOS CARGOS (Hierarquia) ---
+const JOB_HIERARCHY = [
+  {
+    category: "Gestão e Estratégia",
+    roles: [
+      "CEO / Diretor Executivo",
+      "Sócio / Proprietário",
+      "Diretor de Operações (COO)",
+      "Gestor de Processos",
+    ],
+  },
+  {
+    category: "Administrativo e Financeiro",
+    roles: [
+      "Analista Financeiro",
+      "Assistente Administrativo",
+      "Auxiliar de Escritório",
+    ],
+  },
+  {
+    category: "Comercial e Vendas",
+    roles: ["Gerente Comercial", "Vendedor(a)", "Representante Comercial"],
+  },
+  {
+    category: "Produção e Operacional",
+    roles: ["Gerente de Produção", "Supervisor de Qualidade", "Líder de Produção"],
+  },
+  {
+    category: "Tecnologia e Marketing",
+    roles: [
+      "Analista de Sistemas / TI",
+      "Desenvolvedor de Software",
+      "Analista de Marketing",
+    ],
+  },
+];
+
 // --- Tipos e Enums ---
 export enum UserRole {
   MASTER = "MASTER",
@@ -68,7 +107,6 @@ interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialData?: UserData | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSubmit: (values: any) => Promise<void>;
   isLoading: boolean;
   companies: CompanyOption[];
@@ -76,28 +114,25 @@ interface UserFormModalProps {
 }
 
 // --- Helpers e Schema ---
-const cleanMask = (value: string | undefined) => value ? value.replace(/\D/g, "") : "";
+const cleanMask = (value: string | undefined) => (value ? value.replace(/\D/g, "") : "");
 
-// 1. Definição do Schema Base
 const baseUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   email: z.string().email("E-mail inválido"),
   contact: z.string().refine((val) => cleanMask(val).length >= 10, "Telefone inválido"),
   document: z.string().optional(),
-  professionalRole: z.string().optional(),
+  professionalRole: z.string().optional(), // O cargo final será salvo aqui
   companyId: z.string().optional(),
   password: z.string().optional(),
-  confirmPassword: z.string().optional(), // 🔥 Novo campo no schema
+  confirmPassword: z.string().optional(),
 });
 
-// 2. Refinamento (Validação cruzada de campos)
 const userSchema = baseUserSchema.superRefine(({ password, confirmPassword }, ctx) => {
-  // Se a senha foi preenchida, a confirmação deve ser igual
   if (password && password !== confirmPassword) {
     ctx.addIssue({
       code: "custom",
       message: "As senhas não coincidem",
-      path: ["confirmPassword"], // Aponta o erro para o campo de confirmação
+      path: ["confirmPassword"],
     });
   }
 });
@@ -124,6 +159,12 @@ const formatCPF = (v: string | undefined) => {
     .replace(/(-\d{2})\d+?$/, "$1");
 };
 
+// Helper para encontrar a categoria com base no cargo (para edição)
+const findCategoryByRole = (role: string) => {
+  const found = JOB_HIERARCHY.find((cat) => cat.roles.includes(role));
+  return found ? found.category : "";
+};
+
 export function UserFormModal({
   isOpen,
   onClose,
@@ -136,6 +177,9 @@ export function UserFormModal({
   const isEditing = !!initialData;
   const isMaster = currentUserRole === "MASTER";
 
+  // Estado local para controlar a categoria selecionada (o Select Pai)
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userSchema),
     defaultValues: {
@@ -145,26 +189,41 @@ export function UserFormModal({
       document: "",
       professionalRole: "",
       password: "",
-      confirmPassword: "", // 🔥 Valor inicial vazio
+      confirmPassword: "",
       companyId: "",
     },
   });
 
   // Atualiza o formulário ao abrir
+ // Atualiza o formulário ao abrir
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
+        // Lógica de Edição
+        const category = initialData.professionalRole
+          ? findCategoryByRole(initialData.professionalRole)
+          : "";
+        
+        // 1. Resetar o formulário (Dados principais)
         form.reset({
           name: initialData.name,
           email: initialData.email,
           contact: formatPhone(initialData.contact),
           document: formatCPF(initialData.document || ""),
           professionalRole: initialData.professionalRole || "",
-          password: "", 
+          password: "",
           confirmPassword: "",
           companyId: initialData.companyId || "",
         });
+
+        // 2. Atualizar o estado visual (Select Pai)
+        // Usamos setTimeout para evitar o erro "setState synchronously within an effect"
+        setTimeout(() => {
+          setSelectedCategory(category);
+        }, 0);
+
       } else {
+        // Lógica de Criação
         form.reset({
           name: "",
           email: "",
@@ -175,29 +234,32 @@ export function UserFormModal({
           confirmPassword: "",
           companyId: "",
         });
+
+        setTimeout(() => {
+          setSelectedCategory("");
+        }, 0);
       }
     }
   }, [isOpen, initialData, form]);
 
   const handleSubmit = async (values: UserFormValues) => {
-    // Validação Manual: Senha é obrigatória APENAS na criação
     if (!isEditing && (!values.password || values.password.length < 6)) {
       form.setError("password", { message: "Senha obrigatória (mín. 6 dígitos)" });
       return;
     }
 
-    // Validação Manual: Empresa obrigatória para Master
     if (!isEditing && isMaster && !values.companyId) {
       form.setError("companyId", { message: "Selecione a empresa." });
       return;
     }
 
-    // Remove o confirmPassword antes de enviar para o pai (Backend não espera esse campo)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { confirmPassword, ...dataToSend } = values;
-
     await onSubmit(dataToSend);
   };
+
+  // Filtra os cargos baseados na categoria selecionada no estado
+  const currentRoles = JOB_HIERARCHY.find((c) => c.category === selectedCategory)?.roles || [];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -219,12 +281,11 @@ export function UserFormModal({
         <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full px-6 py-4">
             <Form {...form}>
-              <form 
-                onSubmit={form.handleSubmit(handleSubmit)} 
-                className="space-y-6" 
+              <form
+                onSubmit={form.handleSubmit(handleSubmit)}
+                className="space-y-6"
                 autoComplete="off"
               >
-                
                 {/* Seleção de Empresa (Master) */}
                 {isMaster && (
                   <div className="space-y-4 p-4 bg-orange-50 border border-orange-100 rounded-md">
@@ -293,11 +354,13 @@ export function UserFormModal({
 
                 <Separator />
 
-                {/* Acesso e Cargo */}
+                {/* Acesso e Cargo Profissional */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
-                    <span className="w-1 h-4 bg-orange-500 rounded-full" /> Acesso
+                    <span className="w-1 h-4 bg-orange-500 rounded-full" /> Acesso & Função
                   </h3>
+
+                  {/* Linha de Contatos */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
@@ -325,33 +388,81 @@ export function UserFormModal({
                         </FormItem>
                       )}
                     />
-                    
-                    {/* Campo de Permissão removido (definido no backend) */}
+                  </div>
 
-                    <FormField
-                      control={form.control}
-                      name="professionalRole"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Cargo Profissional</FormLabel>
-                          <FormControl><Input placeholder="Ex: Vendedor" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  {/* 🔥 LÓGICA DO SELECT E SUB-SELECT */}
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-md">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Briefcase className="w-4 h-4 text-slate-500" />
+                      <span className="text-sm font-semibold text-slate-700">Cargo na Empresa</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* 1. Select de Categoria (Controla apenas o estado local) */}
+                      <div className="space-y-2">
+                        <FormLabel className="text-xs">Área / Departamento</FormLabel>
+                        <Select
+                          value={selectedCategory}
+                          onValueChange={(val) => {
+                            setSelectedCategory(val);
+                            form.setValue("professionalRole", ""); // Limpa o cargo ao mudar categoria
+                          }}
+                        >
+                          <SelectTrigger className="bg-white">
+                            <SelectValue placeholder="Selecione o departamento" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {JOB_HIERARCHY.map((item) => (
+                              <SelectItem key={item.category} value={item.category}>
+                                {item.category}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* 2. Select de Cargo (Conectado ao formulário) */}
+                      <FormField
+                        control={form.control}
+                        name="professionalRole"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Cargo Específico</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                              value={field.value}
+                              disabled={!selectedCategory} // Desabilita se não tiver categoria
+                            >
+                              <FormControl>
+                                <SelectTrigger className="bg-white">
+                                  <SelectValue placeholder={selectedCategory ? "Selecione o cargo" : "Selecione a área primeiro"} />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {currentRoles.map((role) => (
+                                  <SelectItem key={role} value={role}>
+                                    {role}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <Separator />
 
-                {/* Segurança - Nova Senha e Confirmação */}
+                {/* Segurança */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
                     <span className="w-1 h-4 bg-orange-500 rounded-full" /> Segurança
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    
-                    {/* Campo Senha */}
                     <FormField
                       control={form.control}
                       name="password"
@@ -361,12 +472,12 @@ export function UserFormModal({
                           <div className="relative">
                             <Key className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                             <FormControl>
-                              <Input 
-                                type="password" 
-                                placeholder="Mínimo 6 caracteres" 
-                                className="pl-9" 
-                                {...field} 
-                                autoComplete="new-password" 
+                              <Input
+                                type="password"
+                                placeholder="Mínimo 6 caracteres"
+                                className="pl-9"
+                                {...field}
+                                autoComplete="new-password"
                               />
                             </FormControl>
                           </div>
@@ -374,8 +485,6 @@ export function UserFormModal({
                         </FormItem>
                       )}
                     />
-
-                    {/* 🔥 Campo Confirmar Senha */}
                     <FormField
                       control={form.control}
                       name="confirmPassword"
@@ -385,12 +494,12 @@ export function UserFormModal({
                           <div className="relative">
                             <Key className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                             <FormControl>
-                              <Input 
-                                type="password" 
-                                placeholder="Repita a senha" 
-                                className="pl-9" 
-                                {...field} 
-                                autoComplete="new-password" 
+                              <Input
+                                type="password"
+                                placeholder="Repita a senha"
+                                className="pl-9"
+                                {...field}
+                                autoComplete="new-password"
                               />
                             </FormControl>
                           </div>
@@ -400,7 +509,6 @@ export function UserFormModal({
                     />
                   </div>
                 </div>
-
               </form>
             </Form>
           </ScrollArea>
