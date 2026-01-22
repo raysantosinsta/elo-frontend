@@ -24,13 +24,13 @@ export function ForgotPasswordModal({ children }: { children: React.ReactNode })
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); // Impede o recarregamento da página
-    e.stopPropagation(); // <--- ADICIONE ESTA LINHA (A MÁGICA)
+    e.preventDefault(); 
+    e.stopPropagation(); // Garante que não submete form pai se houver
     if (!email) return;
 
     setLoading(true);
     try {
-      // Chama a rota que envia o email
+      // Chama a rota corrigida
       await api.post('/password/forgot', { email });
 
       setSuccess(true);
@@ -38,10 +38,12 @@ export function ForgotPasswordModal({ children }: { children: React.ReactNode })
         description: 'Verifique sua caixa de entrada.',
       });
     } catch (error: any) {
-      // O interceptor global já trata, mas garantimos aqui
       console.error(error);
-      // Se quiser exibir erro específico mesmo que o backend não diga se email existe:
-      // toast.error('Erro na solicitação');
+      // Se for erro 500, o axios vai cair aqui.
+      // O backend vai ter logado o motivo real no terminal.
+      toast.error('Erro ao enviar', {
+        description: 'Tente novamente mais tarde ou contate o suporte.'
+      });
     } finally {
       setLoading(false);
     }
@@ -49,7 +51,6 @@ export function ForgotPasswordModal({ children }: { children: React.ReactNode })
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
-    // Reseta o estado quando fecha
     if (!open) {
       setTimeout(() => {
         setSuccess(false);
