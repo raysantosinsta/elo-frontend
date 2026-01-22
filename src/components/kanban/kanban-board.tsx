@@ -9,7 +9,8 @@ interface KanbanBoardProps {
 export function KanbanBoard({ children, className }: KanbanBoardProps) {
   return (
     <ScrollArea className="flex-1 h-full w-full whitespace-nowrap">
-      <div className={`flex h-full gap-6 p-4 md:p-6 items-start ${className}`}>
+      {/* 🔥 AJUSTE: gap-3 (era gap-6) e p-4 (era p-6) */}
+      <div className={`flex h-full gap-3 p-4 items-start ${className}`}>
         {children}
       </div>
       <ScrollBar orientation="horizontal" />

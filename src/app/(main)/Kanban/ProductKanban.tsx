@@ -11,17 +11,21 @@ import {
   MapPin, 
   Flag, 
   Paperclip, 
-  Calendar,
+  RefreshCw,
   Filter as FilterIcon,
-  RefreshCw
+  Calendar,
+  CheckCircle2,
+  Image as ImageIcon,
+  PlayCircle,
+  Mic
 } from "lucide-react";
 
-// --- Imports de Infraestrutura ---
+// --- Infraestrutura ---
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import { useKanbanDrag } from "@/hooks/use-kanban-drag";
 
-// --- Imports dos Componentes Base (Refatorados) ---
+// --- Componentes Base do Kanban ---
 import { KanbanLayout } from "@/components/kanban/kanban-layout";
 import { KanbanHeader } from "@/components/kanban/kanban-header";
 import { KanbanFilter } from "@/components/kanban/kanban-filter";
@@ -29,20 +33,22 @@ import { KanbanBoard } from "@/components/kanban/kanban-board";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { KanbanCard } from "@/components/kanban/kanban-card";
 
-// --- Imports de UI Genéricos ---
+// --- UI Genérica ---
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
-// --- Imports de Modais Específicos ---
+// --- Modais ---
 import { TaskFormModal } from "@/components/modals/task-form-modal";
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 
-// --- Tipagens Locais ---
+// --- Interfaces ---
 interface Professional { id: string; name: string; email: string; }
-interface TaskImage { id: string; url: string; }
-interface TaskAddress { bairro: string; cidade: string; estado: string; }
+interface MediaFile { id: string; url: string; }
+interface TaskAddress { bairro: string; cidade: string; estado: string; endereco: string; numero: string; }
+
 interface Task {
   id: string;
   title: string;
@@ -53,38 +59,68 @@ interface Task {
   userAssigned?: Professional;
   dueDate?: string;
   taskAddress?: TaskAddress | null;
-  taskImages: TaskImage[];
-  taskAudios: any[];
-  taskVideos: any[];
+  taskImages: MediaFile[];
+  taskAudios: MediaFile[];
+  taskVideos: MediaFile[];
 }
+
 interface Column { id: string; title: string; order: number; }
+
+export interface Supplier {
+  id: string;
+  name: string;
+  zipCode?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  complement?: string;
+  latitude?: number; 
+  longitude?: number; 
+  numero?: string;
+  bairro?: string;
+}
 
 // --- Helpers ---
 const formatDateShort = (d: string) => new Date(d).toLocaleDateString("pt-BR", { day: "numeric", month: "short" });
 const isOverdue = (d: string) => new Date(d) < new Date();
+
 const getPriorityColor = (p: number) => { 
-  if (p === 1) return "#E74C3C"; // Alta
-  if (p === 2) return "#F1C40F"; // Média
-  return "#27AE60"; // Baixa
+  if (p === 1) return "#E74C3C"; 
+  if (p === 2) return "#F1C40F"; 
+  return "#27AE60"; 
+};
+
+const getStatusConfig = (status: string) => {
+  switch (status) {
+    case 'PENDING':
+      return { label: 'Pendente', color: '#F1C40F' }; 
+    case 'IN_PROGRESS':
+      return { label: 'Em Progresso', color: '#3498DB' }; 
+    case 'COMPLETED':
+      return { label: 'Concluído', color: '#27AE60' }; 
+    case 'FAILED':
+      return { label: 'Falhou', color: '#E74C3C' }; 
+    default:
+      return { label: status, color: '#95A5A6' }; 
+  }
 };
 
 export default function ProductKanban() {
   const { user } = useAuth();
 
-  // --- Estados de Dados ---
   const [tasks, setTasks] = useState<Task[]>([]);
   const [columns, setColumns] = useState<Column[]>([]);
   const [users, setUsers] = useState<Professional[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]); 
   const [loading, setLoading] = useState(true);
 
-  // --- Estados de Controle de UI/Modais ---
   const [isTaskModal, setIsTaskModal] = useState(false);
   const [isEditTaskModal, setIsEditTaskModal] = useState(false);
   const [isColumnModal, setIsColumnModal] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isPreviewModal, setIsPreviewModal] = useState(false);
 
-  // --- Estados de Edição/Seleção ---
+  const [initialColumnId, setInitialColumnId] = useState<string | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
   const [editingCol, setEditingCol] = useState<Column | null>(null);
@@ -92,27 +128,46 @@ export default function ProductKanban() {
   const [itemToDelete, setItemToDelete] = useState<{ type: "column" | "task"; id: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- Estados de Filtro ---
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterAssignedTo, setFilterAssignedTo] = useState("all");
 
-  // --- Hook de Drag & Drop ---
   const { moveItem, onDragStart } = useKanbanDrag({
     items: tasks,
     setItems: setTasks,
-    idField: "columnId", // Campo identificador no Kanban de Tarefas
+    idField: "columnId",
     moveCallback: async (itemId, newColId) => {
-      await api.patch(`/tasks/${itemId}/status`, { columnId: newColId });
+      const targetColumn = columns.find(c => c.id === newColId);
+      const isDone = targetColumn?.title === "Concluído";
+      let newStatus: string | undefined = undefined;
+      
+      if (isDone) {
+        newStatus = "COMPLETED";
+      } else {
+        const currentTask = tasks.find(t => t.id === itemId);
+        if (currentTask?.status === "COMPLETED") {
+           newStatus = "IN_PROGRESS";
+        }
+      }
+
+      if (newStatus) {
+        setTasks(prev => prev.map(t => 
+           t.id === itemId ? { ...t, status: newStatus as string } : t
+        ));
+      }
+
+      await api.patch(`/tasks/${itemId}/status`, { 
+          columnId: newColId,
+          status: newStatus 
+      });
     }
   });
 
-  // --- Data Fetching ---
   const fetchData = useCallback(async () => {
     if (!user?.company?.id) return;
     setLoading(true);
     try {
-      const [colsRes, tasksRes, usersRes] = await Promise.all([
+      const [colsRes, tasksRes, usersRes, suppliersRes] = await Promise.all([
         api.get("/kanban-columns"),
         api.get("/tasks", { params: { 
             limit: 100,
@@ -120,7 +175,8 @@ export default function ProductKanban() {
             endDate: filterEndDate ? new Date(filterEndDate).toISOString() : undefined,
             assignedToId: filterAssignedTo !== "all" ? filterAssignedTo : undefined
         }}),
-        api.get(`/users/company/${user.company.id}`)
+        api.get(`/users/company/${user.company.id}`),
+        api.get(`/suppliers?companyId=${user.company.id}`)
       ]);
 
       const colsData = Array.isArray(colsRes.data) ? colsRes.data : colsRes.data.columns || [];
@@ -130,6 +186,9 @@ export default function ProductKanban() {
       setTasks(tasksData);
 
       setUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
+      const supData = Array.isArray(suppliersRes.data) ? suppliersRes.data : suppliersRes.data.data || [];
+      setSuppliers(supData);
+
     } catch (err) {
       console.error(err);
       toast.error("Erro ao carregar dados");
@@ -142,14 +201,7 @@ export default function ProductKanban() {
     fetchData();
   }, [fetchData]);
 
-  // --- Actions Definition (Header Configuration) ---
-  // Aqui definimos as ações que aparecem na engrenagem do header
   const headerConfigActions = [
-    { 
-      label: 'Criar Tarefa', 
-      onClick: () => { setEditingTask(null); setIsTaskModal(true); },
-      icon: <Plus className="w-4 h-4 mr-2" />
-    },
     { 
       label: 'Nova Coluna', 
       onClick: () => { setEditingCol(null); setColTitle(""); setIsColumnModal(true); },
@@ -157,13 +209,36 @@ export default function ProductKanban() {
     }
   ];
 
-  // --- CRUD Handlers ---
+  const handleAddTaskFromColumn = (colId: string) => {
+      setEditingTask(null);
+      setInitialColumnId(colId); 
+      setIsTaskModal(true);
+  };
+
+  const handleCompleteTask = async (task: Task) => {
+      const doneCol = columns.find(c => c.title === "Concluído");
+      if (!doneCol) return toast.error("Coluna 'Concluído' não encontrada.");
+
+      const oldStatus = task.status;
+      const oldCol = task.columnId;
+      
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: "COMPLETED", columnId: doneCol.id } : t));
+
+      try {
+          const formData = new FormData();
+          formData.append("status", "COMPLETED");
+          formData.append("columnId", doneCol.id);
+          await api.put(`/tasks/${task.id}`, formData);
+          toast.success("Tarefa concluída!");
+      } catch (error) {
+          setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: oldStatus, columnId: oldCol } : t));
+          toast.error("Erro ao concluir tarefa.");
+      }
+  };
 
   const handleTaskSubmit = async (values: any, files: any, removedMedia: any) => {
     setIsSubmitting(true);
     const formData = new FormData();
-    
-    // ... (Lógica de montagem do FormData igual ao original)
     Object.keys(values).forEach(key => {
       if (key !== 'taskAddress' && values[key] !== undefined && values[key] !== null && values[key] !== "") {
         formData.append(key, values[key]);
@@ -173,12 +248,10 @@ export default function ProductKanban() {
     if (user?.company?.id) formData.append("companyId", user.company.id);
     if (!editingTask && user?.id) formData.append("createdById", user.id);
 
-    // Files
     files.images.forEach((f: File) => formData.append("images", f));
     files.audios.forEach((f: File) => formData.append("audios", f));
     files.videos.forEach((f: File) => formData.append("videos", f));
     
-    // Removals
     if (removedMedia.images.length) formData.append("removeImageIds", JSON.stringify(removedMedia.images));
     if (removedMedia.audios.length) formData.append("removeAudioIds", JSON.stringify(removedMedia.audios));
     if (removedMedia.videos.length) formData.append("removeVideoIds", JSON.stringify(removedMedia.videos));
@@ -194,7 +267,8 @@ export default function ProductKanban() {
       }
       setIsTaskModal(false);
       setIsEditTaskModal(false);
-      fetchData(); // Recarrega tudo para garantir consistência
+      setInitialColumnId(undefined); 
+      fetchData(); 
     } catch (err) {
       toast.error("Erro ao salvar tarefa");
     } finally {
@@ -239,8 +313,6 @@ export default function ProductKanban() {
     }
   };
 
-  // --- Render ---
-
   if (loading && tasks.length === 0) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
@@ -251,8 +323,6 @@ export default function ProductKanban() {
 
   return (
     <KanbanLayout>
-      
-      {/* 1. Header Genérico */}
       <KanbanHeader
         title="Fluxo de Tarefas"
         icon={<Layout className="w-5 h-5 text-[#D35400]" />}
@@ -266,156 +336,116 @@ export default function ProductKanban() {
         }
       />
 
-      {/* 2. Filtro Genérico */}
       <KanbanFilter>
          <div className="grid gap-1">
             <label className="text-[10px] uppercase font-bold text-slate-400">De</label>
-            <Input 
-              type="date" 
-              className="h-8 text-xs w-32" 
-              value={filterStartDate} 
-              onChange={e => setFilterStartDate(e.target.value)} 
-            />
+            <Input type="date" className="h-8 text-xs w-32" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
          </div>
          <div className="grid gap-1">
             <label className="text-[10px] uppercase font-bold text-slate-400">Até</label>
-            <Input 
-              type="date" 
-              className="h-8 text-xs w-32" 
-              value={filterEndDate} 
-              onChange={e => setFilterEndDate(e.target.value)} 
-            />
+            <Input type="date" className="h-8 text-xs w-32" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
          </div>
          <div className="grid gap-1 min-w-[150px]">
             <label className="text-[10px] uppercase font-bold text-slate-400">Responsável</label>
-            <select 
-              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs" 
-              value={filterAssignedTo} 
-              onChange={e => setFilterAssignedTo(e.target.value)}
-            >
-               <option value="all">Todos</option>
-               {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            <select className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs" value={filterAssignedTo} onChange={e => setFilterAssignedTo(e.target.value)}>
+                <option value="all">Todos</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
          </div>
          <div className="flex items-center gap-2 pt-4">
-            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={fetchData}>
-              <FilterIcon className="w-3 h-3 mr-2"/> Filtrar
-            </Button>
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={fetchData}><FilterIcon className="w-3 h-3 mr-2"/> Filtrar</Button>
          </div>
       </KanbanFilter>
 
-      {/* 3. Board Genérico */}
       <KanbanBoard>
         {columns.map(col => {
           const colTasks = tasks.filter(t => t.columnId === col.id);
+          const isDoneColumn = col.title === "Concluído"; 
+
           return (
             <KanbanColumn
               key={col.id}
               id={col.id}
               title={col.title}
               count={colTasks.length}
+              color={isDoneColumn ? "#27AE60" : undefined}
               onDropItem={moveItem}
-              // Ações específicas da Coluna
-              onEditClick={() => { setEditingCol(col); setColTitle(col.title); setIsColumnModal(true); }}
-              onDeleteClick={() => { setItemToDelete({ type: "column", id: col.id }); setDeleteModalOpen(true); }}
-              onAddClick={() => { setEditingTask(null); setIsTaskModal(true); }}
+              onAddClick={isDoneColumn ? undefined : () => handleAddTaskFromColumn(col.id)}
+              onEditClick={isDoneColumn ? undefined : () => { setEditingCol(col); setColTitle(col.title); setIsColumnModal(true); }}
+              onDeleteClick={isDoneColumn ? undefined : () => { setItemToDelete({ type: "column", id: col.id }); setDeleteModalOpen(true); }}
             >
-              {colTasks.map(task => (
-                <KanbanCard
-                  key={task.id}
-                  id={task.id}
-                  title={task.title}
-                  priorityColor={getPriorityColor(task.priority)}
-                  coverImage={task.taskImages[0]?.url}
-                  imagesCount={task.taskImages.length}
-                  onDragStart={(e) => onDragStart(e, task.id)}
-                  
-                  // Ações do Card
-                  onView={() => { setPreviewTask(task); setIsPreviewModal(true); }}
-                  onEdit={() => { setEditingTask(task); setIsEditTaskModal(true); }}
-                  onDelete={() => { setItemToDelete({ type: "task", id: task.id }); setDeleteModalOpen(true); }}
-                  
-                  // Footer Específico de Tarefa
-                  footer={
-                    <>
-                      <div className="flex gap-2 text-slate-400 text-xs items-center">
-                         {(task.taskImages.length + task.taskVideos.length + task.taskAudios.length) > 0 && (
-                            <span className="flex items-center gap-1">
-                               <Paperclip size={10} /> {task.taskImages.length + task.taskVideos.length + task.taskAudios.length}
-                            </span>
-                         )}
-                         {task.dueDate && (
-                            <span className={`flex items-center gap-1 ${isOverdue(task.dueDate) ? 'text-red-500 font-bold' : ''}`}>
-                               <Flag size={10} /> {formatDateShort(task.dueDate)}
-                            </span>
-                         )}
-                      </div>
-                      {task.userAssigned && (
-                         <div className="bg-slate-200 px-2 py-0.5 rounded-full text-[10px] text-slate-700 font-medium truncate max-w-[80px]">
-                            {task.userAssigned.name.split(" ")[0]}
+              {colTasks.map(task => {
+                const statusConfig = getStatusConfig(task.status);
+                const totalAttachments = (task.taskImages?.length || 0) + (task.taskVideos?.length || 0) + (task.taskAudios?.length || 0);
+                
+                return (
+                  <KanbanCard
+                    key={task.id}
+                    id={task.id}
+                    title={task.title}
+                    priorityColor={getPriorityColor(task.priority)}
+                    statusLabel={statusConfig.label}
+                    statusColor={statusConfig.color}
+                    onDragStart={(e) => onDragStart(e, task.id)}
+                    onDoubleClick={() => { setPreviewTask(task); setIsPreviewModal(true); }}
+                    onView={() => { setPreviewTask(task); setIsPreviewModal(true); }}
+                    onEdit={() => { setEditingTask(task); setIsEditTaskModal(true); }}
+                    onDelete={() => { setItemToDelete({ type: "task", id: task.id }); setDeleteModalOpen(true); }}
+                    extraMenuItems={!isDoneColumn ? (
+                        <DropdownMenuItem onClick={() => handleCompleteTask(task)} className="text-green-600 cursor-pointer">
+                            <CheckCircle2 className="w-4 h-4 mr-2" /> Concluir
+                        </DropdownMenuItem>
+                    ) : null}
+                    footer={
+                      <div className="flex justify-between items-center w-full">
+                         <div className="flex gap-2">
+                            {task.userAssigned && (
+                               <div className="bg-slate-100 px-2 py-0.5 rounded-full text-[10px] text-slate-600 font-medium truncate max-w-full">
+                                  {task.userAssigned.name.split(" ")[0]}
+                               </div>
+                            )}
                          </div>
-                      )}
-                    </>
-                  }
-                >
-                  {/* Conteúdo Central Específico de Tarefa */}
-                  <p className="line-clamp-2 mb-2 text-xs text-slate-600">
-                    {task.description || "Sem descrição"}
-                  </p>
-                  {task.taskAddress && (
-                     <div className="flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 p-1 rounded w-fit">
-                        <MapPin size={10} /> {task.taskAddress.bairro} - {task.taskAddress.cidade}
-                     </div>
-                  )}
-                </KanbanCard>
-              ))}
+                         <div className="flex gap-2 text-slate-400">
+                            {totalAttachments > 0 && (
+                              <div className="flex items-center gap-0.5">
+                                <Paperclip size={12} />
+                                <span className="text-[10px]">{totalAttachments}</span>
+                              </div>
+                            )}
+                            {task.taskAddress && <MapPin size={12} />}
+                            {task.dueDate && <Flag size={12} className={isOverdue(task.dueDate) ? 'text-red-500' : ''} />}
+                         </div>
+                      </div>
+                    }
+                  >
+                    <p className="line-clamp-2 mb-2 text-xs text-slate-600">
+                      {task.description || "Sem descrição"}
+                    </p>
+                  </KanbanCard>
+                );
+              })}
             </KanbanColumn>
           );
         })}
-
-        {/* Coluna "Não Classificado" (opcional, para tarefas sem coluna) */}
-        {tasks.some(t => !t.columnId) && (
-           <KanbanColumn 
-              id="null" 
-              title="Não Classificado" 
-              count={tasks.filter(t => !t.columnId).length} 
-              color="#E67E22"
-              onDropItem={moveItem}
-           >
-              {tasks.filter(t => !t.columnId).map(task => (
-                 <KanbanCard 
-                    key={task.id} 
-                    id={task.id} 
-                    title={task.title} 
-                    priorityColor={getPriorityColor(task.priority)}
-                    onDragStart={(e) => onDragStart(e, task.id)}
-                    onEdit={() => { setEditingTask(task); setIsEditTaskModal(true); }}
-                 >
-                    <p className="text-xs text-red-500">Mova para uma coluna</p>
-                 </KanbanCard>
-              ))}
-           </KanbanColumn>
-        )}
       </KanbanBoard>
 
-      {/* --- MODAIS (Lógica Específica) --- */}
-      
-      {/* 1. Modal de Tarefa */}
       <TaskFormModal
         isOpen={isTaskModal || isEditTaskModal}
         onClose={() => {
           setIsTaskModal(false);
           setIsEditTaskModal(false);
           setEditingTask(null);
+          setInitialColumnId(undefined); 
         }}
         initialData={editingTask as any}
+        initialColumnId={initialColumnId}
         onSubmit={handleTaskSubmit}
         isLoading={isSubmitting}
         users={users}
         columns={columns}
+        suppliers={suppliers}
       />
 
-      {/* 2. Modal de Coluna */}
       <Dialog open={isColumnModal} onOpenChange={setIsColumnModal}>
         <DialogContent>
           <DialogHeader>
@@ -432,45 +462,132 @@ export default function ProductKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* 3. Modal de Exclusão */}
       <ConfirmDeleteModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={handleDeleteItem}
-        loading={loading} // Reutilizando loading state para simplicidade
+        loading={loading}
         title="Confirmar exclusão"
         description="Esta ação não pode ser desfeita."
       />
 
-      {/* 4. Modal de Visualização Rápida */}
+      {/* MODAL DE PREVIEW AJUSTADO */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
-         <DialogContent className="max-w-2xl">
-            <DialogHeader>
-               <DialogTitle>{previewTask?.title}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-               <p className="text-sm text-gray-600">{previewTask?.description || "Sem descrição"}</p>
-               {previewTask?.taskAddress && (
-                  <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-3 rounded-md">
-                     <MapPin size={16} /> 
-                     {previewTask.taskAddress.bairro}, {previewTask.taskAddress.cidade} - {previewTask.taskAddress.estado}
+         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl">
+            <div className="px-6 py-4 border-b sticky top-0 bg-white z-20 flex justify-between items-center">
+                <div>
+                  <DialogTitle className="text-xl font-bold text-slate-800">{previewTask?.title}</DialogTitle>
+                  <div className="flex gap-2 mt-1">
+                     <span className="text-[10px] uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded font-bold text-slate-500">
+                        Prioridade {previewTask?.priority === 1 ? "Alta" : previewTask?.priority === 2 ? "Média" : "Baixa"}
+                     </span>
+                     <span className="text-[10px] uppercase tracking-wider bg-orange-50 px-2 py-0.5 rounded font-bold text-orange-600">
+                        {previewTask?.status}
+                     </span>
                   </div>
-               )}
-               {previewTask?.dueDate && (
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                     <Calendar size={16} /> Prazo: {formatDateShort(previewTask.dueDate)}
-                  </div>
-               )}
+                </div>
             </div>
-            <DialogFooter>
-               <Button variant="outline" onClick={() => setIsPreviewModal(false)}>Fechar</Button>
-               <Button onClick={() => { setIsPreviewModal(false); setEditingTask(previewTask); setIsEditTaskModal(true); }}>
-                  Editar
-               </Button>
+
+            <div className="px-6 py-6 space-y-8">
+                {/* SEÇÃO DE MÍDIAS (IMAGENS, VÍDEOS, ÁUDIOS) */}
+                {((previewTask?.taskImages?.length || 0) + (previewTask?.taskVideos?.length || 0) + (previewTask?.taskAudios?.length || 0)) > 0 && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Paperclip size={16} className="text-orange-600"/> Arquivos e Anexos
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Renderização de Imagens */}
+                      {previewTask?.taskImages?.map((img) => (
+                        <div key={img.id} className="group relative aspect-video rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                           <img src={img.url} alt="Anexo" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                           <a href={img.url} target="_blank" rel="noreferrer" className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium gap-2">
+                              <ImageIcon size={16} /> Visualizar Original
+                           </a>
+                        </div>
+                      ))}
+
+                      {/* Renderização de Vídeos */}
+                      {previewTask?.taskVideos?.map((video) => (
+                        <div key={video.id} className="rounded-xl overflow-hidden bg-black border border-slate-200 shadow-inner">
+                           <video controls className="w-full aspect-video">
+                              <source src={video.url} type="video/mp4" />
+                              Seu navegador não suporta vídeos.
+                           </video>
+                        </div>
+                      ))}
+
+                      {/* Renderização de Áudios */}
+                      {previewTask?.taskAudios?.map((audio) => (
+                        <div key={audio.id} className="col-span-1 md:col-span-2 flex flex-col gap-2 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                           <div className="flex items-center gap-2 text-slate-600">
+                              <Mic size={14} className="text-orange-600" />
+                              <span className="text-[10px] font-bold uppercase tracking-tight">Anexo de Áudio</span>
+                           </div>
+                           <audio controls className="w-full h-10">
+                              <source src={audio.url} type="audio/mpeg" />
+                              Seu navegador não suporta áudio.
+                           </audio>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* DESCRIÇÃO */}
+                <div className="space-y-2">
+                    <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight text-[11px]">Descrição da Tarefa</h4>
+                    <div className="text-sm text-slate-600 whitespace-pre-wrap bg-slate-50/50 p-4 rounded-xl border border-slate-100 min-h-[100px] leading-relaxed">
+                       {previewTask?.description || "Nenhuma descrição detalhada fornecida para esta tarefa."}
+                    </div>
+                </div>
+
+                {/* ENDEREÇO */}
+                {previewTask?.taskAddress && (
+                   <div className="bg-orange-50/30 p-4 rounded-xl border border-orange-100 space-y-2">
+                      <h4 className="text-sm font-bold text-orange-700 flex items-center gap-2">
+                          <MapPin size={16} /> Local de Execução
+                      </h4>
+                      <p className="text-sm text-slate-700 leading-relaxed">
+                          <span className="font-semibold">{previewTask.taskAddress.endereco}, {previewTask.taskAddress.numero}</span><br />
+                          {previewTask.taskAddress.bairro} — {previewTask.taskAddress.cidade}, {previewTask.taskAddress.estado}
+                      </p>
+                   </div>
+                )}
+
+                {/* INFO RODAPÉ PREVIEW */}
+                <div className="grid grid-cols-2 gap-8 pt-6 border-t border-slate-100">
+                    <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Responsável Técnico</span>
+                        <div className="flex items-center gap-2">
+                           <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                              {previewTask?.userAssigned?.name?.charAt(0) || "?"}
+                           </div>
+                           <span className="text-sm font-semibold text-slate-700">
+                              {previewTask?.userAssigned?.name || "Pendente de Atribuição"}
+                           </span>
+                        </div>
+                    </div>
+                    <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Data Limite</span>
+                        <div className="flex items-center gap-2">
+                           <Calendar size={14} className={previewTask?.dueDate && isOverdue(previewTask.dueDate) ? 'text-red-500' : 'text-slate-400'} />
+                           <span className={`text-sm font-semibold ${previewTask?.dueDate && isOverdue(previewTask.dueDate) ? 'text-red-600' : 'text-slate-700'}`}>
+                               {previewTask?.dueDate ? formatDateShort(previewTask.dueDate) : "Sem prazo definido"}
+                           </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <DialogFooter className="px-6 py-4 bg-slate-50 border-t sticky bottom-0 z-20">
+                <Button variant="outline" className="text-slate-600" onClick={() => setIsPreviewModal(false)}>Fechar Janela</Button>
+                <Button className="bg-[#D35400] hover:bg-[#A04000]" onClick={() => { setIsPreviewModal(false); setEditingTask(previewTask); setIsEditTaskModal(true); }}>
+                  Editar Detalhes
+                </Button>
             </DialogFooter>
          </DialogContent>
       </Dialog>
-
     </KanbanLayout>
   );
 }
