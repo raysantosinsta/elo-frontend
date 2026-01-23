@@ -21,6 +21,7 @@ import {
   Calendar,
   CarFront,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -29,7 +30,6 @@ import {
   FileText,
   Home,
   KanbanSquare,
-  KanbanSquareDashed,
   LayoutDashboard,
   MessageSquare,
   RefreshCw,
@@ -37,26 +37,41 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 
+// --- 1. DEFINIÇÃO DA ESTRUTURA DO MENU ---
 const menuItems = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
-  { title: "Kanban Profissional", href: "/Kanban", icon: KanbanSquare },
-  { title: "Kanban Produto", href: "/kanban-flow", icon: KanbanSquareDashed },
+  
+  // GRUPO KANBAN
+  { 
+    title: "Kanban", 
+    icon: KanbanSquare,
+    subItems: [
+      { title: "Profissional", href: "/Kanban" },
+      { title: "Produto", href: "/kanban-flow" },
+    ]
+  },
+
   { title: "Chats", href: "/chats", icon: MessageSquare },
   { title: "Calendário", href: "/agenda", icon: Calendar },
+
+  // GRUPO RELATÓRIOS
   {
-    title: "Relatórios Profissionais",
-    href: "/professionals/report",
+    title: "Relatórios",
     icon: BarChart3,
+    subItems: [
+      { title: "Profissionais", href: "/professionals/report", icon: BarChart3 },
+      { title: "Tarefas", href: "/tasks/report", icon: BarChart2 },
+      { title: "Produtos", href: "/product/report", icon: BarChart },
+    ]
   },
-  { title: "Relatórios Tarefas", href: "/tasks/report", icon: BarChart2 },
-  { title: "Relatórios produtos", href: "/product/report", icon: BarChart },
+
   { title: "Empresas", href: "/empresas", icon: Home },
   { title: "Rotas", href: "/route-planner", icon: CarFront },
   {
-    title: "Gerenciar Fornecedores/Oficina",
+    title: "Fornecedores",
     href: "/suppliers",
     icon: Factory,
   },
@@ -72,42 +87,71 @@ function SidebarContent({
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  
+  // Estado para controlar quais menus (acordeão) estão abertos
+  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
 
-  // 🔥 LÓGICA DE FILTRAGEM CORRIGIDA
+  const toggleMenu = (title: string) => {
+    setOpenMenus((prev) => ({ ...prev, [title]: !prev[title] }));
+  };
+
+  // --- 2. SINCRONIZAÇÃO URL -> MENU ABERTO ---
+  // Abre o menu pai automaticamente se a URL corresponder a um subitem
+  useEffect(() => {
+    const newOpenState: Record<string, boolean> = {};
+    let hasChanges = false;
+    
+    menuItems.forEach((item) => {
+      if (item.subItems) {
+        const isActive = item.subItems.some(sub => pathname === sub.href);
+        // Só abrimos se estiver ativo e ainda não tivermos definido o estado
+        if (isActive) {
+          newOpenState[item.title] = true;
+          hasChanges = true;
+        }
+      }
+    });
+
+    if (hasChanges) {
+        setOpenMenus((prev) => ({ ...prev, ...newOpenState }));
+    }
+  }, [pathname]);
+
+  // --- 3. LÓGICA DE PERMISSÕES ---
   const filteredMenuItems = useMemo(() => {
     if (!user) return [];
 
-    return menuItems.filter((item) => {
-      // 1. REGRA PARA MASTER:
-      // Vê APENAS: Dashboard, Empresas e Usuários.
-      if (user.role === "MASTER") {
-        // Lista branca de rotas permitidas para Master
-        const allowedForMaster = ["/empresas", "/users"];
-        return allowedForMaster.includes(item.href);
-      }
+    return menuItems.map(item => {
+        // Se for um item simples (sem subitems)
+        if (!item.subItems) {
+            let isAllowed = true;
+            if (user.role === "MASTER") {
+                // Master vê Dashboard, Empresas e Usuários (e rota principal)
+                const allowedForMaster = ["/empresas", "/users", "/"];
+                isAllowed = allowedForMaster.includes(item.href || "");
+            } else if (user.role === "ADMIN") {
+                isAllowed = item.href !== "/empresas";
+            } else if (user.role === "EMPLOYER") {
+                isAllowed = item.href !== "/empresas" && item.href !== "/users";
+            }
+            return isAllowed ? item : null;
+        }
 
-      // 2. REGRA PARA ADMIN:
-      // Vê TUDO, EXCETO Empresas.
-      if (user.role === "ADMIN") {
-        return item.href !== "/empresas";
-      }
+        // Se for um GRUPO (Kanban ou Relatórios)
+        if (user.role === "MASTER") {
+            // Master não vê Kanban nem Relatórios na regra original
+            return null; 
+        }
 
-      // 3. REGRA PARA EMPLOYER (e outros):
-      // Vê TUDO, EXCETO Empresas e Usuários.
-      if (user.role === "EMPLOYER") {
-        return item.href !== "/empresas" && item.href !== "/users";
-      }
-
-      // Fallback padrão (segurança): esconde tudo que for sensível se cargo desconhecido
-      return item.href !== "/empresas" && item.href !== "/users";
-    });
+        // Admin e Employer veem os grupos normalmente
+        return item; 
+    }).filter(Boolean) as typeof menuItems;
   }, [user]);
 
   const {
     notifications,
     unreadCount,
     loading,
-    error,
     refresh,
     markAsRead,
     markAllAsRead,
@@ -257,10 +301,88 @@ function SidebarContent({
         <div className="space-y-1.5">
           {filteredMenuItems.map((item) => {
             const Icon = item.icon;
-            const isActive =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
+            
+            // --- RENDERIZAÇÃO DE GRUPO (COM SUBMENU) ---
+            if (item.subItems) {
+                const isGroupActive = item.subItems.some(sub => pathname === sub.href);
+                const isOpen = openMenus[item.title]; 
+
+                // Se a sidebar estiver fechada (collapsed)
+                if (collapsed) {
+                    return (
+                        <Popover key={item.title}>
+                            <PopoverTrigger asChild>
+                                <div className={cn(
+                                    "flex items-center justify-center rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 cursor-pointer",
+                                    isGroupActive ? "bg-[#D35400] text-white" : "text-gray-300 hover:bg-white/10 hover:text-white"
+                                )}>
+                                    <Icon className="w-5 h-5" />
+                                </div>
+                            </PopoverTrigger>
+                            <PopoverContent side="right" className="w-56 p-2 bg-[#2C3E50] border-white/10 text-white ml-2">
+                                <p className="text-xs font-bold text-gray-400 px-2 py-1 mb-1">{item.title}</p>
+                                {item.subItems.map((sub) => (
+                                    <Link key={sub.href} href={sub.href} onClick={onItemClick}>
+                                        <div className={cn(
+                                            "rounded-md px-2 py-2 text-sm hover:bg-white/10 transition-colors",
+                                            pathname === sub.href && "bg-white/10 text-[#D35400]"
+                                        )}>
+                                            {sub.title}
+                                        </div>
+                                    </Link>
+                                ))}
+                            </PopoverContent>
+                        </Popover>
+                    )
+                }
+
+                // Se a sidebar estiver aberta (Accordion/Select)
+                return (
+                    <div key={item.title} className="space-y-1">
+                        <button
+                            onClick={() => toggleMenu(item.title)}
+                            className={cn(
+                                "w-full flex items-center justify-between rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 group hover:bg-white/10 hover:text-white",
+                                // Se algum filho estiver ativo, destacamos o ícone/texto mesmo fechado
+                                isGroupActive ? "text-white" : "text-gray-300"
+                            )}
+                        >
+                            <div className="flex items-center">
+                                <Icon className={cn("w-5 h-5 mr-3 transition-transform", isGroupActive ? "text-[#D35400]" : "text-gray-400")} />
+                                <span>{item.title}</span>
+                            </div>
+                            <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isOpen ? "transform rotate-180" : "")} />
+                        </button>
+
+                        {/* Área dos Subitens */}
+                        {isOpen && (
+                            <div className="ml-4 pl-4 border-l border-white/10 space-y-1 animate-in slide-in-from-top-2 duration-200">
+                                {item.subItems.map((sub) => {
+                                    const isSubActive = pathname === sub.href;
+                                    return (
+                                        <Link key={sub.href} href={sub.href} onClick={onItemClick}>
+                                            <div className={cn(
+                                                "flex items-center rounded-lg px-3 py-2 text-sm transition-all",
+                                                isSubActive 
+                                                    ? "text-[#D35400] font-bold bg-white/5" 
+                                                    : "text-gray-400 hover:text-white hover:bg-white/5"
+                                            )}>
+                                                <span>{sub.title}</span>
+                                            </div>
+                                        </Link>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            // --- RENDERIZAÇÃO DE ITEM ÚNICO (SEM SUBMENU) ---
+            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`));
+            
             return (
-              <Link key={item.title} href={item.href} onClick={onItemClick}>
+              <Link key={item.title} href={item.href || "#"} onClick={onItemClick}>
                 <div
                   className={cn(
                     "flex items-center rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 group relative overflow-hidden",

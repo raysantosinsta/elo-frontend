@@ -34,9 +34,9 @@ export function ForgotPasswordModal({ children }: { children: React.ReactNode })
       await api.post('/password/forgot', { email });
 
       setSuccess(true);
-      toast.success('Email enviado!', {
-        description: 'Verifique sua caixa de entrada.',
-      });
+      // toast.success('Email enviado!', {
+      //   description: 'Verifique sua caixa de entrada.',
+      // });
     } catch (error: any) {
       console.error(error);
       // Se for erro 500, o axios vai cair aqui.
@@ -80,7 +80,7 @@ export function ForgotPasswordModal({ children }: { children: React.ReactNode })
               <CheckCircle2 className="w-8 h-8 text-green-600" />
             </div>
             <p className="text-center text-sm text-[#2D3436]">
-              Enviamos as instruções para <strong>{email}</strong>.
+              solicitaçaçao realizada com sucesso, verificar email
             </p>
             <Button
               onClick={() => setIsOpen(false)}

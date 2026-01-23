@@ -108,7 +108,7 @@ export function Header() {
                                     <p className="text-sm font-semibold truncate text-[#2C3E50]">{user?.email}</p>
                                 </div>
                                 <div className="p-2 space-y-1">
-                                    <Link href="/profile" onClick={() => setIsDropdownOpen(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-[#2D3436] rounded-lg hover:bg-[#F5F0E6] hover:text-[#D35400] transition-colors">
+                                    <Link href="/" onClick={() => setIsDropdownOpen(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-[#2D3436] rounded-lg hover:bg-[#F5F0E6] hover:text-[#D35400] transition-colors">
                                         <UserIcon size={16} />
                                         <span>Meu Perfil</span>
                                     </Link>
