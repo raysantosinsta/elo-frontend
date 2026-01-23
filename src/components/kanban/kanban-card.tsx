@@ -1,24 +1,36 @@
 /* eslint-disable @next/next/no-img-element */
 import { Card } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Edit, Eye, ImageIcon, MoreVertical, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import { Edit, Eye, MoreHorizontal, Trash2 } from "lucide-react";
 import React from "react";
 
 export interface KanbanCardProps {
   id: string;
   title: string;
-  subtitle?: string; // ex: REF-001
-  tags?: React.ReactNode; // Badges extras
-  priorityColor?: string; // Cor da borda esquerda
-  coverImage?: string;
-  imagesCount?: number;
-  footer?: React.ReactNode; // Ícones de anexo, data, etc
+  subtitle?: string;
+  tags?: React.ReactNode;
+  
+  // 🔥 NOVAS PROPS DE STATUS
+  statusLabel?: string; // Ex: "PENDENTE", "EM PROGRESSO"
+  statusColor?: string; // Ex: "#E67E22" (Hexadecimal)
+
+  priorityColor?: string;
+  coverImage?: string; 
+  imagesCount?: number; 
+  footer?: React.ReactNode;
   onView?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-  // 🔥 ADICIONE ISTO: Prop para o Drag & Drop
+  onDoubleClick?: () => void; 
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void; 
-  children?: React.ReactNode; // Conteúdo livre no meio
+  extraMenuItems?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export function KanbanCard({
@@ -26,21 +38,22 @@ export function KanbanCard({
   title,
   subtitle,
   tags,
+  statusLabel, // 🔥 Recebe label
+  statusColor = "#64748b", // 🔥 Recebe cor (default slate-500)
   priorityColor = "#ccc",
-  coverImage,
-  imagesCount = 0,
   footer,
   onView,
   onEdit,
   onDelete,
-  onDragStart, // 🔥 Recebe a prop
+  onDoubleClick,
+  onDragStart,
+  extraMenuItems,
   children
 }: KanbanCardProps) {
   
   return (
     <Card
       draggable
-      // 🔥 Usa a prop recebida ou um fallback padrão (opcional)
       onDragStart={(e) => {
           if (onDragStart) {
               onDragStart(e);
@@ -48,57 +61,82 @@ export function KanbanCard({
               e.dataTransfer.setData("itemId", id);
           }
       }}
-      className="cursor-grab active:cursor-grabbing group transition-all duration-200 border-l-4 bg-white hover:shadow-md"
+      onDoubleClick={onDoubleClick}
+      className="cursor-grab active:cursor-grabbing group transition-all duration-200 border-l-[3px] bg-white hover:shadow-sm hover:border-l-[4px] select-none relative mb-1.5 rounded-md"
       style={{ borderLeftColor: priorityColor }}
     >
-      {/* ... Resto do conteúdo ... */}
-       <div className="p-3">
-        {/* Topo: Tags e Menu */}
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex flex-wrap gap-1">
+       <div className="p-2">
+        
+        {/* Topo: Status, Tags e Menu */}
+        <div className="flex justify-between items-start mb-1.5">
+          <div className="flex flex-wrap gap-1 items-center">
+             
+             {/* 🔥 RENDERIZAÇÃO DO STATUS */}
+             {statusLabel && (
+               <span 
+                 className="text-[9px] font-bold px-1.5 py-0.5 rounded-[3px] uppercase tracking-wider leading-none"
+                 style={{ 
+                    // Usa a cor passada para o texto
+                    color: statusColor, 
+                    // Usa a mesma cor com 15% de opacidade para o fundo (hex + '26')
+                    backgroundColor: `${statusColor}26` 
+                 }}
+               >
+                 {statusLabel}
+               </span>
+             )}
+
              {tags}
           </div>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="text-gray-400 hover:text-gray-600 p-1 -mr-2">
-                <MoreVertical size={16} />
+              <button className="text-gray-300 hover:text-gray-600 p-0.5 -mr-1 outline-none focus:ring-0 transition-colors">
+                <MoreHorizontal size={14} />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onView && <DropdownMenuItem onClick={onView}><Eye className="w-4 h-4 mr-2" /> Visualizar</DropdownMenuItem>}
-              {onEdit && <DropdownMenuItem onClick={onEdit}><Edit className="w-4 h-4 mr-2" /> Editar</DropdownMenuItem>}
-              <DropdownMenuSeparator />
-              {onDelete && <DropdownMenuItem className="text-red-600" onClick={onDelete}><Trash2 className="w-4 h-4 mr-2" /> Excluir</DropdownMenuItem>}
+            <DropdownMenuContent align="end" className="w-48">
+              {extraMenuItems}
+              {extraMenuItems && <DropdownMenuSeparator />}
+
+              {onView && (
+                <DropdownMenuItem onClick={onView} className="cursor-pointer text-xs">
+                  <Eye className="w-3.5 h-3.5 mr-2" /> Visualizar
+                </DropdownMenuItem>
+              )}
+              {onEdit && (
+                <DropdownMenuItem onClick={onEdit} className="cursor-pointer text-xs">
+                  <Edit className="w-3.5 h-3.5 mr-2" /> Editar
+                </DropdownMenuItem>
+              )}
+
+              {(onView || onEdit) && onDelete && <DropdownMenuSeparator />}
+
+              {onDelete && (
+                <DropdownMenuItem className="text-red-600 focus:text-red-600 cursor-pointer focus:bg-red-50 text-xs" onClick={onDelete}>
+                  <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        {/* Imagem de Capa */}
-        {coverImage && (
-          <div className="mb-3 relative rounded-md overflow-hidden h-32 bg-gray-100 group/img">
-            <img src={coverImage} alt="Cover" className="w-full h-full object-cover transition-transform group-hover/img:scale-105 duration-500" />
-            {imagesCount > 1 && (
-              <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-sm flex items-center gap-1 backdrop-blur-sm">
-                <ImageIcon size={10} /> +{imagesCount - 1}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Conteúdo Principal */}
-        <h4 className="font-bold text-sm mb-1 leading-tight text-slate-800 line-clamp-2" title={title}>
-          {title}
-        </h4>
-        
-        {subtitle && <p className="text-xs text-slate-500 font-mono mb-2">{subtitle}</p>}
+        <div className="mb-0.5">
+            <h4 className="font-bold text-xs leading-tight text-slate-800 line-clamp-2" title={title}>
+              {title}
+            </h4>
+            {subtitle && <p className="text-[9px] text-slate-400 font-mono mt-0.5 uppercase tracking-wide truncate">{subtitle}</p>}
+        </div>
 
-        <div className="text-xs text-slate-600 space-y-1">
+        {/* Descrição */}
+        <div className="text-[10px] text-slate-500 space-y-0.5 line-clamp-2 leading-3">
           {children}
         </div>
 
-        {/* Rodapé (Datas, Avatares, Ícones) */}
+        {/* Rodapé Super Compacto */}
         {footer && (
-          <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+          <div className="mt-1.5 pt-1 border-t border-gray-50 flex items-center justify-between text-[10px] text-gray-400">
             {footer}
           </div>
         )}
