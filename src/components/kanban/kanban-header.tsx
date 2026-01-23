@@ -1,12 +1,32 @@
 import { Button } from "@/components/ui/button";
-import { Menu, Plus, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Menu, Plus, Settings, X } from "lucide-react";
 import React, { useState } from "react";
+
+// Definição da interface para ações do menu dropdown
+interface ConfigAction {
+  label: string;
+  onClick: () => void;
+  icon?: React.ReactNode;
+  variant?: "default" | "destructive";
+}
 
 interface KanbanHeaderProps {
   title: string;
   subtitle?: string;
   icon?: React.ReactNode;
-  onAddColumn?: () => void; // Nova propriedade direta
+  
+  // Opção 1: Botão direto de adicionar (Usado no Kanban de Tarefas)
+  onAddColumn?: () => void;
+  
+  // Opção 2: Menu de ações complexo (Usado no Kanban de Fluxo)
+  configActions?: ConfigAction[];
+  
   rightContent?: React.ReactNode;
 }
 
@@ -15,6 +35,7 @@ export function KanbanHeader({
   subtitle,
   icon,
   onAddColumn,
+  configActions,
   rightContent,
 }: KanbanHeaderProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -43,15 +64,15 @@ export function KanbanHeader({
           </div>
         </div>
 
-        {/* Lado Direito: Ações e Botão Nova Coluna */}
+        {/* Lado Direito */}
         <div className="flex items-center gap-3">
           
-          {/* Slot para conteúdo extra (contadores) */}
+          {/* Conteúdo Extra (Filtros, Contadores, Selects) */}
           {rightContent}
 
           <div className="h-6 w-px bg-white/20 mx-1 hidden sm:block" />
 
-          {/* BOTÃO DIRETO: Criar Nova Coluna */}
+          {/* CASO 1: Botão Direto (Prioridade para o Kanban de Tarefas) */}
           {onAddColumn && (
             <Button 
               onClick={onAddColumn}
@@ -62,6 +83,34 @@ export function KanbanHeader({
               <span className="sm:hidden">Nova Coluna</span>
             </Button>
           )}
+
+          {/* CASO 2: Menu Dropdown (Para o Kanban de Fluxo que tem múltiplas ações) */}
+          {configActions && configActions.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="bg-transparent border-white/20 text-white hover:bg-white/10 gap-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span className="hidden sm:inline">Ações</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {configActions.map((action, index) => (
+                  <DropdownMenuItem
+                    key={index}
+                    onClick={action.onClick}
+                    className={`cursor-pointer ${action.variant === 'destructive' ? 'text-red-600 focus:text-red-600' : ''}`}
+                  >
+                    {action.icon}
+                    {action.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
         </div>
       </div>
     </header>
