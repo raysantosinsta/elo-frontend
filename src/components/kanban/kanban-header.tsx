@@ -1,33 +1,20 @@
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Menu, Settings, X } from "lucide-react";
+import { Menu, Plus, X } from "lucide-react";
 import React, { useState } from "react";
-
-interface ConfigAction {
-  label: string;
-  onClick: () => void;
-  icon?: React.ReactNode;
-  variant?: "default" | "destructive";
-}
 
 interface KanbanHeaderProps {
   title: string;
   subtitle?: string;
   icon?: React.ReactNode;
-  configActions: ConfigAction[];
-  rightContent?: React.ReactNode; // Para contadores ou avatares extras
+  onAddColumn?: () => void; // Nova propriedade direta
+  rightContent?: React.ReactNode;
 }
 
 export function KanbanHeader({
   title,
   subtitle,
   icon,
-  configActions,
+  onAddColumn,
   rightContent,
 }: KanbanHeaderProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -56,38 +43,25 @@ export function KanbanHeader({
           </div>
         </div>
 
-        {/* Lado Direito: Ações e Configuração */}
+        {/* Lado Direito: Ações e Botão Nova Coluna */}
         <div className="flex items-center gap-3">
           
-          {/* Slot para conteúdo extra (filtros rápidos, contadores) */}
+          {/* Slot para conteúdo extra (contadores) */}
           {rightContent}
 
           <div className="h-6 w-px bg-white/20 mx-1 hidden sm:block" />
 
-          {/* Botão de Configuração (O Coração da Abstração) */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                variant="outline" 
-                className="bg-transparent border-white/20 text-white hover:bg-white/10 gap-2"
-              >
-                <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">Ações</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              {configActions.map((action, index) => (
-                <DropdownMenuItem
-                  key={index}
-                  onClick={action.onClick}
-                  className={`cursor-pointer ${action.variant === 'destructive' ? 'text-red-600 focus:text-red-600' : ''}`}
-                >
-                  {action.icon}
-                  {action.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* BOTÃO DIRETO: Criar Nova Coluna */}
+          {onAddColumn && (
+            <Button 
+              onClick={onAddColumn}
+              className="bg-[#D35400] hover:bg-[#A04000] text-white gap-2 font-medium border border-transparent hover:border-white/20 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Criar Nova Coluna</span>
+              <span className="sm:hidden">Nova Coluna</span>
+            </Button>
+          )}
         </div>
       </div>
     </header>
