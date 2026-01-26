@@ -123,6 +123,7 @@ const taskSchema = z.object({
   dueDate: z.string().optional(),
   scheduledAt: z.string().optional(),
   finalComment: z.string().optional(),
+  // Campos do formulário (Inglês)
   cep: z.string().optional(),
   street: z.string().optional(),
   number: z.string().optional(),
@@ -172,6 +173,7 @@ export function TaskFormModal({
     },
   });
 
+  // --- POPULA O FORMULÁRIO QUANDO ABRE ---
   useEffect(() => {
     if (isOpen) {
       setImages([]); setVideos([]); setAudios([]);
@@ -190,6 +192,8 @@ export function TaskFormModal({
           dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().slice(0, 16) : "",
           scheduledAt: initialData.scheduledDate ? new Date(initialData.scheduledDate).toISOString().slice(0, 16) : "",
           finalComment: initialData.finalComment || "",
+          
+          // Mapeamento correto dos dados do Banco (PT) para o Form (EN)
           cep: initialData.taskAddress?.cep || "",
           street: initialData.taskAddress?.endereco || "",
           number: initialData.taskAddress?.numero || "",
@@ -307,16 +311,26 @@ export function TaskFormModal({
 
     const { cep, street, number, neighborhood, city, state, complement, ...taskFields } = values;
     const hasAddress = street || city || (finalLat && finalLon);
+    
     const taskAddressData = hasAddress ? {
-      cep, endereco: street, numero: number, bairro: neighborhood, city, cidade: city, estado: state, complement,
-      latitude: finalLat, longitude: finalLon,
+      cep,
+      endereco: street,
+      numero: number,
+      bairro: neighborhood,
+      cidade: city,
+      estado: state,
+      complemento: complement,
+      latitude: finalLat,
+      longitude: finalLon,
     } : null;
 
+    // --- CORREÇÃO PRINCIPAL: ENVIA O ID SE EXISTIR ---
     const payload = {
+      id: initialData?.id, // Envia o ID para o pai saber que é edição
       ...taskFields,
       assignedToId: values.assignedToId === "unassigned" ? null : values.assignedToId,
       priority: parseInt(values.priority) || 1,
-      taskAddress: taskAddressData
+      address: taskAddressData
     };
 
     await onSubmit(
@@ -399,6 +413,9 @@ export function TaskFormModal({
                     <FormField control={form.control} name="number" render={({ field }) => (<FormItem><FormLabel>Nº</FormLabel><Input id="address-number" {...field} /></FormItem>)} />
                     <FormField control={form.control} name="neighborhood" render={({ field }) => (<FormItem><FormLabel>Bairro</FormLabel><Input {...field} /></FormItem>)} />
                   </div>
+                  <FormField control={form.control} name="complement" render={({ field }) => (
+                    <FormItem><FormLabel>Complemento</FormLabel><Input {...field} placeholder="Ex: Apto 101" /></FormItem>
+                  )} />
                   <div className="grid grid-cols-[1fr_80px] gap-4">
                     <FormField control={form.control} name="city" render={({ field }) => (<FormItem><FormLabel>Cidade</FormLabel><Input {...field} /></FormItem>)} />
                     <FormField control={form.control} name="state" render={({ field }) => (<FormItem><FormLabel>UF</FormLabel><Input maxLength={2} {...field} /></FormItem>)} />
@@ -406,12 +423,9 @@ export function TaskFormModal({
                 </TabsContent>
 
                 <TabsContent value="media" className="space-y-6">
-                  {/* --- MÍDIAS EXISTENTES (AJUSTADO COM VÍDEO) --- */}
                   {isEditing && (initialData?.taskImages.length || initialData?.taskVideos.length || initialData?.taskAudios.length) ? (
                     <div className="space-y-6 p-4 bg-slate-50 border rounded-lg">
                       <Label className="text-xs font-bold text-slate-500 uppercase">Mídias Atuais</Label>
-                      
-                      {/* Grid de Imagens */}
                       {initialData.taskImages.length > 0 && (
                         <div className="grid grid-cols-4 gap-2">
                           {initialData.taskImages.map(img => !removedImageIds.includes(img.id) && (
@@ -422,8 +436,6 @@ export function TaskFormModal({
                           ))}
                         </div>
                       )}
-
-                      {/* Grid de Vídeos Existentes (NOVO) */}
                       {initialData.taskVideos.length > 0 && (
                         <div className="grid grid-cols-2 gap-3">
                           {initialData.taskVideos.map(video => !removedVideoIds.includes(video.id) && (
@@ -437,15 +449,10 @@ export function TaskFormModal({
                               <button type="button" onClick={() => setRemovedVideoIds(p => [...p, video.id])} className="absolute top-2 right-2 bg-red-600 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
                                 <Trash2 size={14} />
                               </button>
-                              <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-1 text-[10px] text-white truncate">
-                                Vídeo salvo
-                              </div>
                             </div>
                           ))}
                         </div>
                       )}
-
-                      {/* Áudios Existentes */}
                       {initialData.taskAudios.length > 0 && (
                         <div className="space-y-2">
                           {initialData.taskAudios.map(aud => !removedAudioIds.includes(aud.id) && (
@@ -460,7 +467,6 @@ export function TaskFormModal({
                     </div>
                   ) : null}
 
-                  {/* Área de Novos Uploads */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-lg p-4 flex flex-col items-center justify-center hover:bg-blue-50 cursor-pointer relative transition-colors">
                       <Input type="file" multiple accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => {
@@ -495,24 +501,23 @@ export function TaskFormModal({
                     </div>
                   </div>
 
-                  {/* Listagem de novos arquivos pendentes */}
                   {(images.length > 0 || videos.length > 0 || audios.length > 0) && (
                     <div className="space-y-2 pt-2 border-t">
-                       <Label className="text-[10px] font-bold text-slate-400 uppercase">Arquivos para Upload</Label>
-                       {videos.map((v, i) => (
-                         <div key={i} className="flex items-center gap-2 bg-purple-50 p-2 rounded border border-purple-100">
-                           <PlayCircle size={14} className="text-purple-500" />
-                           <span className="text-[10px] flex-1 truncate">{v.name}</span>
-                           <button type="button" onClick={() => handleRemoveNewFile(i, 'video')} className="text-red-500"><X size={14}/></button>
-                         </div>
-                       ))}
-                       {audios.map((a, i) => (
-                         <div key={i} className="flex items-center gap-2 bg-blue-50 p-2 rounded border border-blue-100">
-                           <Music size={14} className="text-blue-500" />
-                           <span className="text-[10px] flex-1 truncate">{a.name}</span>
-                           <button type="button" onClick={() => handleRemoveNewFile(i, 'audio')} className="text-red-500"><X size={14}/></button>
-                         </div>
-                       ))}
+                        <Label className="text-[10px] font-bold text-slate-400 uppercase">Arquivos para Upload</Label>
+                        {videos.map((v, i) => (
+                          <div key={i} className="flex items-center gap-2 bg-purple-50 p-2 rounded border border-purple-100">
+                            <PlayCircle size={14} className="text-purple-500" />
+                            <span className="text-[10px] flex-1 truncate">{v.name}</span>
+                            <button type="button" onClick={() => handleRemoveNewFile(i, 'video')} className="text-red-500"><X size={14}/></button>
+                          </div>
+                        ))}
+                        {audios.map((a, i) => (
+                          <div key={i} className="flex items-center gap-2 bg-blue-50 p-2 rounded border border-blue-100">
+                            <Music size={14} className="text-blue-500" />
+                            <span className="text-[10px] flex-1 truncate">{a.name}</span>
+                            <button type="button" onClick={() => handleRemoveNewFile(i, 'audio')} className="text-red-500"><X size={14}/></button>
+                          </div>
+                        ))}
                     </div>
                   )}
                 </TabsContent>

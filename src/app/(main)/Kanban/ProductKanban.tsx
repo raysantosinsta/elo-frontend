@@ -6,17 +6,17 @@ import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Layout,
-  Columns,
-  MapPin,
-  Flag,
-  Paperclip,
   RefreshCw,
   Filter as FilterIcon,
   Calendar,
   CheckCircle2,
-  Image as ImageIcon,
-  PlayCircle,
+  Paperclip,
+  MapPin,
+  Flag,
+  ImageIcon,
   Mic,
+  Loader2,
+  X, // [NOVO] Import do ícone de limpar
 } from "lucide-react";
 
 // --- Infraestrutura ---
@@ -26,7 +26,7 @@ import { useKanbanDrag } from "@/hooks/use-kanban-drag";
 
 // --- Componentes Base do Kanban ---
 import { KanbanLayout } from "@/components/kanban/kanban-layout";
-import { KanbanHeader } from "@/components/kanban/kanban-header"; // Certifique-se que o header foi atualizado
+import { KanbanHeader } from "@/components/kanban/kanban-header";
 import { KanbanFilter } from "@/components/kanban/kanban-filter";
 import { KanbanBoard } from "@/components/kanban/kanban-board";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
@@ -55,16 +55,22 @@ interface Professional {
   name: string;
   email: string;
 }
+
 interface MediaFile {
   id: string;
   url: string;
 }
+
 interface TaskAddress {
+  cep: string;
+  endereco: string;
+  numero: string;
   bairro: string;
   cidade: string;
   estado: string;
-  endereco: string;
-  numero: string;
+  complemento?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface Task {
@@ -76,10 +82,13 @@ interface Task {
   columnId?: string | null;
   userAssigned?: Professional;
   dueDate?: string;
+  scheduledDate?: string;
+  finalComment?: string;
   taskAddress?: TaskAddress | null;
   taskImages: MediaFile[];
   taskAudios: MediaFile[];
   taskVideos: MediaFile[];
+  createdAt: string; 
 }
 
 interface Column {
@@ -108,9 +117,9 @@ const formatDateShort = (d: string) =>
 const isOverdue = (d: string) => new Date(d) < new Date();
 
 const getPriorityColor = (p: number) => {
-  if (p === 1) return "#E74C3C";
-  if (p === 2) return "#F1C40F";
-  return "#27AE60";
+  if (p === 1) return "#E74C3C"; // Alta
+  if (p === 2) return "#F1C40F"; // Média
+  return "#27AE60"; // Baixa
 };
 
 const getStatusConfig = (status: string) => {
@@ -131,42 +140,46 @@ const getStatusConfig = (status: string) => {
 export default function ProductKanban() {
   const { user } = useAuth();
 
+  // Estados de Dados
   const [tasks, setTasks] = useState<Task[]>([]);
   const [columns, setColumns] = useState<Column[]>([]);
   const [users, setUsers] = useState<Professional[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Estados de UI (Modais)
   const [isTaskModal, setIsTaskModal] = useState(false);
   const [isEditTaskModal, setIsEditTaskModal] = useState(false);
   const [isColumnModal, setIsColumnModal] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isPreviewModal, setIsPreviewModal] = useState(false);
 
-  const [initialColumnId, setInitialColumnId] = useState<string | undefined>(
-    undefined,
-  );
+  // Estados de Controle/Edição
+  const [initialColumnId, setInitialColumnId] = useState<string | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
   const [editingCol, setEditingCol] = useState<Column | null>(null);
   const [colTitle, setColTitle] = useState("");
-  const [itemToDelete, setItemToDelete] = useState<{
-    type: "column" | "task";
-    id: string;
-  } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ type: "column" | "task"; id: string; } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- FILTROS ---
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterAssignedTo, setFilterAssignedTo] = useState("all");
+  const [filterDateType, setFilterDateType] = useState("created");
+  
+  // Estado para o loading do botão de filtrar
+  const [isFiltering, setIsFiltering] = useState(false);
 
+  // Hook de Drag & Drop
   const { moveItem, onDragStart } = useKanbanDrag({
     items: tasks,
     setItems: setTasks,
     idField: "columnId",
     moveCallback: async (itemId, newColId) => {
       const targetColumn = columns.find((c) => c.id === newColId);
-      const isDone = targetColumn?.title === "Concluído";
+      const isDone = targetColumn?.title.toLowerCase() === "concluído";
       let newStatus: string | undefined = undefined;
 
       if (isDone) {
@@ -193,45 +206,40 @@ export default function ProductKanban() {
     },
   });
 
-  const fetchData = useCallback(async () => {
+  // --- [ATUALIZADO] fetchData aceita forceClear ---
+  const fetchData = useCallback(async (forceClear = false) => {
     if (!user?.company?.id) return;
     setLoading(true);
     try {
+      // Se forceClear for true, ignora os estados e manda undefined/padrão
+      const queryStartDate = !forceClear && filterStartDate ? new Date(filterStartDate).toISOString() : undefined;
+      const queryEndDate = !forceClear && filterEndDate ? new Date(filterEndDate).toISOString() : undefined;
+      const queryAssigned = !forceClear && filterAssignedTo !== "all" ? filterAssignedTo : undefined;
+      const queryDateType = !forceClear ? filterDateType : "created";
+
       const [colsRes, tasksRes, usersRes, suppliersRes] = await Promise.all([
         api.get("/kanban-columns"),
         api.get("/tasks", {
           params: {
             limit: 100,
-            startDate: filterStartDate
-              ? new Date(filterStartDate).toISOString()
-              : undefined,
-            endDate: filterEndDate
-              ? new Date(filterEndDate).toISOString()
-              : undefined,
-            assignedToId:
-              filterAssignedTo !== "all" ? filterAssignedTo : undefined,
+            startDate: queryStartDate,
+            endDate: queryEndDate,
+            assignedToId: queryAssigned,
+            dateType: queryDateType, 
           },
         }),
         api.get(`/users/company/${user.company.id}`),
         api.get(`/suppliers?companyId=${user.company.id}`),
       ]);
 
-      const colsData = Array.isArray(colsRes.data)
-        ? colsRes.data
-        : colsRes.data.columns || [];
-      setColumns(
-        colsData.sort((a: any, b: any) => (a.order || 0) - (b.order || 0)),
-      );
+      const colsData = Array.isArray(colsRes.data) ? colsRes.data : colsRes.data.columns || [];
+      setColumns(colsData.sort((a: any, b: any) => (a.order || 0) - (b.order || 0)));
 
-      const tasksData = Array.isArray(tasksRes.data.data)
-        ? tasksRes.data.data
-        : tasksRes.data.tasks || [];
+      const tasksData = Array.isArray(tasksRes.data.data) ? tasksRes.data.data : tasksRes.data.tasks || [];
       setTasks(tasksData);
 
       setUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
-      const supData = Array.isArray(suppliersRes.data)
-        ? suppliersRes.data
-        : suppliersRes.data.data || [];
+      const supData = Array.isArray(suppliersRes.data) ? suppliersRes.data : suppliersRes.data.data || [];
       setSuppliers(supData);
     } catch (err) {
       console.error(err);
@@ -239,13 +247,36 @@ export default function ProductKanban() {
     } finally {
       setLoading(false);
     }
-  }, [user, filterStartDate, filterEndDate, filterAssignedTo]);
+  }, [user, filterStartDate, filterEndDate, filterAssignedTo, filterDateType]); 
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.company?.id]); 
 
-  // Função para abrir modal de Nova Coluna
+  // Handler para o clique do botão de filtrar
+  const handleFilterClick = async () => {
+    setIsFiltering(true);
+    await fetchData();
+    setIsFiltering(false);
+  };
+
+  // --- [NOVO] Handler para Limpar Filtros ---
+  const handleClearFilters = async () => {
+    // 1. Reseta os estados visuais
+    setFilterStartDate("");
+    setFilterEndDate("");
+    setFilterAssignedTo("all");
+    setFilterDateType("created");
+
+    // 2. Chama o fetch forçando a limpeza (ignora o estado atual que pode não ter atualizado ainda)
+    setIsFiltering(true);
+    await fetchData(true); 
+    setIsFiltering(false);
+    toast.success("Filtros limpos");
+  };
+
+  // Handlers
   const handleOpenNewColumn = () => {
     setEditingCol(null);
     setColTitle("");
@@ -259,7 +290,7 @@ export default function ProductKanban() {
   };
 
   const handleCompleteTask = async (task: Task) => {
-    const doneCol = columns.find((c) => c.title === "Concluído");
+    const doneCol = columns.find((c) => ["concluído", "concluido", "done"].includes(c.title.toLowerCase()));
     if (!doneCol) return toast.error("Coluna 'Concluído' não encontrada.");
 
     const oldStatus = task.status;
@@ -267,9 +298,7 @@ export default function ProductKanban() {
 
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === task.id
-          ? { ...t, status: "COMPLETED", columnId: doneCol.id }
-          : t,
+        t.id === task.id ? { ...t, status: "COMPLETED", columnId: doneCol.id } : t,
       ),
     );
 
@@ -289,16 +318,16 @@ export default function ProductKanban() {
     }
   };
 
-  const handleTaskSubmit = async (
-    values: any,
-    files: any,
-    removedMedia: any,
-  ) => {
+  // --- LÓGICA DE SUBMIT (CRIAÇÃO OU EDIÇÃO) ---
+  const handleTaskSubmit = async (values: any, files: any, removedMedia: any) => {
     setIsSubmitting(true);
     const formData = new FormData();
+
     Object.keys(values).forEach((key) => {
       if (
         key !== "taskAddress" &&
+        key !== "address" && 
+        key !== "id" &&
         values[key] !== undefined &&
         values[key] !== null &&
         values[key] !== ""
@@ -306,8 +335,12 @@ export default function ProductKanban() {
         formData.append(key, values[key]);
       }
     });
-    if (values.taskAddress)
-      formData.append("address", JSON.stringify(values.taskAddress));
+
+    const addressData = values.address || values.taskAddress;
+    if (addressData) {
+        formData.append("address", JSON.stringify(addressData));
+    }
+
     if (user?.company?.id) formData.append("companyId", user.company.id);
     if (!editingTask && user?.id) formData.append("createdById", user.id);
 
@@ -315,21 +348,15 @@ export default function ProductKanban() {
     files.audios.forEach((f: File) => formData.append("audios", f));
     files.videos.forEach((f: File) => formData.append("videos", f));
 
-    if (removedMedia.images.length)
-      formData.append("removeImageIds", JSON.stringify(removedMedia.images));
-    if (removedMedia.audios.length)
-      formData.append("removeAudioIds", JSON.stringify(removedMedia.audios));
-    if (removedMedia.videos.length)
-      formData.append("removeVideoIds", JSON.stringify(removedMedia.videos));
+    if (removedMedia.images.length) formData.append("removeImageIds", JSON.stringify(removedMedia.images));
+    if (removedMedia.audios.length) formData.append("removeAudioIds", JSON.stringify(removedMedia.audios));
+    if (removedMedia.videos.length) formData.append("removeVideoIds", JSON.stringify(removedMedia.videos));
 
     try {
-      if (editingTask) {
-        await api.put(`/tasks/${editingTask.id}`, formData);
-        if (values.taskAddress)
-          await api.post(
-            `/tasks/${editingTask.id}/address`,
-            values.taskAddress,
-          );
+      const taskId = values.id || editingTask?.id;
+
+      if (taskId) {
+        await api.put(`/tasks/${taskId}`, formData);
         toast.success("Tarefa atualizada!");
       } else {
         await api.post("/tasks", formData, {
@@ -337,11 +364,14 @@ export default function ProductKanban() {
         });
         toast.success("Tarefa criada!");
       }
+      
       setIsTaskModal(false);
       setIsEditTaskModal(false);
       setInitialColumnId(undefined);
+      setEditingTask(null);
       fetchData();
     } catch (err) {
+      console.error(err);
       toast.error("Erro ao salvar tarefa");
     } finally {
       setIsSubmitting(false);
@@ -398,7 +428,6 @@ export default function ProductKanban() {
       <KanbanHeader
         title="Fluxo de Tarefas"
         icon={<Layout className="w-5 h-5 text-[#D35400]" />}
-        // MUDANÇA AQUI: Passamos a função direta em vez de configActions
         onAddColumn={handleOpenNewColumn}
         rightContent={
           <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs text-gray-300">
@@ -410,65 +439,76 @@ export default function ProductKanban() {
       />
 
       <KanbanFilter>
-        <div className="grid gap-1">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            De
-          </label>
-          <Input
-            type="date"
-            className="h-8 text-xs w-32"
-            value={filterStartDate}
-            onChange={(e) => setFilterStartDate(e.target.value)}
-          />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            Até
-          </label>
-          <Input
-            type="date"
-            className="h-8 text-xs w-32"
-            value={filterEndDate}
-            onChange={(e) => setFilterEndDate(e.target.value)}
-          />
-        </div>
-        <div className="grid gap-1 min-w-[150px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            Responsável
-          </label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
-            value={filterAssignedTo}
-            onChange={(e) => setFilterAssignedTo(e.target.value)}
+        <div className="grid gap-1 min-w-[140px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">Filtrar Data Por</label>
+          <select 
+            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
+            value={filterDateType} 
+            onChange={(e) => setFilterDateType(e.target.value)}
           >
-            <option value="all">Todos</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
+            <option value="created">Data de Criação</option>
+            <option value="scheduled">Agendado Para</option>
+            <option value="due">Prazo Final</option>
           </select>
         </div>
+
+        <div className="grid gap-1">
+          <label className="text-[10px] uppercase font-bold text-slate-400">De</label>
+          <Input type="date" className="h-8 text-xs w-32" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} />
+        </div>
+        <div className="grid gap-1">
+          <label className="text-[10px] uppercase font-bold text-slate-400">Até</label>
+          <Input type="date" className="h-8 text-xs w-32" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} />
+        </div>
+        
+        <div className="grid gap-1 min-w-[150px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">Responsável</label>
+          <select className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs" value={filterAssignedTo} onChange={(e) => setFilterAssignedTo(e.target.value)}>
+            <option value="all">Todos</option>
+            {users.map((u) => (<option key={u.id} value={u.id}>{u.name}</option>))}
+          </select>
+        </div>
+        
         <div className="flex items-center gap-2 pt-4">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs"
-            onClick={fetchData}
+          {/* Botão Filtrar */}
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="h-8 text-xs min-w-[100px]" 
+            onClick={handleFilterClick}
+            disabled={isFiltering}
           >
-            <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
+            {isFiltering ? (
+              <>
+                <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Buscando...
+              </>
+            ) : (
+              <>
+                <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
+              </>
+            )}
           </Button>
+
+          {/* --- [NOVO] Botão Limpar Filtros --- */}
+          {(filterStartDate || filterEndDate || filterAssignedTo !== "all" || filterDateType !== "created") && (
+            <Button 
+                size="sm" 
+                variant="ghost" 
+                className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50" 
+                onClick={handleClearFilters}
+                title="Limpar Filtros"
+                disabled={isFiltering}
+            >
+                <X className="w-4 h-4" />
+            </Button>
+          )}
         </div>
       </KanbanFilter>
 
       <KanbanBoard>
         {columns.map((col) => {
           const colTasks = tasks.filter((t) => t.columnId === col.id);
-
-          // Identifica se é a coluna Concluído (Normalize para minúsculo para garantir)
-          const isDoneColumn = ["concluído", "concluido", "done"].includes(
-            col.title.toLowerCase(),
-          );
+          const isDoneColumn = ["concluído", "concluido", "done"].includes(col.title.toLowerCase());
 
           return (
             <KanbanColumn
@@ -478,36 +518,13 @@ export default function ProductKanban() {
               count={colTasks.length}
               color={isDoneColumn ? "#27AE60" : undefined}
               onDropItem={moveItem}
-              // Se for Concluído, passamos undefined para desativar o botão de adicionar tarefa direto nela
-              onAddClick={
-                isDoneColumn ? undefined : () => handleAddTaskFromColumn(col.id)
-              }
-              // Se for Concluído, passamos undefined para impedir Edição via menu
-              onEditClick={
-                isDoneColumn
-                  ? undefined
-                  : () => {
-                      setEditingCol(col);
-                      setColTitle(col.title);
-                      setIsColumnModal(true);
-                    }
-              }
-              // Se for Concluído, passamos undefined para impedir Deleção via menu
-              onDeleteClick={
-                isDoneColumn
-                  ? undefined
-                  : () => {
-                      setItemToDelete({ type: "column", id: col.id });
-                      setDeleteModalOpen(true);
-                    }
-              }
+              onAddClick={isDoneColumn ? undefined : () => handleAddTaskFromColumn(col.id)}
+              onEditClick={isDoneColumn ? undefined : () => { setEditingCol(col); setColTitle(col.title); setIsColumnModal(true); }}
+              onDeleteClick={isDoneColumn ? undefined : () => { setItemToDelete({ type: "column", id: col.id }); setDeleteModalOpen(true); }}
             >
               {colTasks.map((task) => {
                 const statusConfig = getStatusConfig(task.status);
-                const totalAttachments =
-                  (task.taskImages?.length || 0) +
-                  (task.taskVideos?.length || 0) +
-                  (task.taskAudios?.length || 0);
+                const totalAttachments = (task.taskImages?.length || 0) + (task.taskVideos?.length || 0) + (task.taskAudios?.length || 0);
 
                 return (
                   <KanbanCard
@@ -515,35 +532,18 @@ export default function ProductKanban() {
                     id={task.id}
                     title={task.title}
                     priorityColor={getPriorityColor(task.priority)}
-                    statusLabel={statusConfig.  label}
+                    statusLabel={statusConfig.label}
                     statusColor={statusConfig.color}
                     onDragStart={(e) => onDragStart(e, task.id)}
-                    onDoubleClick={() => {
-                      setPreviewTask(task);
-                      setIsPreviewModal(true);
-                    }}
-                    onView={() => {
-                      setPreviewTask(task);
-                      setIsPreviewModal(true);
-                    }}
-                    onEdit={() => {
-                      setEditingTask(task);
-                      setIsEditTaskModal(true);
-                    }}
-                    onDelete={() => {
-                      setItemToDelete({ type: "task", id: task.id });
-                      setDeleteModalOpen(true);
-                    }}
-                    extraMenuItems={
-                      !isDoneColumn ? (
-                        <DropdownMenuItem
-                          onClick={() => handleCompleteTask(task)}
-                          className="text-green-600 cursor-pointer"
-                        >
+                    onDoubleClick={() => { setPreviewTask(task); setIsPreviewModal(true); }}
+                    onView={() => { setPreviewTask(task); setIsPreviewModal(true); }}
+                    onEdit={() => { setEditingTask(task); setIsEditTaskModal(true); }}
+                    onDelete={() => { setItemToDelete({ type: "task", id: task.id }); setDeleteModalOpen(true); }}
+                    extraMenuItems={!isDoneColumn ? (
+                        <DropdownMenuItem onClick={() => handleCompleteTask(task)} className="text-green-600 cursor-pointer">
                           <CheckCircle2 className="w-4 h-4 mr-2" /> Concluir
                         </DropdownMenuItem>
-                      ) : null
-                    }
+                      ) : null}
                     footer={
                       <div className="flex justify-between items-center w-full">
                         <div className="flex gap-2">
@@ -555,29 +555,15 @@ export default function ProductKanban() {
                         </div>
                         <div className="flex gap-2 text-slate-400">
                           {totalAttachments > 0 && (
-                            <div className="flex items-center gap-0.5">
-                              <Paperclip size={12} />
-                              <span className="text-[10px]">
-                                {totalAttachments}
-                              </span>
-                            </div>
+                            <div className="flex items-center gap-0.5"><Paperclip size={12} /><span className="text-[10px]">{totalAttachments}</span></div>
                           )}
                           {task.taskAddress && <MapPin size={12} />}
-                          {task.dueDate && (
-                            <Flag
-                              size={12}
-                              className={
-                                isOverdue(task.dueDate) ? "text-red-500" : ""
-                              }
-                            />
-                          )}
+                          {task.dueDate && <Flag size={12} className={isOverdue(task.dueDate) ? "text-red-500" : ""} />}
                         </div>
                       </div>
                     }
                   >
-                    <p className="line-clamp-2 mb-2 text-xs text-slate-600">
-                      {task.description || "Sem descrição"}
-                    </p>
+                    <p className="line-clamp-2 mb-2 text-xs text-slate-600">{task.description || "Sem descrição"}</p>
                   </KanbanCard>
                 );
               })}
@@ -605,29 +591,14 @@ export default function ProductKanban() {
 
       <Dialog open={isColumnModal} onOpenChange={setIsColumnModal}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editingCol ? "Editar Coluna" : "Nova Coluna"}
-            </DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{editingCol ? "Editar Coluna" : "Nova Coluna"}</DialogTitle></DialogHeader>
           <div className="py-4">
             <Label>Nome da Coluna</Label>
-            <Input
-              value={colTitle}
-              onChange={(e) => setColTitle(e.target.value)}
-              placeholder="Ex: Em Andamento"
-            />
+            <Input value={colTitle} onChange={(e) => setColTitle(e.target.value)} placeholder="Ex: Em Andamento" />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsColumnModal(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleColumnSubmit}
-              className="bg-[#D35400] hover:bg-[#A04000]"
-            >
-              Salvar
-            </Button>
+            <Button variant="outline" onClick={() => setIsColumnModal(false)}>Cancelar</Button>
+            <Button onClick={handleColumnSubmit} className="bg-[#D35400] hover:bg-[#A04000]">Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -641,22 +612,14 @@ export default function ProductKanban() {
         description="Esta ação não pode ser desfeita."
       />
 
-      {/* MODAL DE PREVIEW */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl">
           <div className="px-6 py-4 border-b sticky top-0 bg-white z-20 flex justify-between items-center">
             <div>
-              <DialogTitle className="text-xl font-bold text-slate-800">
-                {previewTask?.title}
-              </DialogTitle>
+              <DialogTitle className="text-xl font-bold text-slate-800">{previewTask?.title}</DialogTitle>
               <div className="flex gap-2 mt-1">
                 <span className="text-[10px] uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded font-bold text-slate-500">
-                  Prioridade{" "}
-                  {previewTask?.priority === 1
-                    ? "Alta"
-                    : previewTask?.priority === 2
-                      ? "Média"
-                      : "Baixa"}
+                  Prioridade {previewTask?.priority === 1 ? "Alta" : previewTask?.priority === 2 ? "Média" : "Baixa"}
                 </span>
                 <span className="text-[10px] uppercase tracking-wider bg-orange-50 px-2 py-0.5 rounded font-bold text-orange-600">
                   {previewTask?.status}
@@ -666,140 +629,75 @@ export default function ProductKanban() {
           </div>
 
           <div className="px-6 py-6 space-y-8">
-            {/* SEÇÃO DE MÍDIAS */}
-            {(previewTask?.taskImages?.length || 0) +
-              (previewTask?.taskVideos?.length || 0) +
-              (previewTask?.taskAudios?.length || 0) >
-              0 && (
+            {((previewTask?.taskImages?.length || 0) + (previewTask?.taskVideos?.length || 0) + (previewTask?.taskAudios?.length || 0) > 0) && (
               <div className="space-y-4">
                 <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Paperclip size={16} className="text-orange-600" /> Arquivos e
-                  Anexos
+                  <Paperclip size={16} className="text-orange-600" /> Arquivos e Anexos
                 </h4>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Imagens */}
                   {previewTask?.taskImages?.map((img) => (
-                    <div
-                      key={img.id}
-                      className="group relative aspect-video rounded-xl overflow-hidden bg-slate-100 border border-slate-200"
-                    >
-                      <img
-                        src={img.url}
-                        alt="Anexo"
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                      <a
-                        href={img.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium gap-2"
-                      >
+                    <div key={img.id} className="group relative aspect-video rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                      <img src={img.url} alt="Anexo" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                      <a href={img.url} target="_blank" rel="noreferrer" className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium gap-2">
                         <ImageIcon size={16} /> Visualizar Original
                       </a>
                     </div>
                   ))}
-
-                  {/* Vídeos */}
                   {previewTask?.taskVideos?.map((video) => (
-                    <div
-                      key={video.id}
-                      className="rounded-xl overflow-hidden bg-black border border-slate-200 shadow-inner"
-                    >
-                      <video controls className="w-full aspect-video">
-                        <source src={video.url} type="video/mp4" />
-                        Seu navegador não suporta vídeos.
-                      </video>
+                    <div key={video.id} className="rounded-xl overflow-hidden bg-black border border-slate-200 shadow-inner">
+                      <video controls className="w-full aspect-video"><source src={video.url} type="video/mp4" /></video>
                     </div>
                   ))}
-
-                  {/* Áudios */}
                   {previewTask?.taskAudios?.map((audio) => (
-                    <div
-                      key={audio.id}
-                      className="col-span-1 md:col-span-2 flex flex-col gap-2 p-4 bg-slate-50 border border-slate-200 rounded-xl"
-                    >
+                    <div key={audio.id} className="col-span-1 md:col-span-2 flex flex-col gap-2 p-4 bg-slate-50 border border-slate-200 rounded-xl">
                       <div className="flex items-center gap-2 text-slate-600">
                         <Mic size={14} className="text-orange-600" />
-                        <span className="text-[10px] font-bold uppercase tracking-tight">
-                          Anexo de Áudio
-                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-tight">Anexo de Áudio</span>
                       </div>
-                      <audio controls className="w-full h-10">
-                        <source src={audio.url} type="audio/mpeg" />
-                        Seu navegador não suporta áudio.
-                      </audio>
+                      <audio controls className="w-full h-10"><source src={audio.url} type="audio/mpeg" /></audio>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* DESCRIÇÃO */}
             <div className="space-y-2">
-              <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight text-[11px]">
-                Descrição da Tarefa
-              </h4>
+              <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight text-[11px]">Descrição da Tarefa</h4>
               <div className="text-sm text-slate-600 whitespace-pre-wrap bg-slate-50/50 p-4 rounded-xl border border-slate-100 min-h-[100px] leading-relaxed">
-                {previewTask?.description ||
-                  "Nenhuma descrição detalhada fornecida para esta tarefa."}
+                {previewTask?.description || "Nenhuma descrição detalhada fornecida para esta tarefa."}
               </div>
             </div>
 
-            {/* ENDEREÇO */}
             {previewTask?.taskAddress && (
               <div className="bg-orange-50/30 p-4 rounded-xl border border-orange-100 space-y-2">
                 <h4 className="text-sm font-bold text-orange-700 flex items-center gap-2">
                   <MapPin size={16} /> Local de Execução
                 </h4>
                 <p className="text-sm text-slate-700 leading-relaxed">
-                  <span className="font-semibold">
-                    {previewTask.taskAddress.endereco},{" "}
-                    {previewTask.taskAddress.numero}
-                  </span>
+                  <span className="font-semibold">{previewTask.taskAddress.endereco}, {previewTask.taskAddress.numero}</span>
+                  {previewTask.taskAddress.complemento && <span> - {previewTask.taskAddress.complemento}</span>}
                   <br />
-                  {previewTask.taskAddress.bairro} —{" "}
-                  {previewTask.taskAddress.cidade},{" "}
-                  {previewTask.taskAddress.estado}
+                  {previewTask.taskAddress.bairro} — {previewTask.taskAddress.cidade}, {previewTask.taskAddress.estado}
                 </p>
               </div>
             )}
 
-            {/* RODAPÉ PREVIEW */}
             <div className="grid grid-cols-2 gap-8 pt-6 border-t border-slate-100">
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                  Responsável Técnico
-                </span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Responsável Técnico</span>
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
                     {previewTask?.userAssigned?.name?.charAt(0) || "?"}
                   </div>
-                  <span className="text-sm font-semibold text-slate-700">
-                    {previewTask?.userAssigned?.name ||
-                      "Pendente de Atribuição"}
-                  </span>
+                  <span className="text-sm font-semibold text-slate-700">{previewTask?.userAssigned?.name || "Pendente de Atribuição"}</span>
                 </div>
               </div>
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                  Data Limite
-                </span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Data Limite</span>
                 <div className="flex items-center gap-2">
-                  <Calendar
-                    size={14}
-                    className={
-                      previewTask?.dueDate && isOverdue(previewTask.dueDate)
-                        ? "text-red-500"
-                        : "text-slate-400"
-                    }
-                  />
-                  <span
-                    className={`text-sm font-semibold ${previewTask?.dueDate && isOverdue(previewTask.dueDate) ? "text-red-600" : "text-slate-700"}`}
-                  >
-                    {previewTask?.dueDate
-                      ? formatDateShort(previewTask.dueDate)
-                      : "Sem prazo definido"}
+                  <Calendar size={14} className={previewTask?.dueDate && isOverdue(previewTask.dueDate) ? "text-red-500" : "text-slate-400"} />
+                  <span className={`text-sm font-semibold ${previewTask?.dueDate && isOverdue(previewTask.dueDate) ? "text-red-600" : "text-slate-700"}`}>
+                    {previewTask?.dueDate ? formatDateShort(previewTask.dueDate) : "Sem prazo definido"}
                   </span>
                 </div>
               </div>
@@ -807,21 +705,8 @@ export default function ProductKanban() {
           </div>
 
           <DialogFooter className="px-6 py-4 bg-slate-50 border-t sticky bottom-0 z-20">
-            <Button
-              variant="outline"
-              className="text-slate-600"
-              onClick={() => setIsPreviewModal(false)}
-            >
-              Fechar Janela
-            </Button>
-            <Button
-              className="bg-[#D35400] hover:bg-[#A04000]"
-              onClick={() => {
-                setIsPreviewModal(false);
-                setEditingTask(previewTask);
-                setIsEditTaskModal(true);
-              }}
-            >
+            <Button variant="outline" className="text-slate-600" onClick={() => setIsPreviewModal(false)}>Fechar Janela</Button>
+            <Button className="bg-[#D35400] hover:bg-[#A04000]" onClick={() => { setIsPreviewModal(false); setEditingTask(previewTask); setIsEditTaskModal(true); }}>
               Editar Detalhes
             </Button>
           </DialogFooter>

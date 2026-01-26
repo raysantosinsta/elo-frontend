@@ -1,5 +1,4 @@
 import React from "react";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 interface KanbanBoardProps {
   children: React.ReactNode;
@@ -8,12 +7,13 @@ interface KanbanBoardProps {
 
 export function KanbanBoard({ children, className }: KanbanBoardProps) {
   return (
-    <ScrollArea className="flex-1 h-full w-full whitespace-nowrap">
-      {/* 🔥 AJUSTE: gap-3 (era gap-6) e p-4 (era p-6) */}
-      <div className={`flex h-full gap-3 p-4 items-start ${className}`}>
+    <div className="flex-1 w-full h-full overflow-x-auto overflow-y-hidden bg-[#F5F0E6]/50">
+      {/* 1. min-w-max: Força o container a ter a largura da soma de todas as colunas
+          2. flex-row: Garante que as colunas fiquem lado a lado
+      */}
+      <div className={`flex flex-row h-full gap-3 p-4 pb-6 items-start min-w-max ${className}`}>
         {children}
       </div>
-      <ScrollBar orientation="horizontal" />
-    </ScrollArea>
+    </div>
   );
 }
