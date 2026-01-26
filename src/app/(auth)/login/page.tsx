@@ -3,20 +3,20 @@
 
 import { ForgotPasswordModal } from '@/components/auth/forgot-password-modal';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowRight, Loader2, Lock, LogIn, Mail } from 'lucide-react';
+import { ArrowRight, Loader2, Lock, LogIn, Mail, Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import Image from 'next/image'; // Recomendado usar next/image se possível, mas usei img padrão para facilitar
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false); // Novo estado para visibilidade da senha
   const [loading, setLoading] = useState(false);
 
-  // Hook personalizado de autenticação
   const { login } = useAuth();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const router = useRouter();
@@ -26,55 +26,65 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Tenta fazer o login
       await login(email, password);
-
-      // Se der certo, o AuthContext ou Middleware redireciona.
-      // router.push('/dashboard'); 
     } catch (err: any) {
-      // --- A MÁGICA ACONTECE AQUI ---
-      // Não precisamos setar setError ou mostrar Alert.
-      // O axios interceptor JÁ pegou o erro 401/400 e abriu o Dialog Global.
-
-      // Aqui só fazemos limpeza de UX local, se quiser:
-      setPassword(''); // Limpa a senha para o usuário tentar de novo
+      setPassword('');
     } finally {
       setLoading(false);
     }
   };
 
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
   return (
-    // 1. Background: Algodão Cru (#F5F0E6)
-    <div className="min-h-screen flex items-center justify-center bg-[#F5F0E6] px-4 py-8 font-sans transition-colors duration-300">
+    <div className="min-h-screen w-full lg:grid lg:grid-cols-2 font-sans">
+      
+      {/* LADO ESQUERDO: Imagem (Escondida em mobile, visível em telas grandes) */}
+      <div className="hidden lg:block relative h-full w-full bg-[#2C3E50] overflow-hidden">
+        {/* Overlay para escurecer levemente a imagem e destacar o texto/logo se necessário */}
+        <div className="absolute inset-0 bg-black/20 z-10" />
+        
+        {/* Imagem de fundo - Substitua o src pela imagem do seu projeto */}
+        <img
+          src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop"
+          alt="Imagem de fundo premium"
+          className="absolute inset-0 h-full w-full object-cover grayscale-[20%] hover:grayscale-0 transition-all duration-700"
+        />
 
-      <Card className="w-full max-w-[400px] border-0 shadow-2xl shadow-black/5 bg-white/95 backdrop-blur-sm overflow-hidden">
+        {/* Elemento decorativo ou texto sobre a imagem */}
+        <div className="absolute bottom-10 left-10 z-20 text-white max-w-md">
+          <div className="h-1 w-20 bg-[#D35400] mb-4" />
+          <h2 className="text-4xl font-bold tracking-tight mb-2">Elo Produtivo</h2>
+          <p className="text-gray-200 text-lg">Gestão inteligente e integrada para sua produção têxtil.</p>
+        </div>
+      </div>
 
-        {/* Header Visual */}
-        <div className="h-2 bg-[#D35400] w-full" /> {/* Faixa decorativa Terracota */}
-
-        <CardHeader className="space-y-4 text-center pt-8 pb-6">
-          {/* Ícone da Marca: Azul Petróleo */}
-          <div className="mx-auto w-14 h-14 bg-[#2C3E50] rounded-2xl rotate-3 flex items-center justify-center shadow-lg mb-2 group transition-transform hover:rotate-0 duration-300">
-            <LogIn className="w-7 h-7 text-white group-hover:scale-110 transition-transform" />
+      {/* LADO DIREITO: Formulário */}
+      <div className="flex items-center justify-center bg-[#F5F0E6] p-8">
+        <div className="w-full max-w-[420px] space-y-8">
+          
+          {/* Header do Formulário */}
+          <div className="text-center space-y-4">
+             {/* Ícone da Marca */}
+            <div className="mx-auto w-14 h-14 bg-[#2C3E50] rounded-2xl rotate-3 flex items-center justify-center shadow-lg mb-6 group transition-transform hover:rotate-0 duration-300">
+              <LogIn className="w-7 h-7 text-white group-hover:scale-110 transition-transform" />
+            </div>
+            
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold text-[#2D3436] tracking-tight">
+                Bem-vindo de volta
+              </h1>
+              <p className="text-[#95A5A6] text-base">
+                Insira suas credenciais para acessar o painel
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            {/* Título: Grafite */}
-            <CardTitle className="text-2xl font-bold text-[#2D3436] tracking-tight">
-              Bem-vindo de volta
-            </CardTitle>
-            {/* Descrição: Areia Escuro */}
-            <CardDescription className="text-[#95A5A6] text-base">
-              Insira suas credenciais para acessar o painel
-            </CardDescription>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-6 pb-8 px-8">
-
-          {/* REMOVIDO: O Alert local. O Dialog Global aparecerá sobrepondo tudo se houver erro. */}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Área do Formulário */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            
             {/* Input Email */}
             <div className="space-y-2 group">
               <Label
@@ -94,12 +104,12 @@ export default function LoginPage() {
                   placeholder="seu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 h-12 bg-gray-50/50 border-[#95A5A6]/40 focus:border-[#2C3E50] focus:ring-[#2C3E50] rounded-lg transition-all duration-200"
+                  className="w-full pl-10 h-12 bg-white border-gray-200 focus:border-[#2C3E50] focus:ring-[#2C3E50] rounded-lg transition-all duration-200 shadow-sm"
                 />
               </div>
             </div>
 
-            {/* Input Senha */}
+            {/* Input Senha com Olho */}
             <div className="space-y-2 group">
               <div className="flex items-center justify-between">
                 <Label
@@ -118,18 +128,36 @@ export default function LoginPage() {
                 </ForgotPasswordModal>
               </div>
               <div className="relative">
+                {/* Ícone de Cadeado (Esquerda) */}
                 <Lock className="absolute left-3 top-3.5 h-5 w-5 text-[#95A5A6] group-focus-within:text-[#2C3E50] transition-colors duration-200" />
+                
                 <Input
                   id="password"
                   name="password"
-                  type="password"
+                  // Alterna entre text e password
+                  type={showPassword ? "text" : "password"} 
                   autoComplete="current-password"
                   required
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 h-12 bg-gray-50/50 border-[#95A5A6]/40 focus:border-[#2C3E50] focus:ring-[#2C3E50] rounded-lg transition-all duration-200"
+                  // Adicionado pr-10 para o texto não ficar embaixo do ícone do olho
+                  className="w-full pl-10 pr-10 h-12 bg-white border-gray-200 focus:border-[#2C3E50] focus:ring-[#2C3E50] rounded-lg transition-all duration-200 shadow-sm"
                 />
+
+                {/* Ícone de Olho (Direita) - Botão de Toggle */}
+                <button
+                  type="button"
+                  onClick={togglePasswordVisibility}
+                  className="absolute right-3 top-3.5 text-[#95A5A6] hover:text-[#2C3E50] transition-colors focus:outline-none"
+                  tabIndex={-1} // Evita tab stop extra se desejar
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
               </div>
             </div>
 
@@ -137,8 +165,8 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={loading || !email || !password}
-              className="w-full h-12 text-base font-bold tracking-wide rounded-lg shadow-md hover:shadow-lg transition-all transform active:scale-[0.98]
-                bg-[#D35400] hover:bg-[#b54500] text-white disabled:bg-[#95A5A6] disabled:opacity-70 mt-2"
+              className="w-full h-12 text-base font-bold tracking-wide rounded-lg shadow-lg hover:shadow-xl transition-all transform active:scale-[0.99]
+                bg-[#D35400] hover:bg-[#b54500] text-white disabled:bg-[#95A5A6] disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -153,15 +181,16 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
-        </CardContent>
 
-        {/* Footer do Card */}
-        <div className="bg-gray-50 px-8 py-4 text-center border-t border-gray-100">
-          <p className="text-xs text-[#95A5A6]">
-            Protegido por reCAPTCHA e sujeito à Política de Privacidade.
-          </p>
+          {/* Footer */}
+          <div className="pt-6 text-center">
+             <p className="text-xs text-[#95A5A6]">
+              Protegido por reCAPTCHA e sujeito à Política de Privacidade.
+            </p>
+          </div>
+
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
