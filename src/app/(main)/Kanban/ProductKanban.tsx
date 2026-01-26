@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Layout,
@@ -16,7 +16,7 @@ import {
   ImageIcon,
   Mic,
   Loader2,
-  X, // [NOVO] Import do ícone de limpar
+  X,
 } from "lucide-react";
 
 // --- Infraestrutura ---
@@ -88,7 +88,7 @@ interface Task {
   taskImages: MediaFile[];
   taskAudios: MediaFile[];
   taskVideos: MediaFile[];
-  createdAt: string; 
+  createdAt: string;
 }
 
 interface Column {
@@ -168,7 +168,7 @@ export default function ProductKanban() {
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterAssignedTo, setFilterAssignedTo] = useState("all");
   const [filterDateType, setFilterDateType] = useState("created");
-  
+
   // Estado para o loading do botão de filtrar
   const [isFiltering, setIsFiltering] = useState(false);
 
@@ -206,12 +206,19 @@ export default function ProductKanban() {
     },
   });
 
-  // --- [ATUALIZADO] fetchData aceita forceClear ---
+  // Helper de Normalização
+  const normalizeText = (text: string) => {
+    return text
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  };
+
+  // --- fetchData ---
   const fetchData = useCallback(async (forceClear = false) => {
     if (!user?.company?.id) return;
     setLoading(true);
     try {
-      // Se forceClear for true, ignora os estados e manda undefined/padrão
       const queryStartDate = !forceClear && filterStartDate ? new Date(filterStartDate).toISOString() : undefined;
       const queryEndDate = !forceClear && filterEndDate ? new Date(filterEndDate).toISOString() : undefined;
       const queryAssigned = !forceClear && filterAssignedTo !== "all" ? filterAssignedTo : undefined;
@@ -225,7 +232,7 @@ export default function ProductKanban() {
             startDate: queryStartDate,
             endDate: queryEndDate,
             assignedToId: queryAssigned,
-            dateType: queryDateType, 
+            dateType: queryDateType,
           },
         }),
         api.get(`/users/company/${user.company.id}`),
@@ -233,8 +240,23 @@ export default function ProductKanban() {
       ]);
 
       const colsData = Array.isArray(colsRes.data) ? colsRes.data : colsRes.data.columns || [];
-      setColumns(colsData.sort((a: any, b: any) => (a.order || 0) - (b.order || 0)));
+      
+      // Ordenação inicial (segurança extra na carga)
+      const sortedCols = colsData.sort((a: any, b: any) => {
+        const titleA = normalizeText(a.title);
+        const titleB = normalizeText(b.title);
+        const doneVariants = ["concluido", "concluído", "done", "finalizado"];
 
+        const isADone = doneVariants.includes(titleA);
+        const isBDone = doneVariants.includes(titleB);
+
+        if (isADone && !isBDone) return 1;
+        if (!isADone && isBDone) return -1;
+        return (a.order || 0) - (b.order || 0);
+      });
+
+      setColumns(sortedCols);
+      
       const tasksData = Array.isArray(tasksRes.data.data) ? tasksRes.data.data : tasksRes.data.tasks || [];
       setTasks(tasksData);
 
@@ -247,36 +269,30 @@ export default function ProductKanban() {
     } finally {
       setLoading(false);
     }
-  }, [user, filterStartDate, filterEndDate, filterAssignedTo, filterDateType]); 
+  }, [user, filterStartDate, filterEndDate, filterAssignedTo, filterDateType]);
 
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.company?.id]); 
+  }, [user?.company?.id]);
 
-  // Handler para o clique do botão de filtrar
   const handleFilterClick = async () => {
     setIsFiltering(true);
     await fetchData();
     setIsFiltering(false);
   };
 
-  // --- [NOVO] Handler para Limpar Filtros ---
   const handleClearFilters = async () => {
-    // 1. Reseta os estados visuais
     setFilterStartDate("");
     setFilterEndDate("");
     setFilterAssignedTo("all");
     setFilterDateType("created");
-
-    // 2. Chama o fetch forçando a limpeza (ignora o estado atual que pode não ter atualizado ainda)
     setIsFiltering(true);
-    await fetchData(true); 
+    await fetchData(true);
     setIsFiltering(false);
     toast.success("Filtros limpos");
   };
 
-  // Handlers
   const handleOpenNewColumn = () => {
     setEditingCol(null);
     setColTitle("");
@@ -318,7 +334,6 @@ export default function ProductKanban() {
     }
   };
 
-  // --- LÓGICA DE SUBMIT (CRIAÇÃO OU EDIÇÃO) ---
   const handleTaskSubmit = async (values: any, files: any, removedMedia: any) => {
     setIsSubmitting(true);
     const formData = new FormData();
@@ -326,7 +341,7 @@ export default function ProductKanban() {
     Object.keys(values).forEach((key) => {
       if (
         key !== "taskAddress" &&
-        key !== "address" && 
+        key !== "address" &&
         key !== "id" &&
         values[key] !== undefined &&
         values[key] !== null &&
@@ -338,7 +353,7 @@ export default function ProductKanban() {
 
     const addressData = values.address || values.taskAddress;
     if (addressData) {
-        formData.append("address", JSON.stringify(addressData));
+      formData.append("address", JSON.stringify(addressData));
     }
 
     if (user?.company?.id) formData.append("companyId", user.company.id);
@@ -364,7 +379,7 @@ export default function ProductKanban() {
         });
         toast.success("Tarefa criada!");
       }
-      
+
       setIsTaskModal(false);
       setIsEditTaskModal(false);
       setInitialColumnId(undefined);
@@ -415,6 +430,26 @@ export default function ProductKanban() {
     }
   };
 
+  // 🔥 [CORREÇÃO FINAL] Visual Columns com useMemo
+  // Esta lógica roda a cada renderização e força a coluna Concluído para o final visualmente
+  const visualColumns = useMemo(() => {
+    return [...columns].sort((a, b) => {
+      const titleA = (a.title || "").toLowerCase().trim();
+      const titleB = (b.title || "").toLowerCase().trim();
+      const doneVariants = ["concluido", "concluído", "done", "finalizado", "concluded"];
+
+      const isADone = doneVariants.some(v => titleA.includes(v));
+      const isBDone = doneVariants.some(v => titleB.includes(v));
+
+      // Regra Suprema: Concluído sempre pesa infinito positivo
+      if (isADone && !isBDone) return 1;  // A vai pro fundo
+      if (!isADone && isBDone) return -1; // B vai pro fundo
+      
+      // Desempate por ordem numérica normal
+      return (a.order || 0) - (b.order || 0);
+    });
+  }, [columns]);
+
   if (loading && tasks.length === 0) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
@@ -441,9 +476,9 @@ export default function ProductKanban() {
       <KanbanFilter>
         <div className="grid gap-1 min-w-[140px]">
           <label className="text-[10px] uppercase font-bold text-slate-400">Filtrar Data Por</label>
-          <select 
+          <select
             className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
-            value={filterDateType} 
+            value={filterDateType}
             onChange={(e) => setFilterDateType(e.target.value)}
           >
             <option value="created">Data de Criação</option>
@@ -460,7 +495,7 @@ export default function ProductKanban() {
           <label className="text-[10px] uppercase font-bold text-slate-400">Até</label>
           <Input type="date" className="h-8 text-xs w-32" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} />
         </div>
-        
+
         <div className="grid gap-1 min-w-[150px]">
           <label className="text-[10px] uppercase font-bold text-slate-400">Responsável</label>
           <select className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs" value={filterAssignedTo} onChange={(e) => setFilterAssignedTo(e.target.value)}>
@@ -468,13 +503,12 @@ export default function ProductKanban() {
             {users.map((u) => (<option key={u.id} value={u.id}>{u.name}</option>))}
           </select>
         </div>
-        
+
         <div className="flex items-center gap-2 pt-4">
-          {/* Botão Filtrar */}
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="h-8 text-xs min-w-[100px]" 
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs min-w-[100px]"
             onClick={handleFilterClick}
             disabled={isFiltering}
           >
@@ -489,24 +523,24 @@ export default function ProductKanban() {
             )}
           </Button>
 
-          {/* --- [NOVO] Botão Limpar Filtros --- */}
           {(filterStartDate || filterEndDate || filterAssignedTo !== "all" || filterDateType !== "created") && (
-            <Button 
-                size="sm" 
-                variant="ghost" 
-                className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50" 
-                onClick={handleClearFilters}
-                title="Limpar Filtros"
-                disabled={isFiltering}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+              onClick={handleClearFilters}
+              title="Limpar Filtros"
+              disabled={isFiltering}
             >
-                <X className="w-4 h-4" />
+              <X className="w-4 h-4" />
             </Button>
           )}
         </div>
       </KanbanFilter>
 
       <KanbanBoard>
-        {columns.map((col) => {
+        {/* 🔥 USO DO VISUAL COLUMNS AQUI */}
+        {visualColumns.map((col) => {
           const colTasks = tasks.filter((t) => t.columnId === col.id);
           const isDoneColumn = ["concluído", "concluido", "done"].includes(col.title.toLowerCase());
 
@@ -540,10 +574,10 @@ export default function ProductKanban() {
                     onEdit={() => { setEditingTask(task); setIsEditTaskModal(true); }}
                     onDelete={() => { setItemToDelete({ type: "task", id: task.id }); setDeleteModalOpen(true); }}
                     extraMenuItems={!isDoneColumn ? (
-                        <DropdownMenuItem onClick={() => handleCompleteTask(task)} className="text-green-600 cursor-pointer">
-                          <CheckCircle2 className="w-4 h-4 mr-2" /> Concluir
-                        </DropdownMenuItem>
-                      ) : null}
+                      <DropdownMenuItem onClick={() => handleCompleteTask(task)} className="text-green-600 cursor-pointer">
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Concluir
+                      </DropdownMenuItem>
+                    ) : null}
                     footer={
                       <div className="flex justify-between items-center w-full">
                         <div className="flex gap-2">
