@@ -509,6 +509,29 @@ export function TaskFormModal({
                   {(images.length > 0 || videos.length > 0 || audios.length > 0) && (
                     <div className="space-y-2 pt-2 border-t">
                       <Label className="text-[10px] font-bold text-slate-400 uppercase">Arquivos para Upload</Label>
+                      {images.length > 0 && (
+                        <div className="grid grid-cols-4 gap-2 mb-2">
+                          {images.map((img, i) => (
+                            <div key={i} className="relative aspect-square rounded overflow-hidden group border bg-white shadow-sm">
+                              {/* Preview da Imagem Local */}
+                              <img
+                                src={URL.createObjectURL(img)}
+                                className="w-full h-full object-cover"
+                                alt={`Nova imagem ${i}`}
+                              />
+
+                              {/* Botão de Excluir */}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveNewFile(i, 'image')}
+                                className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-700"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {videos.map((v, i) => (
                         <div key={i} className="flex items-center gap-2 bg-purple-50 p-2 rounded border border-purple-100">
                           <PlayCircle size={14} className="text-purple-500" />

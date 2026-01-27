@@ -370,13 +370,16 @@ export default function ProductKanban() {
     try {
       const taskId = values.id || editingTask?.id;
 
+      // 🔥 CORREÇÃO: Configuração explícita do Header para Multipart
+      const multipartConfig = {
+        headers: { "Content-Type": "multipart/form-data" },
+      };
+
       if (taskId) {
-        await api.put(`/tasks/${taskId}`, formData);
+        await api.put(`/tasks/${taskId}`, formData, multipartConfig);
         toast.success("Tarefa atualizada!");
       } else {
-        await api.post("/tasks", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        await api.post("/tasks", formData, multipartConfig);
         toast.success("Tarefa criada!");
       }
 
