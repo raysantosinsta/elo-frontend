@@ -92,16 +92,16 @@ export interface Supplier {
   complement?: string;
   numero?: string;
   bairro?: string;
-  latitude?: number; 
-  longitude?: number; 
+  latitude?: number;
+  longitude?: number;
 }
 
 interface TaskFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialData?: TaskData | null;
-  initialColumnId?: string; 
-  
+  initialColumnId?: string;
+
   onSubmit: (
     values: any,
     files: { images: File[]; audios: File[]; videos: File[] },
@@ -114,6 +114,7 @@ interface TaskFormModalProps {
 }
 
 const taskSchema = z.object({
+  id: z.string().optional(), // <--- ADICIONE ESTA LINHA
   title: z.string().min(1, "Título obrigatório"),
   description: z.string().optional(),
   priority: z.string().min(1),
@@ -183,6 +184,7 @@ export function TaskFormModal({
 
       if (initialData) {
         form.reset({
+          id: initialData.id, // <--- ADICIONE ESTA LINHA PARA SALVAR O ID NO FORM
           title: initialData.title,
           description: initialData.description || "",
           priority: initialData.priority.toString(),
@@ -192,7 +194,7 @@ export function TaskFormModal({
           dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().slice(0, 16) : "",
           scheduledAt: initialData.scheduledDate ? new Date(initialData.scheduledDate).toISOString().slice(0, 16) : "",
           finalComment: initialData.finalComment || "",
-          
+
           // Mapeamento correto dos dados do Banco (PT) para o Form (EN)
           cep: initialData.taskAddress?.cep || "",
           street: initialData.taskAddress?.endereco || "",
@@ -207,10 +209,11 @@ export function TaskFormModal({
       } else {
         const defaultCol = initialColumnId || (columns.length > 0 ? columns[0].id : "");
         form.reset({
-          title: "", description: "", priority: "1", 
+          id: undefined, // <--- GARANTA QUE LIMPA O ID NO MODO CRIAÇÃO
+          title: "", description: "", priority: "1",
           columnId: defaultCol,
-          assignedToId: "unassigned", 
-          status: "PENDING", 
+          assignedToId: "unassigned",
+          status: "PENDING",
           dueDate: "", scheduledAt: "", finalComment: "",
           cep: "", street: "", number: "", neighborhood: "", city: "", state: "", complement: "", latitude: "", longitude: ""
         });
@@ -245,14 +248,14 @@ export function TaskFormModal({
     if (!supplier) return;
     form.setValue("cep", supplier.zipCode || "");
     form.setValue("street", supplier.address || "");
-    form.setValue("number", supplier.numero || ""); 
-    form.setValue("neighborhood", supplier.bairro || ""); 
+    form.setValue("number", supplier.numero || "");
+    form.setValue("neighborhood", supplier.bairro || "");
     form.setValue("city", supplier.city || "");
     form.setValue("state", supplier.state || "");
     form.setValue("complement", supplier.complement || "");
     if (supplier.latitude && supplier.longitude) {
-        form.setValue("latitude", supplier.latitude.toString());
-        form.setValue("longitude", supplier.longitude.toString());
+      form.setValue("latitude", supplier.latitude.toString());
+      form.setValue("longitude", supplier.longitude.toString());
     }
     toast.success("Dados do fornecedor carregados.");
   };
@@ -294,24 +297,24 @@ export function TaskFormModal({
     let finalLon = values.longitude ? parseFloat(values.longitude.toString()) : null;
 
     if ((values.street && values.city) && (!finalLat || !finalLon)) {
-        try {
-            const query = `${values.street}, ${values.number ? values.number + "," : ""} ${values.city}, ${values.state}, Brasil`;
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`, {
-                headers: { "User-Agent": "TaskKanbanApp/1.0" }
-            });
-            const data = await res.json();
-            if (data && data.length > 0) {
-                finalLat = parseFloat(data[0].lat);
-                finalLon = parseFloat(data[0].lon);
-            }
-        } catch (error) {
-            console.warn("Falha na geolocalização:", error);
+      try {
+        const query = `${values.street}, ${values.number ? values.number + "," : ""} ${values.city}, ${values.state}, Brasil`;
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`, {
+          headers: { "User-Agent": "TaskKanbanApp/1.0" }
+        });
+        const data = await res.json();
+        if (data && data.length > 0) {
+          finalLat = parseFloat(data[0].lat);
+          finalLon = parseFloat(data[0].lon);
         }
+      } catch (error) {
+        console.warn("Falha na geolocalização:", error);
+      }
     }
 
-    const { cep, street, number, neighborhood, city, state, complement, ...taskFields } = values;
+    const { cep, street, number, neighborhood, city, state, complement, id, ...taskFields } = values;
     const hasAddress = street || city || (finalLat && finalLon);
-    
+
     const taskAddressData = hasAddress ? {
       cep,
       endereco: street,
@@ -326,7 +329,7 @@ export function TaskFormModal({
 
     // --- CORREÇÃO PRINCIPAL: ENVIA O ID SE EXISTIR ---
     const payload = {
-      id: initialData?.id, // Envia o ID para o pai saber que é edição
+      id: id || initialData?.id, // Usa o do form, com fallback para o inicial
       ...taskFields,
       assignedToId: values.assignedToId === "unassigned" ? null : values.assignedToId,
       priority: parseInt(values.priority) || 1,
@@ -395,7 +398,7 @@ export function TaskFormModal({
 
                 <TabsContent value="address" className="space-y-5">
                   <div className="p-4 bg-slate-50 border rounded-lg space-y-2">
-                    <Label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2"><Search size={12}/> Preenchimento Rápido</Label>
+                    <Label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2"><Search size={12} /> Preenchimento Rápido</Label>
                     <Select onValueChange={handleSupplierSelect}>
                       <FormControl><SelectTrigger className="bg-white"><SelectValue placeholder="Selecione um fornecedor..." /></SelectTrigger></FormControl>
                       <SelectContent>{suppliers.map((sup) => (<SelectItem key={sup.id} value={sup.id}>{sup.name}</SelectItem>))}</SelectContent>
@@ -493,6 +496,8 @@ export function TaskFormModal({
                         }} />
                         <Music className="text-gray-400 mb-1" size={20} />
                         <span className="text-[10px] text-gray-600 font-medium">Upload Áudio</span>
+                        {audios.length > 0 && <span className="text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded-full mt-1">+{audios.length}</span>}
+
                       </div>
                       <Button type="button" size="sm" variant={isRecording ? "destructive" : "outline"} onClick={isRecording ? stopRecording : startRecording} className="w-full text-xs h-8">
                         {isRecording ? <Square size={12} className="mr-2 animate-pulse" /> : <Mic size={12} className="mr-2" />}
@@ -503,21 +508,34 @@ export function TaskFormModal({
 
                   {(images.length > 0 || videos.length > 0 || audios.length > 0) && (
                     <div className="space-y-2 pt-2 border-t">
-                        <Label className="text-[10px] font-bold text-slate-400 uppercase">Arquivos para Upload</Label>
-                        {videos.map((v, i) => (
-                          <div key={i} className="flex items-center gap-2 bg-purple-50 p-2 rounded border border-purple-100">
-                            <PlayCircle size={14} className="text-purple-500" />
-                            <span className="text-[10px] flex-1 truncate">{v.name}</span>
-                            <button type="button" onClick={() => handleRemoveNewFile(i, 'video')} className="text-red-500"><X size={14}/></button>
-                          </div>
-                        ))}
-                        {audios.map((a, i) => (
-                          <div key={i} className="flex items-center gap-2 bg-blue-50 p-2 rounded border border-blue-100">
-                            <Music size={14} className="text-blue-500" />
-                            <span className="text-[10px] flex-1 truncate">{a.name}</span>
-                            <button type="button" onClick={() => handleRemoveNewFile(i, 'audio')} className="text-red-500"><X size={14}/></button>
-                          </div>
-                        ))}
+                      <Label className="text-[10px] font-bold text-slate-400 uppercase">Arquivos para Upload</Label>
+                      {videos.map((v, i) => (
+                        <div key={i} className="flex items-center gap-2 bg-purple-50 p-2 rounded border border-purple-100">
+                          <PlayCircle size={14} className="text-purple-500" />
+                          <span className="text-[10px] flex-1 truncate">{v.name}</span>
+                          <button type="button" onClick={() => handleRemoveNewFile(i, 'video')} className="text-red-500"><X size={14} /></button>
+                        </div>
+                      ))}
+                      {audios.map((a, i) => (
+                        <div key={i} className="flex items-center gap-2 bg-blue-50 p-2 rounded border border-blue-100">
+                          <Music size={14} className="text-blue-500 shrink-0" />
+
+                          {/* --- CORREÇÃO AQUI: Adicionado player de áudio com URL temporária --- */}
+                          <audio
+                            src={URL.createObjectURL(a)}
+                            controls
+                            className="h-8 flex-1 w-full min-w-0" // w-full e min-w-0 ajudam no layout flex
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveNewFile(i, 'audio')}
+                            className="text-red-500 hover:bg-red-100 p-1.5 rounded transition-colors shrink-0"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </TabsContent>

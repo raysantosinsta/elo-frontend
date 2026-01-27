@@ -240,7 +240,7 @@ export default function ProductKanban() {
       ]);
 
       const colsData = Array.isArray(colsRes.data) ? colsRes.data : colsRes.data.columns || [];
-      
+
       // Ordenação inicial (segurança extra na carga)
       const sortedCols = colsData.sort((a: any, b: any) => {
         const titleA = normalizeText(a.title);
@@ -256,7 +256,7 @@ export default function ProductKanban() {
       });
 
       setColumns(sortedCols);
-      
+
       const tasksData = Array.isArray(tasksRes.data.data) ? tasksRes.data.data : tasksRes.data.tasks || [];
       setTasks(tasksData);
 
@@ -444,7 +444,7 @@ export default function ProductKanban() {
       // Regra Suprema: Concluído sempre pesa infinito positivo
       if (isADone && !isBDone) return 1;  // A vai pro fundo
       if (!isADone && isBDone) return -1; // B vai pro fundo
-      
+
       // Desempate por ordem numérica normal
       return (a.order || 0) - (b.order || 0);
     });
@@ -583,7 +583,7 @@ export default function ProductKanban() {
                         <div className="flex gap-2">
                           {task.userAssigned && (
                             <div className="bg-slate-100 px-2 py-0.5 rounded-full text-[10px] text-slate-600 font-medium truncate max-w-full">
-                              {task.userAssigned.name.split(" ")[0]}
+                              {task.userAssigned.name}
                             </div>
                           )}
                         </div>

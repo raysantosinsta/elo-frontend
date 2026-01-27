@@ -69,7 +69,7 @@ export function ForgotPasswordModal({ children }: { children: React.ReactNode })
           <DialogTitle className="text-[#2D3436]">Recuperar Senha</DialogTitle>
           <DialogDescription className="text-[#95A5A6]">
             {success
-              ? 'Email enviado com sucesso!'
+              ? 'Solicitação realizada com sucesso!'
               : 'Digite seu e-mail corporativo para receber o link.'}
           </DialogDescription>
         </DialogHeader>
@@ -79,9 +79,7 @@ export function ForgotPasswordModal({ children }: { children: React.ReactNode })
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
               <CheckCircle2 className="w-8 h-8 text-green-600" />
             </div>
-            <p className="text-center text-sm text-[#2D3436]">
-              solicitaçaçao realizada com sucesso, verificar email
-            </p>
+            
             <Button
               onClick={() => setIsOpen(false)}
               variant="outline"
