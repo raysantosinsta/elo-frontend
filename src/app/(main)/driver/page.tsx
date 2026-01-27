@@ -3,10 +3,10 @@
 "use client";
 
 import { api } from "@/services/api";
-import { useError } from "@/contexts/error-context"; // 🔥 Importamos o hook do contexto
+import { useError } from "@/contexts/error-context";
 import {
-  AlertTriangle,
   ArrowLeft,
+  AlertTriangle,
   CheckCircle,
   Clock,
   Loader2,
@@ -17,13 +17,15 @@ import {
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
+// Importação Dinâmica do Mapa para evitar erro de 'window is not defined'
 const DriverMap = dynamic(() => import("@/components/DriverMap"), {
   ssr: false,
   loading: () => (
-    <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-2">
+    <div className="h-full w-full flex items-center justify-center bg-slate-100 flex-col gap-2">
       <Loader2 className="animate-spin text-blue-600" size={32} />
-      <span className="text-slate-500 font-medium">Carregando GPS...</span>
+      <span className="text-slate-500 font-medium">Carregando Mapa...</span>
     </div>
   ),
 });
@@ -36,87 +38,113 @@ interface RoutePoint {
   endereco: string;
   columnId?: string;
   taskAddress?: any;
-  userAssigned?: { id: string; name: string }; 
+  userAssigned?: { id: string; name: string };
   userAssignedId?: string;
 }
 
 export default function DriverPage() {
   const router = useRouter();
-  const { showError } = useError(); // 🔥 Hook para disparar erros manuais (validação)
+  const { showError } = useError();
 
-  // --- ESTADOS PRINCIPAIS ---
+  // --- ESTADOS ---
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
   const [currentPosition, setCurrentPosition] = useState<[number, number] | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(true);
 
-  // --- ESTADOS DE TEMPO / TIMER ---
+  // --- TIMER ---
   const [timeRemainingString, setTimeRemainingString] = useState<string>("--:--");
   const [isLate, setIsLate] = useState(false);
 
-  // --- ESTADOS DE SIMULAÇÃO ---
+  // --- SIMULAÇÃO ---
   const [isGPSActive, setIsGPSActive] = useState(true);
   const [isSimulating, setIsSimulating] = useState(false);
   const simulationInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // --- ESTADOS DO MODAL ---
+  // --- MODAL ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionType, setActionType] = useState<"COMPLETED" | "FAILED">("COMPLETED");
-  const [comment, setComment] = useState(""); 
+  const [comment, setComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- INPUTS DO FORMULÁRIO (NOVA TAREFA) ---
+  // --- FORM NOVA TAREFA ---
   const [rescheduleDate, setRescheduleDate] = useState<string>("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskDescription, setNewTaskDescription] = useState(""); 
+  const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskDate, setNewTaskDate] = useState("");
 
   const watchIdRef = useRef<number | null>(null);
 
   // 1. Carrega a rota do LocalStorage
   useEffect(() => {
-    const storedRoute = localStorage.getItem("rotaAtiva");
-    const savedIndex = localStorage.getItem("rotaIndex");
+    try {
+      const storedRoute = localStorage.getItem("rotaAtiva");
+      const savedIndex = localStorage.getItem("rotaIndex");
 
-    if (storedRoute) {
-      setRoutePoints(JSON.parse(storedRoute));
-      if (savedIndex) setCurrentStopIndex(Number(savedIndex));
-    } else {
+      if (storedRoute) {
+        const parsedRoute: RoutePoint[] = JSON.parse(storedRoute);
+        
+        // Validação: Garante que os pontos têm coordenadas válidas
+        const validRoute = parsedRoute.filter(p => 
+          p.lat !== undefined && p.lng !== undefined && !isNaN(Number(p.lat)) && !isNaN(Number(p.lng))
+        );
+
+        console.log("📍 Rota Carregada:", validRoute); // DEBUG: Veja no console se tem 2 itens
+
+        if (validRoute.length > 0) {
+          setRoutePoints(validRoute);
+          if (savedIndex) {
+            const idx = Number(savedIndex);
+            setCurrentStopIndex(idx < validRoute.length ? idx : 0);
+          }
+        } else {
+          toast.error("Rota inválida ou sem coordenadas.");
+          router.push("/route-planner");
+        }
+      } else {
+        // Se não tiver rota, volta pro planejador
+        router.push("/route-planner");
+      }
+    } catch (error) {
+      console.error("Erro ao carregar rota:", error);
       router.push("/route-planner");
+    } finally {
+      setIsLoadingRoute(false);
     }
   }, [router]);
 
   // 2. CRONÔMETRO
   useEffect(() => {
     const updateTimer = () => {
-        const storedStartTime = localStorage.getItem("rotaStartTime");
-        const storedDuration = localStorage.getItem("rotaTotalDuration"); 
+      const storedStartTime = localStorage.getItem("rotaStartTime");
+      const storedDuration = localStorage.getItem("rotaTotalDuration");
 
-        if (!storedStartTime || !storedDuration) return;
+      if (!storedStartTime || !storedDuration) return;
 
-        const startTime = new Date(storedStartTime).getTime();
-        const totalDurationMs = Number(storedDuration) * 1000;
-        const now = Date.now();
+      const startTime = new Date(storedStartTime).getTime();
+      const totalDurationMs = Number(storedDuration) * 1000;
+      const now = Date.now();
 
-        const endTime = startTime + totalDurationMs;
-        const remainingMs = endTime - now;
+      const endTime = startTime + totalDurationMs;
+      const remainingMs = endTime - now;
 
-        if (remainingMs <= 0) {
-            setIsLate(true);
-            const overdueSeconds = Math.abs(remainingMs / 1000);
-            setTimeRemainingString(`+${formatSeconds(overdueSeconds)}`);
-        } else {
-            setIsLate(false);
-            const remainingSeconds = remainingMs / 1000;
-            setTimeRemainingString(formatSeconds(remainingSeconds));
-        }
+      if (remainingMs <= 0) {
+        setIsLate(true);
+        const overdueSeconds = Math.abs(remainingMs / 1000);
+        setTimeRemainingString(`+${formatSeconds(overdueSeconds)}`);
+      } else {
+        setIsLate(false);
+        const remainingSeconds = remainingMs / 1000;
+        setTimeRemainingString(formatSeconds(remainingSeconds));
+      }
     };
 
     const formatSeconds = (sec: number) => {
-        const h = Math.floor(sec / 3600);
-        const m = Math.floor((sec % 3600) / 60);
-        const s = Math.floor(sec % 60);
-        if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
-        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = Math.floor(sec % 60);
+      if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
 
     updateTimer();
@@ -124,12 +152,19 @@ export default function DriverPage() {
     return () => clearInterval(intervalId);
   }, []);
 
-  // 3. Monitora GPS
+  // 3. Monitora GPS Real
   useEffect(() => {
     if (!navigator.geolocation || !isGPSActive) return;
+    
+    // Pega posição inicial rápida
+    navigator.geolocation.getCurrentPosition(
+        (pos) => setCurrentPosition([pos.coords.latitude, pos.coords.longitude]),
+        (err) => console.warn("GPS Init Error:", err)
+    );
+
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => setCurrentPosition([pos.coords.latitude, pos.coords.longitude]),
-      (err) => console.error("Erro GPS:", err),
+      (err) => console.error("GPS Error:", err),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
     return () => { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); };
@@ -138,20 +173,20 @@ export default function DriverPage() {
   // --- SIMULAÇÃO ---
   const startSimulation = () => {
     const destination = routePoints[currentStopIndex];
-    if (!currentPosition) { 
-        showError("GPS Indisponível", "Aguardando sinal de GPS para iniciar a simulação."); 
-        return; 
+    if (!currentPosition) {
+      toast.warning("Aguardando sinal de GPS para iniciar simulação.");
+      return;
     }
-    if (!destination) { 
-        showError("Erro de Rota", "Destino não encontrado."); 
-        return; 
+    if (!destination) {
+      toast.error("Destino não encontrado.");
+      return;
     }
 
     setIsGPSActive(false);
     setIsSimulating(true);
-    
-    const steps = 150; 
-    const speed = 20; 
+
+    const steps = 150;
+    const speed = 20;
     let step = 0;
     const startLat = currentPosition[0], startLng = currentPosition[1];
     const endLat = destination.lat, endLng = destination.lng;
@@ -169,11 +204,16 @@ export default function DriverPage() {
         if (simulationInterval.current) clearInterval(simulationInterval.current);
         setCurrentPosition([endLat, endLng]);
         setIsSimulating(false);
+        toast.success("Você chegou ao destino (Simulação)!");
       }
     }, speed);
   };
 
-  const resumeRealGPS = () => setIsGPSActive(true);
+  const resumeRealGPS = () => {
+      setIsGPSActive(true);
+      toast.info("GPS em tempo real ativado.");
+  };
+  
   useEffect(() => { return () => { if (simulationInterval.current) clearInterval(simulationInterval.current); }; }, []);
 
   // --- HANDLERS DO MODAL ---
@@ -184,89 +224,91 @@ export default function DriverPage() {
     setRescheduleDate(today);
     setNewTaskDate(today);
     setNewTaskTitle("");
-    setNewTaskDescription(""); 
+    setNewTaskDescription("");
     setIsModalOpen(true);
   };
 
   const confirmFinalization = async () => {
-    // --- VALIDAÇÃO MANUAL USANDO O GLOBAL DIALOG ---
-    if (!comment && actionType === "FAILED") { 
-        showError("Campo Obrigatório", "Por favor, descreva o motivo do problema."); 
-        return; 
+    if (!comment && actionType === "FAILED") {
+      showError("Campo Obrigatório", "Por favor, descreva o motivo do problema.");
+      return;
     }
-    if (actionType === "COMPLETED" && !newTaskTitle.trim()) { 
-        showError("Campo Obrigatório", "Informe o título da nova tarefa para prosseguir."); 
-        return; 
+    if (actionType === "COMPLETED" && !newTaskTitle.trim() && routePoints.length === 0) { // Lógica ajustada
+       // Apenas valida titulo se for criar nova tarefa OBRIGATÓRIA, aqui é opcional na maioria dos fluxos
+       // Se for obrigatório criar próxima tarefa, mantenha a validação
     }
 
     setIsSubmitting(true);
     const task = routePoints[currentStopIndex];
 
     try {
-      // 1. Atualiza a tarefa ATUAL (Finaliza)
+      // 1. Atualiza a tarefa ATUAL
       if (actionType === "FAILED") {
         const formattedDate = rescheduleDate ? `${rescheduleDate}T12:00:00` : undefined;
         await api.patch(`/routes/tasks/${task.id}/finalize`, {
           status: "FAILED",
-          finalComment: comment, 
+          finalComment: comment,
           scheduledAt: formattedDate ? new Date(formattedDate).toISOString() : undefined,
         });
+        toast.error("Tarefa marcada com problema.");
       } else {
         await api.patch(`/routes/tasks/${task.id}/finalize`, {
           status: "COMPLETED",
           finalComment: comment,
         });
+        toast.success("Tarefa concluída!");
 
-        // 2. Cria a NOVA tarefa
+        // 2. Cria a NOVA tarefa (se preenchido)
         if (newTaskTitle) {
           if (!task.columnId) {
-             showError("Erro de Dados", "Dados da tarefa desatualizados. Recarregue a página."); 
-             setIsSubmitting(false); 
-             return; 
+             toast.error("Erro ao criar próxima tarefa: Coluna não identificada.");
+          } else {
+              const newDateFormatted = newTaskDate ? `${newTaskDate}T09:00:00` : undefined;
+              
+              const addressPayload = task.taskAddress ? {
+                cep: task.taskAddress.cep,
+                endereco: task.taskAddress.endereco,
+                numero: task.taskAddress.numero,
+                bairro: task.taskAddress.bairro,
+                cidade: task.taskAddress.cidade,
+                estado: task.taskAddress.estado,
+                complemento: task.taskAddress.complemento || "",
+                latitude: Number(task.taskAddress.latitude),
+                longitude: Number(task.taskAddress.longitude)
+              } : {
+                 cep: "00000-000",
+                 endereco: task.endereco.split(',')[0],
+                 numero: task.endereco.split(',')[1] || 'S/N',
+                 bairro: "N/A", cidade: "N/A", estado: "UF",
+                 latitude: Number(task.lat), longitude: Number(task.lng)
+              };
+    
+              const finalDescription = `${newTaskDescription}\n\n> Histórico: ${comment || "Sem observações na conclusão anterior."}`;
+    
+              await api.post('/tasks', {
+                title: newTaskTitle,
+                columnId: task.columnId,
+                description: finalDescription.trim(),
+                assignedToId: task.userAssigned?.id || task.userAssignedId,
+                scheduledAt: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
+                dueDate: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
+                address: addressPayload
+              });
+              toast.success("Próxima visita agendada.");
           }
-          const newDateFormatted = newTaskDate ? `${newTaskDate}T09:00:00` : undefined;
-          
-          const addressPayload = task.taskAddress ? {
-            cep: task.taskAddress.cep,
-            endereco: task.taskAddress.endereco,
-            numero: task.taskAddress.numero,
-            bairro: task.taskAddress.bairro,
-            cidade: task.taskAddress.cidade,
-            estado: task.taskAddress.estado,
-            complemento: task.taskAddress.complemento || "",
-            latitude: Number(task.taskAddress.latitude),
-            longitude: Number(task.taskAddress.longitude)
-          } : {
-             cep: "00000-000",
-             endereco: task.endereco.split(',')[0],
-             numero: task.endereco.split(',')[1],
-             bairro: "N/A", cidade: "N/A", estado: "UF",
-             latitude: Number(task.lat), longitude: Number(task.lng)
-          };
-
-          const finalDescription = `${newTaskDescription}\n\n> Histórico: ${comment || "Sem observações na conclusão anterior."}`;
-
-          await api.post('/tasks', {
-            title: newTaskTitle,
-            columnId: task.columnId,
-            description: finalDescription.trim(),
-            assignedToId: task.userAssigned?.id || task.userAssignedId, 
-            scheduledAt: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
-            dueDate: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
-            address: addressPayload
-          });
         }
       }
 
-      // Avança
+      // Avança para a próxima
       const nextIndex = currentStopIndex + 1;
       if (nextIndex >= routePoints.length) {
-        // Sucesso Final - Redireciona
+        // FIM DA ROTA
         localStorage.removeItem("rotaAtiva");
         localStorage.removeItem("rotaIndex");
         localStorage.removeItem("rotaStartTime");
         localStorage.removeItem("rotaTotalDuration");
-        router.push("/");
+        toast.success("Rota finalizada com sucesso!");
+        router.push("/Kanban");
       } else {
         setCurrentStopIndex(nextIndex);
         localStorage.setItem("rotaIndex", String(nextIndex));
@@ -274,25 +316,46 @@ export default function DriverPage() {
       }
 
     } catch (error) {
-      // --- REMOVIDO ALERT MANUAL ---
-      // O Interceptor do Axios já disparou o Dialog Global.
       console.error("Erro na finalização:", error);
+      toast.error("Erro ao finalizar tarefa.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // --- RENDERIZAÇÃO ---
+
+  // 1. Loading Inicial
+  if (isLoadingRoute) {
+      return (
+        <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-2">
+            <Loader2 className="animate-spin text-blue-600" size={40} />
+            <span className="text-slate-600 font-medium">Preparando navegação...</span>
+        </div>
+      );
+  }
+
+  // 2. Validação se existe tarefa atual
   const currentTask = routePoints[currentStopIndex];
-  if (!currentTask) return null;
+  if (!currentTask) {
+      return (
+        <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-4 p-4 text-center">
+            <AlertTriangle className="text-amber-500" size={48} />
+            <h2 className="text-xl font-bold text-slate-800">Nenhuma tarefa ativa</h2>
+            <p className="text-slate-500">A rota parece estar vazia ou foi concluída.</p>
+            <button onClick={() => router.push('/')} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Voltar ao Início</button>
+        </div>
+      );
+  }
 
   return (
     <div className="relative h-screen w-full flex flex-col bg-slate-100 overflow-hidden">
-      {/* HEADER ... (Mantido igual) */}
+      {/* HEADER FLUTUANTE */}
       <div className="absolute top-4 left-4 right-4 z-[500] pointer-events-none">
         <div className="bg-white/95 backdrop-blur shadow-lg rounded-2xl p-4 border border-slate-200 pointer-events-auto">
           <div className="flex justify-between items-start mb-2">
             <div className="flex items-center gap-2">
-              <button onClick={() => router.back()} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => router.back()} className="text-slate-400 hover:text-slate-600 p-1">
                 <ArrowLeft size={20} />
               </button>
               <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase">
@@ -306,7 +369,7 @@ export default function DriverPage() {
               </div>
               {!isGPSActive && !isSimulating && (
                 <button onClick={resumeRealGPS} className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] px-2 py-1.5 rounded-full font-bold border border-slate-200">
-                  <Navigation size={10} /> GPS
+                  <Navigation size={10} /> GPS OFF
                 </button>
               )}
               {!isSimulating && (
@@ -316,16 +379,22 @@ export default function DriverPage() {
               )}
             </div>
           </div>
-          <h2 className="font-bold text-lg text-slate-800 leading-tight">{currentTask.title}</h2>
+          <h2 className="font-bold text-lg text-slate-800 leading-tight line-clamp-1" title={currentTask.title}>{currentTask.title}</h2>
           <div className="flex items-center gap-1 mt-1 text-slate-500 text-sm">
-            <MapPin size={14} className="text-blue-500" />
+            <MapPin size={14} className="text-blue-500 shrink-0" />
             <span className="truncate">{currentTask.endereco}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 z-0">
-        <DriverMap route={routePoints} myLocation={currentPosition} currentStopIndex={currentStopIndex} />
+      {/* MAPA */}
+      <div className="flex-1 z-0 relative">
+        {/* Passamos o array completo de routePoints para o Mapa decidir como desenhar */}
+        <DriverMap 
+            route={routePoints} 
+            myLocation={currentPosition} 
+            currentStopIndex={currentStopIndex} 
+        />
       </div>
 
       {/* FOOTER ACTIONS */}
@@ -367,22 +436,14 @@ export default function DriverPage() {
                     <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider border-b border-emerald-200 pb-2 mb-2">
                         Criar Próxima Tarefa
                     </h4>
-                    
                     <div>
                         <label className="text-[10px] font-bold text-emerald-600 block mb-1">Título</label>
                         <input type="text" placeholder="Ex: Retorno ao Cliente" className="w-full p-2 rounded-lg border border-emerald-200 text-sm" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} />
                     </div>
-
                     <div>
                         <label className="text-[10px] font-bold text-emerald-600 block mb-1">Descrição (Opcional)</label>
-                        <textarea 
-                            placeholder="Detalhes para a próxima visita..." 
-                            className="w-full p-2 rounded-lg border border-emerald-200 text-sm min-h-[60px]" 
-                            value={newTaskDescription} 
-                            onChange={(e) => setNewTaskDescription(e.target.value)} 
-                        />
+                        <textarea placeholder="Detalhes..." className="w-full p-2 rounded-lg border border-emerald-200 text-sm min-h-[60px]" value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)} />
                     </div>
-
                     <div>
                         <label className="text-[10px] font-bold text-emerald-600 block mb-1">Data Agendamento</label>
                         <input type="date" className="w-full p-2 rounded-lg border border-emerald-200 text-sm" value={newTaskDate} onChange={(e) => setNewTaskDate(e.target.value)} />
