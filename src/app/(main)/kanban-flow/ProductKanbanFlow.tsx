@@ -11,9 +11,16 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  X
+  X,
+  // Novos icones para o preview detalhado
+  Paperclip,
+  ImageIcon,
+  Mic,
+  MapPin,
+  Calendar,
+  Flag
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 // --- Imports de Infraestrutura ---
@@ -31,7 +38,7 @@ import { KanbanLayout } from "@/components/kanban/kanban-layout";
 
 // --- Imports de UI Genéricos ---
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -52,12 +59,13 @@ interface FlowItem {
   status: string;
   stageId?: string;
   supplierId?: string;
-  supplier?: { id: string; name: string; category?: string };
+  supplier?: { id: string; name: string; category?: string; city?: string; state?: string }; // Ajustado para suportar dados extras se houver
   dueDate?: string;
   images: FlowMedia[];
   audios: FlowMedia[];
   videos: FlowMedia[];
   description?: string;
+  createdAt?: string; // Adicionado opcional
 }
 interface FlowStage {
   id: string;
@@ -73,10 +81,11 @@ interface ProductFlow {
 }
 
 // --- Helpers ---
-const formatDateUTC = (dateString?: string) => {
-  if (!dateString) return "-";
-  return new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-};
+const formatDateShort = (d: string) =>
+  new Date(d).toLocaleDateString("pt-BR", { day: "numeric", month: "short", timeZone: 'UTC' });
+
+const isOverdue = (d: string) => new Date(d) < new Date();
+
 const getPriorityColor = (p: number) => { 
   if (p === 1) return "#E74C3C"; 
   if (p === 2) return "#F1C40F"; 
@@ -129,24 +138,16 @@ export default function ProductFlowKanban() {
   const [filteredItems, setFilteredItems] = useState<FlowItem[] | null>(null);
 
   // --- Drag & Drop Setup ---
-  // Achatar todos os itens para passar para o hook
-  const allItems = currentFlow?.stages.flatMap(s => s.items) || [];
+  const allItems = useMemo(() => currentFlow?.stages.flatMap(s => s.items) || [], [currentFlow]);
   
   const { moveItem, onDragStart } = useKanbanDrag({
     items: allItems,
-    setItems: (updatedItems) => {
-        // Optimistic Update Complexo: Precisamos reconstruir a estrutura de Flow -> Stages -> Items
-        // Como 'updatedItems' é uma lista plana, apenas atualizamos a UI via re-fetch ou
-        // manipulamos o 'currentFlow' localmente se quisermos performance extrema.
-        // Para simplificar e manter integridade, confiamos no refetch do board após o drop.
-        // Mas para feedback visual imediato (o hook faz isso no array plano), aqui deixamos vazio
-        // pois o hook 'moveItem' retorna void e gerencia estado interno se passado.
-        // *Nota:* O hook useKanbanDrag fornecido anteriormente espera um array plano.
+    setItems: () => {
+        // Optimistic Update é complexo aqui, confiamos no refetch
     },
     idField: "stageId",
     moveCallback: async (itemId, newStageId) => {
        await api.put(`/flow/items/${itemId}/move`, { newStageId });
-       // Recarrega o board para garantir ordem e dados corretos
        fetchFlowBoard(selectedFlowId);
     }
   });
@@ -166,7 +167,6 @@ export default function ProductFlowKanban() {
 
   const fetchFlowBoard = useCallback(async (flowId: string) => {
     if (!flowId) return;
-    // setLoading(true); // Opcional: evitar flicker se já estiver carregado
     try {
       const { data } = await api.get(`/flow/${flowId}/board?companyId=${user?.company?.id}`);
       setCurrentFlow(data);
@@ -221,7 +221,6 @@ export default function ProductFlowKanban() {
 
   // --- CRUD Handlers ---
 
-  // Fluxo
   const handleCreateFlow = async () => {
     if (!flowName.trim()) return toast.error("Nome obrigatório");
     try {
@@ -237,79 +236,93 @@ export default function ProductFlowKanban() {
   const handleDeleteFlow = async () => {
      if (!selectedFlowId) return;
      try {
-        await api.delete(`/flow/${selectedFlowId}`);
-        const remaining = flows.filter(f => f.id !== selectedFlowId);
-        setFlows(remaining);
-        setSelectedFlowId(remaining.length > 0 ? remaining[0].id : "");
-        setIsDeleteFlowModal(false);
-        toast.success("Fluxo excluído");
+       await api.delete(`/flow/${selectedFlowId}`);
+       const remaining = flows.filter(f => f.id !== selectedFlowId);
+       setFlows(remaining);
+       setSelectedFlowId(remaining.length > 0 ? remaining[0].id : "");
+       setIsDeleteFlowModal(false);
+       toast.success("Fluxo excluído");
      } catch { toast.error("Erro ao excluir fluxo"); }
   };
 
-  // Etapa
   const handleStageSubmit = async () => {
      if (!selectedFlowId || !stageName.trim()) return toast.error("Nome obrigatório");
      try {
-        if (editingStage) {
-           await api.put(`/flow/stages/${editingStage.id}`, { name: stageName, color: stageColor, order: editingStage.order });
-        } else {
-           await api.post(`/flow/${selectedFlowId}/stages`, { name: stageName, color: stageColor });
-        }
-        setIsStageModal(false);
-        fetchFlowBoard(selectedFlowId);
-        toast.success(editingStage ? "Etapa atualizada" : "Etapa criada");
+       if (editingStage) {
+          await api.put(`/flow/stages/${editingStage.id}`, { name: stageName, color: stageColor, order: editingStage.order });
+       } else {
+          await api.post(`/flow/${selectedFlowId}/stages`, { name: stageName, color: stageColor });
+       }
+       setIsStageModal(false);
+       fetchFlowBoard(selectedFlowId);
+       toast.success(editingStage ? "Etapa atualizada" : "Etapa criada");
      } catch { toast.error("Erro ao salvar etapa"); }
   };
 
   const handleDeleteStage = async () => {
      if (!stageToDelete) return;
      try {
-        await api.delete(`/flow/stages/${stageToDelete.id}`);
-        setIsDeleteStageModal(false);
-        fetchFlowBoard(selectedFlowId);
-        toast.success("Etapa removida");
+       await api.delete(`/flow/stages/${stageToDelete.id}`);
+       setIsDeleteStageModal(false);
+       fetchFlowBoard(selectedFlowId);
+       toast.success("Etapa removida");
      } catch { toast.error("Erro ao remover etapa"); }
   };
 
-  // Item
   const handleItemSubmit = async (values: any, files: any, removedMedia: any) => {
     if (!selectedFlowId) return;
     setIsSubmitting(true);
     try {
         if (editingItem) {
-            await api.put(`/flow/items/${editingItem.id}`, values);
-            // Lógica de mídia (simplificada para o exemplo, similar ao Kanban de Tarefas)
-            if(removedMedia.images.length) for (const id of removedMedia.images) await api.delete(`/flow/items/${editingItem.id}/media/image/${id}`);
-            // ... uploads
+            // CRIAR UM OBJETO COMBINADO PARA O PUT
+            const payload = {
+                ...values,
+                // Adiciona os arrays de remoção ao payload enviado para o backend
+                removeImageIds: removedMedia.images,
+                removeVideoIds: removedMedia.videos,
+                removeAudioIds: removedMedia.audios
+            };
+
+            // Envia o payload com os dados E os IDs para remover
+            await api.put(`/flow/items/${editingItem.id}`, payload);
+            
+            // Depois faz o upload das NOVAS mídias
             await uploadMedia(editingItem.id, files);
+            
             toast.success("Item atualizado");
         } else {
+            // (Lógica de criação mantida igual...)
             const { data: newItem } = await api.post(`/flow/${selectedFlowId}/items`, values);
             await uploadMedia(newItem.id, files);
             toast.success("Item criado");
         }
+        
         setIsItemModal(false);
         setIsEditItemModal(false);
         fetchFlowBoard(selectedFlowId);
-    } catch { toast.error("Erro ao salvar item"); }
-    finally { setIsSubmitting(false); }
+    } catch (err) { 
+        console.error(err);
+        toast.error("Erro ao salvar item"); 
+    } finally { 
+        setIsSubmitting(false); 
+    }
   };
 
   const handleDeleteItem = async () => {
      if (!itemToDelete) return;
      try {
-        await api.delete(`/flow/items/${itemToDelete.id}`);
-        setIsDeleteItemModal(false);
-        fetchFlowBoard(selectedFlowId);
-        toast.success("Item excluído");
+       await api.delete(`/flow/items/${itemToDelete.id}`);
+       setIsDeleteItemModal(false);
+       fetchFlowBoard(selectedFlowId);
+       toast.success("Item excluído");
      } catch { toast.error("Erro ao excluir item"); }
   };
 
   const uploadMedia = async (itemId: string, files: any) => {
      const upload = async (file: File, type: string) => {
-        const fd = new FormData();
-        fd.append("file", file);
-        await api.post(`/flow/items/${itemId}/media/${type}`, fd, { headers: { 'Content-Type': 'multipart/form-data' }});
+       const fd = new FormData();
+       fd.append("file", file);
+       await api.post(`/flow/items/${itemId}/media/${type}`, fd, { headers: { 'Content-Type': 'multipart/form-data' }});
      };
      for(const f of files.images) await upload(f, "image");
      for(const f of files.audios) await upload(f, "audio");
@@ -351,7 +364,6 @@ export default function ProductFlowKanban() {
 
   return (
     <KanbanLayout>
-      {/* 1. Header com Seletor de Fluxo */}
       <KanbanHeader
         title="Esteira de Produção"
         icon={<Factory className="w-5 h-5 text-orange-400" />}
@@ -375,7 +387,6 @@ export default function ProductFlowKanban() {
         }
       />
 
-      {/* 2. Filtros Específicos de Fluxo */}
       {currentFlow && (
         <KanbanFilter>
            <div className="grid gap-1">
@@ -421,7 +432,6 @@ export default function ProductFlowKanban() {
         </KanbanFilter>
       )}
 
-      {/* 3. Board */}
       <KanbanBoard>
          {!selectedFlowId ? (
             <div className="w-full h-full flex flex-col items-center justify-center opacity-50">
@@ -431,7 +441,6 @@ export default function ProductFlowKanban() {
             </div>
          ) : (
             currentFlow?.stages?.sort((a, b) => a.order - b.order).map(stage => {
-               // Filtragem Lógica (UI level)
                const itemsToShow = filteredItems 
                   ? stage.items.filter(i => filteredItems.some(fi => fi.id === i.id))
                   : stage.items;
@@ -441,7 +450,7 @@ export default function ProductFlowKanban() {
                      key={stage.id}
                      id={stage.id}
                      title={stage.name}
-                     color={stage.color || "#34495E"} // Cor específica da etapa
+                     color={stage.color || "#34495E"}
                      count={itemsToShow.length}
                      onDropItem={moveItem}
                      onEditClick={() => { setEditingStage(stage); setStageName(stage.name); setStageColor(stage.color || "#34495E"); setIsStageModal(true); }}
@@ -453,11 +462,12 @@ export default function ProductFlowKanban() {
                            key={item.id}
                            id={item.id}
                            title={item.title}
-                           subtitle={item.productRef} // Referência do produto
+                           subtitle={item.productRef}
                            priorityColor={getPriorityColor(item.priority)}
                            coverImage={item.images[0]?.url}
                            imagesCount={item.images.length}
                            onDragStart={(e) => onDragStart(e, item.id)}
+                           onDoubleClick={() => { setPreviewItem(item); setIsPreviewModal(true); }}
                            onView={() => { setPreviewItem(item); setIsPreviewModal(true); }}
                            onEdit={() => { setEditingItem(item); setIsEditItemModal(true); }}
                            onDelete={() => { setItemToDelete(item); setIsDeleteItemModal(true); }}
@@ -473,13 +483,12 @@ export default function ProductFlowKanban() {
                                  )}
                                  {item.dueDate && (
                                     <span className="ml-auto text-[9px] text-slate-400 flex items-center gap-1">
-                                       <CalendarClock size={10} /> {formatDateUTC(item.dueDate)}
+                                       <CalendarClock size={10} /> {formatDateShort(item.dueDate)}
                                     </span>
                                  )}
                               </div>
                            }
                         >
-                           {/* Conteúdo específico do card de item */}
                            <p className="line-clamp-2 text-xs text-slate-600 mb-1">{item.description}</p>
                            <div className="flex items-center gap-1">
                               <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1 rounded">#{item.orderNumber || "SEM-PEDIDO"}</span>
@@ -491,7 +500,6 @@ export default function ProductFlowKanban() {
             })
          )}
          
-         {/* Botão de Adicionar Etapa no final do Board */}
          {currentFlow && (
              <button 
                onClick={() => { setEditingStage(null); setStageName(""); setStageColor("#2C3E50"); setIsStageModal(true); }}
@@ -503,9 +511,6 @@ export default function ProductFlowKanban() {
          )}
       </KanbanBoard>
 
-      {/* --- MODAIS --- */}
-
-      {/* 1. Modal de Item (Complexo) */}
       <FlowItemModal 
          isOpen={isItemModal || isEditItemModal}
          onClose={() => { setIsItemModal(false); setIsEditItemModal(false); setEditingItem(null); }}
@@ -517,7 +522,6 @@ export default function ProductFlowKanban() {
          stages={currentFlow?.stages.map(s => ({ id: s.id, name: s.name, order: s.order })) || []}
       />
 
-      {/* 2. Modal de Etapa */}
       <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
          <DialogContent>
             <DialogHeader><DialogTitle>{editingStage ? "Editar Etapa" : "Nova Etapa"}</DialogTitle></DialogHeader>
@@ -541,7 +545,6 @@ export default function ProductFlowKanban() {
          </DialogContent>
       </Dialog>
 
-      {/* 3. Modal de Fluxo */}
       <Dialog open={isFlowModal} onOpenChange={setIsFlowModal}>
          <DialogContent>
             <DialogHeader><DialogTitle>Novo Fluxo de Produção</DialogTitle></DialogHeader>
@@ -556,7 +559,6 @@ export default function ProductFlowKanban() {
          </DialogContent>
       </Dialog>
 
-      {/* 4. Modal Delete Genérico */}
       <ConfirmDeleteModal 
          isOpen={isDeleteItemModal || isDeleteStageModal || isDeleteFlowModal}
          onClose={() => { setIsDeleteItemModal(false); setIsDeleteStageModal(false); setIsDeleteFlowModal(false); }}
@@ -569,49 +571,116 @@ export default function ProductFlowKanban() {
          description="Tem certeza? Esta ação removerá o item e seus dados associados."
       />
 
-      {/* 5. Modal Preview */}
+      {/* --- PREVIEW MODAL ATUALIZADO (IGUAL AO SOLICITADO) --- */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
-         <DialogContent className="max-w-2xl">
-            <DialogHeader>
-               <DialogTitle className="flex items-center gap-2">
-                  {previewItem?.title}
-                  <span className="text-sm font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                     {previewItem?.productRef}
-                  </span>
-               </DialogTitle>
-               <DialogDescription>
-                  Pedido: {previewItem?.orderNumber || "N/A"}
-               </DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-4 text-sm py-4">
-               <div>
-                  <p className="font-semibold text-slate-500 text-xs uppercase">Quantidade</p>
-                  <p>{previewItem?.quantity} un.</p>
-               </div>
-               <div>
-                  <p className="font-semibold text-slate-500 text-xs uppercase">Prioridade</p>
-                  <p>{previewItem?.priority === 1 ? "Alta" : previewItem?.priority === 2 ? "Média" : "Baixa"}</p>
-               </div>
-               <div>
-                  <p className="font-semibold text-slate-500 text-xs uppercase">Fornecedor</p>
-                  <p>{previewItem?.supplier?.name || "Produção Interna"}</p>
-               </div>
-               <div>
-                  <p className="font-semibold text-slate-500 text-xs uppercase">Prazo</p>
-                  <p>{formatDateUTC(previewItem?.dueDate)}</p>
-               </div>
-               <div className="col-span-2 mt-2">
-                  <p className="font-semibold text-slate-500 text-xs uppercase mb-1">Descrição</p>
-                  <div className="bg-slate-50 p-3 rounded text-slate-700 border border-slate-100">
-                     {previewItem?.description || "Sem observações."}
-                  </div>
-               </div>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl">
+          <div className="px-6 py-4 border-b sticky top-0 bg-white z-20 flex justify-between items-center">
+            <div>
+              <DialogTitle className="text-xl font-bold text-slate-800">{previewItem?.title}</DialogTitle>
+              <div className="flex gap-2 mt-1">
+                <span className="text-[10px] uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded font-bold text-slate-500">
+                  Prioridade {previewItem?.priority === 1 ? "Alta" : previewItem?.priority === 2 ? "Média" : "Baixa"}
+                </span>
+                <span className="text-[10px] uppercase tracking-wider bg-orange-50 px-2 py-0.5 rounded font-bold text-orange-600">
+                  {previewItem?.status || "PENDENTE"}
+                </span>
+                 <span className="text-[10px] uppercase tracking-wider bg-blue-50 px-2 py-0.5 rounded font-bold text-blue-600">
+                  Ref: {previewItem?.productRef}
+                </span>
+              </div>
             </div>
-            <DialogFooter>
-               <Button variant="outline" onClick={() => setIsPreviewModal(false)}>Fechar</Button>
-               <Button onClick={() => { setIsPreviewModal(false); setEditingItem(previewItem); setIsEditItemModal(true); }}>Editar</Button>
-            </DialogFooter>
-         </DialogContent>
+          </div>
+
+          <div className="px-6 py-6 space-y-8">
+            {/* LÓGICA DE MÍDIA CORRIGIDA AQUI */}
+            {((previewItem?.images?.length || 0) + (previewItem?.videos?.length || 0) + (previewItem?.audios?.length || 0) > 0) && (
+              <div className="space-y-4">
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Paperclip size={16} className="text-orange-600" /> Arquivos e Anexos
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* IMAGENS */}
+                  {previewItem?.images?.map((img) => (
+                    <div key={img.id} className="group relative aspect-video rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                      <img src={img.url} alt="Anexo" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                      <a href={img.url} target="_blank" rel="noreferrer" className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium gap-2">
+                        <ImageIcon size={16} /> Visualizar Original
+                      </a>
+                    </div>
+                  ))}
+                  {/* VIDEOS */}
+                  {previewItem?.videos?.map((video) => (
+                    <div key={video.id} className="rounded-xl overflow-hidden bg-black border border-slate-200 shadow-inner">
+                      <video controls className="w-full aspect-video"><source src={video.url} type="video/mp4" /></video>
+                    </div>
+                  ))}
+                  {/* AUDIOS */}
+                  {previewItem?.audios?.map((audio) => (
+                    <div key={audio.id} className="col-span-1 md:col-span-2 flex flex-col gap-2 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <Mic size={14} className="text-orange-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-tight">Anexo de Áudio</span>
+                      </div>
+                      <audio controls className="w-full h-10"><source src={audio.url} type="audio/mpeg" /></audio>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-bold text-slate-900 uppercase tracking-tight text-[11px]">Descrição do Item</h4>
+              <div className="text-sm text-slate-600 whitespace-pre-wrap bg-slate-50/50 p-4 rounded-xl border border-slate-100 min-h-[100px] leading-relaxed">
+                {previewItem?.description || "Nenhuma descrição detalhada fornecida para este item."}
+              </div>
+            </div>
+
+            {/* ADAPTAÇÃO: Mostra o Fornecedor no lugar do Endereço (já que Item não tem endereço físico direto no seu código) */}
+            {previewItem?.supplier && (
+              <div className="bg-orange-50/30 p-4 rounded-xl border border-orange-100 space-y-2">
+                <h4 className="text-sm font-bold text-orange-700 flex items-center gap-2">
+                  <MapPin size={16} /> Fornecedor / Local de Produção
+                </h4>
+                <p className="text-sm text-slate-700 leading-relaxed">
+                  <span className="font-semibold">{previewItem.supplier.name}</span>
+                  {previewItem.supplier.category && <span> • {previewItem.supplier.category}</span>}
+                  <br />
+                  {(previewItem.supplier.city || previewItem.supplier.state) && (
+                     <span className="text-xs text-slate-500">{previewItem.supplier.city} - {previewItem.supplier.state}</span>
+                  )}
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-8 pt-6 border-t border-slate-100">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Qtd. Solicitada</span>
+                <div className="flex items-center gap-2">
+                   <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                     <Package size={12} />
+                   </div>
+                   <span className="text-sm font-semibold text-slate-700">{previewItem?.quantity} unidades</span>
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Prazo de Entrega</span>
+                <div className="flex items-center gap-2">
+                  <Calendar size={14} className={previewItem?.dueDate && isOverdue(previewItem.dueDate) ? "text-red-500" : "text-slate-400"} />
+                  <span className={`text-sm font-semibold ${previewItem?.dueDate && isOverdue(previewItem.dueDate) ? "text-red-600" : "text-slate-700"}`}>
+                    {previewItem?.dueDate ? formatDateShort(previewItem.dueDate) : "Sem prazo definido"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="px-6 py-4 bg-slate-50 border-t sticky bottom-0 z-20">
+            <Button variant="outline" className="text-slate-600" onClick={() => setIsPreviewModal(false)}>Fechar Janela</Button>
+            <Button className="bg-[#D35400] hover:bg-[#A04000]" onClick={() => { setIsPreviewModal(false); setEditingItem(previewItem); setIsEditItemModal(true); }}>
+              Editar Detalhes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
     </KanbanLayout>

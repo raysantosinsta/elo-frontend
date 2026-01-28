@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
@@ -15,13 +16,13 @@ import {
     Music,
     Mic,
     Square,
-    PlayCircle,
-    X,
+    Maximize2,
     Trash2,
     UploadCloud,
-    Maximize2,
     User,
     Factory,
+    X,
+    PlayCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,7 +56,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 
-// Interfaces (Mantidas conforme original)
+// Interfaces
 interface FlowMedia {
     id: string;
     url: string;
@@ -126,12 +127,15 @@ export function FlowItemModal({
     stages,
 }: FlowItemModalProps) {
     const isEditing = !!initialData;
+    
     const [images, setImages] = useState<File[]>([]);
     const [videos, setVideos] = useState<File[]>([]);
     const [audios, setAudios] = useState<File[]>([]);
+    
     const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
     const [removedVideoIds, setRemovedVideoIds] = useState<string[]>([]);
     const [removedAudioIds, setRemovedAudioIds] = useState<string[]>([]);
+    
     const [isRecording, setIsRecording] = useState(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -156,47 +160,49 @@ export function FlowItemModal({
     });
 
     useEffect(() => {
-        if (!isOpen) return;
-        // setImages([]);
-        // setVideos([]);
-        // setAudios([]);
-        // setRemovedImageIds([]);
-        // setRemovedVideoIds([]);
-        // setRemovedAudioIds([]);
-        // setIsRecording(false);
+        if (isOpen) {
+            setImages([]);
+            setVideos([]);
+            setAudios([]);
+            
+            setRemovedImageIds([]);
+            setRemovedVideoIds([]);
+            setRemovedAudioIds([]);
+            setIsRecording(false);
 
-        if (initialData) {
-            form.reset({
-                title: initialData.title,
-                description: initialData.description || "",
-                orderNumber: initialData.orderNumber || "",
-                productRef: initialData.productRef || "",
-                quantity: initialData.quantity,
-                priority: initialData.priority,
-                status: initialData.status,
-                stageId: initialData.stageId || "",
-                assignedToId: initialData.assignedTo?.id || "unassigned",
-                supplierId: initialData.supplierId || "internal",
-                dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().split("T")[0] : "",
-                productionStartedAt: initialData.productionStartedAt ? new Date(initialData.productionStartedAt).toISOString().split("T")[0] : "",
-                deliveryAt: initialData.deliveryAt ? new Date(initialData.deliveryAt).toISOString().split("T")[0] : "",
-            });
-        } else {
-            form.reset({
-                title: "",
-                description: "",
-                orderNumber: "",
-                productRef: "",
-                quantity: 1,
-                priority: 3,
-                status: "PENDENTE",
-                stageId: stages.length > 0 ? stages[0].id : "",
-                assignedToId: "unassigned",
-                supplierId: "internal",
-                dueDate: "",
-                productionStartedAt: "",
-                deliveryAt: "",
-            });
+            if (initialData) {
+                form.reset({
+                    title: initialData.title,
+                    description: initialData.description || "",
+                    orderNumber: initialData.orderNumber || "",
+                    productRef: initialData.productRef || "",
+                    quantity: initialData.quantity,
+                    priority: initialData.priority,
+                    status: initialData.status,
+                    stageId: initialData.stageId || "",
+                    assignedToId: initialData.assignedTo?.id || "unassigned",
+                    supplierId: initialData.supplierId || "internal",
+                    dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().split("T")[0] : "",
+                    productionStartedAt: initialData.productionStartedAt ? new Date(initialData.productionStartedAt).toISOString().split("T")[0] : "",
+                    deliveryAt: initialData.deliveryAt ? new Date(initialData.deliveryAt).toISOString().split("T")[0] : "",
+                });
+            } else {
+                form.reset({
+                    title: "",
+                    description: "",
+                    orderNumber: "",
+                    productRef: "",
+                    quantity: 1,
+                    priority: 3,
+                    status: "PENDENTE",
+                    stageId: stages.length > 0 ? stages[0].id : "",
+                    assignedToId: "unassigned",
+                    supplierId: "internal",
+                    dueDate: "",
+                    productionStartedAt: "",
+                    deliveryAt: "",
+                });
+            }
         }
     }, [isOpen, initialData, stages, form]);
 
@@ -249,12 +255,21 @@ export function FlowItemModal({
         );
     };
 
+    // Helper para truncar nome do arquivo no meio (ex: video_apres...final.mp4)
+    const truncateFileName = (name: string, maxLength: number = 20) => {
+        if (name.length <= maxLength) return name;
+        const extIndex = name.lastIndexOf('.');
+        const ext = extIndex !== -1 ? name.substring(extIndex) : '';
+        const nameWithoutExt = extIndex !== -1 ? name.substring(0, extIndex) : name;
+        
+        const keepChars = Math.floor((maxLength - ext.length - 3) / 2);
+        return `${nameWithoutExt.substring(0, keepChars)}...${nameWithoutExt.substring(nameWithoutExt.length - keepChars)}${ext}`;
+    };
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            {/* Ajuste: h-full no mobile e max-h-90 no desktop, flex-col para separar header/body/footer */}
             <DialogContent className="max-w-3xl h-[95vh] md:h-[90vh] flex flex-col p-0 overflow-hidden">
                 
-                {/* HEADER FIXO (shrink-0 impede que ele diminua) */}
                 <DialogHeader className="px-6 py-4 border-b bg-slate-50 shrink-0">
                     <div className="flex items-center gap-2">
                         <div className="p-2 bg-orange-100 rounded text-orange-600">
@@ -266,7 +281,6 @@ export function FlowItemModal({
                     </div>
                 </DialogHeader>
 
-                {/* CORPO COM SCROLL (flex-1 ocupa o espaço restante) */}
                 <div className="flex-1 overflow-hidden">
                     <ScrollArea className="h-full">
                         <div className="px-6 py-6">
@@ -278,7 +292,8 @@ export function FlowItemModal({
                                             <TabsTrigger value="media">Mídias & Anexos</TabsTrigger>
                                         </TabsList>
 
-                                        <TabsContent value="details" className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                                        <TabsContent value="details" className="space-y-4">
+                                            {/* Campos de Detalhes (Mantidos iguais) */}
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <FormField control={form.control} name="title" render={({ field }) => (
                                                     <FormItem className="col-span-2">
@@ -380,16 +395,19 @@ export function FlowItemModal({
                                             </div>
                                         </TabsContent>
 
-                                        <TabsContent value="media" className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-                                            {/* (Mídias salvas e novos uploads - mantidos conforme seu original) */}
-                                            {isEditing && (initialData?.images.length || initialData?.videos.length || initialData?.audios.length) ? (
-                                                <div className="space-y-2 p-3 bg-slate-50 rounded-lg border">
+                                        <TabsContent value="media" className="space-y-6">
+                                            
+                                            {/* 1. MÍDIAS JÁ SALVAS */}
+                                            {isEditing && (initialData?.images?.length || initialData?.videos?.length || initialData?.audios?.length) ? (
+                                                <div className="space-y-4 p-4 bg-slate-50 border rounded-lg">
                                                     <Label className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2"><CheckCircle2 size={12} /> Mídias Salvas</Label>
-                                                    {initialData.images.length > 0 && (
-                                                        <div className="grid grid-cols-5 gap-2 mt-2">
+                                                    
+                                                    {/* Imagens */}
+                                                    {initialData.images?.length > 0 && (
+                                                        <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
                                                             {initialData.images.map((img) => !removedImageIds.includes(img.id) && (
                                                                 <div key={img.id} className="relative aspect-square border rounded overflow-hidden group bg-white shadow-sm">
-                                                                    <img src={img.url} className="w-full h-full object-cover" />
+                                                                    <img src={img.url} className="w-full h-full object-cover" alt="saved" />
                                                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                                                                         <button type="button" onClick={() => window.open(img.url, '_blank')} className="text-white hover:scale-110"><Maximize2 size={14} /></button>
                                                                         <button type="button" onClick={() => setRemovedImageIds(p => [...p, img.id])} className="text-red-400 hover:text-red-500 hover:scale-110"><Trash2 size={14} /></button>
@@ -398,24 +416,66 @@ export function FlowItemModal({
                                                             ))}
                                                         </div>
                                                     )}
+                                                    
+                                                    {/* Vídeos */}
+                                                    {initialData.videos?.length > 0 && (
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                            {initialData.videos.map((video) => !removedVideoIds.includes(video.id) && (
+                                                                <div key={video.id} className="relative rounded-lg overflow-hidden border bg-slate-100 aspect-video group shadow-sm flex flex-col">
+                                                                    <div className="relative flex-1 bg-black overflow-hidden">
+                                                                        <video className="w-full h-full object-cover opacity-80">
+                                                                            <source src={video.url} type="video/mp4" />
+                                                                        </video>
+                                                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                                            <PlayCircle size={32} className="text-white/70" />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center justify-between p-2 bg-white h-8">
+                                                                        <span className="text-[10px] text-slate-600 truncate max-w-[120px]" title={video.filename}>
+                                                                            {truncateFileName(video.filename, 20)}
+                                                                        </span>
+                                                                        <button type="button" onClick={() => setRemovedVideoIds(p => [...p, video.id])} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 size={14} /></button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Áudios */}
+                                                    {initialData.audios?.length > 0 && (
+                                                        <div className="space-y-2">
+                                                            {initialData.audios.map((aud) => !removedAudioIds.includes(aud.id) && (
+                                                                <div key={aud.id} className="flex items-center gap-2 bg-white p-2 rounded border shadow-sm">
+                                                                    <Music size={14} className="text-orange-500" />
+                                                                    <audio src={aud.url} controls className="h-7 flex-1 w-full min-w-0" />
+                                                                    <button type="button" onClick={() => setRemovedAudioIds(p => [...p, aud.id])} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 size={16} /></button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : null}
 
                                             <Separator />
+                                            
+                                            {/* 2. ÁREA DE UPLOAD */}
                                             <Label className="text-sm font-bold flex items-center gap-2"><UploadCloud size={16} /> Adicionar Novas Mídias</Label>
+                                            
                                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                                 <div className="border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-lg p-4 flex flex-col items-center justify-center hover:bg-blue-50 cursor-pointer relative h-32 transition-colors">
                                                     <Input type="file" multiple accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => e.target.files && setImages(p => [...p, ...Array.from(e.target.files!)])} />
                                                     <ImageIcon className="text-blue-400 mb-2" size={24} />
                                                     <span className="text-xs text-blue-700 font-bold">Imagens</span>
-                                                    {images.length > 0 && <span className="text-[10px] text-green-600 mt-1 font-medium bg-green-100 px-2 py-0.5 rounded-full">{images.length}</span>}
+                                                    <span className="text-[10px] text-blue-400 mt-1">+ Adicionar</span>
                                                 </div>
+                                                
                                                 <div className="border-2 border-dashed border-purple-200 bg-purple-50/30 rounded-lg p-4 flex flex-col items-center justify-center hover:bg-purple-50 cursor-pointer relative h-32 transition-colors">
                                                     <Input type="file" multiple accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => e.target.files && setVideos(p => [...p, ...Array.from(e.target.files!)])} />
                                                     <Video className="text-purple-400 mb-2" size={24} />
                                                     <span className="text-xs text-purple-700 font-bold">Vídeos</span>
-                                                    {videos.length > 0 && <span className="text-[10px] text-green-600 mt-1 font-medium bg-green-100 px-2 py-0.5 rounded-full">{videos.length}</span>}
+                                                    <span className="text-[10px] text-purple-400 mt-1">+ Adicionar</span>
                                                 </div>
+                                                
                                                 <div className="flex flex-col gap-2 h-32">
                                                     <div className="border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer relative flex-1">
                                                         <Input type="file" multiple accept="audio/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => e.target.files && setAudios(p => [...p, ...Array.from(e.target.files!)])} />
@@ -428,6 +488,50 @@ export function FlowItemModal({
                                                     </Button>
                                                 </div>
                                             </div>
+
+                                            {/* 3. PREVIEW DOS NOVOS ARQUIVOS */}
+                                            {(images.length > 0 || videos.length > 0 || audios.length > 0) && (
+                                                <div className="space-y-2 pt-2 border-t">
+                                                    <Label className="text-[10px] font-bold text-slate-400 uppercase">Arquivos para Upload (Novos)</Label>
+                                                    
+                                                    {/* Imagens */}
+                                                    {images.length > 0 && (
+                                                        <div className="grid grid-cols-4 gap-2 mb-2">
+                                                            {images.map((img, i) => (
+                                                                <div key={i} className="relative aspect-square rounded overflow-hidden group border bg-white shadow-sm">
+                                                                    <img src={URL.createObjectURL(img)} className="w-full h-full object-cover" alt="preview" />
+                                                                    <button type="button" onClick={() => handleRemoveNewFile(i, 'image')} className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-700">
+                                                                        <Trash2 size={12} />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Vídeos */}
+                                                    {videos.map((v, i) => (
+                                                        <div key={i} className="flex items-center gap-2 bg-purple-50 p-2 rounded border border-purple-100">
+                                                            <PlayCircle size={14} className="text-purple-500" />
+                                                            {/* 🔥 AQUI APLICA O SLICE/TRUNCATE NO NOME DO VÍDEO NOVO 🔥 */}
+                                                            <span className="text-[10px] flex-1 truncate" title={v.name}>
+                                                                {truncateFileName(v.name, 25)}
+                                                            </span>
+                                                            <button type="button" onClick={() => handleRemoveNewFile(i, 'video')} className="text-red-500"><X size={14} /></button>
+                                                        </div>
+                                                    ))}
+
+                                                    {/* Áudios */}
+                                                    {audios.map((a, i) => (
+                                                        <div key={i} className="flex items-center gap-2 bg-blue-50 p-2 rounded border border-blue-100">
+                                                            <Music size={14} className="text-blue-500 shrink-0" />
+                                                            <audio src={URL.createObjectURL(a)} controls className="h-8 flex-1 w-full min-w-0" />
+                                                            <button type="button" onClick={() => handleRemoveNewFile(i, 'audio')} className="text-red-500 hover:bg-red-100 p-1.5 rounded transition-colors shrink-0">
+                                                                <X size={14} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </TabsContent>
                                     </Tabs>
                                 </form>
@@ -436,7 +540,6 @@ export function FlowItemModal({
                     </ScrollArea>
                 </div>
 
-                {/* FOOTER FIXO */}
                 <DialogFooter className="px-6 py-4 border-t bg-slate-50 shrink-0">
                     <div className="flex justify-end gap-3 w-full">
                         <Button variant="outline" onClick={onClose} disabled={isLoading}>Cancelar</Button>
