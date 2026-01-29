@@ -280,10 +280,10 @@ export default function DashboardPage() {
   }).length;
 
   const navigateToTodayTasks = () => {
-    const today = new Date().toISOString().split('T')[0]; // Formato 2026-01-29
-    // Passamos o tipo de data e a data de início na URL
-    router.push(`/Kanban?filterType=scheduled&startDate=${today}`);
-  };
+  const today = new Date().toISOString().split('T')[0];
+  // URL limpa: filterType, startDate, endDate e um timestamp para forçar o refresh
+  router.push(`/Kanban?filterType=scheduled&startDate=${today}&endDate=${today}&t=${Date.now()}`); 
+};
 
   // Render Loading
   if (!user && loading) {
@@ -349,7 +349,8 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className={`bg-white border-b-2 ${tasksForTodayCount > 0 ? 'border-blue-500' : 'border-gray-300'} shadow-sm hover:shadow-md transition-all`}>
+          <Card className={`bg-white border-b-2 cursor-pointer ${tasksForTodayCount > 0 ? 'border-blue-500' : 'border-gray-300'} shadow-sm hover:shadow-md transition-all`}
+            onClick={navigateToTodayTasks}>
             <CardContent className="p-4 text-center">
               <div className={`text-2xl md:text-3xl font-extrabold ${tasksForTodayCount > 0 ? 'text-blue-600' : 'text-gray-400'}`}
                 onClick={navigateToTodayTasks}

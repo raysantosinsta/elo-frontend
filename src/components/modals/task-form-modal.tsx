@@ -524,7 +524,7 @@ export function TaskFormModal({
               </Tabs>
 
               <DialogFooter className="px-6 py-4 border-t bg-slate-50 shrink-0">
-                <Button variant="outline" onClick={onClose} disabled={isLoading || isProcessingLocation}>Cancelar</Button>
+                <Button type="button" variant="outline" onClick={onClose} disabled={isLoading || isProcessingLocation}>Cancelar</Button>
                 <Button onClick={() => form.handleSubmit(handleSubmit)()} disabled={isLoading || isProcessingLocation} className="bg-[#D35400] hover:bg-[#A04000] text-white min-w-[140px]">
                   {(isLoading || isProcessingLocation) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                   {isEditing ? "Salvar Alterações" : "Criar Tarefa"}

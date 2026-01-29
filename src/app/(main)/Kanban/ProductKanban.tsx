@@ -3,7 +3,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation"; // <--- IMPORTANTE: Importar useSearchParams
+import { useSearchParams, useRouter } from "next/navigation"; // <--- IMPORTANTE: Importar useSearchParams
 import { toast } from "sonner";
 import {
   Layout,
@@ -50,6 +50,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 // --- Modais ---
 import { TaskFormModal } from "@/components/modals/task-form-modal";
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
+
 
 // --- Interfaces ---
 interface Professional {
@@ -142,6 +143,8 @@ const getStatusConfig = (status: string) => {
 export default function ProductKanban() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
+
 
   // Estados de Dados
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -222,22 +225,27 @@ export default function ProductKanban() {
 
   // --- fetchData ---
   const fetchData = useCallback(async (forceClear = false) => {
-    console.log("🔍 Filtros Aplicados:", {
-      tipoData: filterDateType,
-      inicio: filterStartDate || "Não definido",
-      fim: filterEndDate || "Não definido",
-      responsavel: filterAssignedTo === "all" ? "Todos" : filterAssignedTo,
-      atrasadasApenas: filterOverdue,
-      empresaId: user?.company?.id
-    });
+    // Se forceClear for true, ignoramos COMPLETAMENTE a URL
+    const urlType = !forceClear ? searchParams.get("filterType") : null;
+    const urlStart = !forceClear ? searchParams.get("startDate") : null;
+    const urlEnd = !forceClear ? searchParams.get("endDate") : null;
+
+    const activeDateType = (!forceClear && urlType) ? urlType : filterDateType;
+    const activeStartDate = (!forceClear && urlStart) ? urlStart : filterStartDate;
+    const activeEndDate = (!forceClear && urlEnd) ? urlEnd : filterEndDate;
+
     if (!user?.company?.id) return;
     setLoading(true);
     try {
-      const queryStartDate = !forceClear && filterStartDate ? new Date(filterStartDate).toISOString() : undefined;
-      const queryEndDate = !forceClear && filterEndDate ? new Date(filterEndDate).toISOString() : undefined;
+      // 2. Usa os valores "Ativos" calculados acima
+      // Converte para ISO apenas se existir valor
+      const queryStartDate = activeStartDate ? new Date(activeStartDate).toISOString() : undefined;
+      const queryEndDate = activeEndDate ? new Date(activeEndDate).toISOString() : undefined;
       const queryAssigned = !forceClear && filterAssignedTo !== "all" ? filterAssignedTo : undefined;
-      const queryDateType = !forceClear ? filterDateType : "created";
-      const queryIsOverdue = !forceClear ? filterOverdue : false;
+      const queryDateType = activeDateType;
+      const queryIsOverdue = !forceClear
+        ? (searchParams.get("filter") === "overdue" || filterOverdue)
+        : false;
 
       const [colsRes, tasksRes, usersRes, suppliersRes] = await Promise.all([
         api.get("/kanban-columns"),
@@ -291,12 +299,15 @@ export default function ProductKanban() {
 
     const filterParam = searchParams.get("filter");
     const typeParam = searchParams.get("filterType");
-    const dateParam = searchParams.get("startDate");
+    const startDateParam = searchParams.get("startDate");
+    const endDateParam = searchParams.get("endDate"); // Pegar o endDate da URL
 
-    if (typeParam === "scheduled" && dateParam) {
+
+    if (typeParam === "scheduled" && startDateParam) {
       setFilterDateType("scheduled");
-      setFilterStartDate(dateParam);
-      setFilterEndDate(""); // Limpa o fim para garantir que pegue apenas hoje
+      setFilterStartDate(startDateParam);
+      // Se houver endDate na URL, aplica, senão limpa
+      setFilterEndDate(endDateParam || "");
       setFilterOverdue(false);
     } else if (filterParam === "overdue") {
       setFilterOverdue(true);
@@ -305,11 +316,9 @@ export default function ProductKanban() {
 
   useEffect(() => {
 
-    if (user?.company?.id) {
     fetchData();
-  }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.company?.id]);
+  }, [user?.company?.id, filterStartDate, filterEndDate, filterAssignedTo, filterDateType, filterOverdue]);
 
   const handleFilterClick = async () => {
     setIsFiltering(true);
@@ -318,15 +327,16 @@ export default function ProductKanban() {
   };
 
   const handleClearFilters = async () => {
+    // 1. Limpa os estados (opcional, já que a página vai recarregar)
     setFilterStartDate("");
     setFilterEndDate("");
     setFilterAssignedTo("all");
     setFilterDateType("created");
-    setFilterOverdue(false); // 🔥 LIMPAR O FILTRO
-    setIsFiltering(true);
-    await fetchData(true);
-    setIsFiltering(false);
-    toast.success("Filtros limpos");
+    setFilterOverdue(false);
+
+    // 2. Força o navegador a carregar a URL limpa do zero
+    // Isso equivale ao F5 manual, mas redirecionando para a rota sem parâmetros
+    window.location.href = "/Kanban";
   };
 
   const handleOpenNewColumn = () => {
