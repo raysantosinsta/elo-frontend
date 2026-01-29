@@ -3,6 +3,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation"; // <--- IMPORTANTE: Importar useSearchParams
 import { toast } from "sonner";
 import {
   Layout,
@@ -17,6 +18,7 @@ import {
   Mic,
   Loader2,
   X,
+  AlertTriangle,
 } from "lucide-react";
 
 // --- Infraestrutura ---
@@ -48,6 +50,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 // --- Modais ---
 import { TaskFormModal } from "@/components/modals/task-form-modal";
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
+
 
 // --- Interfaces ---
 interface Professional {
@@ -139,6 +142,9 @@ const getStatusConfig = (status: string) => {
 
 export default function ProductKanban() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
 
   // Estados de Dados
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -168,6 +174,9 @@ export default function ProductKanban() {
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterAssignedTo, setFilterAssignedTo] = useState("all");
   const [filterDateType, setFilterDateType] = useState("created");
+  const [filterOverdue, setFilterOverdue] = useState(() => {
+    return searchParams.get("filter") === "overdue";
+  });
 
   // Estado para o loading do botão de filtrar
   const [isFiltering, setIsFiltering] = useState(false);
@@ -216,13 +225,27 @@ export default function ProductKanban() {
 
   // --- fetchData ---
   const fetchData = useCallback(async (forceClear = false) => {
+    // Se forceClear for true, ignoramos COMPLETAMENTE a URL
+    const urlType = !forceClear ? searchParams.get("filterType") : null;
+    const urlStart = !forceClear ? searchParams.get("startDate") : null;
+    const urlEnd = !forceClear ? searchParams.get("endDate") : null;
+
+    const activeDateType = (!forceClear && urlType) ? urlType : filterDateType;
+    const activeStartDate = (!forceClear && urlStart) ? urlStart : filterStartDate;
+    const activeEndDate = (!forceClear && urlEnd) ? urlEnd : filterEndDate;
+
     if (!user?.company?.id) return;
     setLoading(true);
     try {
-      const queryStartDate = !forceClear && filterStartDate ? new Date(filterStartDate).toISOString() : undefined;
-      const queryEndDate = !forceClear && filterEndDate ? new Date(filterEndDate).toISOString() : undefined;
+      // 2. Usa os valores "Ativos" calculados acima
+      // Converte para ISO apenas se existir valor
+      const queryStartDate = activeStartDate ? new Date(activeStartDate).toISOString() : undefined;
+      const queryEndDate = activeEndDate ? new Date(activeEndDate).toISOString() : undefined;
       const queryAssigned = !forceClear && filterAssignedTo !== "all" ? filterAssignedTo : undefined;
-      const queryDateType = !forceClear ? filterDateType : "created";
+      const queryDateType = activeDateType;
+      const queryIsOverdue = !forceClear
+        ? (searchParams.get("filter") === "overdue" || filterOverdue)
+        : false;
 
       const [colsRes, tasksRes, usersRes, suppliersRes] = await Promise.all([
         api.get("/kanban-columns"),
@@ -233,6 +256,7 @@ export default function ProductKanban() {
             endDate: queryEndDate,
             assignedToId: queryAssigned,
             dateType: queryDateType,
+            isOverdue: queryIsOverdue,
           },
         }),
         api.get(`/users/company/${user.company.id}`),
@@ -269,12 +293,32 @@ export default function ProductKanban() {
     } finally {
       setLoading(false);
     }
-  }, [user, filterStartDate, filterEndDate, filterAssignedTo, filterDateType]);
+  }, [user, filterStartDate, filterEndDate, filterAssignedTo, filterDateType, filterOverdue]);
 
   useEffect(() => {
+
+    const filterParam = searchParams.get("filter");
+    const typeParam = searchParams.get("filterType");
+    const startDateParam = searchParams.get("startDate");
+    const endDateParam = searchParams.get("endDate"); // Pegar o endDate da URL
+
+
+    if (typeParam === "scheduled" && startDateParam) {
+      setFilterDateType("scheduled");
+      setFilterStartDate(startDateParam);
+      // Se houver endDate na URL, aplica, senão limpa
+      setFilterEndDate(endDateParam || "");
+      setFilterOverdue(false);
+    } else if (filterParam === "overdue") {
+      setFilterOverdue(true);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.company?.id]);
+  }, [user?.company?.id, filterStartDate, filterEndDate, filterAssignedTo, filterDateType, filterOverdue]);
 
   const handleFilterClick = async () => {
     setIsFiltering(true);
@@ -283,14 +327,16 @@ export default function ProductKanban() {
   };
 
   const handleClearFilters = async () => {
+    // 1. Limpa os estados (opcional, já que a página vai recarregar)
     setFilterStartDate("");
     setFilterEndDate("");
     setFilterAssignedTo("all");
     setFilterDateType("created");
-    setIsFiltering(true);
-    await fetchData(true);
-    setIsFiltering(false);
-    toast.success("Filtros limpos");
+    setFilterOverdue(false);
+
+    // 2. Força o navegador a carregar a URL limpa do zero
+    // Isso equivale ao F5 manual, mas redirecionando para a rota sem parâmetros
+    window.location.href = "/Kanban";
   };
 
   const handleOpenNewColumn = () => {
@@ -433,8 +479,8 @@ export default function ProductKanban() {
     }
   };
 
-  // 🔥 [CORREÇÃO FINAL] Visual Columns com useMemo
-  // Esta lógica roda a cada renderização e força a coluna Concluído para o final visualmente
+
+
   const visualColumns = useMemo(() => {
     return [...columns].sort((a, b) => {
       const titleA = (a.title || "").toLowerCase().trim();
@@ -485,7 +531,7 @@ export default function ProductKanban() {
             onChange={(e) => setFilterDateType(e.target.value)}
           >
             <option value="created">Data de Criação</option>
-            <option value="scheduled">Agendado Para</option>
+            <option value="scheduled">Data de Aviso de Vencimento</option>
             <option value="due">Prazo Final</option>
           </select>
         </div>
@@ -505,6 +551,18 @@ export default function ProductKanban() {
             <option value="all">Todos</option>
             {users.map((u) => (<option key={u.id} value={u.id}>{u.name}</option>))}
           </select>
+        </div>
+
+        <div className="flex items-end mt-5">
+          <Button
+            size="sm"
+            variant={filterOverdue ? "destructive" : "outline"} // Destaca se ativo
+            className={`h-8 text-xs ${filterOverdue ? 'bg-red-100 text-red-600 border-red-200 hover:bg-red-200' : ''}`}
+            onClick={() => setFilterOverdue(!filterOverdue)}
+          >
+            <AlertTriangle className="w-3 h-3 mr-2" />
+            Atrasadas
+          </Button>
         </div>
 
         <div className="flex items-center gap-2 pt-4">

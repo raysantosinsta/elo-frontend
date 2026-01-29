@@ -11,24 +11,21 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip'; // Certifique-se de ter este componente instalado
-import { 
-  AlertTriangle, 
-  Calendar, 
-  Clock, 
-  Search, 
-  User, 
-  ArrowRight, 
-  Image, 
-  Video, 
-  Music, 
-  RefreshCcw // Ícone de recarregar
+} from '@/components/ui/tooltip';
+import { api } from '@/services/api';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Calendar,
+  Clock,
+  RefreshCcw,
+  Search,
+  User
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useCallback } from 'react';
-import { api } from '@/services/api';
+import { useCallback, useEffect, useState } from 'react';
 
-// Tipos: Mantidos
+// --- Interface Corrigida para bater com o Prisma ---
 interface Task {
   id: string;
   title: string;
@@ -38,7 +35,8 @@ interface Task {
     id: string;
     title: string;
   };
-  dueDate?: string;
+  dueDate?: string;      // Prazo final
+  scheduledDate?: string; // 🔥 Corrigido de scheduledAt para scheduledDate (igual ao banco)
   assignedTo?: {
     id: string;
     name: string;
@@ -49,23 +47,10 @@ interface Task {
   };
   createdAt: string;
   priority: number;
-  scheduledAt: string;
   completedAt?: string;
-  taskImages?: Array<{
-    id: string;
-    url: string;
-    filename: string;
-  }>;
-  taskAudios?: Array<{
-    id: string;
-    url: string;
-    filename: string;
-  }>;
-  taskVideos?: Array<{
-    id: string;
-    url: string;
-    filename: string;
-  }>;
+  taskImages?: Array<{ id: string; url: string; filename: string }>;
+  taskAudios?: Array<{ id: string; url: string; filename: string }>;
+  taskVideos?: Array<{ id: string; url: string; filename: string }>;
   taskAddress?: {
     id: string;
     rua: string;
@@ -89,46 +74,42 @@ interface UserData {
   };
 }
 
-// Funções de Estilo (Mantidas)
+// --- Funções Auxiliares ---
+
+
+
+// Helper para pegar a data efetiva de vencimento (Prazo ou Agendamento)
+const getEffectiveDueDate = (task: Task): Date | null => {
+  if (task.dueDate) return new Date(task.dueDate);
+  if (task.scheduledDate) return new Date(task.scheduledDate);
+  return null;
+};
+
 const getStatusClasses = (columnTitle?: string) => {
-  if (!columnTitle) return { bg: 'bg-areia/10', text: 'text-areia-escuro' };
+  if (!columnTitle) return { bg: 'bg-slate-100', text: 'text-slate-600' };
   const title = columnTitle.toLowerCase();
-  if (title.includes('concluído') || title.includes('finalizado') || title.includes('pronto')) {
-    return { bg: 'bg-green-100/70', text: 'text-green-700' };
-  } else if (title.includes('andamento') || title.includes('progresso')) {
-    return { bg: 'bg-blue-100/70', text: 'text-blue-700' };
-  } else if (title.includes('urgente') || title.includes('prioridade')) {
-    return { bg: 'bg-red-100/70', text: 'text-red-700' };
-  } else if (title.includes('pendente') || title.includes('aguardando')) {
-    return { bg: 'bg-yellow-100/70', text: 'text-yellow-700' };
-  } else {
-    return { bg: 'bg-areia/10', text: 'text-areia-escuro' };
-  }
+  if (title.match(/(concluído|finalizado|pronto)/)) return { bg: 'bg-green-100', text: 'text-green-700' };
+  if (title.match(/(andamento|progresso)/)) return { bg: 'bg-blue-100', text: 'text-blue-700' };
+  if (title.match(/(urgente|prioridade)/)) return { bg: 'bg-red-100', text: 'text-red-700' };
+  if (title.match(/(pendente|aguardando)/)) return { bg: 'bg-yellow-100', text: 'text-yellow-700' };
+  return { bg: 'bg-slate-100', text: 'text-slate-600' };
 };
 
 const getPriorityClasses = (priority: number) => {
   switch (priority) {
-    case 5: return { bg: 'bg-red-100/70', text: 'text-red-700' }; 
-    case 4: return { bg: 'bg-orange-100/70', text: 'text-orange-700' }; 
-    case 3: return { bg: 'bg-green-100/70', text: 'text-green-700' }; 
-    case 2: return { bg: 'bg-blue-100/70', text: 'text-blue-700' }; 
-    case 1: return { bg: 'bg-gray-100/70', text: 'text-gray-700' }; 
-    default: return { bg: 'bg-gray-100/70', text: 'text-gray-700' };
+    case 5: return { bg: 'bg-red-100', text: 'text-red-700' };
+    case 4: return { bg: 'bg-orange-100', text: 'text-orange-700' };
+    case 3: return { bg: 'bg-green-100', text: 'text-green-700' };
+    case 2: return { bg: 'bg-blue-100', text: 'text-blue-700' };
+    default: return { bg: 'bg-gray-100', text: 'text-gray-700' };
   }
 };
 
 const getPriorityText = (priority: number) => {
-  switch (priority) {
-    case 5: return 'Crítica';
-    case 4: return 'Urgente';
-    case 3: return 'Alta';
-    case 2: return 'Média';
-    case 1: return 'Baixa';
-    default: return 'Normal';
-  }
+  const labels: Record<number, string> = { 5: 'Crítica', 4: 'Urgente', 3: 'Alta', 2: 'Média', 1: 'Baixa' };
+  return labels[priority] || 'Normal';
 };
 
-// Componente principal
 export default function DashboardPage() {
   const [user, setUser] = useState<UserData | null>(null);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
@@ -138,576 +119,400 @@ export default function DashboardPage() {
   const [error, setError] = useState<string>('');
   const router = useRouter();
 
-  // Lógicas de Negócio (Mantidas)
+  const navigateToKanbanOverdue = () => {
+    // Redireciona para /kanban com o query param ?filter=overdue
+    router.push('/Kanban?filter=overdue');
+  };
+
+  // --- Lógica de Vencimento Atualizada ---
   const isTaskOverdue = (task: Task) => {
-    if (!task.dueDate) return false;
+    const targetDate = getEffectiveDueDate(task);
+    if (!targetDate) return false;
+
     const today = new Date();
-    today.setHours(0, 0, 0, 0); 
-    const due = new Date(task.dueDate);
-    due.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    targetDate.setHours(0, 0, 0, 0);
 
-    const isCompleted = task.column?.title?.toLowerCase().includes('concluído') ||
-      task.column?.title?.toLowerCase().includes('finalizado') ||
-      task.column?.title?.toLowerCase().includes('pronto') ||
-      task.completedAt;
+    const isCompleted = task.completedAt || task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
 
-    return due.getTime() < today.getTime() && !isCompleted;
+    // Só é atrasado se a data já passou E não está concluída
+    return targetDate.getTime() < today.getTime() && !isCompleted;
   };
 
   const isTaskDueSoon = (task: Task) => {
-    if (!task.dueDate || isTaskOverdue(task)) return false;
+    const targetDate = getEffectiveDueDate(task);
+    if (!targetDate || isTaskOverdue(task)) return false; // Se já venceu, não é "próximo"
+
+    const isCompleted = task.completedAt || task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
+    if (isCompleted) return false;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const due = new Date(task.dueDate);
-    due.setHours(0, 0, 0, 0);
+    targetDate.setHours(0, 0, 0, 0);
 
-    const diffTime = due.getTime() - today.getTime();
+    const diffTime = targetDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays <= 3 && diffDays >= 0; 
+
+    // Retorna true se faltam entre 0 e 7 dias (aumentei a margem para 1 semana)
+    return diffDays >= 0 && diffDays <= 7;
   };
 
   const hasAttachments = (task: Task) => {
-    const imagesCount = task.taskImages?.length || 0;
-    const audiosCount = task.taskAudios?.length || 0;
-    const videosCount = task.taskVideos?.length || 0;
-    return imagesCount > 0 || audiosCount > 0 || videosCount > 0;
+    return (task.taskImages?.length || 0) + (task.taskAudios?.length || 0) + (task.taskVideos?.length || 0) > 0;
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const formatDateTime = (dateString?: string) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
-  // --- BUSCA DE TAREFAS (USANDO API/AXIOS) ---
+  // --- FETCH TASKS ---
   const fetchAllTasks = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await api.get('/tasks');
-      
+      // 🔥 CORREÇÃO: Adicionado limit=100 para garantir que tarefas novas apareçam
+      // Se não passar params, o backend pega só as 10 primeiras
+      const response = await api.get('/tasks', {
+        params: {
+          limit: 100, // Aumente conforme necessário
+          page: 1
+        }
+      });
+
       const data = response.data;
-      let tasksArray: Task[] = Array.isArray(data) ? data : (data.tasks || data.data || []);
-      
+      const tasksArray: Task[] = Array.isArray(data) ? data : (data.tasks || data.data || []);
+
       const tasksWithDefaults = tasksArray.map(task => ({
         ...task,
+        priority: task.priority || 1,
+        title: task.title || 'Sem título',
         taskImages: task.taskImages || [],
         taskAudios: task.taskAudios || [],
         taskVideos: task.taskVideos || [],
-        priority: task.priority || 1,
-        title: task.title || 'Tarefa sem título',
-        createdAt: task.createdAt || new Date().toISOString()
       }));
       setAllTasks(tasksWithDefaults);
 
-    } catch (error: any) {
-      if (error.response?.status === 404 || error.response?.status === 400) {
-        setAllTasks([]);
-        return;
-      }
-      
-      if (error.response?.status === 401) {
+    } catch (err: any) {
+      if (err.response?.status === 401) {
         localStorage.removeItem('accessToken');
         router.push('/login');
         return;
       }
-
-      console.error(error);
-      setError('Não foi possível carregar as tarefas.');
+      console.error(err);
+      setError('Erro ao carregar tarefas.');
     } finally {
       setLoading(false);
     }
   }, [router]);
 
-  // --- EFEITO PRINCIPAL ---
   useEffect(() => {
     const checkAuth = async () => {
       const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
+      if (!token) return router.push('/login');
       try {
         const { data: userData } = await api.get('/auth/profile');
         setUser(userData);
-        await fetchAllTasks(); 
+        await fetchAllTasks();
       } catch (error) {
-        console.error('❌ Erro na autenticação:', error);
+        console.error('Auth error:', error);
       }
     };
-    
     checkAuth();
   }, [router, fetchAllTasks]);
 
-  // Funções de Navegação
   const navigateToAgenda = (task: Task) => {
-    const focusDate = task.dueDate || task.createdAt
-      ? new Date(task.dueDate || task.createdAt!).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
+    // Usa data de vencimento, ou agendamento, ou criação
+    const dateToFocus = task.dueDate || task.scheduledDate || task.createdAt;
+    const focusDate = new Date(dateToFocus).toISOString().split('T')[0];
     router.push(`/agenda?focusDate=${focusDate}&highlightTask=${task.id}`);
   };
 
-  // Funções de Busca e Filtro
-  const getFilteredTasks = () => {
-    let filtered = allTasks;
-    switch (filter) {
-      case 'overdue': filtered = allTasks.filter(task => isTaskOverdue(task)); break;
-      case 'due-soon': filtered = allTasks.filter(task => isTaskDueSoon(task)); break;
-      case 'with-attachments': filtered = allTasks.filter(task => hasAttachments(task)); break;
-      case 'high-priority': filtered = allTasks.filter(task => task.priority >= 4); break;
-      case 'my-tasks': filtered = allTasks.filter(task => task.assignedTo?.id === user?.id); break;
-      default: filtered = allTasks;
-    }
+  // --- FILTROS ---
+  const filteredTasks = (() => {
+    let result = allTasks;
 
+    // Filtros Rápidos
+    if (filter === 'overdue') result = result.filter(isTaskOverdue);
+    if (filter === 'due-soon') result = result.filter(isTaskDueSoon);
+    if (filter === 'my-tasks') result = result.filter(t => t.assignedTo?.id === user?.id);
+
+    // Busca Textual
     if (search) {
-      const lowerSearch = search.toLowerCase();
-      filtered = filtered.filter(task =>
-        task.title.toLowerCase().includes(lowerSearch) ||
-        task.description?.toLowerCase().includes(lowerSearch) ||
-        task.column?.title?.toLowerCase().includes(lowerSearch) ||
-        task.assignedTo?.name?.toLowerCase().includes(lowerSearch) ||
-        task.createdBy?.name?.toLowerCase().includes(lowerSearch)
+      const q = search.toLowerCase();
+      result = result.filter(t =>
+        t.title.toLowerCase().includes(q) ||
+        t.description?.toLowerCase().includes(q) ||
+        t.assignedTo?.name?.toLowerCase().includes(q) ||
+        t.column?.title?.toLowerCase().includes(q)
       );
     }
-    return filtered;
-  };
+    return result;
+  })();
 
   // Estatísticas
-  const filteredTasks = getFilteredTasks();
-  const overdueTasksCount = allTasks.filter(task => isTaskOverdue(task)).length;
-  const dueSoonTasksCount = allTasks.filter(task => isTaskDueSoon(task)).length;
-  const highPriorityCount = allTasks.filter(task => task.priority >= 4).length;
-  const myTasksCount = allTasks.filter(task => task.assignedTo?.id === user?.id).length;
-  const totalTasks = allTasks.length;
-  const completedTasks = allTasks.filter(task =>
-    task.column?.title?.toLowerCase().includes('concluído') ||
-    task.column?.title?.toLowerCase().includes('finalizado') ||
-    task.column?.title?.toLowerCase().includes('pronto') ||
-    task.completedAt
-  ).length;
+  const overdueTasksCount = allTasks.filter(isTaskOverdue).length;
+  const highPriorityCount = allTasks.filter(t => t.priority >= 4).length;
+  const completedTasksCount = allTasks.filter(t => t.completedAt || t.column?.title?.toLowerCase().match(/(concluído|finalizado)/)).length;
+  const tasksForTodayCount = allTasks.filter(task => {
+    if (!task.scheduledDate) return false;
 
-  if (!user) {
+    const today = new Date();
+    const taskDate = new Date(task.scheduledDate);
+
+
+
+    // Compara Dia, Mês e Ano (ignora horas)
+    const isSameDay =
+      today.getDate() === taskDate.getDate() &&
+      today.getMonth() === taskDate.getMonth() &&
+      today.getFullYear() === taskDate.getFullYear();
+
+    // Verifica se não está concluída (opcional, remova se quiser ver concluídas de hoje também)
+    const isCompleted = task.completedAt || task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
+
+    return isSameDay && !isCompleted;
+  }).length;
+
+  const navigateToTodayTasks = () => {
+  const today = new Date().toISOString().split('T')[0];
+  // URL limpa: filterType, startDate, endDate e um timestamp para forçar o refresh
+  router.push(`/Kanban?filterType=scheduled&startDate=${today}&endDate=${today}&t=${Date.now()}`); 
+};
+
+  // Render Loading
+  if (!user && loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#F5F0E6]">
-        <div className="text-center" role="status" aria-live="polite">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#2C3E50] mx-auto"></div>
-          <p className="text-[#2D3436] mt-3 font-medium">Carregando dashboard...</p>
-        </div>
+      <div className="flex h-screen items-center justify-center bg-[#F5F0E6]">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#D35400]"></div>
       </div>
     );
   }
 
+  if (!user) return null;
+
   return (
     <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-6 font-sans">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4" role="banner">
-          <div className="flex-1">
-            <h1 className="text-3xl md:text-4xl font-extrabold text-[#2D3436] mb-2 tracking-tight">
-              ELO PRODUTIVO
-            </h1>
-            <div className="flex flex-wrap items-center gap-3 mb-1">
-              <p className="text-lg text-[#2D3436]">
-                Bem-vindo(a), <strong className="font-semibold text-[#2C3E50]">{user.name}</strong>
-              </p>
-              <Badge 
-                className={`text-sm font-medium ${
-                  user.role === 'ADMIN' || user.role === 'MASTER' 
-                    ? 'bg-[#D35400] text-white hover:bg-[#D35400]/80' 
-                    : 'bg-[#95A5A6]/50 text-[#2D3436] hover:bg-[#95A5A6]/80'
-                }`}
-                aria-label={`Nível de acesso: ${user.role}`}
-              >
-                {user.role}
-              </Badge>
-            </div>
-            <p className="text-sm text-[#95A5A6]">{user.email}</p>
-            {user.company && (
-              <p className="text-sm text-[#95A5A6]">Empresa: {user.company.name}</p>
-            )}
-          </div>
-          
-          <div className="flex flex-wrap gap-2 items-center">
-            {/* Botões antigos removidos (User, Kanban, Sair) */}
-            
-            {/* Botão de Atualizar Novo */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={fetchAllTasks}
-                    variant="outline"
-                    size="icon"
-                    disabled={loading}
-                    className={`border-[#95A5A6] text-[#2D3436] hover:bg-[#95A5A6]/30 transition-all duration-300 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
-                    aria-label="Recarregar página"
-                  >
-                    <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Recarregar página</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
 
+        {/* HEADER */}
+        <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-extrabold text-[#2D3436] mb-2">ELO PRODUTIVO</h1>
+            <div className="flex items-center gap-3">
+              <span className="text-lg text-[#2D3436]">Olá, <strong>{user.name}</strong></span>
+              <Badge className="bg-[#D35400] text-white hover:bg-[#A04000]">{user.role}</Badge>
+            </div>
+            {user.company && <p className="text-sm text-[#95A5A6] mt-1">{user.company.name}</p>}
           </div>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button onClick={fetchAllTasks} variant="outline" size="icon" disabled={loading} className="border-[#95A5A6] text-[#2D3436]">
+                  <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Recarregar dados</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </header>
 
         <hr className="border-[#95A5A6] mb-6" />
 
-        {/* Estatísticas */}
-        <h2 className="sr-only">Estatísticas do Dashboard</h2>
+        {/* ESTATÍSTICAS */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-          <Card className="bg-white border-b-2 border-[#2C3E50] hover:shadow-lg transition-shadow duration-300" role="region" aria-label="Total de Tarefas">
+          <Card
+            className={`bg-white border-b-2 ${overdueTasksCount > 0 ? 'border-red-500' : 'border-gray-300'} shadow-sm hover:shadow-md transition-all`}
+            onClick={navigateToKanbanOverdue}
+          >
             <CardContent className="p-4 text-center">
-              <div className="text-2xl md:text-3xl font-extrabold text-[#2D3436]">{totalTasks}</div>
-              <div className="text-xs md:text-sm text-[#95A5A6] mt-1">Total</div>
-            </CardContent>
-          </Card>
-          <Card className={`bg-white border-b-2 ${overdueTasksCount > 0 ? 'border-red-500' : 'border-[#95A5A6]'} hover:shadow-lg transition-shadow duration-300`} role="region" aria-label={`Tarefas Atrasadas: ${overdueTasksCount}`}>
-            <CardContent className="p-4 text-center">
-              <div className={`text-2xl md:text-3xl font-extrabold ${overdueTasksCount > 0 ? 'text-red-600' : 'text-[#2D3436]'}`}>
+              <div className={`text-2xl md:text-3xl font-extrabold ${overdueTasksCount > 0 ? 'text-red-600' : 'text-gray-700'}`}>
                 {overdueTasksCount}
               </div>
-              <div className="text-xs md:text-sm text-[#95A5A6] mt-1">Atrasadas</div>
+              <div className="text-xs text-[#95A5A6] mt-1">Atrasadas</div>
             </CardContent>
           </Card>
-          <Card className={`bg-white border-b-2 ${dueSoonTasksCount > 0 ? 'border-orange-500' : 'border-[#95A5A6]'} hover:shadow-lg transition-shadow duration-300`} role="region" aria-label={`Tarefas Próximas do Vencimento: ${dueSoonTasksCount}`}>
+
+          <Card
+            onClick={() => router.push('/Kanban')} // <--- Adiciona o evento de clique
+            className="bg-white border-b-2 border-green-500 shadow-sm hover:shadow-md transition-all cursor-pointer" // <--- Adiciona cursor-pointer
+          >
             <CardContent className="p-4 text-center">
-              <div className={`text-2xl md:text-3xl font-extrabold ${dueSoonTasksCount > 0 ? 'text-orange-600' : 'text-[#2D3436]'}`}>
-                {dueSoonTasksCount}
+              <div className="text-2xl md:text-3xl font-extrabold text-green-600">{completedTasksCount}</div>
+              <div className="text-xs text-[#95A5A6] mt-1">Concluídas</div>
+            </CardContent>
+          </Card>
+
+          <Card className={`bg-white border-b-2 cursor-pointer ${tasksForTodayCount > 0 ? 'border-blue-500' : 'border-gray-300'} shadow-sm hover:shadow-md transition-all`}
+            onClick={navigateToTodayTasks}>
+            <CardContent className="p-4 text-center">
+              <div className={`text-2xl md:text-3xl font-extrabold ${tasksForTodayCount > 0 ? 'text-blue-600' : 'text-gray-400'}`}
+                onClick={navigateToTodayTasks}
+              >
+                {tasksForTodayCount}
               </div>
-              <div className="text-xs md:text-sm text-[#95A5A6] mt-1">Próximas</div>
-            </CardContent>
-          </Card>
-          <Card className="bg-white border-b-2 border-green-500 hover:shadow-lg transition-shadow duration-300" role="region" aria-label={`Tarefas Concluídas: ${completedTasks}`}>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl md:text-3xl font-extrabold text-green-600">{completedTasks}</div>
-              <div className="text-xs md:text-sm text-[#95A5A6] mt-1">Concluídas</div>
-            </CardContent>
-          </Card>
-          <Card className="bg-white border-b-2 border-purple-500 hover:shadow-lg transition-shadow duration-300" role="region" aria-label={`Tarefas de Alta Prioridade: ${highPriorityCount}`}>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl md:text-3xl font-extrabold text-purple-600">{highPriorityCount}</div>
-              <div className="text-xs md:text-sm text-[#95A5A6] mt-1">Alta Prioridade</div>
-            </CardContent>
-          </Card>
-          <Card className="bg-white border-b-2 border-indigo-500 hover:shadow-lg transition-shadow duration-300" role="region" aria-label={`Minhas Tarefas: ${myTasksCount}`}>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl md:text-3xl font-extrabold text-indigo-600">{myTasksCount}</div>
-              <div className="text-xs md:text-sm text-[#95A5A6] mt-1">Minhas Tarefas</div>
+              <div className="text-xs text-[#95A5A6] mt-1 flex justify-center items-center gap-1">
+                {/* Se quiser adicionar um ícone pequeno aqui */}
+                {tasksForTodayCount > 0 && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>}
+                Proximas a vencer
+              </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Mensagem de Erro */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-lg shadow-sm" role="alert" aria-live="assertive">
-            <div className="flex items-center gap-2 text-red-700">
-              <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-              <p className="font-medium">{error}</p>
+        {/* CONTROLES */}
+        <Card className="mb-8 bg-white border-t-4 border-[#2C3E50]/50 shadow-sm">
+          <CardContent className="p-4 flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#95A5A6]" />
+              <Input
+                placeholder="Buscar tarefas..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10 bg-[#F5F0E6]/50"
+              />
             </div>
-            <Button 
-              onClick={fetchAllTasks} 
-              variant="outline" 
-              size="sm" 
-              className="mt-3 border-red-300 text-red-700 hover:bg-red-100 transition-colors duration-300"
-            >
-              Tentar novamente
-            </Button>
-          </div>
-        )}
-
-        {/* Filtros e Busca */}
-        <Card className="mb-8 bg-white shadow-md border-t-4 border-[#2C3E50]/50" role="search" aria-label="Busca e Filtros de Tarefas">
-          <CardContent className="p-4">
-            <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
-              <div className="flex-1 w-full">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#95A5A6]" />
-                  <Input
-                    placeholder="Buscar por título, status, responsável..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-10 bg-[#F5F0E6]/70 border-[#95A5A6] focus:border-[#2C3E50] text-[#2D3436] placeholder:text-[#95A5A6] transition-all duration-300"
-                    aria-label="Campo de busca de tarefas"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 flex-wrap justify-start sm:justify-end">
-                <Button
-                  variant={filter === 'all' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilter('all')}
-                  className={filter === 'all' ? 'bg-[#2C3E50] hover:bg-[#2C3E50]/90 text-white transition-colors duration-300' : 'border-[#95A5A6] text-[#2D3436] hover:bg-[#95A5A6]/30 transition-colors duration-300'}
-                  aria-pressed={filter === 'all'}
-                >
-                  Todas
-                </Button>
-                <Button
-                  variant={filter === 'my-tasks' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilter('my-tasks')}
-                  className={`${filter === 'my-tasks' ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'border-indigo-300 text-indigo-700 hover:bg-indigo-100'} transition-all duration-300`}
-                  aria-pressed={filter === 'my-tasks'}
-                >
-                  <User className="h-4 w-4 mr-1" />
-                  Minhas ({myTasksCount})
-                </Button>
-                <Button
-                  variant={filter === 'overdue' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilter('overdue')}
-                  className={`${filter === 'overdue' ? 'bg-red-600 text-white hover:bg-red-700' : 'border-red-300 text-red-700 hover:bg-red-100'} transition-all duration-300`}
-                  aria-pressed={filter === 'overdue'}
-                >
-                  <AlertTriangle className="h-4 w-4 mr-1" />
-                  Atrasadas ({overdueTasksCount})
-                </Button>
-                <Button
-                  variant={filter === 'due-soon' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilter('due-soon')}
-                  className={`${filter === 'due-soon' ? 'bg-orange-600 text-white hover:bg-orange-700' : 'border-orange-300 text-orange-700 hover:bg-orange-100'} transition-all duration-300`}
-                  aria-pressed={filter === 'due-soon'}
-                >
-                  <Clock className="h-4 w-4 mr-1" />
-                  Próximas ({dueSoonTasksCount})
-                </Button>
-              </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant={filter === 'all' ? 'default' : 'outline'}
+                onClick={() => setFilter('all')}
+                className={filter === 'all' ? 'bg-[#2C3E50] hover:bg-[#2C3E50]/90' : ''}
+              >
+                Todas
+              </Button>
+              <Button
+                variant={filter === 'overdue' ? 'default' : 'outline'}
+                onClick={() => setFilter('overdue')}
+                className={filter === 'overdue' ? 'bg-red-600 hover:bg-red-700 text-white' : 'text-red-600 border-red-200 hover:bg-red-50'}
+              >
+                <AlertTriangle className="h-4 w-4 mr-1" /> Atrasadas
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Conteúdo principal */}
+        {/* LISTAS */}
         {!error && (
-          <main className="grid grid-cols-1 xl:grid-cols-2 gap-6" role="main">
-            {/* ATIVIDADES RECENTES */}
-            <Card className="bg-white shadow-xl rounded-xl" role="region" aria-labelledby="heading-recentes">
-              <CardHeader className="pb-3 border-b border-[#95A5A6]/50">
-                <CardTitle id="heading-recentes" className="flex items-center gap-2 text-xl font-bold text-[#2D3436]">
-                  <Clock className="h-5 w-5 text-[#2C3E50]" />
-                  ATIVIDADES RECENTES
+          <main className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+            {/* LISTA 1: TODAS / FILTRADAS */}
+            <Card className="bg-white shadow-lg rounded-xl h-full">
+              <CardHeader className="border-b pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg text-[#2D3436]">
+                  <Clock className="h-5 w-5" /> Atividades
+                  <span className="text-sm font-normal text-gray-400 ml-auto">{filteredTasks.length} itens</span>
                 </CardTitle>
-                <p className="text-sm text-[#95A5A6]">
-                  {loading ? 'Carregando...' : `${filteredTasks.length} tarefas ${filter !== 'all' ? 'filtradas' : 'recentes'}`}
-                </p>
               </CardHeader>
-              <CardContent className="space-y-3 p-4 max-h-[600px] overflow-y-auto">
-                {loading ? (
-                  <div className="text-center py-8" role="status" aria-live="polite">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2C3E50] mx-auto"></div>
-                    <p className="text-[#95A5A6] mt-2">Carregando tarefas...</p>
-                  </div>
-                ) : filteredTasks.length === 0 ? (
-                  <div className="text-center py-8 text-[#95A5A6]">
-                    <p className="mb-2">Nenhuma tarefa encontrada com os filtros/busca atuais.</p>
-                    <Button
-                      onClick={() => { setFilter('all'); setSearch(''); }}
-                      variant="outline"
-                      size="sm"
-                      className="mt-2 border-[#95A5A6] text-[#2D3436] hover:bg-[#95A5A6]/30 transition-colors duration-300"
-                    >
-                      Limpar filtros
-                    </Button>
-                  </div>
+              {/* TODO: AO CLICAR NA TASK IR PARA PAGINA DE KANBAN  COM A TASK ABERTA NA VISUALIZAÇÃO */}
+              <CardContent className="p-0 max-h-[600px] overflow-y-auto">
+                {filteredTasks.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400">Nenhuma tarefa encontrada.</div>
                 ) : (
-                  <ul className="space-y-3" role="list">
-                    {filteredTasks.slice(0, 10).map((task) => (
-                      <li key={task.id}>
-                        <a 
-                          href={`/agenda?focusDate=${new Date(task.dueDate || task.createdAt!).toISOString().split('T')[0]}&highlightTask=${task.id}`}
-                          onClick={(e) => { e.preventDefault(); navigateToAgenda(task); }}
-                          className={`flex items-start gap-4 p-3 border rounded-lg transition-all duration-300 shadow-sm block focus:outline-none focus:ring-2 focus:ring-[#D35400]/50 group 
-                            ${isTaskOverdue(task) ? 'border-red-300 bg-red-50/70 hover:bg-red-100' :
-                              isTaskDueSoon(task) ? 'border-orange-300 bg-orange-50/70 hover:bg-orange-100' :
-                                task.priority >= 4 ? 'border-purple-300 bg-purple-50/70 hover:bg-purple-100' :
-                                  'border-[#95A5A6]/50 bg-white hover:shadow-md'
-                            }`}
-                          role="link"
-                          aria-label={`Ver detalhes da tarefa: ${task.title}`}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex-1">
-                                <p className="font-semibold text-[#2D3436] group-hover:text-[#2C3E50] line-clamp-2 transition-colors duration-300">
-                                  {task.title}
-                                </p>
-                                {task.description && (
-                                  <p className="text-sm text-[#95A5A6] mt-1 line-clamp-2">
-                                    {task.description}
-                                  </p>
-                                )}
-                              </div>
-                              <ArrowRight className="h-4 w-4 text-[#95A5A6] group-hover:text-[#D35400] ml-2 flex-shrink-0 mt-1 transition-colors duration-300" />
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-2 mt-2">
-                              {/* Prioridade */}
-                              <Badge 
-                                variant="outline" 
-                                className={`${getPriorityClasses(task.priority).bg} ${getPriorityClasses(task.priority).text} text-xs font-medium border-0`}
-                                aria-label={`Prioridade: ${getPriorityText(task.priority)}`}
-                              >
-                                {getPriorityText(task.priority)}
-                              </Badge>
-
-                              {/* Status */}
-                              {task.column && (
-                                <Badge 
-                                  variant="outline" 
-                                  className={`${getStatusClasses(task.column.title).bg} ${getStatusClasses(task.column.title).text} text-xs font-medium border-0`}
-                                  aria-label={`Status: ${task.column.title}`}
-                                >
-                                  {task.column.title}
-                                </Badge>
-                              )}
-
-                              {/* Anexos */}
-                              {hasAttachments(task) && (
-                                <div className="flex items-center gap-1 text-xs text-[#95A5A6]">
-                                  {(task.taskImages?.length || 0) > 0 && <Image className="h-3 w-3" />}
-                                  {(task.taskAudios?.length || 0) > 0 && <Music className="h-3 w-3" />}
-                                  {(task.taskVideos?.length || 0) > 0 && <Video className="h-3 w-3" />}
-                                  <span className="sr-only">Anexos:</span>
-                                  <span>
-                                    {(task.taskImages?.length || 0) + (task.taskAudios?.length || 0) + (task.taskVideos?.length || 0)}
-                                  </span>
-                                </div>
-                              )}
-
-                              {/* Data de vencimento */}
-                              {task.dueDate && (
-                                <div className={`flex items-center gap-1 text-xs font-medium 
-                                  ${isTaskOverdue(task) ? 'text-red-600' :
-                                    isTaskDueSoon(task) ? 'text-orange-600' :
-                                      'text-[#95A5A6]'
-                                  }`}
-                                  aria-label={`Data de Vencimento: ${formatDate(task.dueDate)}`}
-                                >
-                                  <Calendar className="h-3 w-3" />
-                                  {formatDate(task.dueDate)}
-                                  {isTaskOverdue(task) && <span role="img" aria-label="Aviso de Atraso">⚠️</span>}
-                                  {isTaskDueSoon(task) && !isTaskOverdue(task) && <span role="img" aria-label="Aviso de Próximo Vencimento">⏳</span>}
-                                </div>
-                              )}
-                              
-                              {/* Responsável */}
-                              {task.assignedTo && (
-                                <div className="flex items-center gap-1 text-xs text-[#95A5A6]" aria-label={`Responsável: ${task.assignedTo.name}`}>
-                                  <User className="h-3 w-3" />
-                                  {task.assignedTo.name}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Criador e data de criação */}
-                            <div className="flex items-center gap-2 mt-2 text-xs text-[#95A5A6]">
-                              {task.createdBy && (
-                                <div>
-                                <span className="sr-only">Criado por:</span>
-                                <span>{task.createdBy.name}</span>
-                                  </div>
-
-                              )}
-                              <span aria-hidden="true">•</span>
-                              <span aria-label={`Criado em: ${formatDateTime(task.createdAt)}`}>{formatDateTime(task.createdAt)}</span>
-                            </div>
-                          </div>
-                        </a>
-                      </li>
+                  <ul className="divide-y divide-gray-100">
+                    {filteredTasks.slice(0, 50).map(task => (
+                      <TaskListItem key={task.id} task={task} onClick={() => navigateToAgenda(task)} />
                     ))}
                   </ul>
                 )}
               </CardContent>
             </Card>
 
-            {/* AGENDA - PRÓXIMOS VENCIMENTOS */}
-            <Card className="bg-white shadow-xl rounded-xl" role="region" aria-labelledby="heading-vencimentos">
-              <CardHeader className="pb-3 border-b border-[#95A5A6]/50">
-                <CardTitle id="heading-vencimentos" className="flex items-center gap-2 text-xl font-bold text-[#2D3436]">
-                  <Calendar className="h-5 w-5 text-[#D35400]" />
-                  PRÓXIMOS VENCIMENTOS
+            {/* LISTA 2: PRÓXIMOS VENCIMENTOS */}
+            <Card className="bg-white shadow-lg rounded-xl h-full border-t-4 border-orange-400">
+              <CardHeader className="border-b pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg text-[#2D3436]">
+                  <Calendar className="h-5 w-5 text-orange-500" /> Próximos Vencimentos
                 </CardTitle>
-                <p className="text-sm text-[#95A5A6]">
-                  Tarefas não concluídas com datas de vencimento próximas
-                </p>
+                <p className="text-xs text-gray-500">Tarefas agendadas ou com prazo para os próximos 7 dias</p>
               </CardHeader>
-              <CardContent className="space-y-3 p-4 max-h-[600px] overflow-y-auto">
-                {loading ? (
-                  <div className="text-center py-8" role="status">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D35400] mx-auto"></div>
-                  </div>
-                ) : (
-                  <ul className="space-y-3" role="list">
-                    {allTasks
-                      .filter(task => task.dueDate && !isTaskOverdue(task))
-                      .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
-                      .slice(0, 8)
-                      .map((task) => (
-                        <li key={task.id}>
-                          <a 
-                            href={`/agenda?focusDate=${new Date(task.dueDate!).toISOString().split('T')[0]}&highlightTask=${task.id}`}
-                            onClick={(e) => { e.preventDefault(); navigateToAgenda(task); }}
-                            className={`flex items-start gap-4 p-3 border rounded-lg transition-all duration-300 shadow-sm block focus:outline-none focus:ring-2 focus:ring-[#D35400]/50 group
-                              ${isTaskDueSoon(task) ? 'border-orange-300 bg-orange-50/70 hover:bg-orange-100' : 'border-[#95A5A6]/50 bg-white hover:shadow-md'
-                              }`}
-                            role="link"
-                            aria-label={`Ver detalhes da tarefa: ${task.title}, Vencimento: ${formatDate(task.dueDate!)}`}
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-start justify-between mb-1">
-                                <p className="font-semibold text-[#2D3436] group-hover:text-[#D35400] line-clamp-2 flex-1 transition-colors duration-300">
-                                  {task.title}
-                                </p>
-                                <ArrowRight className="h-4 w-4 text-[#95A5A6] group-hover:text-[#D35400] ml-2 flex-shrink-0 transition-colors duration-300" />
-                              </div>
+              <CardContent className="p-0 max-h-[600px] overflow-y-auto">
+                {(() => {
+                  const upcoming = allTasks
+                    .filter(isTaskDueSoon)
+                    .sort((a, b) => {
+                      const dateA = getEffectiveDueDate(a)?.getTime() || 0;
+                      const dateB = getEffectiveDueDate(b)?.getTime() || 0;
+                      return dateA - dateB;
+                    });
 
-                              <div className="flex items-center gap-2">
-                                <Calendar className={`h-4 w-4 ${isTaskDueSoon(task) ? 'text-orange-500' : 'text-green-600'
-                                  }`} aria-hidden="true" />
-                                <span className={`text-sm font-medium ${isTaskDueSoon(task) ? 'text-orange-600' : 'text-green-600'
-                                  }`}>
-                                  Vence em: {new Date(task.dueDate!).toLocaleDateString('pt-BR', {
-                                    day: '2-digit',
-                                    month: 'long',
-                                    year: 'numeric'
-                                  })}
-                                </span>
-                                {isTaskDueSoon(task) && <span className="text-sm text-orange-600 font-semibold" role="img" aria-label="Próximo Vencimento">⏳</span>}
-                              </div>
+                  if (upcoming.length === 0) {
+                    return <div className="p-8 text-center text-gray-400">Nenhuma tarefa vencendo em breve.</div>;
+                  }
 
-                              {task.assignedTo && (
-                                <div className="flex items-center gap-1 mt-1 text-xs text-[#95A5A6]" aria-label={`Responsável: ${task.assignedTo.name}`}>
-                                  <User className="h-3 w-3" />
-                                  {task.assignedTo.name}
-                                </div>
-                              )}
-                            </div>
-                          </a>
-                        </li>
+                  return (
+                    <ul className="divide-y divide-gray-100">
+                      {upcoming.map(task => (
+                        <TaskListItem key={task.id} task={task} onClick={() => navigateToAgenda(task)} isUpcomingView />
                       ))}
-                  </ul>
-                )}
+                    </ul>
+                  );
+                })()}
               </CardContent>
             </Card>
+
           </main>
         )}
       </div>
     </div>
   );
 }
+
+// --- Subcomponente de Item de Lista (Para evitar repetição) ---
+const TaskListItem = ({ task, onClick, isUpcomingView }: { task: Task, onClick: () => void, isUpcomingView?: boolean }) => {
+  const effectiveDate = getEffectiveDueDate(task);
+  const isOverdue = effectiveDate && effectiveDate < new Date() && !task.completedAt;
+
+  // Prioridade do vencimento: DueDate > ScheduledDate
+  const dateLabel = task.dueDate ? 'Vence' : 'Agendado';
+  const displayDate = effectiveDate?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+  return (
+    <li className="group hover:bg-slate-50 transition-colors">
+      <a
+        href="#"
+        onClick={(e) => { e.preventDefault(); onClick(); }}
+        className="flex items-start gap-3 p-4 block"
+      >
+        <div className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${isOverdue ? 'bg-red-500' : 'bg-[#D35400]'}`} />
+
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-start">
+            <p className="font-semibold text-gray-800 line-clamp-1 group-hover:text-[#D35400] transition-colors">
+              {task.title}
+            </p>
+            {effectiveDate && (
+              <span className={`text-xs font-mono whitespace-nowrap ml-2 
+                ${isOverdue ? 'text-red-600 font-bold' : isUpcomingView ? 'text-orange-600 font-bold' : 'text-gray-500'}`}>
+                {dateLabel}: {displayDate}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2 mt-2 items-center">
+            <Badge variant="outline" className={`${getPriorityClasses(task.priority).bg} ${getPriorityClasses(task.priority).text} border-0 text-[10px]`}>
+              {getPriorityText(task.priority)}
+            </Badge>
+            {task.column && (
+              <Badge variant="outline" className={`${getStatusClasses(task.column.title).bg} ${getStatusClasses(task.column.title).text} border-0 text-[10px]`}>
+                {task.column.title}
+              </Badge>
+            )}
+            {task.assignedTo && (
+              <div className="flex items-center gap-1 text-xs text-gray-400 ml-auto">
+                <User className="h-3 w-3" /> {task.assignedTo.name}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-[#D35400] self-center" />
+      </a>
+    </li>
+  );
+};
