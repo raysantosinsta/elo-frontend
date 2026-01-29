@@ -339,6 +339,16 @@ export default function ProductKanban() {
     window.location.href = "/Kanban";
   };
 
+  const toggleOverdueFilter = () => {
+    if (filterOverdue) {
+      // Se já estiver selecionado, limpa tudo (URL e Estados)
+      handleClearFilters();
+    } else {
+      // Se não estiver selecionado, ativa apenas o filtro de atrasadas
+      setFilterOverdue(true);
+    }
+  };
+
   const handleOpenNewColumn = () => {
     setEditingCol(null);
     setColTitle("");
@@ -556,9 +566,11 @@ export default function ProductKanban() {
         <div className="flex items-end mt-5">
           <Button
             size="sm"
-            variant={filterOverdue ? "destructive" : "outline"} // Destaca se ativo
+            // Mantém o destaque visual se filterOverdue for true
+            variant={filterOverdue ? "destructive" : "outline"}
             className={`h-8 text-xs ${filterOverdue ? 'bg-red-100 text-red-600 border-red-200 hover:bg-red-200' : ''}`}
-            onClick={() => setFilterOverdue(!filterOverdue)}
+            // 🔥 Troque o onClick antigo por este:
+            onClick={toggleOverdueFilter}
           >
             <AlertTriangle className="w-3 h-3 mr-2" />
             Atrasadas
