@@ -382,7 +382,7 @@ export function TaskFormModal({
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField control={form.control} name="scheduledAt" render={({ field }) => (
-                      <FormItem><FormLabel>Agendado Para</FormLabel><FormControl><Input type="datetime-local" {...field} /></FormControl></FormItem>
+                      <FormItem><FormLabel>Data de Aviso de Vencimento</FormLabel><FormControl><Input type="datetime-local" {...field} /></FormControl></FormItem>
                     )} />
                     <FormField control={form.control} name="dueDate" render={({ field }) => (
                       <FormItem><FormLabel>Prazo Final</FormLabel><FormControl><Input type="datetime-local" {...field} /></FormControl></FormItem>

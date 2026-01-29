@@ -3,6 +3,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation"; // <--- IMPORTANTE: Importar useSearchParams
 import { toast } from "sonner";
 import {
   Layout,
@@ -17,6 +18,7 @@ import {
   Mic,
   Loader2,
   X,
+  AlertTriangle,
 } from "lucide-react";
 
 // --- Infraestrutura ---
@@ -139,6 +141,7 @@ const getStatusConfig = (status: string) => {
 
 export default function ProductKanban() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
 
   // Estados de Dados
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -168,6 +171,9 @@ export default function ProductKanban() {
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterAssignedTo, setFilterAssignedTo] = useState("all");
   const [filterDateType, setFilterDateType] = useState("created");
+  const [filterOverdue, setFilterOverdue] = useState(() => {
+    return searchParams.get("filter") === "overdue";
+  });
 
   // Estado para o loading do botão de filtrar
   const [isFiltering, setIsFiltering] = useState(false);
@@ -216,6 +222,14 @@ export default function ProductKanban() {
 
   // --- fetchData ---
   const fetchData = useCallback(async (forceClear = false) => {
+    console.log("🔍 Filtros Aplicados:", {
+      tipoData: filterDateType,
+      inicio: filterStartDate || "Não definido",
+      fim: filterEndDate || "Não definido",
+      responsavel: filterAssignedTo === "all" ? "Todos" : filterAssignedTo,
+      atrasadasApenas: filterOverdue,
+      empresaId: user?.company?.id
+    });
     if (!user?.company?.id) return;
     setLoading(true);
     try {
@@ -223,6 +237,7 @@ export default function ProductKanban() {
       const queryEndDate = !forceClear && filterEndDate ? new Date(filterEndDate).toISOString() : undefined;
       const queryAssigned = !forceClear && filterAssignedTo !== "all" ? filterAssignedTo : undefined;
       const queryDateType = !forceClear ? filterDateType : "created";
+      const queryIsOverdue = !forceClear ? filterOverdue : false;
 
       const [colsRes, tasksRes, usersRes, suppliersRes] = await Promise.all([
         api.get("/kanban-columns"),
@@ -233,6 +248,7 @@ export default function ProductKanban() {
             endDate: queryEndDate,
             assignedToId: queryAssigned,
             dateType: queryDateType,
+            isOverdue: queryIsOverdue,
           },
         }),
         api.get(`/users/company/${user.company.id}`),
@@ -240,7 +256,7 @@ export default function ProductKanban() {
       ]);
 
       const colsData = Array.isArray(colsRes.data) ? colsRes.data : colsRes.data.columns || [];
-      
+
       // Ordenação inicial (segurança extra na carga)
       const sortedCols = colsData.sort((a: any, b: any) => {
         const titleA = normalizeText(a.title);
@@ -256,7 +272,7 @@ export default function ProductKanban() {
       });
 
       setColumns(sortedCols);
-      
+
       const tasksData = Array.isArray(tasksRes.data.data) ? tasksRes.data.data : tasksRes.data.tasks || [];
       setTasks(tasksData);
 
@@ -269,10 +285,29 @@ export default function ProductKanban() {
     } finally {
       setLoading(false);
     }
-  }, [user, filterStartDate, filterEndDate, filterAssignedTo, filterDateType]);
+  }, [user, filterStartDate, filterEndDate, filterAssignedTo, filterDateType, filterOverdue]);
 
   useEffect(() => {
+
+    const filterParam = searchParams.get("filter");
+    const typeParam = searchParams.get("filterType");
+    const dateParam = searchParams.get("startDate");
+
+    if (typeParam === "scheduled" && dateParam) {
+      setFilterDateType("scheduled");
+      setFilterStartDate(dateParam);
+      setFilterEndDate(""); // Limpa o fim para garantir que pegue apenas hoje
+      setFilterOverdue(false);
+    } else if (filterParam === "overdue") {
+      setFilterOverdue(true);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+
+    if (user?.company?.id) {
     fetchData();
+  }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.company?.id]);
 
@@ -287,6 +322,7 @@ export default function ProductKanban() {
     setFilterEndDate("");
     setFilterAssignedTo("all");
     setFilterDateType("created");
+    setFilterOverdue(false); // 🔥 LIMPAR O FILTRO
     setIsFiltering(true);
     await fetchData(true);
     setIsFiltering(false);
@@ -430,8 +466,8 @@ export default function ProductKanban() {
     }
   };
 
-  // 🔥 [CORREÇÃO FINAL] Visual Columns com useMemo
-  // Esta lógica roda a cada renderização e força a coluna Concluído para o final visualmente
+
+
   const visualColumns = useMemo(() => {
     return [...columns].sort((a, b) => {
       const titleA = (a.title || "").toLowerCase().trim();
@@ -444,7 +480,7 @@ export default function ProductKanban() {
       // Regra Suprema: Concluído sempre pesa infinito positivo
       if (isADone && !isBDone) return 1;  // A vai pro fundo
       if (!isADone && isBDone) return -1; // B vai pro fundo
-      
+
       // Desempate por ordem numérica normal
       return (a.order || 0) - (b.order || 0);
     });
@@ -482,7 +518,7 @@ export default function ProductKanban() {
             onChange={(e) => setFilterDateType(e.target.value)}
           >
             <option value="created">Data de Criação</option>
-            <option value="scheduled">Agendado Para</option>
+            <option value="scheduled">Data de Aviso de Vencimento</option>
             <option value="due">Prazo Final</option>
           </select>
         </div>
@@ -502,6 +538,18 @@ export default function ProductKanban() {
             <option value="all">Todos</option>
             {users.map((u) => (<option key={u.id} value={u.id}>{u.name}</option>))}
           </select>
+        </div>
+
+        <div className="flex items-end mt-5">
+          <Button
+            size="sm"
+            variant={filterOverdue ? "destructive" : "outline"} // Destaca se ativo
+            className={`h-8 text-xs ${filterOverdue ? 'bg-red-100 text-red-600 border-red-200 hover:bg-red-200' : ''}`}
+            onClick={() => setFilterOverdue(!filterOverdue)}
+          >
+            <AlertTriangle className="w-3 h-3 mr-2" />
+            Atrasadas
+          </Button>
         </div>
 
         <div className="flex items-center gap-2 pt-4">
