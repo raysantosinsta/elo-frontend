@@ -9,7 +9,9 @@ interface KanbanColumnProps {
   title: string;
   count: number;
   color?: string;
-  onAddClick?: () => void;
+  // 🔥 Ajustado para aceitar onAddItem ou onAddClick para evitar erros de tipagem
+  onAddClick?: () => void; 
+  onAddItem?: () => void; 
   onEditClick?: () => void;
   onDeleteClick?: () => void;
   onDropItem: (itemId: string, columnId: string) => void;
@@ -22,6 +24,7 @@ export function KanbanColumn({
   count,
   color = "#2C3E50",
   onAddClick,
+  onAddItem, // 🔥 Adicionado aqui
   onEditClick,
   onDeleteClick,
   onDropItem,
@@ -34,9 +37,11 @@ export function KanbanColumn({
     if (itemId) onDropItem(itemId, id);
   };
 
+  // Helper para decidir qual função de "adicionar" usar
+  const handleAdd = onAddItem || onAddClick;
+
   return (
     <div
-      // 🔥 AJUSTE: w-[260px] (era 300px). Isso diminui a largura de todos os cards.
       className="w-[260px] flex-shrink-0 flex flex-col h-full max-h-[calc(100vh-140px)] rounded-lg bg-gray-100/50 border border-gray-200 transition-colors"
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
@@ -54,8 +59,9 @@ export function KanbanColumn({
         </div>
         
         <div className="flex items-center gap-0.5">
-          {onAddClick && (
-            <Button variant="ghost" size="icon" className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10" onClick={onAddClick}>
+          {/* 🔥 Botão agora aceita qualquer um dos dois nomes passados */}
+          {handleAdd && (
+            <Button variant="ghost" size="icon" className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10" onClick={handleAdd}>
               <Plus className="w-3 h-3" />
             </Button>
           )}
@@ -76,7 +82,6 @@ export function KanbanColumn({
       </div>
 
       {/* Corpo da Coluna */}
-      {/* 🔥 AJUSTE: p-2 (reduzido de p-3) */}
       <div className="p-2 overflow-y-auto flex-1 space-y-2 custom-scrollbar">
         {children}
         {React.Children.count(children) === 0 && (

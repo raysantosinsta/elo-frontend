@@ -3,21 +3,21 @@
 "use client";
 
 import {
-  Calendar,
-  CalendarClock,
-  ChevronDown,
   Factory,
-  Filter as FilterIcon,
   Layers,
   Package,
-  Plus,
   RefreshCw,
+  Check,
+  ChevronDown,
+  Plus,
+  MoreHorizontal,
   Trash2,
   X,
+  Calendar,
   Paperclip,
   ImageIcon,
   Mic,
-  MapPin,
+  MapPin
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -27,25 +27,26 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useKanbanDrag } from "@/hooks/use-kanban-drag";
 import { api } from "@/services/api";
 
-// --- Componentes Base ---
+// --- Componentes Kanban ---
 import { KanbanBoard } from "@/components/kanban/kanban-board";
 import { KanbanCard } from "@/components/kanban/kanban-card";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
-import { KanbanFilter } from "@/components/kanban/kanban-filter";
 import { KanbanHeader } from "@/components/kanban/kanban-header";
 import { KanbanLayout } from "@/components/kanban/kanban-layout";
 
-// --- UI Genérica ---
+// --- UI Components ---
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 // --- Modais ---
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 import { FlowItemModal } from "@/components/modals/flow-item-modal";
 
-// --- Tipagens ---
+// --- 🔥 SUAS INTERFACES RESTAURADAS ---
 interface FlowMedia { id: string; url: string; filename: string; }
 interface UserProfile { id: string; name: string; }
 interface FlowItem {
@@ -57,6 +58,9 @@ interface FlowItem {
   priority: number;
   status: string;
   stageId?: string;
+  flowId: string;
+  flowColor?: string; // Injetado no Frontend
+  flowName?: string;  // Injetado no Frontend
   supplierId?: string;
   supplier?: { id: string; name: string; category?: string; city?: string; state?: string };
   dueDate?: string;
@@ -75,6 +79,7 @@ interface FlowStage {
 interface ProductFlow {
   id: string;
   name: string;
+  color?: string;
   stages: FlowStage[];
 }
 
@@ -82,71 +87,58 @@ interface ProductFlow {
 const formatDateShort = (d: string) =>
   new Date(d).toLocaleDateString("pt-BR", { day: "numeric", month: "short", timeZone: 'UTC' });
 
-const isOverdue = (d: string) => new Date(d) < new Date();
-
-const getPriorityColor = (p: number) => {
-  if (p === 1) return "#E74C3C";
-  if (p === 2) return "#F1C40F";
-  return "#27AE60";
-};
-
 export default function ProductFlowKanban() {
   const { user } = useAuth();
 
   // --- Estados de Dados ---
   const [flows, setFlows] = useState<ProductFlow[]>([]);
-  const [selectedFlowId, setSelectedFlowId] = useState<string>("");
-  const [currentFlow, setCurrentFlow] = useState<ProductFlow | null>(null);
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [selectedFlowIds, setSelectedFlowIds] = useState<string[]>([]);
+  const [boards, setBoards] = useState<ProductFlow[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // --- Estados de UI ---
+  // --- Estados de Modais ---
   const [isFlowModal, setIsFlowModal] = useState(false);
   const [isStageModal, setIsStageModal] = useState(false);
   const [isItemModal, setIsItemModal] = useState(false);
   const [isEditItemModal, setIsEditItemModal] = useState(false);
   const [isPreviewModal, setIsPreviewModal] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'item' | 'stage' | 'flow', id: string } | null>(null);
 
-  // --- Estados de Edição ---
+  // --- Estados de Seleção / Edição ---
+  const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [editingStage, setEditingStage] = useState<FlowStage | null>(null);
   const [editingItem, setEditingItem] = useState<FlowItem | null>(null);
   const [previewItem, setPreviewItem] = useState<FlowItem | null>(null);
-  const [initialStageId, setInitialStageId] = useState<string | undefined>(undefined);
+  const [itemToDelete, setItemToDelete] = useState<{ type: 'item' | 'stage', id: string } | null>(null);
 
   const [flowName, setFlowName] = useState("");
+  const [newFlowColor, setNewFlowColor] = useState("#D35400");
   const [stageName, setStageName] = useState("");
   const [stageColor, setStageColor] = useState("#2D3436");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- Filtros (Restaurados e Ajustados) ---
-  const [filterStartDate, setFilterStartDate] = useState("");
-  const [filterEndDate, setFilterEndDate] = useState("");
-  const [filterDateType, setFilterDateType] = useState("dueDate");
-  const [filterOnlyOutsourced, setFilterOnlyOutsourced] = useState(false);
-  const [filteredItems, setFilteredItems] = useState<FlowItem[] | null>(null);
-
-  // --- Fetching Data ---
+  // --- Fetching Principal ---
   const fetchFlows = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
       const { data } = await api.get(`/flow?companyId=${user.company.id}`);
       setFlows(data);
-      if (data.length > 0 && !selectedFlowId) setSelectedFlowId(data[0].id);
+      if (data.length > 0 && selectedFlowIds.length === 0) setSelectedFlowIds([data[0].id]);
     } catch { toast.error("Erro ao carregar fluxos"); }
-  }, [user?.company?.id, selectedFlowId]);
+  }, [user?.company?.id]);
 
-  const fetchFlowBoard = useCallback(async (flowId: string) => {
-    if (!flowId) return;
+  const fetchSelectedBoards = useCallback(async () => {
+    if (selectedFlowIds.length === 0) { setBoards([]); setLoading(false); return; }
     setLoading(true);
     try {
-      const { data } = await api.get(`/flow/${flowId}/board`);
-      setCurrentFlow(data);
-    } catch { toast.error("Erro ao carregar quadro"); }
+      const promises = selectedFlowIds.map(id => api.get(`/flow/${id}/board`));
+      const results = await Promise.all(promises);
+      setBoards(results.map(r => r.data));
+    } catch { toast.error("Erro ao carregar quadros"); }
     finally { setLoading(false); }
-  }, []);
+  }, [selectedFlowIds]);
 
   const fetchResources = useCallback(async () => {
     if (!user?.company?.id) return;
@@ -157,78 +149,39 @@ export default function ProductFlowKanban() {
       ]);
       setUsers(uRes.data);
       setSuppliers(sRes.data.data || sRes.data);
-    } catch { console.error("Erro recursos"); }
+    } catch { console.error("Recursos indisponíveis"); }
   }, [user?.company?.id]);
 
-  useEffect(() => {
-    if (user) { fetchFlows(); fetchResources(); }
-  }, [user, fetchFlows, fetchResources]);
+  useEffect(() => { if (user) { fetchFlows(); fetchResources(); } }, [user, fetchFlows, fetchResources]);
+  useEffect(() => { fetchSelectedBoards(); }, [selectedFlowIds, fetchSelectedBoards]);
 
-  useEffect(() => {
-    if (selectedFlowId) fetchFlowBoard(selectedFlowId);
-  }, [selectedFlowId, fetchFlowBoard]);
-
-  // --- Filter Action ---
-  const applyFilter = async () => {
-    if (!filterStartDate || !filterEndDate) return toast.error("Selecione o período");
-    setLoading(true);
+  // --- CRUD Handlers ---
+  const handleCreateFlow = async () => {
+    if (!flowName.trim()) return toast.error("Nome obrigatório");
     try {
-      const query = new URLSearchParams({
-        startDate: filterStartDate,
-        endDate: filterEndDate,
-        dateField: filterDateType,
-        onlyOutsourced: filterOnlyOutsourced.toString()
-      });
-      const { data } = await api.get(`/flow/filter/items?${query.toString()}`);
-      setFilteredItems(data);
-      toast.success(`${data.length} itens encontrados`);
-    } catch { toast.error("Erro ao filtrar"); }
-    finally { setLoading(false); }
+      const { data } = await api.post(`/flow`, { name: flowName, color: newFlowColor });
+      setFlows(prev => [...prev, data]);
+      setSelectedFlowIds(prev => [...prev, data.id]);
+      setIsFlowModal(false);
+      setFlowName("");
+      toast.success("Fluxo criado!");
+    } catch { toast.error("Erro ao criar fluxo"); }
   };
-
-  // --- Handlers: Flow, Stage, Item ---
-  const handleOpenNewStage = useCallback(() => {
-    if (!selectedFlowId) return toast.error("Selecione um fluxo");
-    setEditingStage(null);
-    setStageName("");
-    setStageColor("#2D3436");
-    setIsStageModal(true);
-  }, [selectedFlowId]);
 
   const handleStageSubmit = async () => {
-    if (!selectedFlowId || !stageName.trim()) return;
-    try {
-      if (editingStage) await api.put(`/flow/stages/${editingStage.id}`, { name: stageName, color: stageColor });
-      else await api.post(`/flow/${selectedFlowId}/stages`, { name: stageName, color: stageColor });
-      setIsStageModal(false);
-      fetchFlowBoard(selectedFlowId);
-      toast.success("Salvo!");
-    } catch { toast.error("Erro etapa"); }
-  };
-
-  const handleAddItemFromColumn = (stageId: string) => {
-    setEditingItem(null);
-    setInitialStageId(stageId);
-    setIsItemModal(true);
-  };
-
-  const handleItemSubmit = async (values: any, files: any, removedMedia: any) => {
-    if (!selectedFlowId) return;
+    if (!stageName.trim()) return toast.error("Nome obrigatório");
     setIsSubmitting(true);
     try {
-      let itemId = editingItem?.id;
-      if (editingItem) {
-        await api.put(`/flow/items/${itemId}`, { ...values, ...removedMedia });
+      if (editingStage) {
+        await api.put(`/flow/stages/${editingStage.id}`, { name: stageName, color: stageColor });
+        toast.success("Etapa atualizada");
       } else {
-        const { data: newItem } = await api.post(`/flow/${selectedFlowId}/items`, values);
-        itemId = newItem.id;
+        await api.post(`/flow/${selectedFlowIds[0]}/stages`, { name: stageName, color: stageColor });
+        toast.success("Etapa criada");
       }
-      if (itemId && files) await uploadMedia(itemId, files);
-      setIsItemModal(false);
-      setIsEditItemModal(false);
-      fetchFlowBoard(selectedFlowId);
-      toast.success("Item salvo!");
-    } catch { toast.error("Erro item"); }
+      setIsStageModal(false);
+      fetchSelectedBoards();
+    } catch { toast.error("Erro ao salvar etapa"); }
     finally { setIsSubmitting(false); }
   };
 
@@ -236,248 +189,166 @@ export default function ProductFlowKanban() {
     const upload = async (file: File, type: string) => {
       const fd = new FormData();
       fd.append("file", file);
-      await api.post(`/flow/items/${itemId}/media/${type}`, fd);
+      return api.post(`/flow/items/${itemId}/media/${type}`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
     };
-    for (const f of files.images) await upload(f, "image");
-    for (const f of files.audios) await upload(f, "audio");
-    for (const f of files.videos) await upload(f, "video");
+    const promises = [];
+    if (files.images) for (const f of files.images) promises.push(upload(f, "image"));
+    if (files.audios) for (const f of files.audios) promises.push(upload(f, "audio"));
+    if (files.videos) for (const f of files.videos) promises.push(upload(f, "video"));
+    return Promise.all(promises);
   };
 
-  const handleCreateFlow = async () => {
-    if (!flowName.trim()) return;
+  const handleItemSubmit = async (values: any, files: any, removedMedia: any): Promise<void> => {
+    if (selectedFlowIds.length === 0) { toast.error("Selecione um fluxo"); return; }
+    setIsSubmitting(true);
     try {
-      const { data } = await api.post(`/flow`, { name: flowName });
-      setFlows(prev => [...prev, data]);
-      setSelectedFlowId(data.id);
-      setIsFlowModal(false);
-      setFlowName("");
-    } catch { toast.error("Erro fluxo"); }
-  };
-
-  const confirmDelete = (type: 'item' | 'stage' | 'flow', id: string) => {
-    setDeleteTarget({ type, id });
-    setDeleteModalOpen(true);
+      if (editingItem) {
+        const payload = { ...values, removeImageIds: removedMedia.images, removeVideoIds: removedMedia.videos, removeAudioIds: removedMedia.audios };
+        await api.put(`/flow/items/${editingItem.id}`, payload);
+        if (files) await uploadMedia(editingItem.id, files);
+        toast.success("Item atualizado");
+      } else {
+        const payload = { ...values, flowId: selectedFlowIds[0], stageId: activeStageId };
+        const { data: newItem } = await api.post(`/flow/${selectedFlowIds[0]}/items`, payload);
+        if (newItem?.id && files) await uploadMedia(newItem.id, files);
+        toast.success("Item criado");
+      }
+      setIsItemModal(false);
+      setIsEditItemModal(false);
+      setEditingItem(null);
+      fetchSelectedBoards();
+    } catch { toast.error("Erro ao salvar item"); }
+    finally { setIsSubmitting(false); }
   };
 
   const handleDeleteExecute = async () => {
-    if (!deleteTarget) return;
+    if (!itemToDelete) return;
     try {
-      if (deleteTarget.type === 'item') await api.delete(`/flow/items/${deleteTarget.id}`);
-      if (deleteTarget.type === 'stage') await api.delete(`/flow/stages/${deleteTarget.id}`);
-      if (deleteTarget.type === 'flow') {
-        await api.delete(`/flow/${deleteTarget.id}`);
-        setFlows(prev => prev.filter(f => f.id !== deleteTarget.id));
-        setSelectedFlowId("");
+      const { type, id } = itemToDelete;
+      if (flows.some(f => f.id === id)) {
+        await api.delete(`/flow/${id}`);
+        setFlows(prev => prev.filter(f => f.id !== id));
+        setSelectedFlowIds(prev => prev.filter(fid => fid !== id));
+        toast.success("Fluxo removido");
+      } else {
+        const url = type === 'item' ? `/flow/items/${id}` : `/flow/stages/${id}`;
+        await api.delete(url);
+        toast.success("Excluído com sucesso");
       }
-      fetchFlowBoard(selectedFlowId);
-    } catch { toast.error("Erro excluir"); }
-    finally { setDeleteModalOpen(false); }
+      fetchSelectedBoards();
+    } catch { toast.error("Erro ao excluir"); }
+    finally { setDeleteModalOpen(false); setItemToDelete(null); }
   };
 
-  // --- Drag & Drop ---
-  const allItems = useMemo(() => currentFlow?.stages.flatMap(s => s.items) || [], [currentFlow]);
+  // --- Lógica de Unificação (Multi-Flow) ---
+  const unifiedStages = useMemo(() => {
+    const stageGroups: Record<string, FlowStage> = {};
+    boards.forEach(board => {
+      const flowColor = board.color || "#D35400";
+      board.stages.forEach(stage => {
+        const key = stage.name.toUpperCase();
+        if (!stageGroups[key]) stageGroups[key] = { ...stage, items: [] };
+        const itemsWithMetadata = stage.items.map(item => ({
+          ...item, flowColor, flowName: board.name
+        }));
+        stageGroups[key].items.push(...itemsWithMetadata);
+      });
+    });
+    return Object.values(stageGroups).sort((a, b) => a.order - b.order);
+  }, [boards]);
+
   const { moveItem, onDragStart } = useKanbanDrag({
-    items: allItems,
+    items: unifiedStages.flatMap(s => s.items),
     setItems: () => { },
     idField: "stageId",
     moveCallback: async (itemId, newStageId) => {
       await api.put(`/flow/items/${itemId}/move`, { newStageId });
-      fetchFlowBoard(selectedFlowId);
+      fetchSelectedBoards();
     }
   });
 
-  const flowConfigActions = [
-    {
-      label: 'Nova Etapa',
-      onClick: handleOpenNewStage,
-      icon: <Layers className="w-4 h-4 mr-2" />
-    },
-    {
-      label: 'Novo Fluxo',
-      onClick: () => setIsFlowModal(true),
-      icon: <Factory className="w-4 h-4 mr-2" />
-    },
-    // 🔥 ADICIONE ESTA OPÇÃO:
-    {
-      label: 'Excluir Fluxo Atual',
-      onClick: () => {
-        if (selectedFlowId) {
-          confirmDelete('flow', selectedFlowId);
-        }
-      },
-      icon: <Trash2 className="w-4 h-4 mr-2" />,
-      variant: "destructive" as const // Isso deixará o texto vermelho
-    }
-  ];
-
-  if (loading && !currentFlow && flows.length > 0) {
-    return <div className="h-screen flex items-center justify-center bg-[#F5F0E6]"><RefreshCw className="animate-spin text-orange-500" /></div>;
-  }
+  const toggleFlow = (id: string) => {
+    setSelectedFlowIds(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
+  };
 
   return (
     <KanbanLayout>
       <KanbanHeader
         title="Esteira de Produção"
         icon={<Factory size={20} />}
-        configActions={flowConfigActions}
+        onAddFlow={() => setIsFlowModal(true)}
+        onAddStage={() => { setEditingStage(null); setStageName(""); setIsStageModal(true); }}
         rightContent={
-          <div className="flex items-center gap-2">
-            {flows.length > 0 && (
-              <div className="flex items-center gap-1">
-                <select
-                  className="bg-black/20 text-white text-sm rounded-lg px-3 py-1.5 border border-white/10 outline-none"
-                  value={selectedFlowId}
-                  onChange={(e) => setSelectedFlowId(e.target.value)}
-                >
-                  {flows.map(f => <option key={f.id} value={f.id} className="text-slate-900">{f.name}</option>)}
-                </select>
-
-                {/* 🔥 BOTÃO DE EXCLUSÃO RÁPIDA AO LADO DO SELECT */}
-                {/* <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-white/50 hover:text-red-500 hover:bg-red-500/10"
-                  onClick={() => confirmDelete('flow', selectedFlowId)}
-                >
-                  <Trash2 size={16} />
-                </Button> */}
-              </div>
-            )}
-          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="bg-white/10 text-white border-white/20">
+                <Layers size={16} className="mr-2" />
+                Fluxos Ativos ({selectedFlowIds.length})
+                <ChevronDown size={14} className="ml-2 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2 bg-[#2C3E50] border-white/10" align="end">
+              {flows.map(f => {
+                const active = selectedFlowIds.includes(f.id);
+                return (
+                  <div key={f.id} className={cn("group flex items-center justify-between p-2 rounded-md transition-all", active ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/5")}>
+                    <div className="flex items-center gap-2 cursor-pointer flex-1" onClick={() => toggleFlow(f.id)}>
+                      <div className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: f.color || "#D35400" }} />
+                      <span className="text-sm font-medium">{f.name}</span>
+                      {active && <Check size={14} className="text-orange-500 ml-1" />}
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); setItemToDelete({ type: 'stage', id: f.id }); setDeleteModalOpen(true); }} className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:bg-red-500/10 rounded">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
         }
       />
 
-      {/* FILTRO RESTAURADO: Agora apenas com Datas (Sem Horas) */}
-      <KanbanFilter>
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="grid gap-1">
-            <Label className="text-[10px] uppercase font-bold text-[#95A5A6]">De</Label>
-            <Input type="date" className="h-8 w-36 text-xs bg-white" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
-          </div>
-          <div className="grid gap-1">
-            <Label className="text-[10px] uppercase font-bold text-[#95A5A6]">Até</Label>
-            <Input type="date" className="h-8 w-36 text-xs bg-white" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
-          </div>
-          <div className="grid gap-1">
-            <Label className="text-[10px] uppercase font-bold text-[#95A5A6]">Tipo de Data</Label>
-            <select
-              className="h-8 w-32 rounded-md border border-input bg-white px-2 py-1 text-xs"
-              value={filterDateType}
-              onChange={e => setFilterDateType(e.target.value)}
-            >
-              <option value="dueDate">Prazo</option>
-              <option value="productionStartedAt">Início</option>
-              <option value="deliveryAt">Entrega</option>
-            </select>
-          </div>
-          <Button size="sm" className="bg-[#2C3E50] h-8 text-xs text-white" onClick={applyFilter}>
-            <FilterIcon size={12} className="mr-2" /> Filtrar
-          </Button>
-          {filteredItems && (
-            <Button size="sm" variant="ghost" className="h-8 text-xs text-red-500" onClick={() => setFilteredItems(null)}>
-              Limpar
-            </Button>
-          )}
-        </div>
-      </KanbanFilter>
-
       <KanbanBoard>
-        {currentFlow?.stages?.sort((a, b) => a.order - b.order).map(stage => {
-          const itemsToShow = filteredItems
-            ? stage.items.filter(i => filteredItems.some(fi => fi.id === i.id))
-            : stage.items;
-
-          return (
-            <KanbanColumn
-              key={stage.id}
-              id={stage.id}
-              title={stage.name}
-              color={stage.color || "#2C3E50"}
-              count={itemsToShow.length}
-              onDropItem={moveItem}
-              onAddClick={() => handleAddItemFromColumn(stage.id)}
-              onEditClick={() => { setEditingStage(stage); setStageName(stage.name); setStageColor(stage.color || "#2C3E50"); setIsStageModal(true); }}
-              onDeleteClick={() => confirmDelete('stage', stage.id)}
-            >
-              {itemsToShow.sort((a, b) => a.priority - b.priority).map(item => (
-                <KanbanCard
-                  key={item.id}
-                  id={item.id}
-                  title={item.title}
-                  subtitle={item.productRef}
-                  priorityColor={getPriorityColor(item.priority)}
-                  coverImage={item.images && item.images.length > 0 ? item.images[0].url : undefined}
-                  onDragStart={(e) => onDragStart(e, item.id)}
-                  onDoubleClick={() => { setPreviewItem(item); setIsPreviewModal(true); }}
-                  onEdit={() => { setEditingItem(item); setIsEditItemModal(true); }}
-                  onDelete={() => confirmDelete('item', item.id)}
-                  footer={
-                    <div className="flex justify-between items-center w-full text-[10px] font-bold text-[#95A5A6]">
-                      <span className="flex items-center gap-1"><Package size={12} /> {item.quantity} un.</span>
-                      {item.dueDate && <span className="flex items-center gap-1"><CalendarClock size={12} /> {formatDateShort(item.dueDate)}</span>}
-                    </div>
-                  }
-                >
-                  <p className="line-clamp-2 text-xs text-[#95A5A6] mb-2">{item.description}</p>
-                  <div className="text-[10px] font-mono bg-[#F5F0E6] text-[#2D3436] px-1.5 py-0.5 rounded w-fit border border-[#95A5A6]/20">#{item.orderNumber}</div>
-                </KanbanCard>
-              ))}
-            </KanbanColumn>
-          )
-        })}
+        {unifiedStages.map(stage => (
+          <KanbanColumn
+            key={stage.id}
+            id={stage.id}
+            title={stage.name}
+            count={stage.items.length}
+            onDropItem={moveItem}
+            onAddItem={() => { setActiveStageId(stage.id); setIsItemModal(true); }}
+            onEditClick={() => { setEditingStage(stage); setStageName(stage.name); setIsStageModal(true); }}
+            onDeleteClick={() => { setItemToDelete({ type: 'stage', id: stage.id }); setDeleteModalOpen(true); }}
+          >
+            {stage.items.map(item => (
+              <KanbanCard
+                key={item.id}
+                id={item.id}
+                title={item.title}
+                subtitle={item.productRef}
+                priorityColor={item.flowColor}
+                coverImage={item.images[0]?.url}
+                onDragStart={(e) => onDragStart(e, item.id)}
+                onDoubleClick={() => { setPreviewItem(item); setIsPreviewModal(true); }}
+                onEdit={() => { setEditingItem(item); setIsEditItemModal(true); }}
+                onDelete={() => { setItemToDelete({ type: 'item', id: item.id }); setDeleteModalOpen(true); }}
+                footer={
+                  <div className="flex justify-between items-center w-full">
+                    <span className="text-[10px] text-slate-400 font-bold"><Package size={10} className="inline mr-1" />{item.quantity}</span>
+                    <div className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase" style={{ backgroundColor: item.flowColor }}>{item.flowName}</div>
+                  </div>
+                }
+              />
+            ))}
+          </KanbanColumn>
+        ))}
       </KanbanBoard>
 
-      {/* --- MODAIS (FLUXO, ETAPA, DELETE) --- */}
-      <FlowItemModal
-        isOpen={isItemModal || isEditItemModal}
-        onClose={() => { setIsItemModal(false); setIsEditItemModal(false); setEditingItem(null); setInitialStageId(undefined); }}
-        initialData={editingItem as any}
-        initialStageId={initialStageId}
-        onSubmit={handleItemSubmit}
-        isLoading={isSubmitting}
-        users={users}
-        suppliers={suppliers}
-        stages={currentFlow?.stages || []}
-      />
-
-      <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
-        <DialogContent className="bg-white">
-          <DialogHeader><DialogTitle>{editingStage ? "Editar" : "Nova"} Etapa</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-4">
-            <Label>Nome</Label>
-            <Input value={stageName} onChange={e => setStageName(e.target.value)} />
-            <Label>Cor</Label>
-            <Input type="color" value={stageColor} onChange={e => setStageColor(e.target.value)} className="h-10 w-full" />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsStageModal(false)}>Cancelar</Button>
-            <Button onClick={handleStageSubmit} className="bg-orange-600 text-white">Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isFlowModal} onOpenChange={setIsFlowModal}>
-        <DialogContent className="bg-white">
-          <DialogHeader><DialogTitle>Novo Fluxo</DialogTitle></DialogHeader>
-          <div className="py-4 space-y-4">
-            <Label>Nome do Fluxo</Label>
-            <Input value={flowName} onChange={e => setFlowName(e.target.value)} />
-          </div>
-          <DialogFooter>
-            <Button onClick={handleCreateFlow} className="bg-orange-600 text-white">Criar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmDeleteModal
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        onConfirm={handleDeleteExecute}
-        title="Confirmar Exclusão"
-        description="Esta ação não pode ser desfeita."
-      />
-
-      {/* Preview Dialog */}
+      {/* --- MODAIS --- */}
+      
+      {/* 🟢 PREVIEW MODAL NO DUPLO CLIQUE */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl bg-white rounded-xl">
           <div className="px-6 py-4 border-b sticky top-0 bg-white z-20 flex justify-between items-center">
@@ -498,20 +369,66 @@ export default function ProductFlowKanban() {
               </div>
             )}
             <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-tighter">Descrição</h4>
+              <h4 className="text-xs font-bold uppercase tracking-tighter text-[#95A5A6]">Descrição</h4>
               <div className="bg-[#F5F0E6]/50 p-4 rounded-xl border text-sm whitespace-pre-wrap leading-relaxed">
-                {previewItem?.description || "Nenhuma descrição."}
+                {previewItem?.description || "Sem descrição."}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-8 border-t pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-[#F5F0E6] rounded-lg text-[#D35400]"><Package size={20} /></div>
+                <div><p className="text-[10px] font-bold text-[#95A5A6] uppercase">Qtd</p><p className="text-sm font-bold">{previewItem?.quantity} un.</p></div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-[#F5F0E6] rounded-lg text-[#D35400]"><Calendar size={20} /></div>
+                <div><p className="text-[10px] font-bold text-[#95A5A6] uppercase">Prazo</p><p className="text-sm font-bold">{previewItem?.dueDate ? formatDateShort(previewItem.dueDate) : "N/D"}</p></div>
               </div>
             </div>
           </div>
           <DialogFooter className="p-4 bg-[#F5F0E6]/30 border-t">
             <Button variant="outline" onClick={() => setIsPreviewModal(false)}>Fechar</Button>
-            <Button className="bg-orange-600 text-white" onClick={() => { setIsPreviewModal(false); setEditingItem(previewItem); setIsEditItemModal(true); }}>
-              Editar Detalhes
-            </Button>
+            <Button className="bg-orange-600 text-white" onClick={() => { setIsPreviewModal(false); setEditingItem(previewItem); setIsEditItemModal(true); }}>Editar Detalhes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal: Stage */}
+      <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
+        <DialogContent className="bg-white">
+          <DialogHeader><DialogTitle>{editingStage ? "Editar" : "Nova"} Etapa</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+             <Label>Nome</Label>
+             <Input value={stageName} onChange={e => setStageName(e.target.value)} />
+             <Label>Cor</Label>
+             <Input type="color" value={stageColor} onChange={e => setStageColor(e.target.value)} className="h-10 w-full" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsStageModal(false)}>Cancelar</Button>
+            <Button onClick={handleStageSubmit} className="bg-orange-600 text-white">Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Novo Fluxo */}
+      <Dialog open={isFlowModal} onOpenChange={setIsFlowModal}>
+        <DialogContent className="bg-white">
+          <DialogHeader><DialogTitle>Novo Fluxo</DialogTitle></DialogHeader>
+          <div className="py-4 space-y-4">
+            <Label>Nome</Label>
+            <Input value={flowName} onChange={e => setFlowName(e.target.value)} />
+            <Label>Cor do Fluxo</Label>
+            <Input type="color" value={newFlowColor} onChange={e => setNewFlowColor(e.target.value)} className="h-10 w-full" />
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCreateFlow} className="bg-orange-600 text-white">Criar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <FlowItemModal isOpen={isItemModal} onClose={() => setIsItemModal(false)} onSubmit={handleItemSubmit} isLoading={isSubmitting} users={users} suppliers={suppliers} stages={[]} />
+      <FlowItemModal isOpen={isEditItemModal} onClose={() => { setIsEditItemModal(false); setEditingItem(null); }} initialData={editingItem} onSubmit={handleItemSubmit} isLoading={isSubmitting} users={users} suppliers={suppliers} stages={[]} />
+
+      <ConfirmDeleteModal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} onConfirm={handleDeleteExecute} title={`Excluir ${itemToDelete?.type === 'item' ? 'produto' : 'etapa'}?`} />
     </KanbanLayout>
   );
 }
