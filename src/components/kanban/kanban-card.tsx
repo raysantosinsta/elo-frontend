@@ -7,6 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { Edit, Eye, MoreHorizontal, Trash2 } from "lucide-react";
 import React from "react";
 
@@ -15,22 +16,19 @@ export interface KanbanCardProps {
   title: string;
   subtitle?: string;
   tags?: React.ReactNode;
-  
-  // 🔥 NOVAS PROPS DE STATUS
-  statusLabel?: string; // Ex: "PENDENTE", "EM PROGRESSO"
-  statusColor?: string; // Ex: "#E67E22" (Hexadecimal)
-
+  statusLabel?: string; 
+  statusColor?: string; 
   priorityColor?: string;
   coverImage?: string; 
   imagesCount?: number; 
   footer?: React.ReactNode;
+  children?: React.ReactNode;
   onView?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
   onDoubleClick?: () => void; 
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void; 
   extraMenuItems?: React.ReactNode;
-  children?: React.ReactNode;
 }
 
 export function KanbanCard({
@@ -38,9 +36,10 @@ export function KanbanCard({
   title,
   subtitle,
   tags,
-  statusLabel, // 🔥 Recebe label
-  statusColor = "#64748b", // 🔥 Recebe cor (default slate-500)
+  statusLabel,
+  statusColor = "#95A5A6",
   priorityColor = "#ccc",
+  coverImage,
   footer,
   onView,
   onEdit,
@@ -54,89 +53,72 @@ export function KanbanCard({
   return (
     <Card
       draggable
-      onDragStart={(e) => {
-          if (onDragStart) {
-              onDragStart(e);
-          } else {
-              e.dataTransfer.setData("itemId", id);
-          }
-      }}
+      onDragStart={(e) => onDragStart ? onDragStart(e) : e.dataTransfer.setData("itemId", id)}
       onDoubleClick={onDoubleClick}
-      className="cursor-grab active:cursor-grabbing group transition-all duration-200 border-l-[3px] bg-white hover:shadow-sm hover:border-l-[4px] select-none relative mb-1.5 rounded-md"
+      // 🔥 IMPORTANTE: Mudança na estrutura de classes para garantir visibilidade
+      className={cn(
+        "cursor-grab active:cursor-grabbing group transition-all duration-200",
+        "border-l-[4px] bg-white hover:shadow-md select-none relative mb-3 rounded-xl overflow-hidden flex flex-col"
+      )}
       style={{ borderLeftColor: priorityColor }}
     >
-       <div className="p-2">
-        
-        {/* Topo: Status, Tags e Menu */}
-        <div className="flex justify-between items-start mb-1.5">
+      {/* 🖼️ ÁREA DA IMAGEM - Reforçada */}
+      {coverImage && (
+        <div className="w-full h-32 flex-shrink-0 overflow-hidden bg-slate-100 border-b border-slate-100">
+          <img 
+            src={coverImage} 
+            alt={title} 
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+            loading="lazy"
+            onError={(e) => {
+              // Se a imagem falhar (404), removemos o espaço para não ficar feio
+              e.currentTarget.parentElement!.style.display = 'none';
+            }}
+          />
+        </div>
+      )}
+
+      <div className="p-3 flex flex-col flex-1">
+        {/* Status e Menu */}
+        <div className="flex justify-between items-start mb-2">
           <div className="flex flex-wrap gap-1 items-center">
-             
-             {/* 🔥 RENDERIZAÇÃO DO STATUS */}
              {statusLabel && (
                <span 
-                 className="text-[9px] font-bold px-1.5 py-0.5 rounded-[3px] uppercase tracking-wider leading-none"
-                 style={{ 
-                    // Usa a cor passada para o texto
-                    color: statusColor, 
-                    // Usa a mesma cor com 15% de opacidade para o fundo (hex + '26')
-                    backgroundColor: `${statusColor}26` 
-                 }}
+                 className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase leading-none"
+                 style={{ color: statusColor, backgroundColor: `${statusColor}15` }}
                >
                  {statusLabel}
                </span>
              )}
-
              {tags}
           </div>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="text-gray-300 hover:text-gray-600 p-0.5 -mr-1 outline-none focus:ring-0 transition-colors">
-                <MoreHorizontal size={14} />
+              <button className="text-slate-300 hover:text-slate-500 transition-colors">
+                <MoreHorizontal size={16} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              {extraMenuItems}
-              {extraMenuItems && <DropdownMenuSeparator />}
-
-              {onView && (
-                <DropdownMenuItem onClick={onView} className="cursor-pointer text-xs">
-                  <Eye className="w-3.5 h-3.5 mr-2" /> Visualizar
-                </DropdownMenuItem>
-              )}
-              {onEdit && (
-                <DropdownMenuItem onClick={onEdit} className="cursor-pointer text-xs">
-                  <Edit className="w-3.5 h-3.5 mr-2" /> Editar
-                </DropdownMenuItem>
-              )}
-
-              {(onView || onEdit) && onDelete && <DropdownMenuSeparator />}
-
-              {onDelete && (
-                <DropdownMenuItem className="text-red-600 focus:text-red-600 cursor-pointer focus:bg-red-50 text-xs" onClick={onDelete}>
-                  <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir
-                </DropdownMenuItem>
-              )}
+              {onView && <DropdownMenuItem onClick={onView}><Eye className="w-4 h-4 mr-2"/> Ver</DropdownMenuItem>}
+              {onEdit && <DropdownMenuItem onClick={onEdit}><Edit className="w-4 h-4 mr-2"/> Editar</DropdownMenuItem>}
+              {onDelete && <DropdownMenuItem onClick={onDelete} className="text-red-600"><Trash2 className="w-4 h-4 mr-2"/> Excluir</DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        {/* Conteúdo Principal */}
-        <div className="mb-0.5">
-            <h4 className="font-bold text-xs leading-tight text-slate-800 line-clamp-2" title={title}>
-              {title}
-            </h4>
-            {subtitle && <p className="text-[9px] text-slate-400 font-mono mt-0.5 uppercase tracking-wide truncate">{subtitle}</p>}
+        {/* Textos */}
+        <div className="mb-2">
+            <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight group-hover:text-[#D35400] transition-colors">{title}</h4>
+            {subtitle && <p className="text-[10px] text-slate-400 font-mono mt-1 uppercase truncate">{subtitle}</p>}
         </div>
 
-        {/* Descrição */}
-        <div className="text-[10px] text-slate-500 space-y-0.5 line-clamp-2 leading-3">
+        <div className="text-xs text-slate-500 line-clamp-2 mb-3">
           {children}
         </div>
 
-        {/* Rodapé Super Compacto */}
         {footer && (
-          <div className="mt-1.5 pt-1 border-t border-gray-50 flex items-center justify-between text-[10px] text-gray-400">
+          <div className="mt-auto pt-2 border-t border-slate-50">
             {footer}
           </div>
         )}

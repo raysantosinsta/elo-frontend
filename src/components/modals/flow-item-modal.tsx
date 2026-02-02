@@ -87,6 +87,7 @@ interface FlowItemModalProps {
     isOpen: boolean;
     onClose: () => void;
     initialData?: FlowItem | null;
+    initialStageId?: string;
     onSubmit: (
         values: any,
         files: { images: File[]; audios: File[]; videos: File[] },
@@ -120,6 +121,7 @@ export function FlowItemModal({
     isOpen,
     onClose,
     initialData,
+    initialStageId,
     onSubmit,
     isLoading,
     users,
@@ -127,15 +129,15 @@ export function FlowItemModal({
     stages,
 }: FlowItemModalProps) {
     const isEditing = !!initialData;
-    
+
     const [images, setImages] = useState<File[]>([]);
     const [videos, setVideos] = useState<File[]>([]);
     const [audios, setAudios] = useState<File[]>([]);
-    
+
     const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
     const [removedVideoIds, setRemovedVideoIds] = useState<string[]>([]);
     const [removedAudioIds, setRemovedAudioIds] = useState<string[]>([]);
-    
+
     const [isRecording, setIsRecording] = useState(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -164,7 +166,7 @@ export function FlowItemModal({
             setImages([]);
             setVideos([]);
             setAudios([]);
-            
+
             setRemovedImageIds([]);
             setRemovedVideoIds([]);
             setRemovedAudioIds([]);
@@ -172,6 +174,7 @@ export function FlowItemModal({
 
             if (initialData) {
                 form.reset({
+
                     title: initialData.title,
                     description: initialData.description || "",
                     orderNumber: initialData.orderNumber || "",
@@ -182,9 +185,10 @@ export function FlowItemModal({
                     stageId: initialData.stageId || "",
                     assignedToId: initialData.assignedTo?.id || "unassigned",
                     supplierId: initialData.supplierId || "internal",
-                    dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().split("T")[0] : "",
-                    productionStartedAt: initialData.productionStartedAt ? new Date(initialData.productionStartedAt).toISOString().split("T")[0] : "",
-                    deliveryAt: initialData.deliveryAt ? new Date(initialData.deliveryAt).toISOString().split("T")[0] : "",
+                    dueDate: initialData.dueDate ? initialData.dueDate.substring(0, 10) : "",
+                    productionStartedAt: initialData.productionStartedAt ? initialData.productionStartedAt.substring(0, 10) : "",
+                    deliveryAt: initialData.deliveryAt ? initialData.deliveryAt.substring(0, 10) : "",
+
                 });
             } else {
                 form.reset({
@@ -195,7 +199,7 @@ export function FlowItemModal({
                     quantity: 1,
                     priority: 3,
                     status: "PENDENTE",
-                    stageId: stages.length > 0 ? stages[0].id : "",
+                    stageId: initialStageId || (stages.length > 0 ? stages[0].id : ""),
                     assignedToId: "unassigned",
                     supplierId: "internal",
                     dueDate: "",
@@ -204,7 +208,7 @@ export function FlowItemModal({
                 });
             }
         }
-    }, [isOpen, initialData, stages, form]);
+    }, [isOpen, initialData, stages, form, initialStageId]);
 
     const startRecording = async () => {
         try {
@@ -261,7 +265,7 @@ export function FlowItemModal({
         const extIndex = name.lastIndexOf('.');
         const ext = extIndex !== -1 ? name.substring(extIndex) : '';
         const nameWithoutExt = extIndex !== -1 ? name.substring(0, extIndex) : name;
-        
+
         const keepChars = Math.floor((maxLength - ext.length - 3) / 2);
         return `${nameWithoutExt.substring(0, keepChars)}...${nameWithoutExt.substring(nameWithoutExt.length - keepChars)}${ext}`;
     };
@@ -269,7 +273,7 @@ export function FlowItemModal({
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-3xl h-[95vh] md:h-[90vh] flex flex-col p-0 overflow-hidden">
-                
+
                 <DialogHeader className="px-6 py-4 border-b bg-slate-50 shrink-0">
                     <div className="flex items-center gap-2">
                         <div className="p-2 bg-orange-100 rounded text-orange-600">
@@ -342,7 +346,7 @@ export function FlowItemModal({
                                                         </Select>
                                                     </FormItem>
                                                 )} />
-                                                <FormField control={form.control} name="stageId" render={({ field }) => (
+                                                {/* <FormField control={form.control} name="stageId" render={({ field }) => (
                                                     <FormItem>
                                                         <FormLabel>Etapa Atual</FormLabel>
                                                         <Select onValueChange={field.onChange} value={field.value}>
@@ -352,7 +356,7 @@ export function FlowItemModal({
                                                             </SelectContent>
                                                         </Select>
                                                     </FormItem>
-                                                )} />
+                                                )} /> */}
                                             </div>
 
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-dashed">
@@ -384,24 +388,28 @@ export function FlowItemModal({
 
                                             <div className="grid grid-cols-3 gap-4 pt-4 border-t border-dashed">
                                                 <FormField control={form.control} name="dueDate" render={({ field }) => (
-                                                    <FormItem><FormLabel className="text-xs font-bold uppercase">Prazo</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>
+                                                    <FormItem><FormLabel className="text-xs font-bold uppercase">Prazo</FormLabel><FormControl><Input
+                                                        type="date"
+
+                                                        {...field}
+                                                        value={field.value || ""} /></FormControl></FormItem>
                                                 )} />
                                                 <FormField control={form.control} name="productionStartedAt" render={({ field }) => (
-                                                    <FormItem><FormLabel className="text-xs font-bold uppercase">Início</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>
+                                                    <FormItem><FormLabel className="text-xs font-bold uppercase">Início</FormLabel><FormControl><Input type="date" {...field} value={field.value || ""} /></FormControl></FormItem>
                                                 )} />
                                                 <FormField control={form.control} name="deliveryAt" render={({ field }) => (
-                                                    <FormItem><FormLabel className="text-xs font-bold uppercase">Entrega</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>
+                                                    <FormItem><FormLabel className="text-xs font-bold uppercase">Entrega</FormLabel><FormControl><Input type="date" {...field} value={field.value || ""} /></FormControl></FormItem>
                                                 )} />
                                             </div>
                                         </TabsContent>
 
                                         <TabsContent value="media" className="space-y-6">
-                                            
+
                                             {/* 1. MÍDIAS JÁ SALVAS */}
                                             {isEditing && (initialData?.images?.length || initialData?.videos?.length || initialData?.audios?.length) ? (
                                                 <div className="space-y-4 p-4 bg-slate-50 border rounded-lg">
                                                     <Label className="text-xs text-slate-500 font-bold uppercase flex items-center gap-2"><CheckCircle2 size={12} /> Mídias Salvas</Label>
-                                                    
+
                                                     {/* Imagens */}
                                                     {initialData.images?.length > 0 && (
                                                         <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
@@ -416,7 +424,7 @@ export function FlowItemModal({
                                                             ))}
                                                         </div>
                                                     )}
-                                                    
+
                                                     {/* Vídeos */}
                                                     {initialData.videos?.length > 0 && (
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -457,10 +465,10 @@ export function FlowItemModal({
                                             ) : null}
 
                                             <Separator />
-                                            
+
                                             {/* 2. ÁREA DE UPLOAD */}
                                             <Label className="text-sm font-bold flex items-center gap-2"><UploadCloud size={16} /> Adicionar Novas Mídias</Label>
-                                            
+
                                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                                 <div className="border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-lg p-4 flex flex-col items-center justify-center hover:bg-blue-50 cursor-pointer relative h-32 transition-colors">
                                                     <Input type="file" multiple accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => e.target.files && setImages(p => [...p, ...Array.from(e.target.files!)])} />
@@ -468,14 +476,14 @@ export function FlowItemModal({
                                                     <span className="text-xs text-blue-700 font-bold">Imagens</span>
                                                     <span className="text-[10px] text-blue-400 mt-1">+ Adicionar</span>
                                                 </div>
-                                                
+
                                                 <div className="border-2 border-dashed border-purple-200 bg-purple-50/30 rounded-lg p-4 flex flex-col items-center justify-center hover:bg-purple-50 cursor-pointer relative h-32 transition-colors">
                                                     <Input type="file" multiple accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => e.target.files && setVideos(p => [...p, ...Array.from(e.target.files!)])} />
                                                     <Video className="text-purple-400 mb-2" size={24} />
                                                     <span className="text-xs text-purple-700 font-bold">Vídeos</span>
                                                     <span className="text-[10px] text-purple-400 mt-1">+ Adicionar</span>
                                                 </div>
-                                                
+
                                                 <div className="flex flex-col gap-2 h-32">
                                                     <div className="border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer relative flex-1">
                                                         <Input type="file" multiple accept="audio/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => e.target.files && setAudios(p => [...p, ...Array.from(e.target.files!)])} />
@@ -493,7 +501,7 @@ export function FlowItemModal({
                                             {(images.length > 0 || videos.length > 0 || audios.length > 0) && (
                                                 <div className="space-y-2 pt-2 border-t">
                                                     <Label className="text-[10px] font-bold text-slate-400 uppercase">Arquivos para Upload (Novos)</Label>
-                                                    
+
                                                     {/* Imagens */}
                                                     {images.length > 0 && (
                                                         <div className="grid grid-cols-4 gap-2 mb-2">
@@ -543,10 +551,10 @@ export function FlowItemModal({
                 <DialogFooter className="px-6 py-4 border-t bg-slate-50 shrink-0">
                     <div className="flex justify-end gap-3 w-full">
                         <Button variant="outline" onClick={onClose} disabled={isLoading}>Cancelar</Button>
-                        <Button 
-                            form="flow-item-form" 
-                            type="submit" 
-                            className="bg-orange-600 hover:bg-orange-700 min-w-[140px]" 
+                        <Button
+                            form="flow-item-form"
+                            type="submit"
+                            className="bg-orange-600 hover:bg-orange-700 min-w-[140px]"
                             disabled={isLoading}
                         >
                             {isLoading ? (

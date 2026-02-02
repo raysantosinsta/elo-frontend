@@ -541,7 +541,7 @@ export default function ProductKanban() {
             onChange={(e) => setFilterDateType(e.target.value)}
           >
             <option value="created">Data de Criação</option>
-            <option value="scheduled">Data de Aviso de Vencimento</option>
+            <option value="scheduled">Proximo a atrasar</option>
             <option value="due">Prazo Final</option>
           </select>
         </div>
@@ -641,6 +641,7 @@ export default function ProductKanban() {
                     priorityColor={getPriorityColor(task.priority)}
                     statusLabel={statusConfig.label}
                     statusColor={statusConfig.color}
+                    coverImage={task.taskImages && task.taskImages.length > 0 ? task.taskImages[0].url : undefined}
                     onDragStart={(e) => onDragStart(e, task.id)}
                     onDoubleClick={() => { setPreviewTask(task); setIsPreviewModal(true); }}
                     onView={() => { setPreviewTask(task); setIsPreviewModal(true); }}
