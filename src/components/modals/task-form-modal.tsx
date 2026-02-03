@@ -379,9 +379,7 @@ export function TaskFormModal({
                     <FormField control={form.control} name="priority" render={({ field }) => (
                       <FormItem><FormLabel>Prioridade</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="1">Alta</SelectItem><SelectItem value="2">Média</SelectItem><SelectItem value="3">Baixa</SelectItem></SelectContent></Select></FormItem>
                     )} />
-                    <FormField control={form.control} name="columnId" render={({ field }) => (
-                      <FormItem><FormLabel>Coluna *</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent>{columns.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
-                    )} />
+                    
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField control={form.control} name="scheduledAt" render={({ field }) => (

@@ -17,7 +17,7 @@ import {
   Paperclip,
   ImageIcon,
   Mic,
-  MapPin
+  MapPin,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -36,10 +36,20 @@ import { KanbanLayout } from "@/components/kanban/kanban-layout";
 
 // --- UI Components ---
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 // --- Modais ---
@@ -47,8 +57,15 @@ import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 import { FlowItemModal } from "@/components/modals/flow-item-modal";
 
 // --- 🔥 SUAS INTERFACES RESTAURADAS ---
-interface FlowMedia { id: string; url: string; filename: string; }
-interface UserProfile { id: string; name: string; }
+interface FlowMedia {
+  id: string;
+  url: string;
+  filename: string;
+}
+interface UserProfile {
+  id: string;
+  name: string;
+}
 interface FlowItem {
   id: string;
   title: string;
@@ -60,9 +77,15 @@ interface FlowItem {
   stageId?: string;
   flowId: string;
   flowColor?: string; // Injetado no Frontend
-  flowName?: string;  // Injetado no Frontend
+  flowName?: string; // Injetado no Frontend
   supplierId?: string;
-  supplier?: { id: string; name: string; category?: string; city?: string; state?: string };
+  supplier?: {
+    id: string;
+    name: string;
+    category?: string;
+    city?: string;
+    state?: string;
+  };
   dueDate?: string;
   images: FlowMedia[];
   audios: FlowMedia[];
@@ -84,8 +107,17 @@ interface ProductFlow {
 }
 
 // --- Helpers ---
+/**
+ * Formata uma string de data para o formato curto brasileiro (Ex: 03 Fev).
+ * @param {string} d - String da data original.
+ * @returns {string} Data formatada.
+ */
 const formatDateShort = (d: string) =>
-  new Date(d).toLocaleDateString("pt-BR", { day: "numeric", month: "short", timeZone: 'UTC' });
+  new Date(d).toLocaleDateString("pt-BR", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 
 export default function ProductFlowKanban() {
   const { user } = useAuth();
@@ -111,7 +143,10 @@ export default function ProductFlowKanban() {
   const [editingStage, setEditingStage] = useState<FlowStage | null>(null);
   const [editingItem, setEditingItem] = useState<FlowItem | null>(null);
   const [previewItem, setPreviewItem] = useState<FlowItem | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<{ type: 'item' | 'stage', id: string } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{
+    type: "item" | "stage";
+    id: string;
+  } | null>(null);
 
   const [flowName, setFlowName] = useState("");
   const [newFlowColor, setNewFlowColor] = useState("#D35400");
@@ -119,99 +154,199 @@ export default function ProductFlowKanban() {
   const [stageColor, setStageColor] = useState("#2D3436");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- Fetching Principal ---
+  /**
+   * Busca todos os fluxos (pipelines) vinculados à empresa do usuário logado.
+   * @async
+   * @function fetchFlows
+   */
   const fetchFlows = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
       const { data } = await api.get(`/flow?companyId=${user.company.id}`);
+      console.log("fluxos", data);
       setFlows(data);
-      if (data.length > 0 && selectedFlowIds.length === 0) setSelectedFlowIds([data[0].id]);
-    } catch { toast.error("Erro ao carregar fluxos"); }
-  }, [user?.company?.id]);
+      if (data.length > 0 && selectedFlowIds.length === 0)
+        setSelectedFlowIds([data[0].id]);
+    } catch {
+      toast.error("Erro ao carregar fluxos");
+    }
+  }, [user?.company?.id, selectedFlowIds.length]);
 
+  /**
+   * Carrega os dados detalhados (estágios e itens) dos fluxos selecionados no filtro.
+   * @async
+   * @function fetchSelectedBoards
+   */
   const fetchSelectedBoards = useCallback(async () => {
-    if (selectedFlowIds.length === 0) { setBoards([]); setLoading(false); return; }
+    if (selectedFlowIds.length === 0) {
+      setBoards([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const promises = selectedFlowIds.map(id => api.get(`/flow/${id}/board`));
+      const promises = selectedFlowIds.map((id) =>
+        api.get(`/flow/${id}/board`),
+      );
       const results = await Promise.all(promises);
-      setBoards(results.map(r => r.data));
-    } catch { toast.error("Erro ao carregar quadros"); }
-    finally { setLoading(false); }
+      console.log("results", results);
+      setBoards(results.map((r) => r.data));
+    } catch {
+      toast.error("Erro ao carregar quadros");
+    } finally {
+      setLoading(false);
+    }
   }, [selectedFlowIds]);
 
+  /**
+   * Carrega recursos auxiliares necessários para formulários (Usuários e Fornecedores/Oficinas).
+   * @async
+   * @function fetchResources
+   */
   const fetchResources = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
       const [uRes, sRes] = await Promise.all([
         api.get(`/users/company/${user.company.id}`),
-        api.get(`/suppliers?companyId=${user.company.id}`)
+        api.get(`/suppliers?companyId=${user.company.id}`),
       ]);
       setUsers(uRes.data);
       setSuppliers(sRes.data.data || sRes.data);
-    } catch { console.error("Recursos indisponíveis"); }
+      console.log("Users", uRes.data);
+      console.log("Supplier", sRes.data.data || sRes.data);
+    } catch {
+      console.error("Recursos indisponíveis");
+    }
   }, [user?.company?.id]);
 
-  useEffect(() => { if (user) { fetchFlows(); fetchResources(); } }, [user, fetchFlows, fetchResources]);
-  useEffect(() => { fetchSelectedBoards(); }, [selectedFlowIds, fetchSelectedBoards]);
+  useEffect(() => {
+    if (user) {
+      fetchFlows();
+      fetchResources();
+    }
+  }, [user, fetchFlows, fetchResources]);
+  useEffect(() => {
+    fetchSelectedBoards();
+  }, [selectedFlowIds, fetchSelectedBoards]);
 
-  // --- CRUD Handlers ---
+  /**
+   * Cria um novo fluxo de produção no sistema.
+   * @async
+   * @function handleCreateFlow
+   */
   const handleCreateFlow = async () => {
     if (!flowName.trim()) return toast.error("Nome obrigatório");
     try {
-      const { data } = await api.post(`/flow`, { name: flowName, color: newFlowColor });
-      setFlows(prev => [...prev, data]);
-      setSelectedFlowIds(prev => [...prev, data.id]);
+      const { data } = await api.post(`/flow`, {
+        name: flowName,
+        color: newFlowColor,
+      });
+      setFlows((prev) => [...prev, data]);
+      setSelectedFlowIds((prev) => [...prev, data.id]);
       setIsFlowModal(false);
       setFlowName("");
       toast.success("Fluxo criado!");
-    } catch { toast.error("Erro ao criar fluxo"); }
+    } catch {
+      toast.error("Erro ao criar fluxo");
+    }
   };
 
+  /**
+   * Processa a criação ou edição de uma etapa (coluna) no fluxo.
+   * @async
+   * @function handleStageSubmit
+   */
   const handleStageSubmit = async () => {
     if (!stageName.trim()) return toast.error("Nome obrigatório");
     setIsSubmitting(true);
     try {
       if (editingStage) {
-        await api.put(`/flow/stages/${editingStage.id}`, { name: stageName, color: stageColor });
+        await api.put(`/flow/stages/${editingStage.id}`, {
+          name: stageName,
+          color: stageColor,
+        });
         toast.success("Etapa atualizada");
       } else {
-        await api.post(`/flow/${selectedFlowIds[0]}/stages`, { name: stageName, color: stageColor });
+        await api.post(`/flow/${selectedFlowIds[0]}/stages`, {
+          name: stageName,
+          color: stageColor,
+        });
         toast.success("Etapa criada");
       }
       setIsStageModal(false);
       fetchSelectedBoards();
-    } catch { toast.error("Erro ao salvar etapa"); }
-    finally { setIsSubmitting(false); }
+    } catch {
+      toast.error("Erro ao salvar etapa");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
+  /**
+   * Realiza o upload de arquivos de mídia (imagens, áudios, vídeos) para um item específico.
+   * @async
+   * @function uploadMedia
+   * @param {string} itemId - ID do item que receberá os arquivos.
+   * @param {any} files - Objeto contendo os arrays de arquivos separados por tipo.
+   */
   const uploadMedia = async (itemId: string, files: any) => {
     const upload = async (file: File, type: string) => {
       const fd = new FormData();
       fd.append("file", file);
       return api.post(`/flow/items/${itemId}/media/${type}`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { "Content-Type": "multipart/form-data" },
       });
     };
     const promises = [];
-    if (files.images) for (const f of files.images) promises.push(upload(f, "image"));
-    if (files.audios) for (const f of files.audios) promises.push(upload(f, "audio"));
-    if (files.videos) for (const f of files.videos) promises.push(upload(f, "video"));
+    if (files.images)
+      for (const f of files.images) promises.push(upload(f, "image"));
+    if (files.audios)
+      for (const f of files.audios) promises.push(upload(f, "audio"));
+    if (files.videos)
+      for (const f of files.videos) promises.push(upload(f, "video"));
     return Promise.all(promises);
   };
 
-  const handleItemSubmit = async (values: any, files: any, removedMedia: any): Promise<void> => {
-    if (selectedFlowIds.length === 0) { toast.error("Selecione um fluxo"); return; }
+  /**
+   * Processa o envio do formulário de item (Criação ou Edição).
+   * Gerencia payloads de texto e chamadas subsequentes de upload de mídia.
+   * @async
+   * @function handleItemSubmit
+   * @param {any} values - Dados textuais do item.
+   * @param {any} files - Novos arquivos para upload.
+   * @param {any} removedMedia - IDs de mídias que devem ser excluídas na edição.
+   */
+  const handleItemSubmit = async (
+    values: any,
+    files: any,
+    removedMedia: any,
+  ): Promise<void> => {
+    if (selectedFlowIds.length === 0) {
+      toast.error("Selecione um fluxo");
+      return;
+    }
     setIsSubmitting(true);
     try {
       if (editingItem) {
-        const payload = { ...values, removeImageIds: removedMedia.images, removeVideoIds: removedMedia.videos, removeAudioIds: removedMedia.audios };
+        const payload = {
+          ...values,
+          removeImageIds: removedMedia.images,
+          removeVideoIds: removedMedia.videos,
+          removeAudioIds: removedMedia.audios,
+        };
         await api.put(`/flow/items/${editingItem.id}`, payload);
         if (files) await uploadMedia(editingItem.id, files);
         toast.success("Item atualizado");
       } else {
-        const payload = { ...values, flowId: selectedFlowIds[0], stageId: activeStageId };
-        const { data: newItem } = await api.post(`/flow/${selectedFlowIds[0]}/items`, payload);
+        const payload = {
+          ...values,
+          flowId: selectedFlowIds[0],
+          stageId: activeStageId,
+        };
+        const { data: newItem } = await api.post(
+          `/flow/${selectedFlowIds[0]}/items`,
+          payload,
+        );
         if (newItem?.id && files) await uploadMedia(newItem.id, files);
         toast.success("Item criado");
       }
@@ -219,39 +354,75 @@ export default function ProductFlowKanban() {
       setIsEditItemModal(false);
       setEditingItem(null);
       fetchSelectedBoards();
-    } catch { toast.error("Erro ao salvar item"); }
-    finally { setIsSubmitting(false); }
+    } catch {
+      toast.error("Erro ao salvar item");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
+  /**
+   * Executa a exclusão definitiva de um item, etapa ou fluxo inteiro.
+   * @async
+   * @function handleDeleteExecute
+   */
   const handleDeleteExecute = async () => {
     if (!itemToDelete) return;
     try {
       const { type, id } = itemToDelete;
-      if (flows.some(f => f.id === id)) {
+      if (flows.some((f) => f.id === id)) {
         await api.delete(`/flow/${id}`);
-        setFlows(prev => prev.filter(f => f.id !== id));
-        setSelectedFlowIds(prev => prev.filter(fid => fid !== id));
+        setFlows((prev) => prev.filter((f) => f.id !== id));
+        setSelectedFlowIds((prev) => prev.filter((fid) => fid !== id));
         toast.success("Fluxo removido");
       } else {
-        const url = type === 'item' ? `/flow/items/${id}` : `/flow/stages/${id}`;
+        const url =
+          type === "item" ? `/flow/items/${id}` : `/flow/stages/${id}`;
         await api.delete(url);
         toast.success("Excluído com sucesso");
       }
       fetchSelectedBoards();
-    } catch { toast.error("Erro ao excluir"); }
-    finally { setDeleteModalOpen(false); setItemToDelete(null); }
+    } catch {
+      toast.error("Erro ao excluir");
+    } finally {
+      setDeleteModalOpen(false);
+      setItemToDelete(null);
+    }
   };
 
-  // --- Lógica de Unificação (Multi-Flow) ---
+  /**
+   * Unifica estágios (stages) de múltiplos fluxos (boards) com o mesmo nome,
+   * agrupando-os em uma única lista ordenada.
+   *
+   * - Agrupa estágios pelo nome (case-insensitive).
+   * - Mescla os itens de estágios equivalentes.
+   * - Injeta metadados de origem em cada item:
+   *   - `flowColor`: cor do fluxo ao qual o item pertence
+   *   - `flowName`: nome do fluxo de origem
+   * - Mantém a ordenação dos estágios com base na propriedade `order`.
+   *
+   * Uso principal:
+   * Permite visualizar itens de diferentes fluxos dentro da mesma etapa,
+   * preservando a identificação visual de cada fluxo.
+   *
+   * Performance:
+   * O uso de `useMemo` evita recomputações desnecessárias, recalculando apenas
+   * quando a lista de `boards` é alterada.
+   *
+   * @returns {FlowStage[]} Lista de estágios unificados, ordenados por `order`,
+   * contendo itens enriquecidos com metadados do fluxo de origem.
+   */
   const unifiedStages = useMemo(() => {
     const stageGroups: Record<string, FlowStage> = {};
-    boards.forEach(board => {
+    boards.forEach((board) => {
       const flowColor = board.color || "#D35400";
-      board.stages.forEach(stage => {
+      board.stages.forEach((stage) => {
         const key = stage.name.toUpperCase();
         if (!stageGroups[key]) stageGroups[key] = { ...stage, items: [] };
-        const itemsWithMetadata = stage.items.map(item => ({
-          ...item, flowColor, flowName: board.name
+        const itemsWithMetadata = stage.items.map((item) => ({
+          ...item,
+          flowColor,
+          flowName: board.name,
         }));
         stageGroups[key].items.push(...itemsWithMetadata);
       });
@@ -259,18 +430,36 @@ export default function ProductFlowKanban() {
     return Object.values(stageGroups).sort((a, b) => a.order - b.order);
   }, [boards]);
 
+  /**
+   * Hook customizado para gerenciar a lógica de Drag & Drop dos itens entre colunas.
+   * @function moveItem
+   */
   const { moveItem, onDragStart } = useKanbanDrag({
-    items: unifiedStages.flatMap(s => s.items),
-    setItems: () => { },
+    items: unifiedStages.flatMap((s) => s.items),
+    setItems: () => {},
     idField: "stageId",
     moveCallback: async (itemId, newStageId) => {
       await api.put(`/flow/items/${itemId}/move`, { newStageId });
       fetchSelectedBoards();
-    }
+    },
   });
 
+  /**
+   * Alterna a seleção de um fluxo no filtro.
+   *
+   * - Se o fluxo já estiver selecionado, ele é removido da lista.
+   * - Se o fluxo não estiver selecionado, ele é adicionado à lista.
+   *
+   * Essa função é usada no select de múltiplos fluxos e **não controla cor**.
+   * A cor dos cards deve sempre vir do fluxo (`flow.color`),
+   * garantindo que cada card mantenha a cor correta mesmo com múltiplos fluxos selecionados.
+   *
+   * @param id - ID do fluxo a ser alternado na seleção
+   */
   const toggleFlow = (id: string) => {
-    setSelectedFlowIds(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
+    setSelectedFlowIds((prev) =>
+      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
+    );
   };
 
   return (
@@ -279,27 +468,60 @@ export default function ProductFlowKanban() {
         title="Esteira de Produção"
         icon={<Factory size={20} />}
         onAddFlow={() => setIsFlowModal(true)}
-        onAddStage={() => { setEditingStage(null); setStageName(""); setIsStageModal(true); }}
+        onAddStage={() => {
+          setEditingStage(null);
+          setStageName("");
+          setIsStageModal(true);
+        }}
         rightContent={
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="bg-white/10 text-white border-white/20">
+              <Button
+                variant="outline"
+                className="bg-white/10 text-white border-white/20"
+              >
                 <Layers size={16} className="mr-2" />
                 Fluxos Ativos ({selectedFlowIds.length})
                 <ChevronDown size={14} className="ml-2 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-2 bg-[#2C3E50] border-white/10" align="end">
-              {flows.map(f => {
+            <PopoverContent
+              className="w-64 p-2 bg-[#2C3E50] border-white/10"
+              align="end"
+            >
+              {flows.map((f) => {
                 const active = selectedFlowIds.includes(f.id);
                 return (
-                  <div key={f.id} className={cn("group flex items-center justify-between p-2 rounded-md transition-all", active ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/5")}>
-                    <div className="flex items-center gap-2 cursor-pointer flex-1" onClick={() => toggleFlow(f.id)}>
-                      <div className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: f.color || "#D35400" }} />
+                  <div
+                    key={f.id}
+                    className={cn(
+                      "group flex items-center justify-between p-2 rounded-md transition-all",
+                      active
+                        ? "bg-white/10 text-white"
+                        : "text-slate-400 hover:bg-white/5",
+                    )}
+                  >
+                    <div
+                      className="flex items-center gap-2 cursor-pointer flex-1"
+                      onClick={() => toggleFlow(f.id)}
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full border border-white/20"
+                        style={{ backgroundColor: f.color || "#D35400" }}
+                      />
                       <span className="text-sm font-medium">{f.name}</span>
-                      {active && <Check size={14} className="text-orange-500 ml-1" />}
+                      {active && (
+                        <Check size={14} className="text-orange-500 ml-1" />
+                      )}
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); setItemToDelete({ type: 'stage', id: f.id }); setDeleteModalOpen(true); }} className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:bg-red-500/10 rounded">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setItemToDelete({ type: "stage", id: f.id });
+                        setDeleteModalOpen(true);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:bg-red-500/10 rounded"
+                    >
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -311,18 +533,28 @@ export default function ProductFlowKanban() {
       />
 
       <KanbanBoard>
-        {unifiedStages.map(stage => (
+        {unifiedStages.map((stage) => (
           <KanbanColumn
             key={stage.id}
             id={stage.id}
             title={stage.name}
             count={stage.items.length}
             onDropItem={moveItem}
-            onAddItem={() => { setActiveStageId(stage.id); setIsItemModal(true); }}
-            onEditClick={() => { setEditingStage(stage); setStageName(stage.name); setIsStageModal(true); }}
-            onDeleteClick={() => { setItemToDelete({ type: 'stage', id: stage.id }); setDeleteModalOpen(true); }}
+            onAddItem={() => {
+              setActiveStageId(stage.id);
+              setIsItemModal(true);
+            }}
+            onEditClick={() => {
+              setEditingStage(stage);
+              setStageName(stage.name);
+              setIsStageModal(true);
+            }}
+            onDeleteClick={() => {
+              setItemToDelete({ type: "stage", id: stage.id });
+              setDeleteModalOpen(true);
+            }}
           >
-            {stage.items.map(item => (
+            {stage.items.map((item) => (
               <KanbanCard
                 key={item.id}
                 id={item.id}
@@ -331,13 +563,30 @@ export default function ProductFlowKanban() {
                 priorityColor={item.flowColor}
                 coverImage={item.images[0]?.url}
                 onDragStart={(e) => onDragStart(e, item.id)}
-                onDoubleClick={() => { setPreviewItem(item); setIsPreviewModal(true); }}
-                onEdit={() => { setEditingItem(item); setIsEditItemModal(true); }}
-                onDelete={() => { setItemToDelete({ type: 'item', id: item.id }); setDeleteModalOpen(true); }}
+                onDoubleClick={() => {
+                  setPreviewItem(item);
+                  setIsPreviewModal(true);
+                }}
+                onEdit={() => {
+                  setEditingItem(item);
+                  setIsEditItemModal(true);
+                }}
+                onDelete={() => {
+                  setItemToDelete({ type: "item", id: item.id });
+                  setDeleteModalOpen(true);
+                }}
                 footer={
                   <div className="flex justify-between items-center w-full">
-                    <span className="text-[10px] text-slate-400 font-bold"><Package size={10} className="inline mr-1" />{item.quantity}</span>
-                    <div className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase" style={{ backgroundColor: item.flowColor }}>{item.flowName}</div>
+                    <span className="text-[10px] text-slate-400 font-bold">
+                      <Package size={10} className="inline mr-1" />
+                      {item.quantity}
+                    </span>
+                    <div
+                      className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
+                      style={{ backgroundColor: item.flowColor }}
+                    >
+                      {item.flowName}
+                    </div>
                   </div>
                 }
               />
@@ -347,47 +596,97 @@ export default function ProductFlowKanban() {
       </KanbanBoard>
 
       {/* --- MODAIS --- */}
-      
+
       {/* 🟢 PREVIEW MODAL NO DUPLO CLIQUE */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl bg-white rounded-xl">
           <div className="px-6 py-4 border-b sticky top-0 bg-white z-20 flex justify-between items-center">
             <div>
-              <DialogTitle className="text-xl font-bold text-[#2D3436]">{previewItem?.title}</DialogTitle>
-              <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest mt-1">Ref: {previewItem?.productRef}</div>
+              <DialogTitle className="text-xl font-bold text-[#2D3436]">
+                {previewItem?.title}
+              </DialogTitle>
+              <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest mt-1">
+                Ref: {previewItem?.productRef}
+              </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => setIsPreviewModal(false)}><X size={20} /></Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsPreviewModal(false)}
+            >
+              <X size={20} />
+            </Button>
           </div>
           <div className="p-6 space-y-8">
             {previewItem?.images && previewItem.images.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {previewItem.images.map(img => (
-                  <div key={img.id} className="rounded-xl overflow-hidden border shadow-sm aspect-video">
-                    <img src={img.url} alt="anexo" className="w-full h-full object-cover" />
+                {previewItem.images.map((img) => (
+                  <div
+                    key={img.id}
+                    className="rounded-xl overflow-hidden border shadow-sm aspect-video"
+                  >
+                    <img
+                      src={img.url}
+                      alt="anexo"
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                 ))}
               </div>
             )}
             <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-tighter text-[#95A5A6]">Descrição</h4>
+              <h4 className="text-xs font-bold uppercase tracking-tighter text-[#95A5A6]">
+                Descrição
+              </h4>
               <div className="bg-[#F5F0E6]/50 p-4 rounded-xl border text-sm whitespace-pre-wrap leading-relaxed">
                 {previewItem?.description || "Sem descrição."}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-8 border-t pt-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-[#F5F0E6] rounded-lg text-[#D35400]"><Package size={20} /></div>
-                <div><p className="text-[10px] font-bold text-[#95A5A6] uppercase">Qtd</p><p className="text-sm font-bold">{previewItem?.quantity} un.</p></div>
+                <div className="p-2 bg-[#F5F0E6] rounded-lg text-[#D35400]">
+                  <Package size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-[#95A5A6] uppercase">
+                    Qtd
+                  </p>
+                  <p className="text-sm font-bold">
+                    {previewItem?.quantity} un.
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-[#F5F0E6] rounded-lg text-[#D35400]"><Calendar size={20} /></div>
-                <div><p className="text-[10px] font-bold text-[#95A5A6] uppercase">Prazo</p><p className="text-sm font-bold">{previewItem?.dueDate ? formatDateShort(previewItem.dueDate) : "N/D"}</p></div>
+                <div className="p-2 bg-[#F5F0E6] rounded-lg text-[#D35400]">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-[#95A5A6] uppercase">
+                    Prazo
+                  </p>
+                  <p className="text-sm font-bold">
+                    {previewItem?.dueDate
+                      ? formatDateShort(previewItem.dueDate)
+                      : "N/D"}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
           <DialogFooter className="p-4 bg-[#F5F0E6]/30 border-t">
-            <Button variant="outline" onClick={() => setIsPreviewModal(false)}>Fechar</Button>
-            <Button className="bg-orange-600 text-white" onClick={() => { setIsPreviewModal(false); setEditingItem(previewItem); setIsEditItemModal(true); }}>Editar Detalhes</Button>
+            <Button variant="outline" onClick={() => setIsPreviewModal(false)}>
+              Fechar
+            </Button>
+            <Button
+              className="bg-orange-600 text-white"
+              onClick={() => {
+                setIsPreviewModal(false);
+                setEditingItem(previewItem);
+                setIsEditItemModal(true);
+              }}
+            >
+              Editar Detalhes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -395,16 +694,33 @@ export default function ProductFlowKanban() {
       {/* Modal: Stage */}
       <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
         <DialogContent className="bg-white">
-          <DialogHeader><DialogTitle>{editingStage ? "Editar" : "Nova"} Etapa</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editingStage ? "Editar" : "Nova"} Etapa</DialogTitle>
+          </DialogHeader>
           <div className="space-y-4 py-4">
-             <Label>Nome</Label>
-             <Input value={stageName} onChange={e => setStageName(e.target.value)} />
-             <Label>Cor</Label>
-             <Input type="color" value={stageColor} onChange={e => setStageColor(e.target.value)} className="h-10 w-full" />
+            <Label>Nome</Label>
+            <Input
+              value={stageName}
+              onChange={(e) => setStageName(e.target.value)}
+            />
+            <Label>Cor</Label>
+            <Input
+              type="color"
+              value={stageColor}
+              onChange={(e) => setStageColor(e.target.value)}
+              className="h-10 w-full"
+            />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsStageModal(false)}>Cancelar</Button>
-            <Button onClick={handleStageSubmit} className="bg-orange-600 text-white">Salvar</Button>
+            <Button variant="outline" onClick={() => setIsStageModal(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleStageSubmit}
+              className="bg-orange-600 text-white"
+            >
+              Salvar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -412,23 +728,63 @@ export default function ProductFlowKanban() {
       {/* Modal: Novo Fluxo */}
       <Dialog open={isFlowModal} onOpenChange={setIsFlowModal}>
         <DialogContent className="bg-white">
-          <DialogHeader><DialogTitle>Novo Fluxo</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Novo Fluxo</DialogTitle>
+          </DialogHeader>
           <div className="py-4 space-y-4">
             <Label>Nome</Label>
-            <Input value={flowName} onChange={e => setFlowName(e.target.value)} />
+            <Input
+              value={flowName}
+              onChange={(e) => setFlowName(e.target.value)}
+            />
             <Label>Cor do Fluxo</Label>
-            <Input type="color" value={newFlowColor} onChange={e => setNewFlowColor(e.target.value)} className="h-10 w-full" />
+            <Input
+              type="color"
+              value={newFlowColor}
+              onChange={(e) => setNewFlowColor(e.target.value)}
+              className="h-10 w-full"
+            />
           </div>
           <DialogFooter>
-            <Button onClick={handleCreateFlow} className="bg-orange-600 text-white">Criar</Button>
+            <Button
+              onClick={handleCreateFlow}
+              className="bg-orange-600 text-white"
+            >
+              Criar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <FlowItemModal isOpen={isItemModal} onClose={() => setIsItemModal(false)} onSubmit={handleItemSubmit} isLoading={isSubmitting} users={users} suppliers={suppliers} stages={[]} />
-      <FlowItemModal isOpen={isEditItemModal} onClose={() => { setIsEditItemModal(false); setEditingItem(null); }} initialData={editingItem} onSubmit={handleItemSubmit} isLoading={isSubmitting} users={users} suppliers={suppliers} stages={[]} />
+      <FlowItemModal
+        isOpen={isItemModal}
+        onClose={() => setIsItemModal(false)}
+        onSubmit={handleItemSubmit}
+        isLoading={isSubmitting}
+        users={users}
+        suppliers={suppliers}
+        stages={[]}
+      />
+      <FlowItemModal
+        isOpen={isEditItemModal}
+        onClose={() => {
+          setIsEditItemModal(false);
+          setEditingItem(null);
+        }}
+        initialData={editingItem}
+        onSubmit={handleItemSubmit}
+        isLoading={isSubmitting}
+        users={users}
+        suppliers={suppliers}
+        stages={[]}
+      />
 
-      <ConfirmDeleteModal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} onConfirm={handleDeleteExecute} title={`Excluir ${itemToDelete?.type === 'item' ? 'produto' : 'etapa'}?`} />
+      <ConfirmDeleteModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleDeleteExecute}
+        title={`Excluir ${itemToDelete?.type === "item" ? "produto" : "etapa"}?`}
+      />
     </KanbanLayout>
   );
 }
