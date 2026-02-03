@@ -60,7 +60,7 @@ export function MaterialFormModal({
     reset,
     setValue,
     formState: { errors },
-  } = useForm<MaterialFormData>({
+  } = useForm({
     resolver: zodResolver(materialSchema),
     defaultValues: {
       name: "",
