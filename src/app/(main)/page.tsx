@@ -1,18 +1,18 @@
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-'use client';
+"use client";
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { api } from '@/services/api';
+} from "@/components/ui/tooltip";
+import { api } from "@/services/api";
 import {
   AlertTriangle,
   ArrowRight,
@@ -20,10 +20,10 @@ import {
   Clock,
   RefreshCcw,
   Search,
-  User
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+  User,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 // --- Interface Corrigida para bater com o Prisma ---
 interface Task {
@@ -35,7 +35,7 @@ interface Task {
     id: string;
     title: string;
   };
-  dueDate?: string;      // Prazo final
+  dueDate?: string; // Prazo final
   scheduledDate?: string; // 🔥 Corrigido de scheduledAt para scheduledDate (igual ao banco)
   assignedTo?: {
     id: string;
@@ -76,8 +76,6 @@ interface UserData {
 
 // --- Funções Auxiliares ---
 
-
-
 // Helper para pegar a data efetiva de vencimento (Prazo ou Agendamento)
 const getEffectiveDueDate = (task: Task): Date | null => {
   if (task.dueDate) return new Date(task.dueDate);
@@ -86,42 +84,57 @@ const getEffectiveDueDate = (task: Task): Date | null => {
 };
 
 const getStatusClasses = (columnTitle?: string) => {
-  if (!columnTitle) return { bg: 'bg-slate-100', text: 'text-slate-600' };
+  if (!columnTitle) return { bg: "bg-slate-100", text: "text-slate-600" };
   const title = columnTitle.toLowerCase();
-  if (title.match(/(concluído|finalizado|pronto)/)) return { bg: 'bg-green-100', text: 'text-green-700' };
-  if (title.match(/(andamento|progresso)/)) return { bg: 'bg-blue-100', text: 'text-blue-700' };
-  if (title.match(/(urgente|prioridade)/)) return { bg: 'bg-red-100', text: 'text-red-700' };
-  if (title.match(/(pendente|aguardando)/)) return { bg: 'bg-yellow-100', text: 'text-yellow-700' };
-  return { bg: 'bg-slate-100', text: 'text-slate-600' };
+  if (title.match(/(concluído|finalizado|pronto)/))
+    return { bg: "bg-green-100", text: "text-green-700" };
+  if (title.match(/(andamento|progresso)/))
+    return { bg: "bg-blue-100", text: "text-blue-700" };
+  if (title.match(/(urgente|prioridade)/))
+    return { bg: "bg-red-100", text: "text-red-700" };
+  if (title.match(/(pendente|aguardando)/))
+    return { bg: "bg-yellow-100", text: "text-yellow-700" };
+  return { bg: "bg-slate-100", text: "text-slate-600" };
 };
 
 const getPriorityClasses = (priority: number) => {
   switch (priority) {
-    case 5: return { bg: 'bg-red-100', text: 'text-red-700' };
-    case 4: return { bg: 'bg-orange-100', text: 'text-orange-700' };
-    case 3: return { bg: 'bg-green-100', text: 'text-green-700' };
-    case 2: return { bg: 'bg-blue-100', text: 'text-blue-700' };
-    default: return { bg: 'bg-gray-100', text: 'text-gray-700' };
+    case 5:
+      return { bg: "bg-red-100", text: "text-red-700" };
+    case 4:
+      return { bg: "bg-orange-100", text: "text-orange-700" };
+    case 3:
+      return { bg: "bg-green-100", text: "text-green-700" };
+    case 2:
+      return { bg: "bg-blue-100", text: "text-blue-700" };
+    default:
+      return { bg: "bg-gray-100", text: "text-gray-700" };
   }
 };
 
 const getPriorityText = (priority: number) => {
-  const labels: Record<number, string> = { 5: 'Crítica', 4: 'Urgente', 3: 'Alta', 2: 'Média', 1: 'Baixa' };
-  return labels[priority] || 'Normal';
+  const labels: Record<number, string> = {
+    5: "Crítica",
+    4: "Urgente",
+    3: "Alta",
+    2: "Média",
+    1: "Baixa",
+  };
+  return labels[priority] || "Normal";
 };
 
 export default function DashboardPage() {
   const [user, setUser] = useState<UserData | null>(null);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('all');
-  const [error, setError] = useState<string>('');
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [error, setError] = useState<string>("");
   const router = useRouter();
 
   const navigateToKanbanOverdue = () => {
     // Redireciona para /kanban com o query param ?filter=overdue
-    router.push('/Kanban?filter=overdue');
+    router.push("/Kanban?filter=overdue");
   };
 
   // --- Lógica de Vencimento Atualizada ---
@@ -133,7 +146,9 @@ export default function DashboardPage() {
     today.setHours(0, 0, 0, 0);
     targetDate.setHours(0, 0, 0, 0);
 
-    const isCompleted = task.completedAt || task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
+    const isCompleted =
+      task.completedAt ||
+      task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
 
     // Só é atrasado se a data já passou E não está concluída
     return targetDate.getTime() < today.getTime() && !isCompleted;
@@ -143,7 +158,9 @@ export default function DashboardPage() {
     const targetDate = getEffectiveDueDate(task);
     if (!targetDate || isTaskOverdue(task)) return false; // Se já venceu, não é "próximo"
 
-    const isCompleted = task.completedAt || task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
+    const isCompleted =
+      task.completedAt ||
+      task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
     if (isCompleted) return false;
 
     const today = new Date();
@@ -158,54 +175,70 @@ export default function DashboardPage() {
   };
 
   const hasAttachments = (task: Task) => {
-    return (task.taskImages?.length || 0) + (task.taskAudios?.length || 0) + (task.taskVideos?.length || 0) > 0;
+    return (
+      (task.taskImages?.length || 0) +
+        (task.taskAudios?.length || 0) +
+        (task.taskVideos?.length || 0) >
+      0
+    );
   };
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (!dateString) return "";
+    return new Date(dateString).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
   };
 
   const formatDateTime = (dateString?: string) => {
-    if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (!dateString) return "";
+    return new Date(dateString).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   // --- FETCH TASKS ---
   const fetchAllTasks = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
       // 🔥 CORREÇÃO: Adicionado limit=100 para garantir que tarefas novas apareçam
       // Se não passar params, o backend pega só as 10 primeiras
-      const response = await api.get('/tasks', {
+      const response = await api.get("/tasks", {
         params: {
           limit: 100, // Aumente conforme necessário
-          page: 1
-        }
+          page: 1,
+        },
       });
 
       const data = response.data;
-      const tasksArray: Task[] = Array.isArray(data) ? data : (data.tasks || data.data || []);
+      const tasksArray: Task[] = Array.isArray(data)
+        ? data
+        : data.tasks || data.data || [];
 
-      const tasksWithDefaults = tasksArray.map(task => ({
+      const tasksWithDefaults = tasksArray.map((task) => ({
         ...task,
         priority: task.priority || 1,
-        title: task.title || 'Sem título',
+        title: task.title || "Sem título",
         taskImages: task.taskImages || [],
         taskAudios: task.taskAudios || [],
         taskVideos: task.taskVideos || [],
       }));
       setAllTasks(tasksWithDefaults);
-
     } catch (err: any) {
       if (err.response?.status === 401) {
-        localStorage.removeItem('accessToken');
-        router.push('/login');
+        localStorage.removeItem("accessToken");
+        router.push("/login");
         return;
       }
       console.error(err);
-      setError('Erro ao carregar tarefas.');
+      setError("Erro ao carregar tarefas.");
     } finally {
       setLoading(false);
     }
@@ -213,14 +246,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return router.push('/login');
+      const token = localStorage.getItem("accessToken");
+      if (!token) return router.push("/login");
       try {
-        const { data: userData } = await api.get('/auth/profile');
+        const { data: userData } = await api.get("/auth/profile");
         setUser(userData);
         await fetchAllTasks();
       } catch (error) {
-        console.error('Auth error:', error);
+        console.error("Auth error:", error);
       }
     };
     checkAuth();
@@ -229,7 +262,7 @@ export default function DashboardPage() {
   const navigateToAgenda = (task: Task) => {
     // Usa data de vencimento, ou agendamento, ou criação
     const dateToFocus = task.dueDate || task.scheduledDate || task.createdAt;
-    const focusDate = new Date(dateToFocus).toISOString().split('T')[0];
+    const focusDate = new Date(dateToFocus).toISOString().split("T")[0];
     router.push(`/agenda?focusDate=${focusDate}&highlightTask=${task.id}`);
   };
 
@@ -238,18 +271,20 @@ export default function DashboardPage() {
     let result = allTasks;
 
     // Filtros Rápidos
-    if (filter === 'overdue') result = result.filter(isTaskOverdue);
-    if (filter === 'due-soon') result = result.filter(isTaskDueSoon);
-    if (filter === 'my-tasks') result = result.filter(t => t.assignedTo?.id === user?.id);
+    if (filter === "overdue") result = result.filter(isTaskOverdue);
+    if (filter === "due-soon") result = result.filter(isTaskDueSoon);
+    if (filter === "my-tasks")
+      result = result.filter((t) => t.assignedTo?.id === user?.id);
 
     // Busca Textual
     if (search) {
       const q = search.toLowerCase();
-      result = result.filter(t =>
-        t.title.toLowerCase().includes(q) ||
-        t.description?.toLowerCase().includes(q) ||
-        t.assignedTo?.name?.toLowerCase().includes(q) ||
-        t.column?.title?.toLowerCase().includes(q)
+      result = result.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.description?.toLowerCase().includes(q) ||
+          t.assignedTo?.name?.toLowerCase().includes(q) ||
+          t.column?.title?.toLowerCase().includes(q),
       );
     }
     return result;
@@ -257,33 +292,41 @@ export default function DashboardPage() {
 
   // Estatísticas
   const overdueTasksCount = allTasks.filter(isTaskOverdue).length;
-  const highPriorityCount = allTasks.filter(t => t.priority >= 4).length;
-  const completedTasksCount = allTasks.filter(t => t.completedAt || t.column?.title?.toLowerCase().match(/(concluído|finalizado)/)).length;
-  const tasksForTodayCount = allTasks.filter(task => {
+  const highPriorityCount = allTasks.filter((t) => t.priority >= 4).length;
+  const completedTasksCount = allTasks.filter(
+    (t) =>
+      t.completedAt ||
+      t.column?.title?.toLowerCase().match(/(concluído|finalizado)/),
+  ).length;
+  // 🔥 REGRA ATUALIZADA: Próximos a vencer (Sem validar título de coluna)
+  const tasksForTodayCount = allTasks.filter((task) => {
+    // 1. A tarefa deve possuir o campo scheduledDate preenchido
     if (!task.scheduledDate) return false;
 
+    // 2. A data em scheduledDate deve ser igual à data atual (ignore as horas)
     const today = new Date();
     const taskDate = new Date(task.scheduledDate);
 
-
-
-    // Compara Dia, Mês e Ano (ignora horas)
     const isSameDay =
-      today.getDate() === taskDate.getDate() &&
-      today.getMonth() === taskDate.getMonth() &&
-      today.getFullYear() === taskDate.getFullYear();
+      today.getUTCDate() === taskDate.getUTCDate() &&
+      today.getUTCMonth() === taskDate.getUTCMonth() &&
+      today.getUTCFullYear() === taskDate.getUTCFullYear();
 
-    // Verifica se não está concluída (opcional, remova se quiser ver concluídas de hoje também)
-    const isCompleted = task.completedAt || task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
+    // 3. (Opcional) Filtrar para não mostrar tarefas já concluídas hoje
+    const isCompleted =
+      task.completedAt ||
+      task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
 
     return isSameDay && !isCompleted;
   }).length;
 
   const navigateToTodayTasks = () => {
-  const today = new Date().toISOString().split('T')[0];
-  // URL limpa: filterType, startDate, endDate e um timestamp para forçar o refresh
-  router.push(`/Kanban?filterType=scheduled&startDate=${today}&endDate=${today}&t=${Date.now()}`); 
-};
+    const today = new Date().toISOString().split("T")[0];
+    // URL limpa: filterType, startDate, endDate e um timestamp para forçar o refresh
+    router.push(
+      `/Kanban?filterType=scheduled&startDate=${today}&endDate=${today}&t=${Date.now()}`,
+    );
+  };
 
   // Render Loading
   if (!user && loading) {
@@ -299,26 +342,43 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-6 font-sans">
       <div className="max-w-7xl mx-auto">
-
         {/* HEADER */}
         <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-[#2D3436] mb-2">ELO PRODUTIVO</h1>
+            <h1 className="text-3xl md:text-4xl font-extrabold text-[#2D3436] mb-2">
+              ELO PRODUTIVO
+            </h1>
             <div className="flex items-center gap-3">
-              <span className="text-lg text-[#2D3436]">Olá, <strong>{user.name}</strong></span>
-              <Badge className="bg-[#D35400] text-white hover:bg-[#A04000]">{user.role}</Badge>
+              <span className="text-lg text-[#2D3436]">
+                Olá, <strong>{user.name}</strong>
+              </span>
+              <Badge className="bg-[#D35400] text-white hover:bg-[#A04000]">
+                {user.role}
+              </Badge>
             </div>
-            {user.company && <p className="text-sm text-[#95A5A6] mt-1">{user.company.name}</p>}
+            {user.company && (
+              <p className="text-sm text-[#95A5A6] mt-1">{user.company.name}</p>
+            )}
           </div>
 
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button onClick={fetchAllTasks} variant="outline" size="icon" disabled={loading} className="border-[#95A5A6] text-[#2D3436]">
-                  <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                <Button
+                  onClick={fetchAllTasks}
+                  variant="outline"
+                  size="icon"
+                  disabled={loading}
+                  className="border-[#95A5A6] text-[#2D3436]"
+                >
+                  <RefreshCcw
+                    className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                  />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent><p>Recarregar dados</p></TooltipContent>
+              <TooltipContent>
+                <p>Recarregar dados</p>
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </header>
@@ -328,11 +388,13 @@ export default function DashboardPage() {
         {/* ESTATÍSTICAS */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
           <Card
-            className={`bg-white border-b-2 ${overdueTasksCount > 0 ? 'border-red-500' : 'border-gray-300'} shadow-sm hover:shadow-md transition-all`}
+            className={`bg-white border-b-2 ${overdueTasksCount > 0 ? "border-red-500" : "border-gray-300"} shadow-sm hover:shadow-md transition-all`}
             onClick={navigateToKanbanOverdue}
           >
             <CardContent className="p-4 text-center">
-              <div className={`text-2xl md:text-3xl font-extrabold ${overdueTasksCount > 0 ? 'text-red-600' : 'text-gray-700'}`}>
+              <div
+                className={`text-2xl md:text-3xl font-extrabold ${overdueTasksCount > 0 ? "text-red-600" : "text-gray-700"}`}
+              >
                 {overdueTasksCount}
               </div>
               <div className="text-xs text-[#95A5A6] mt-1">Atrasadas</div>
@@ -340,30 +402,33 @@ export default function DashboardPage() {
           </Card>
 
           <Card
-            onClick={() => router.push('/Kanban')} // <--- Adiciona o evento de clique
+            onClick={() => router.push("/Kanban")} // <--- Adiciona o evento de clique
             className="bg-white border-b-2 border-green-500 shadow-sm hover:shadow-md transition-all cursor-pointer" // <--- Adiciona cursor-pointer
           >
             <CardContent className="p-4 text-center">
-              <div className="text-2xl md:text-3xl font-extrabold text-green-600">{completedTasksCount}</div>
+              <div className="text-2xl md:text-3xl font-extrabold text-green-600">
+                {completedTasksCount}
+              </div>
               <div className="text-xs text-[#95A5A6] mt-1">Concluídas</div>
             </CardContent>
           </Card>
 
-          <Card className={`bg-white border-b-2 cursor-pointer ${tasksForTodayCount > 0 ? 'border-blue-500' : 'border-gray-300'} shadow-sm hover:shadow-md transition-all`}
-            onClick={navigateToTodayTasks}>
-            <CardContent className="p-4 text-center">
-              <div className={`text-2xl md:text-3xl font-extrabold ${tasksForTodayCount > 0 ? 'text-blue-600' : 'text-gray-400'}`}
-                onClick={navigateToTodayTasks}
-              >
-                {tasksForTodayCount}
-              </div>
-              <div className="text-xs text-[#95A5A6] mt-1 flex justify-center items-center gap-1">
-                {/* Se quiser adicionar um ícone pequeno aqui */}
-                {tasksForTodayCount > 0 && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>}
-                Proximas a vencer
-              </div>
-            </CardContent>
-          </Card>
+          {tasksForTodayCount > 0 && (
+            <Card
+              className="bg-white border-b-2 border-blue-500 shadow-sm hover:shadow-md transition-all cursor-pointer animate-in fade-in duration-500"
+              onClick={navigateToTodayTasks}
+            >
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl md:text-3xl font-extrabold text-blue-600">
+                  {tasksForTodayCount}
+                </div>
+                <div className="text-xs text-[#95A5A6] mt-1 flex justify-center items-center gap-1 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                  Próximos a vencer
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* CONTROLES */}
@@ -380,16 +445,22 @@ export default function DashboardPage() {
             </div>
             <div className="flex gap-2 flex-wrap">
               <Button
-                variant={filter === 'all' ? 'default' : 'outline'}
-                onClick={() => setFilter('all')}
-                className={filter === 'all' ? 'bg-[#2C3E50] hover:bg-[#2C3E50]/90' : ''}
+                variant={filter === "all" ? "default" : "outline"}
+                onClick={() => setFilter("all")}
+                className={
+                  filter === "all" ? "bg-[#2C3E50] hover:bg-[#2C3E50]/90" : ""
+                }
               >
                 Todas
               </Button>
               <Button
-                variant={filter === 'overdue' ? 'default' : 'outline'}
-                onClick={() => setFilter('overdue')}
-                className={filter === 'overdue' ? 'bg-red-600 hover:bg-red-700 text-white' : 'text-red-600 border-red-200 hover:bg-red-50'}
+                variant={filter === "overdue" ? "default" : "outline"}
+                onClick={() => setFilter("overdue")}
+                className={
+                  filter === "overdue"
+                    ? "bg-red-600 hover:bg-red-700 text-white"
+                    : "text-red-600 border-red-200 hover:bg-red-50"
+                }
               >
                 <AlertTriangle className="h-4 w-4 mr-1" /> Atrasadas
               </Button>
@@ -400,23 +471,30 @@ export default function DashboardPage() {
         {/* LISTAS */}
         {!error && (
           <main className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-
             {/* LISTA 1: TODAS / FILTRADAS */}
             <Card className="bg-white shadow-lg rounded-xl h-full">
               <CardHeader className="border-b pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg text-[#2D3436]">
                   <Clock className="h-5 w-5" /> Atividades
-                  <span className="text-sm font-normal text-gray-400 ml-auto">{filteredTasks.length} itens</span>
+                  <span className="text-sm font-normal text-gray-400 ml-auto">
+                    {filteredTasks.length} itens
+                  </span>
                 </CardTitle>
               </CardHeader>
               {/* TODO: AO CLICAR NA TASK IR PARA PAGINA DE KANBAN  COM A TASK ABERTA NA VISUALIZAÇÃO */}
               <CardContent className="p-0 max-h-[600px] overflow-y-auto">
                 {filteredTasks.length === 0 ? (
-                  <div className="p-8 text-center text-gray-400">Nenhuma tarefa encontrada.</div>
+                  <div className="p-8 text-center text-gray-400">
+                    Nenhuma tarefa encontrada.
+                  </div>
                 ) : (
                   <ul className="divide-y divide-gray-100">
-                    {filteredTasks.slice(0, 50).map(task => (
-                      <TaskListItem key={task.id} task={task} onClick={() => navigateToAgenda(task)} />
+                    {filteredTasks.slice(0, 50).map((task) => (
+                      <TaskListItem
+                        key={task.id}
+                        task={task}
+                        onClick={() => navigateToAgenda(task)}
+                      />
                     ))}
                   </ul>
                 )}
@@ -427,9 +505,12 @@ export default function DashboardPage() {
             <Card className="bg-white shadow-lg rounded-xl h-full border-t-4 border-orange-400">
               <CardHeader className="border-b pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg text-[#2D3436]">
-                  <Calendar className="h-5 w-5 text-orange-500" /> Próximos Vencimentos
+                  <Calendar className="h-5 w-5 text-orange-500" /> Próximos
+                  Vencimentos
                 </CardTitle>
-                <p className="text-xs text-gray-500">Tarefas agendadas ou com prazo para os próximos 7 dias</p>
+                <p className="text-xs text-gray-500">
+                  Tarefas agendadas ou com prazo para os próximos 7 dias
+                </p>
               </CardHeader>
               <CardContent className="p-0 max-h-[600px] overflow-y-auto">
                 {(() => {
@@ -442,20 +523,28 @@ export default function DashboardPage() {
                     });
 
                   if (upcoming.length === 0) {
-                    return <div className="p-8 text-center text-gray-400">Nenhuma tarefa vencendo em breve.</div>;
+                    return (
+                      <div className="p-8 text-center text-gray-400">
+                        Nenhuma tarefa vencendo em breve.
+                      </div>
+                    );
                   }
 
                   return (
                     <ul className="divide-y divide-gray-100">
-                      {upcoming.map(task => (
-                        <TaskListItem key={task.id} task={task} onClick={() => navigateToAgenda(task)} isUpcomingView />
+                      {upcoming.map((task) => (
+                        <TaskListItem
+                          key={task.id}
+                          task={task}
+                          onClick={() => navigateToAgenda(task)}
+                          isUpcomingView
+                        />
                       ))}
                     </ul>
                   );
                 })()}
               </CardContent>
             </Card>
-
           </main>
         )}
       </div>
@@ -464,22 +553,39 @@ export default function DashboardPage() {
 }
 
 // --- Subcomponente de Item de Lista (Para evitar repetição) ---
-const TaskListItem = ({ task, onClick, isUpcomingView }: { task: Task, onClick: () => void, isUpcomingView?: boolean }) => {
+const TaskListItem = ({
+  task,
+  onClick,
+  isUpcomingView,
+}: {
+  task: Task;
+  onClick: () => void;
+  isUpcomingView?: boolean;
+}) => {
   const effectiveDate = getEffectiveDueDate(task);
-  const isOverdue = effectiveDate && effectiveDate < new Date() && !task.completedAt;
+  const isOverdue =
+    effectiveDate && effectiveDate < new Date() && !task.completedAt;
 
   // Prioridade do vencimento: DueDate > ScheduledDate
-  const dateLabel = task.dueDate ? 'Vence' : 'Agendado';
-  const displayDate = effectiveDate?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const dateLabel = task.dueDate ? "Vence" : "Agendado";
+  const displayDate = effectiveDate?.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
 
   return (
     <li className="group hover:bg-slate-50 transition-colors">
       <a
         href="#"
-        onClick={(e) => { e.preventDefault(); onClick(); }}
+        onClick={(e) => {
+          e.preventDefault();
+          onClick();
+        }}
         className="flex items-start gap-3 p-4 block"
       >
-        <div className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${isOverdue ? 'bg-red-500' : 'bg-[#D35400]'}`} />
+        <div
+          className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${isOverdue ? "bg-red-500" : "bg-[#D35400]"}`}
+        />
 
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-start">
@@ -487,19 +593,27 @@ const TaskListItem = ({ task, onClick, isUpcomingView }: { task: Task, onClick: 
               {task.title}
             </p>
             {effectiveDate && (
-              <span className={`text-xs font-mono whitespace-nowrap ml-2 
-                ${isOverdue ? 'text-red-600 font-bold' : isUpcomingView ? 'text-orange-600 font-bold' : 'text-gray-500'}`}>
+              <span
+                className={`text-xs font-mono whitespace-nowrap ml-2 
+                ${isOverdue ? "text-red-600 font-bold" : isUpcomingView ? "text-orange-600 font-bold" : "text-gray-500"}`}
+              >
                 {dateLabel}: {displayDate}
               </span>
             )}
           </div>
 
           <div className="flex flex-wrap gap-2 mt-2 items-center">
-            <Badge variant="outline" className={`${getPriorityClasses(task.priority).bg} ${getPriorityClasses(task.priority).text} border-0 text-[10px]`}>
+            <Badge
+              variant="outline"
+              className={`${getPriorityClasses(task.priority).bg} ${getPriorityClasses(task.priority).text} border-0 text-[10px]`}
+            >
               {getPriorityText(task.priority)}
             </Badge>
             {task.column && (
-              <Badge variant="outline" className={`${getStatusClasses(task.column.title).bg} ${getStatusClasses(task.column.title).text} border-0 text-[10px]`}>
+              <Badge
+                variant="outline"
+                className={`${getStatusClasses(task.column.title).bg} ${getStatusClasses(task.column.title).text} border-0 text-[10px]`}
+              >
                 {task.column.title}
               </Badge>
             )}
