@@ -413,8 +413,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {tasksForTodayCount > 0 && (
-            <Card
+          <Card
               className="bg-white border-b-2 border-blue-500 shadow-sm hover:shadow-md transition-all cursor-pointer animate-in fade-in duration-500"
               onClick={navigateToTodayTasks}
             >
@@ -428,7 +427,6 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
-          )}
         </div>
 
         {/* CONTROLES */}

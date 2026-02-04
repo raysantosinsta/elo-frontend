@@ -421,9 +421,9 @@ export default function ProductFlowKanban() {
       {/* Modal Flow */}
       <Dialog open={isFlowModal} onOpenChange={setIsFlowModal}>
         <DialogContent className="bg-white">
-          <DialogHeader><DialogTitle>Novo Fluxo</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Novo Fluxo de Produção</DialogTitle></DialogHeader>
           <div className="py-4 space-y-4 text-sm font-medium">
-            <Label>Nome</Label><Input value={flowName} onChange={(e) => setFlowName(e.target.value)} />
+            <Label>Nome do fluxo</Label><Input value={flowName} onChange={(e) => setFlowName(e.target.value)} />
             <Label>Cor do Fluxo</Label><Input type="color" value={newFlowColor} onChange={(e) => setNewFlowColor(e.target.value)} className="h-10 w-full" />
           </div>
           <DialogFooter><Button onClick={handleCreateFlow} className="bg-orange-600 text-white">Criar</Button></DialogFooter>

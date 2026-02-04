@@ -22,8 +22,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
   Popover,
@@ -44,8 +42,8 @@ interface KanbanHeaderProps {
   subtitle?: string;
   icon?: React.ReactNode;
   onAddColumn?: () => void;
-  onAddFlow?: () => void;   
-  onAddStage?: () => void;  
+  onAddFlow?: () => void;    
+  onAddStage?: () => void;   
   templates?: any[];
   selectedTemplateId?: string;
   onSelectTemplate?: (id: string) => void;
@@ -183,9 +181,21 @@ export function KanbanHeader({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl">
+                  
+                  {/* --- OPÇÃO NOVA COLUNA ADICIONADA AQUI --- */}
+                  {onAddColumn && (
+                    <DropdownMenuItem onClick={onAddColumn} className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 rounded-md border-none outline-none">
+                      <Kanban size={16} className="text-[#D35400]" />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-[#F5F0E6]">Nova Coluna</span>
+                        <span className="text-[10px] text-[#95A5A6]">Adicionar coluna ao quadro</span>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
+
                   {onAddFlow && (
                     <DropdownMenuItem onClick={onAddFlow} className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 rounded-md border-none outline-none">
-                      <Layers size={16} className="text-[#D35400]" />
+                      <Layers size={16} className="text-[#95A5A6]" />
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-[#F5F0E6]">Novo Fluxo</span>
                         <span className="text-[10px] text-[#95A5A6]">Criar uma nova esteira</span>
@@ -197,7 +207,7 @@ export function KanbanHeader({
                       <Plus size={16} className="text-[#95A5A6]" />
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-[#F5F0E6]">Nova Etapa</span>
-                        <span className="text-[10px] text-[#95A5A6]">Adicionar coluna ao fluxo</span>
+                        <span className="text-[10px] text-[#95A5A6]">Adicionar etapa ao fluxo</span>
                       </div>
                     </DropdownMenuItem>
                   )}
@@ -214,7 +224,7 @@ export function KanbanHeader({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl">
-                   <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest px-3 py-2">Configurações</div>
+                    <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest px-3 py-2">Configurações</div>
                   {configActions.map((action, index) => (
                     <DropdownMenuItem 
                       key={index} 
