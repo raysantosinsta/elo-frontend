@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -42,41 +42,18 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
-// --- DADOS DOS CARGOS (Hierarquia) ---
-const JOB_HIERARCHY = [
-  {
-    category: "Gestão e Estratégia",
-    roles: [
-      "CEO / Diretor Executivo",
-      "Sócio / Proprietário",
-      "Diretor de Operações (COO)",
-      "Gestor de Processos",
-    ],
-  },
-  {
-    category: "Administrativo e Financeiro",
-    roles: [
-      "Analista Financeiro",
-      "Assistente Administrativo",
-      "Auxiliar de Escritório",
-    ],
-  },
-  {
-    category: "Comercial e Vendas",
-    roles: ["Gerente Comercial", "Vendedor(a)", "Representante Comercial"],
-  },
-  {
-    category: "Produção e Operacional",
-    roles: ["Gerente de Produção", "Supervisor de Qualidade", "Líder de Produção"],
-  },
-  {
-    category: "Tecnologia e Marketing",
-    roles: [
-      "Analista de Sistemas / TI",
-      "Desenvolvedor de Software",
-      "Analista de Marketing",
-    ],
-  },
+// --- DADOS DOS CARGOS (Lista Fechada para Automação) ---
+const PRODUCTION_ROLES = [
+  "Modelagem",
+  "Pilotagem",
+  "Pendente de Aprovação",
+  "Corte",
+  "Distribuição",
+  "Oficina",
+  "Botão/Caseado",
+  "Revisão",
+  "Acabamento",
+  "DPA",
 ];
 
 // --- Tipos e Enums ---
@@ -121,7 +98,7 @@ const baseUserSchema = z.object({
   email: z.string().email("E-mail inválido"),
   contact: z.string().refine((val) => cleanMask(val).length >= 10, "Telefone inválido"),
   document: z.string().optional(),
-  professionalRole: z.string().optional(), // O cargo final será salvo aqui
+  professionalRole: z.string().optional(), // Cargo vinculado à esteira
   companyId: z.string().optional(),
   password: z.string().optional(),
   confirmPassword: z.string().optional(),
@@ -159,12 +136,6 @@ const formatCPF = (v: string | undefined) => {
     .replace(/(-\d{2})\d+?$/, "$1");
 };
 
-// Helper para encontrar a categoria com base no cargo (para edição)
-const findCategoryByRole = (role: string) => {
-  const found = JOB_HIERARCHY.find((cat) => cat.roles.includes(role));
-  return found ? found.category : "";
-};
-
 export function UserFormModal({
   isOpen,
   onClose,
@@ -176,9 +147,6 @@ export function UserFormModal({
 }: UserFormModalProps) {
   const isEditing = !!initialData;
   const isMaster = currentUserRole === "MASTER";
-
-  // Estado local para controlar a categoria selecionada (o Select Pai)
-  const [selectedCategory, setSelectedCategory] = useState<string>("");
 
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userSchema),
@@ -195,16 +163,10 @@ export function UserFormModal({
   });
 
   // Atualiza o formulário ao abrir
- // Atualiza o formulário ao abrir
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
         // Lógica de Edição
-        const category = initialData.professionalRole
-          ? findCategoryByRole(initialData.professionalRole)
-          : "";
-        
-        // 1. Resetar o formulário (Dados principais)
         form.reset({
           name: initialData.name,
           email: initialData.email,
@@ -215,13 +177,6 @@ export function UserFormModal({
           confirmPassword: "",
           companyId: initialData.companyId || "",
         });
-
-        // 2. Atualizar o estado visual (Select Pai)
-        // Usamos setTimeout para evitar o erro "setState synchronously within an effect"
-        setTimeout(() => {
-          setSelectedCategory(category);
-        }, 0);
-
       } else {
         // Lógica de Criação
         form.reset({
@@ -234,10 +189,6 @@ export function UserFormModal({
           confirmPassword: "",
           companyId: "",
         });
-
-        setTimeout(() => {
-          setSelectedCategory("");
-        }, 0);
       }
     }
   }, [isOpen, initialData, form]);
@@ -257,9 +208,6 @@ export function UserFormModal({
     const { confirmPassword, ...dataToSend } = values;
     await onSubmit(dataToSend);
   };
-
-  // Filtra os cargos baseados na categoria selecionada no estado
-  const currentRoles = JOB_HIERARCHY.find((c) => c.category === selectedCategory)?.roles || [];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -390,57 +338,32 @@ export function UserFormModal({
                     />
                   </div>
 
-                  {/* 🔥 LÓGICA DO SELECT E SUB-SELECT */}
+                  {/* SELEÇÃO SIMPLIFICADA DE CARGO */}
                   <div className="p-4 bg-slate-50 border border-slate-100 rounded-md">
                     <div className="flex items-center gap-2 mb-3">
                       <Briefcase className="w-4 h-4 text-slate-500" />
-                      <span className="text-sm font-semibold text-slate-700">Cargo na Empresa</span>
+                      <span className="text-sm font-semibold text-slate-700">Cargo na Esteira de Produção</span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* 1. Select de Categoria (Controla apenas o estado local) */}
-                      <div className="space-y-2">
-                        <FormLabel className="text-xs">Área / Departamento</FormLabel>
-                        <Select
-                          value={selectedCategory}
-                          onValueChange={(val) => {
-                            setSelectedCategory(val);
-                            form.setValue("professionalRole", ""); // Limpa o cargo ao mudar categoria
-                          }}
-                        >
-                          <SelectTrigger className="bg-white">
-                            <SelectValue placeholder="Selecione o departamento" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {JOB_HIERARCHY.map((item) => (
-                              <SelectItem key={item.category} value={item.category}>
-                                {item.category}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* 2. Select de Cargo (Conectado ao formulário) */}
+                    <div className="grid grid-cols-1 gap-4">
                       <FormField
                         control={form.control}
                         name="professionalRole"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs">Cargo Específico</FormLabel>
+                            <FormLabel className="text-xs">Função Permitida</FormLabel>
                             <Select
                               onValueChange={field.onChange}
                               defaultValue={field.value}
                               value={field.value}
-                              disabled={!selectedCategory} // Desabilita se não tiver categoria
                             >
                               <FormControl>
                                 <SelectTrigger className="bg-white">
-                                  <SelectValue placeholder={selectedCategory ? "Selecione o cargo" : "Selecione a área primeiro"} />
+                                  <SelectValue placeholder="Selecione o cargo" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {currentRoles.map((role) => (
+                                {PRODUCTION_ROLES.map((role) => (
                                   <SelectItem key={role} value={role}>
                                     {role}
                                   </SelectItem>
