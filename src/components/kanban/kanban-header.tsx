@@ -3,34 +3,23 @@
 
 import React, { useState } from "react";
 import { 
-  Plus, 
-  Menu, 
-  X, 
-  Settings, 
-  ChevronDown,
-  Layers,
-  Save,
-  Check,
-  Trash2,
-  Copy,
-  LayoutTemplate,
-  Kanban
+  Plus, Menu, X, Settings, ChevronDown, Layers, 
+  Save, Check, Trash2, Copy, LayoutTemplate
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
+  Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+
+// Melhorando a tipagem do Template
+interface Template {
+  id: string;
+  name: string;
+}
 
 interface ConfigAction {
   label: string;
@@ -46,7 +35,7 @@ interface KanbanHeaderProps {
   onAddColumn?: () => void;
   onAddFlow?: () => void;   
   onAddStage?: () => void;  
-  templates?: any[];
+  templates?: Template[]; // Tipagem melhorada
   selectedTemplateId?: string;
   onSelectTemplate?: (id: string) => void;
   onApplyTemplate?: () => void;
@@ -56,11 +45,6 @@ interface KanbanHeaderProps {
   rightContent?: React.ReactNode;
 }
 
-/**
- * KanbanHeader Padronizado
- * Cores: Grafite (#2D3436), Algodão Cru (#F5F0E6), Terracota (#D35400), 
- * Areia (#95A5A6), Azul Petróleo (#2C3E50)
- */
 export function KanbanHeader({
   title,
   subtitle,
@@ -87,9 +71,15 @@ export function KanbanHeader({
         
         {/* LADO ESQUERDO: Branding */}
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="md:hidden text-[#F5F0E6] hover:bg-white/10" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="md:hidden text-[#F5F0E6] hover:bg-white/10" 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          >
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </Button>
+          
           <div className="flex items-center gap-3">
             {icon && <div className="p-2 bg-white/5 rounded-lg text-[#D35400]">{icon}</div>}
             <div className="flex flex-col">
@@ -99,141 +89,198 @@ export function KanbanHeader({
           </div>
         </div>
 
-        {/* LADO DIREITO */}
-        <div className="flex items-center gap-3">
-          
-          <div className="hidden md:flex items-center gap-3">
-            {rightContent}
+        {/* LADO DIREITO (DESKTOP) */}
+        <div className="hidden md:flex items-center gap-3">
+          {rightContent}
 
-            {/* GESTÃO DE TEMPLATES - Padronizado para tons de Areia e Azul */}
-            {(onSaveTemplate || onApplyTemplate) && (
-              <div className="flex items-center gap-2 bg-[#2D3436]/40 p-1 rounded-lg border border-[#95A5A6]/30">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 text-[11px] font-semibold text-[#95A5A6] hover:text-[#F5F0E6] hover:bg-white/5">
-                      <LayoutTemplate size={14} className="mr-2 text-[#95A5A6]" />
-                      <span className="max-w-[120px] truncate">{selectedTemplateName}</span>
-                      <ChevronDown size={12} className="ml-2 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] shadow-2xl" align="start">
-                    <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest px-2 py-2">Modelos de Estrutura</div>
-                    
-                    <div className="space-y-1">
-                      {templates.map((t) => {
-                        const isActive = selectedTemplateId === t.id;
-                        return (
-                          <div 
-                            key={t.id} 
-                            className={cn(
-                              "group flex items-center justify-between p-2 rounded-md transition-all cursor-pointer",
-                              isActive ? "bg-[#D35400] text-white" : "text-[#95A5A6] hover:bg-white/5 hover:text-[#F5F0E6]"
-                            )}
-                            onClick={() => onSelectTemplate?.(t.id)}
-                          >
-                            <div className="flex items-center gap-2 flex-1">
-                              <Copy size={14} className={cn(isActive ? "text-white" : "text-[#95A5A6]")} />
-                              <span className="text-sm font-medium">{t.name}</span>
-                              {isActive && <Check size={14} className="text-white ml-1" />}
-                            </div>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); onDeleteTemplate?.(t.id); }} 
-                              className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:bg-red-500/20 rounded"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+          {/* GESTÃO DE TEMPLATES */}
+          {(onSaveTemplate || onApplyTemplate) && (
+            <div className="flex items-center gap-2 bg-[#2D3436]/40 p-1 rounded-lg border border-[#95A5A6]/30">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 text-[11px] font-semibold text-[#95A5A6] hover:text-[#F5F0E6] hover:bg-white/5">
+                    <LayoutTemplate size={14} className="mr-2 text-[#95A5A6]" />
+                    <span className="max-w-[120px] truncate">{selectedTemplateName}</span>
+                    <ChevronDown size={12} className="ml-2 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] shadow-2xl" align="end">
+                  <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest px-2 py-2">Modelos de Estrutura</div>
+                  <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar">
+                    {templates.map((t) => {
+                      const isActive = selectedTemplateId === t.id;
+                      return (
+                        <div 
+                          key={t.id} 
+                          className={cn(
+                            "group flex items-center justify-between p-2 rounded-md transition-all cursor-pointer",
+                            isActive ? "bg-[#D35400] text-white" : "text-[#95A5A6] hover:bg-white/5 hover:text-[#F5F0E6]"
+                          )}
+                          onClick={() => onSelectTemplate?.(t.id)}
+                        >
+                          <div className="flex items-center gap-2 flex-1 overflow-hidden">
+                            <Copy size={14} className={cn(isActive ? "text-white" : "text-[#95A5A6]")} />
+                            <span className="text-sm font-medium truncate">{t.name}</span>
+                            {isActive && <Check size={14} className="text-white ml-1 flex-shrink-0" />}
                           </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="h-px bg-[#95A5A6]/20 my-2" />
-                    
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={onSaveTemplate} 
-                      className="w-full justify-start text-[11px] font-bold text-[#D35400] hover:bg-[#D35400]/10"
-                    >
-                      <Save size={14} className="mr-2" /> Salvar estrutura atual
-                    </Button>
-                  </PopoverContent>
-                </Popover>
-
-                {onApplyTemplate && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onDeleteTemplate?.(t.id); }} 
+                            className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:bg-red-500/20 rounded transition-opacity"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="h-px bg-[#95A5A6]/20 my-2" />
                   <Button 
+                    variant="ghost" 
                     size="sm" 
-                    onClick={onApplyTemplate} 
-                    className="h-8 px-4 text-[10px] bg-[#D35400] hover:bg-[#A04000] text-white font-black border-none shadow-md transition-all active:scale-95"
+                    onClick={onSaveTemplate} 
+                    className="w-full justify-start text-[11px] font-bold text-[#D35400] hover:bg-[#D35400]/10 hover:text-[#D35400]"
                   >
-                    APLICAR
+                    <Save size={14} className="mr-2" /> Salvar estrutura atual
                   </Button>
+                </PopoverContent>
+              </Popover>
+
+              {onApplyTemplate && (
+                <Button 
+                  size="sm" 
+                  onClick={onApplyTemplate} 
+                  className="h-8 px-4 text-[10px] bg-[#D35400] hover:bg-[#A04000] text-white font-black border-none shadow-md transition-all active:scale-95"
+                >
+                  APLICAR
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* BOTÃO ADICIONAR */}
+          {(onAddFlow || onAddStage || onAddColumn) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="bg-[#D35400] hover:bg-[#A04000] text-white gap-2 font-bold shadow-md transition-all active:scale-95 h-9 border-none">
+                  <Plus size={18} strokeWidth={3} />
+                  <span className="hidden sm:inline text-xs">Adicionar</span>
+                  <ChevronDown size={14} className="opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl">
+                {onAddFlow && (
+                  <DropdownMenuItem onClick={onAddFlow} className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 focus:text-white rounded-md border-none outline-none">
+                    <Layers size={16} className="text-[#D35400]" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold">Novo Fluxo</span>
+                      <span className="text-[10px] text-[#95A5A6]">Criar uma nova esteira</span>
+                    </div>
+                  </DropdownMenuItem>
                 )}
-              </div>
-            )}
+                {onAddStage && (
+                  <DropdownMenuItem onClick={onAddStage} className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 focus:text-white rounded-md border-none outline-none">
+                    <Plus size={16} className="text-[#95A5A6]" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold">Nova Etapa</span>
+                      <span className="text-[10px] text-[#95A5A6]">Adicionar coluna ao fluxo</span>
+                    </div>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-            {/* BOTÃO ADICIONAR - Terracota (Foco em Ação) */}
-            {(onAddFlow || onAddStage || onAddColumn) && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button className="bg-[#D35400] hover:bg-[#A04000] text-white gap-2 font-bold shadow-md transition-all active:scale-95 h-9 border-none">
-                    <Plus size={18} strokeWidth={3} />
-                    <span className="hidden sm:inline text-xs">Adicionar</span>
-                    <ChevronDown size={14} className="opacity-50" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl">
-                  {onAddFlow && (
-                    <DropdownMenuItem onClick={onAddFlow} className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 rounded-md border-none outline-none">
-                      <Layers size={16} className="text-[#D35400]" />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-[#F5F0E6]">Novo Fluxo</span>
-                        <span className="text-[10px] text-[#95A5A6]">Criar uma nova esteira</span>
-                      </div>
-                    </DropdownMenuItem>
-                  )}
-                  {onAddStage && (
-                    <DropdownMenuItem onClick={onAddStage} className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 rounded-md border-none outline-none">
-                      <Plus size={16} className="text-[#95A5A6]" />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-[#F5F0E6]">Nova Etapa</span>
-                        <span className="text-[10px] text-[#95A5A6]">Adicionar coluna ao fluxo</span>
-                      </div>
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-
-            {/* CONFIGURAÇÕES - Areia (Secundário) */}
-            {configActions && configActions.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="text-[#95A5A6] hover:text-[#F5F0E6] hover:bg-white/5 ml-1">
-                    <Settings size={20} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl">
-                   <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest px-3 py-2">Configurações</div>
-                  {configActions.map((action, index) => (
-                    <DropdownMenuItem 
-                      key={index} 
-                      onClick={action.onClick} 
-                      className={cn(
-                        "flex items-center gap-2 cursor-pointer py-2 px-3 rounded-md focus:bg-white/10 border-none outline-none",
-                        action.variant === 'destructive' ? "text-red-400 focus:bg-red-500/10" : "text-[#F5F0E6]"
-                      )}
-                    >
-                      {action.icon}
-                      <span className="text-sm font-medium">{action.label}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
+          {/* CONFIGURAÇÕES */}
+          {configActions && configActions.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-[#95A5A6] hover:text-[#F5F0E6] hover:bg-white/5 ml-1">
+                  <Settings size={20} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl">
+                 <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest px-3 py-2">Configurações</div>
+                {configActions.map((action, index) => (
+                  <DropdownMenuItem 
+                    key={index} 
+                    onClick={action.onClick} 
+                    className={cn(
+                      "flex items-center gap-2 cursor-pointer py-2 px-3 rounded-md focus:bg-white/10 border-none outline-none",
+                      action.variant === 'destructive' ? "text-red-400 focus:bg-red-500/10 focus:text-red-400" : "text-[#F5F0E6] focus:text-white"
+                    )}
+                  >
+                    {action.icon}
+                    <span className="text-sm font-medium">{action.label}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
+
+      {/* 🔥 MENU MOBILE IMPLEMENTADO 🔥 */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden absolute top-full left-0 right-0 bg-[#2C3E50] border-t border-[#95A5A6]/20 shadow-xl p-4 flex flex-col gap-4 animate-in slide-in-from-top-5">
+            {/* Ações Mobile */}
+            <div className="grid grid-cols-2 gap-2">
+                {onAddFlow && (
+                    <Button onClick={() => { onAddFlow(); setIsMobileMenuOpen(false); }} variant="outline" className="bg-transparent border-[#95A5A6]/30 text-[#F5F0E6] hover:bg-white/5 justify-start">
+                        <Layers size={16} className="mr-2 text-[#D35400]" /> Novo Fluxo
+                    </Button>
+                )}
+                {onAddStage && (
+                    <Button onClick={() => { onAddStage(); setIsMobileMenuOpen(false); }} variant="outline" className="bg-transparent border-[#95A5A6]/30 text-[#F5F0E6] hover:bg-white/5 justify-start">
+                        <Plus size={16} className="mr-2 text-[#95A5A6]" /> Nova Etapa
+                    </Button>
+                )}
+            </div>
+            
+            {/* Templates Mobile */}
+            {templates.length > 0 && (
+                <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest">Templates</p>
+                    <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                        {templates.map(t => (
+                            <button 
+                                key={t.id}
+                                onClick={() => { onSelectTemplate?.(t.id); setIsMobileMenuOpen(false); }}
+                                className={cn(
+                                    "flex items-center p-2 rounded text-sm text-left",
+                                    selectedTemplateId === t.id ? "bg-[#D35400] text-white" : "text-[#95A5A6] hover:bg-white/5"
+                                )}
+                            >
+                                <span className="flex-1 truncate">{t.name}</span>
+                                {selectedTemplateId === t.id && <Check size={14} />}
+                            </button>
+                        ))}
+                    </div>
+                    {onApplyTemplate && (
+                        <Button onClick={onApplyTemplate} className="w-full bg-[#D35400] hover:bg-[#A04000] text-white h-8 text-xs">
+                            Aplicar Template Selecionado
+                        </Button>
+                    )}
+                </div>
+            )}
+
+            {/* Configs Mobile */}
+            {configActions && (
+                <div className="pt-2 border-t border-[#95A5A6]/20">
+                    {configActions.map((action, i) => (
+                        <Button 
+                            key={i} 
+                            onClick={() => { action.onClick(); setIsMobileMenuOpen(false); }}
+                            variant="ghost" 
+                            className={cn("w-full justify-start h-8", action.variant === 'destructive' ? 'text-red-400 hover:text-red-300' : 'text-[#95A5A6] hover:text-white')}
+                        >
+                            {action.icon}
+                            <span className="ml-2">{action.label}</span>
+                        </Button>
+                    ))}
+                </div>
+            )}
+        </div>
+      )}
     </header>
   );
 }

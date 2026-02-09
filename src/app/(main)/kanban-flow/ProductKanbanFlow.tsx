@@ -38,6 +38,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 // --- Modais ---
@@ -48,6 +55,18 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+
+// --- CONSTANTES ---
+// Lista de cargos profissionais da sua empresa
+const PROFESSIONAL_ROLES = [
+  { value: "modelista", label: "Modelista / Modelagem" },
+  { value: "piloteira", label: "Piloteira / Pilotagem" },
+  { value: "cortador", label: "Cortador / Corte" },
+  { value: "costureira", label: "Costureira / Costura" },
+  { value: "acabamento", label: "Acabamento" },
+  { value: "expedicao", label: "Expedição" },
+  { value: "Gerente de Produção", label: "Gerente de Produção" },
+];
 
 // --- INTERFACES ---
 interface FlowMedia {
@@ -90,6 +109,7 @@ interface FlowStage {
   name: string;
   order: number;
   color?: string;
+  allowedRole?: string; // 🔥 Campo de Cargo Permitido
   items: FlowItem[];
 }
 interface ProductFlow {
@@ -147,6 +167,7 @@ export default function ProductFlowKanban() {
   const [newFlowColor, setNewFlowColor] = useState("#D35400");
   const [stageName, setStageName] = useState("");
   const [stageColor, setStageColor] = useState("#2D3436");
+  const [stageAllowedRole, setStageAllowedRole] = useState<string>(""); // 🔥 Novo Estado
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Exemplo de integração no componente principal
@@ -168,10 +189,10 @@ export default function ProductFlowKanban() {
       setIsPreviewModal(false);
       setIsEditItemModal(false);
 
-      // 5. Recarrega o board (ou atualiza estado local se tiver gerenciamento de estado complexo)
+      // 5. Recarrega o board
       fetchSelectedBoards();
     } catch (error: any) {
-      // 6. Tratamento de Erro (ex: Já está na última etapa)
+      // 6. Tratamento de Erro
       const errorMsg = error.response?.data?.message || "Erro ao mover item.";
       toast.error(errorMsg, { id: "advance-toast" });
     }
@@ -323,18 +344,20 @@ export default function ProductFlowKanban() {
   const handleStageSubmit = async () => {
     if (!stageName.trim()) return toast.error("Nome obrigatório");
     setIsSubmitting(true);
+
+    // 🔥 PAYLOAD ATUALIZADO: Inclui allowedRole
+    const payload = {
+      name: stageName,
+      color: stageColor,
+      allowedRole: stageAllowedRole === "all" ? null : stageAllowedRole,
+    };
+
     try {
       if (editingStage) {
-        await api.put(`/flow/stages/${editingStage.id}`, {
-          name: stageName,
-          color: stageColor,
-        });
+        await api.put(`/flow/stages/${editingStage.id}`, payload);
         toast.success("Etapa atualizada");
       } else {
-        await api.post(`/flow/${selectedFlowIds[0]}/stages`, {
-          name: stageName,
-          color: stageColor,
-        });
+        await api.post(`/flow/${selectedFlowIds[0]}/stages`, payload);
         toast.success("Etapa criada");
       }
       setIsStageModal(false);
@@ -415,6 +438,7 @@ export default function ProductFlowKanban() {
       const flowColor = board.color || "#D35400";
       board.stages.forEach((stage) => {
         const key = stage.name.toUpperCase();
+        // Preserva o allowedRole da etapa original
         if (!stageGroups[key]) stageGroups[key] = { ...stage, items: [] };
         const itemsWithMetadata = stage.items.map((item) => ({
           ...item,
@@ -448,9 +472,12 @@ export default function ProductFlowKanban() {
         title="Esteira de Produção"
         icon={<Factory size={20} />}
         onAddFlow={() => setIsFlowModal(true)}
+        // 🔥 RESETAR ESTADO AO ADICIONAR ETAPA
         onAddStage={() => {
           setEditingStage(null);
           setStageName("");
+          setStageColor("#2D3436");
+          setStageAllowedRole(""); // Reset
           setIsStageModal(true);
         }}
         templates={templates}
@@ -464,7 +491,6 @@ export default function ProductFlowKanban() {
         }}
         rightContent={
           <div className="flex items-center gap-3">
-            {/* Popover de Fluxos Ativos já integrado no rightContent para manter ordem */}
             <div className="flex items-center gap-3">
               <Popover>
                 <PopoverTrigger asChild>
@@ -535,9 +561,12 @@ export default function ProductFlowKanban() {
               setActiveStageId(stage.id);
               setIsItemModal(true);
             }}
+            // 🔥 POPULAR ESTADO AO EDITAR ETAPA
             onEditClick={() => {
               setEditingStage(stage);
               setStageName(stage.name);
+              setStageColor(stage.color || "#2D3436");
+              setStageAllowedRole(stage.allowedRole || "");
               setIsStageModal(true);
             }}
             onDeleteClick={() => {
@@ -580,13 +609,13 @@ export default function ProductFlowKanban() {
                     </div>
                   </div>
                 }
+                onComplete={() => handleAdvanceItem(item)}
               />
             ))}
           </KanbanColumn>
         ))}
       </KanbanBoard>
 
-      {/* 1. Modal de Criação (Não precisa de onAdvance pois o item não existe ainda) */}
       <FlowItemModal
         isOpen={isItemModal}
         onClose={() => setIsItemModal(false)}
@@ -597,7 +626,6 @@ export default function ProductFlowKanban() {
         stages={[]}
       />
 
-      {/* 2. Modal de Edição (AQUI passamos o handleAdvanceItem e o delete) */}
       <FlowItemModal
         isOpen={isEditItemModal}
         onClose={() => {
@@ -610,13 +638,11 @@ export default function ProductFlowKanban() {
         users={users}
         suppliers={suppliers}
         stages={[]}
-        // 🔥 CONECTANDO A AUTOMAÇÃO 🔥
         onAdvance={handleAdvanceItem}
-        // 🔥 CONECTANDO O DELETE DO MODAL 🔥
         onDelete={(id) => {
-          setIsEditItemModal(false); // Fecha o modal de edição
-          setItemToDelete({ type: "item", id }); // Define quem vai ser deletado
-          setDeleteModalOpen(true); // Abre a confirmação
+          setIsEditItemModal(false);
+          setItemToDelete({ type: "item", id });
+          setDeleteModalOpen(true);
         }}
       />
 
@@ -703,25 +729,67 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Stage */}
+      {/* 🔥 MODAL DE STAGE ATUALIZADO (com Select de Cargo) */}
       <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
         <DialogContent className="bg-white">
           <DialogHeader>
             <DialogTitle>{editingStage ? "Editar" : "Nova"} Etapa</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4 text-sm font-medium">
-            <Label>Nome</Label>
-            <Input
-              value={stageName}
-              onChange={(e) => setStageName(e.target.value)}
-            />
-            <Label>Cor</Label>
-            <Input
-              type="color"
-              value={stageColor}
-              onChange={(e) => setStageColor(e.target.value)}
-              className="h-10 w-full"
-            />
+            <div className="space-y-2">
+              <Label>Nome da Etapa</Label>
+              <Input
+                value={stageName}
+                onChange={(e) => setStageName(e.target.value)}
+                placeholder="Ex: Pilotagem"
+              />
+            </div>
+
+            {/* 🔥 NOVO SELECT DE CARGO */}
+            <div className="space-y-2">
+              <Label>Cargo Permitido (Quem pode mover?)</Label>
+              <Select
+                value={stageAllowedRole}
+                onValueChange={setStageAllowedRole}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione um cargo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <span className="font-bold text-emerald-600">
+                      Liberado para todos
+                    </span>
+                  </SelectItem>
+                  {PROFESSIONAL_ROLES.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-slate-500">
+                Se selecionar Todos, qualquer usuário poderá retirar itens
+                desta coluna.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cor da Etapa</Label>
+              <div className="flex gap-2 items-center">
+                <Input
+                  type="color"
+                  value={stageColor}
+                  onChange={(e) => setStageColor(e.target.value)}
+                  className="h-10 w-12 p-1 cursor-pointer"
+                />
+                <Input
+                  value={stageColor}
+                  onChange={(e) => setStageColor(e.target.value)}
+                  className="uppercase"
+                />
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsStageModal(false)}>
@@ -730,8 +798,9 @@ export default function ProductFlowKanban() {
             <Button
               onClick={handleStageSubmit}
               className="bg-orange-600 text-white"
+              disabled={isSubmitting}
             >
-              Salvar
+              {isSubmitting ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -75,7 +75,7 @@ export interface FlowItem {
   
   // 🔥 Campos cruciais para compatibilidade
   stageId?: string;
-  flowId?: string; // Adicionado para resolver o erro TS2322
+  flowId: string; // Adicionado para resolver o erro TS2322
   flowColor?: string; // Opcional, vindo do Kanban
   flowName?: string;  // Opcional, vindo do Kanban
   

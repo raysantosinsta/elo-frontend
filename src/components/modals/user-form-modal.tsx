@@ -44,16 +44,15 @@ import { Separator } from "@/components/ui/separator";
 
 // --- DADOS DOS CARGOS (Lista Fechada para Automação) ---
 const PRODUCTION_ROLES = [
-  "Modelagem",
-  "Pilotagem",
-  "Pendente de Aprovação",
-  "Corte",
-  "Distribuição",
-  "Oficina",
-  "Botão/Caseado",
-  "Revisão",
-  "Acabamento",
-  "DPA",
+  "Modelista",      // Antes era "Modelagem"
+  "Piloteira",      // Antes era "Pilotagem"
+  "Cortador",       // Antes era "Corte"
+  "Costureira",     // Antes era "Oficina" ou "Costura"
+  "Revisor",        // Antes era "Revisão"
+  "Acabamento",     // Acabamento pode ser setor ou cargo, mas mantenha igua{ value: "gerente", label: "Gerente" },l na coluna
+  "Expedição",      // Antes era "Distribuição" ou "DPA"
+  "Gerente de Produção",
+  "Auxiliar de Produção",
 ];
 
 // --- Tipos e Enums ---
