@@ -421,7 +421,7 @@ export default function ProductFlowKanban() {
       setIsItemModal(false);
       setIsEditItemModal(false);
       setEditingItem(null);
-      fetchSelectedBoards();
+      await fetchSelectedBoards();
     } catch {
       toast.error("Erro ao salvar item");
     } finally {
@@ -637,7 +637,8 @@ export default function ProductFlowKanban() {
         isLoading={isSubmitting}
         users={users}
         suppliers={suppliers}
-        stages={[]}
+        stages={unifiedStages} // 🔥 Mude de [] para unifiedStages
+        initialStageId={activeStageId} // Passa a coluna onde clicou no "+"
         onAdvance={handleAdvanceItem}
         onDelete={(id) => {
           setIsEditItemModal(false);
@@ -769,8 +770,8 @@ export default function ProductFlowKanban() {
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-slate-500">
-                Se selecionar Todos, qualquer usuário poderá retirar itens
-                desta coluna.
+                Se selecionar Todos, qualquer usuário poderá retirar itens desta
+                coluna.
               </p>
             </div>
 

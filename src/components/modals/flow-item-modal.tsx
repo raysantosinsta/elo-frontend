@@ -95,7 +95,7 @@ interface FlowItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialData?: FlowItem | null;
-  initialStageId?: string;
+  initialStageId?: string | null;
   onSubmit: (
     values: any,
     files: { images: File[]; audios: File[]; videos: File[] },
