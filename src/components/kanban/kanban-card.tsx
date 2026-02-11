@@ -8,7 +8,6 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-// 1. Adicionei o ícone CheckCircle2 (ou ArrowRight se preferir)
 import { Edit, Eye, MoreHorizontal, Trash2, CheckCircle2 } from "lucide-react";
 import React from "react";
 
@@ -29,7 +28,6 @@ export interface KanbanCardProps {
   onView?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-  // 🔥 2. NOVA PROP: Função para concluir/avançar
   onComplete?: () => void; 
 
   onDoubleClick?: () => void; 
@@ -50,17 +48,20 @@ export function KanbanCard({
   onView,
   onEdit,
   onDelete,
-  onComplete, // 🔥 Recebendo a nova prop
+  onComplete, 
   onDoubleClick,
   onDragStart,
   extraMenuItems,
   children
 }: KanbanCardProps) {
   
+  // 🔥 CORREÇÃO: Verifica se existe pelo menos uma ação disponível
+  const hasActions = onComplete || onView || onEdit || onDelete || extraMenuItems;
+
   return (
     <Card
-      draggable
-      onDragStart={(e) => onDragStart ? onDragStart(e) : e.dataTransfer.setData("itemId", id)}
+      draggable={!!onDragStart} // Só é draggable se a função existir
+      onDragStart={(e) => onDragStart ? onDragStart(e) : e.preventDefault()}
       onDoubleClick={onDoubleClick}
       className={cn(
         "cursor-grab active:cursor-grabbing group transition-all duration-200",
@@ -98,53 +99,54 @@ export function KanbanCard({
              {tags}
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="text-slate-300 hover:text-slate-500 transition-colors p-1 hover:bg-slate-100 rounded">
-                <MoreHorizontal size={16} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              
-              {/* 🔥 3. BOTÃO DE CONCLUIR/AVANÇAR */}
-              {onComplete && (
-                <>
-                  <DropdownMenuItem 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onComplete();
-                    }} 
-                    className="text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50 font-bold cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4 mr-2"/> 
-                    Concluir Etapa
+          {/* 🔥 SÓ RENDERIZA O MENU SE HOUVER AÇÕES */}
+          {hasActions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="text-slate-300 hover:text-slate-500 transition-colors p-1 hover:bg-slate-100 rounded">
+                  <MoreHorizontal size={16} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                
+                {onComplete && (
+                  <>
+                    <DropdownMenuItem 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onComplete();
+                      }} 
+                      className="text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50 font-bold cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2"/> 
+                      Concluir Etapa
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+
+                {onView && (
+                  <DropdownMenuItem onClick={onView} className="cursor-pointer">
+                    <Eye className="w-4 h-4 mr-2"/> Ver
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
+                )}
+                
+                {onEdit && (
+                  <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
+                    <Edit className="w-4 h-4 mr-2"/> Editar
+                  </DropdownMenuItem>
+                )}
+                
+                {onDelete && (
+                  <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer">
+                    <Trash2 className="w-4 h-4 mr-2"/> Excluir
+                  </DropdownMenuItem>
+                )}
 
-              {/* Outras opções */}
-              {onView && (
-                <DropdownMenuItem onClick={onView} className="cursor-pointer">
-                  <Eye className="w-4 h-4 mr-2"/> Ver
-                </DropdownMenuItem>
-              )}
-              
-              {onEdit && (
-                <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
-                  <Edit className="w-4 h-4 mr-2"/> Editar
-                </DropdownMenuItem>
-              )}
-              
-              {onDelete && (
-                <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer">
-                  <Trash2 className="w-4 h-4 mr-2"/> Excluir
-                </DropdownMenuItem>
-              )}
-
-              {extraMenuItems}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {extraMenuItems}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {/* Título e Subtítulo */}
