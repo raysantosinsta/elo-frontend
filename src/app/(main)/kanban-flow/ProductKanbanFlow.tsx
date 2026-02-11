@@ -77,6 +77,7 @@ interface FlowMedia {
 interface UserProfile {
   id: string;
   name: string;
+  professionalRole?: string; // 🔥 Adicionado
 }
 interface FlowItem {
   id: string;
@@ -134,6 +135,7 @@ const formatDateShort = (d: string) =>
 
 export default function ProductFlowKanban() {
   const { user } = useAuth();
+  console.log("user", user);
 
   // --- Estados de Dados ---
   const [flows, setFlows] = useState<ProductFlow[]>([]);
@@ -624,6 +626,7 @@ export default function ProductFlowKanban() {
         users={users}
         suppliers={suppliers}
         stages={[]}
+        currentUserRole={user?.professionalRole || user?.role}
       />
 
       <FlowItemModal
@@ -645,6 +648,7 @@ export default function ProductFlowKanban() {
           setItemToDelete({ type: "item", id });
           setDeleteModalOpen(true);
         }}
+        currentUserRole={user?.professionalRole || user?.role}
       />
 
       <ConfirmDeleteModal

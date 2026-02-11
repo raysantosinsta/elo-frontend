@@ -2,36 +2,37 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
-import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import {
-  Edit,
-  Plus,
-  Loader2,
   CheckCircle2,
+  Edit,
+  Factory,
   ImageIcon,
-  Video,
-  Music,
-  Mic,
-  Square,
+  Loader2,
   Maximize2,
+  Mic,
+  Music,
+  PlayCircle,
+  Plus,
+  Square,
   Trash2,
   UploadCloud,
   User,
-  Factory,
+  Video,
   X,
-  PlayCircle,
 } from "lucide-react";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import * as z from "zod";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -42,8 +43,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -51,10 +52,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
 // Interfaces
 interface FlowMedia {
@@ -105,7 +105,7 @@ interface FlowItemModalProps {
   users: { id: string; name: string }[];
   suppliers: { id: string; name: string; category?: string }[];
   stages: { id: string; name: string; order: number }[];
-  // 🔥 NOVAS PROPS NECESSÁRIAS 🔥
+  currentUserRole?: string;
   onDelete?: (id: string) => void;
   onAdvance?: (item: FlowItem) => Promise<void>;
 }
@@ -138,7 +138,7 @@ export function FlowItemModal({
   users,
   suppliers,
   stages,
-  // 🔥 Recebendo as novas funções aqui
+ currentUserRole,
   onDelete,
   onAdvance,
 }: FlowItemModalProps) {
@@ -308,6 +308,29 @@ export function FlowItemModal({
     return `${nameWithoutExt.substring(0, keepChars)}...${nameWithoutExt.substring(nameWithoutExt.length - keepChars)}${ext}`;
   };
 
+  // 1. Monitora qual etapa está selecionada no formulário
+  const selectedStageId = form.watch("stageId");
+
+  // 2. Calcula se o campo deve ficar desabilitado
+  const isQuantityDisabled = useMemo(() => {
+    // A. Encontra o objeto da etapa atual baseada no ID selecionado
+    const currentStage = stages.find((s) => s.id === selectedStageId);
+    
+    // B. Verifica se a etapa tem "Corte" no nome (Case insensitive)
+    const isCorteStage = currentStage?.name?.toLowerCase().includes("corte");
+
+    // C. Verifica se o usuário tem o cargo de "Corte" ou "Cortador"
+    // Ajuste "cortador" conforme o value salvo no seu banco de dados/auth
+    const userHasCorteRole = currentUserRole?.toLowerCase().includes("cortador") || 
+                             currentUserRole?.toLowerCase().includes("corte");
+
+    // D. Regra final: Só é editável se estiver na etapa de Corte E o usuário for do Corte.
+    // Caso contrário, é disabled (read-only).
+    const canEdit = isCorteStage && userHasCorteRole;
+
+    return !canEdit; // Retorna true para desabilitar
+  }, [selectedStageId, stages, currentUserRole]);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl h-[95vh] md:h-[90vh] flex flex-col p-0 overflow-hidden">
@@ -412,12 +435,19 @@ export function FlowItemModal({
                                   type="number"
                                   min="1"
                                   {...field}
+                                  disabled={isQuantityDisabled}
+                                  className={isQuantityDisabled ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"}
                                   value={field.value?.toString() ?? ""}
                                   onChange={(e) =>
                                     field.onChange(e.target.value)
                                   }
                                 />
                               </FormControl>
+                              {isQuantityDisabled && (
+                                <p className="text-[10px] text-amber-600 font-medium">
+                                  * Editável apenas no Corte
+                                </p>
+                              )}
                             </FormItem>
                           )}
                         />
