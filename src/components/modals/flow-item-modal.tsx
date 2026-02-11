@@ -4,11 +4,13 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  AlertTriangle,
   CheckCircle2,
   Edit,
   Factory,
   ImageIcon,
   Loader2,
+  Lock,
   Maximize2,
   Mic,
   Music,
@@ -21,7 +23,7 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -55,8 +57,10 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
-// Interfaces
+// --- INTERFACES ---
+
 interface FlowMedia {
   id: string;
   url: string;
@@ -72,20 +76,19 @@ export interface FlowItem {
   quantity: number;
   priority: number;
   status: string;
-  
-  // 🔥 Campos cruciais para compatibilidade
+
   stageId?: string;
-  flowId: string; // Adicionado para resolver o erro TS2322
-  flowColor?: string; // Opcional, vindo do Kanban
-  flowName?: string;  // Opcional, vindo do Kanban
-  
+  flowId: string;
+  flowColor?: string;
+  flowName?: string;
+
   supplierId?: string;
   assignedTo?: { id: string; name: string };
-  
+
   dueDate?: string;
   productionStartedAt?: string;
   deliveryAt?: string;
-  
+
   images: FlowMedia[];
   audios: FlowMedia[];
   videos: FlowMedia[];
@@ -104,11 +107,18 @@ interface FlowItemModalProps {
   isLoading: boolean;
   users: { id: string; name: string }[];
   suppliers: { id: string; name: string; category?: string }[];
-  stages: { id: string; name: string; order: number }[];
+  stages: { id: string; name: string; order: number }[]; // name opcional para evitar erro se não vier
+
+  // 🔥 Props de Permissão
   currentUserRole?: string;
+  isReadOnly?: boolean;
+
+  // Ações
   onDelete?: (id: string) => void;
   onAdvance?: (item: FlowItem) => Promise<void>;
 }
+
+// --- SCHEMA DE VALIDAÇÃO ---
 
 const itemSchema = z.object({
   title: z.string().min(1, "Título é obrigatório"),
@@ -128,6 +138,8 @@ const itemSchema = z.object({
 
 type ItemFormValues = z.infer<typeof itemSchema>;
 
+// --- COMPONENTE ---
+
 export function FlowItemModal({
   isOpen,
   onClose,
@@ -138,12 +150,14 @@ export function FlowItemModal({
   users,
   suppliers,
   stages,
- currentUserRole,
+  currentUserRole,
   onDelete,
   onAdvance,
+  isReadOnly = false,
 }: FlowItemModalProps) {
   const isEditing = !!initialData;
 
+  // --- States de Mídia ---
   const [images, setImages] = useState<File[]>([]);
   const [videos, setVideos] = useState<File[]>([]);
   const [audios, setAudios] = useState<File[]>([]);
@@ -152,10 +166,12 @@ export function FlowItemModal({
   const [removedVideoIds, setRemovedVideoIds] = useState<string[]>([]);
   const [removedAudioIds, setRemovedAudioIds] = useState<string[]>([]);
 
+  // --- States de Gravação de Áudio ---
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // --- Hook Form ---
   const form = useForm({
     resolver: zodResolver(itemSchema),
     defaultValues: {
@@ -175,12 +191,12 @@ export function FlowItemModal({
     },
   });
 
+  // --- Efeito: Popular Dados ao Abrir ---
   useEffect(() => {
     if (isOpen) {
       setImages([]);
       setVideos([]);
       setAudios([]);
-
       setRemovedImageIds([]);
       setRemovedVideoIds([]);
       setRemovedAudioIds([]);
@@ -228,6 +244,7 @@ export function FlowItemModal({
     }
   }, [isOpen, initialData, stages, form, initialStageId]);
 
+  // --- Funções de Gravação de Áudio ---
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -258,6 +275,7 @@ export function FlowItemModal({
     setIsRecording(false);
   };
 
+  // --- Manipulação de Arquivos Locais ---
   const handleRemoveNewFile = (
     index: number,
     type: "image" | "video" | "audio",
@@ -270,6 +288,7 @@ export function FlowItemModal({
       setAudios((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // --- Submit do Formulário ---
   const handleSubmit = async (values: ItemFormValues) => {
     const payload = {
       ...values,
@@ -297,7 +316,7 @@ export function FlowItemModal({
     );
   };
 
-  // Helper para truncar nome do arquivo no meio (ex: video_apres...final.mp4)
+  // --- Helper de Texto ---
   const truncateFileName = (name: string, maxLength: number = 20) => {
     if (name.length <= maxLength) return name;
     const extIndex = name.lastIndexOf(".");
@@ -308,6 +327,8 @@ export function FlowItemModal({
     return `${nameWithoutExt.substring(0, keepChars)}...${nameWithoutExt.substring(nameWithoutExt.length - keepChars)}${ext}`;
   };
 
+  // --- Lógica de Permissão do Campo Quantidade ---
+
   // 1. Monitora qual etapa está selecionada no formulário
   const selectedStageId = form.watch("stageId");
 
@@ -315,36 +336,62 @@ export function FlowItemModal({
   const isQuantityDisabled = useMemo(() => {
     // A. Encontra o objeto da etapa atual baseada no ID selecionado
     const currentStage = stages.find((s) => s.id === selectedStageId);
-    
+
     // B. Verifica se a etapa tem "Corte" no nome (Case insensitive)
     const isCorteStage = currentStage?.name?.toLowerCase().includes("corte");
 
     // C. Verifica se o usuário tem o cargo de "Corte" ou "Cortador"
-    // Ajuste "cortador" conforme o value salvo no seu banco de dados/auth
-    const userHasCorteRole = currentUserRole?.toLowerCase().includes("cortador") || 
-                             currentUserRole?.toLowerCase().includes("corte");
+    const userHasCorteRole =
+      currentUserRole?.toLowerCase().includes("cortador") ||
+      currentUserRole?.toLowerCase().includes("corte");
 
     // D. Regra final: Só é editável se estiver na etapa de Corte E o usuário for do Corte.
-    // Caso contrário, é disabled (read-only).
     const canEdit = isCorteStage && userHasCorteRole;
 
     return !canEdit; // Retorna true para desabilitar
   }, [selectedStageId, stages, currentUserRole]);
 
+  // ===========================================================================
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl h-[95vh] md:h-[90vh] flex flex-col p-0 overflow-hidden">
+        {/* HEADER */}
         <DialogHeader className="px-6 py-4 border-b bg-slate-50 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-orange-100 rounded text-orange-600">
-              {isEditing ? <Edit size={20} /> : <Plus size={20} />}
+            <div
+              className={cn(
+                "p-2 rounded",
+                isReadOnly
+                  ? "bg-slate-200 text-slate-500"
+                  : "bg-orange-100 text-orange-600",
+              )}
+            >
+              {isReadOnly ? (
+                <Lock size={20} />
+              ) : isEditing ? (
+                <Edit size={20} />
+              ) : (
+                <Plus size={20} />
+              )}
             </div>
-            <DialogTitle className="text-xl text-[#2D3436]">
-              {isEditing ? "Editar Item de Produção" : "Novo Item de Produção"}
-            </DialogTitle>
+            <div>
+              <DialogTitle className="text-xl text-[#2D3436]">
+                {isEditing
+                  ? "Editar Item de Produção"
+                  : "Novo Item de Produção"}
+              </DialogTitle>
+              {isReadOnly && (
+                <p className="text-[10px] text-red-500 font-medium flex items-center gap-1 mt-1">
+                  <AlertTriangle size={10} />
+                  Modo Leitura: Você não tem permissão para editar nesta coluna.
+                </p>
+              )}
+            </div>
           </div>
         </DialogHeader>
 
+        {/* BODY (Scrollable) */}
         <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="px-6 py-6">
@@ -362,8 +409,10 @@ export function FlowItemModal({
                       <TabsTrigger value="media">Mídias & Anexos</TabsTrigger>
                     </TabsList>
 
+                    {/* --- TAB DETALHES --- */}
                     <TabsContent value="details" className="space-y-4">
-                      {/* Campos de Detalhes (Mantidos iguais) */}
+                      {/* Ao usar disabled={isReadOnly} nos inputs, garantimos que nada seja editado */}
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={form.control}
@@ -375,6 +424,7 @@ export function FlowItemModal({
                                 <Input
                                   placeholder="Ex: Camisa Linho M"
                                   {...field}
+                                  disabled={isReadOnly}
                                 />
                               </FormControl>
                               <FormMessage />
@@ -388,7 +438,11 @@ export function FlowItemModal({
                             <FormItem>
                               <FormLabel>Referência</FormLabel>
                               <FormControl>
-                                <Input placeholder="REF-001" {...field} />
+                                <Input
+                                  placeholder="REF-001"
+                                  {...field}
+                                  disabled={isReadOnly}
+                                />
                               </FormControl>
                             </FormItem>
                           )}
@@ -400,7 +454,11 @@ export function FlowItemModal({
                             <FormItem>
                               <FormLabel>Nº Pedido</FormLabel>
                               <FormControl>
-                                <Input placeholder="PED-123" {...field} />
+                                <Input
+                                  placeholder="PED-123"
+                                  {...field}
+                                  disabled={isReadOnly}
+                                />
                               </FormControl>
                             </FormItem>
                           )}
@@ -416,6 +474,7 @@ export function FlowItemModal({
                                   placeholder="Detalhes técnicos..."
                                   className="resize-none h-20"
                                   {...field}
+                                  disabled={isReadOnly}
                                 />
                               </FormControl>
                             </FormItem>
@@ -424,6 +483,7 @@ export function FlowItemModal({
                       </div>
 
                       <div className="grid grid-cols-3 gap-4">
+                        {/* 🔥 CAMPO QUANTIDADE COM LÓGICA ESPECÍFICA 🔥 */}
                         <FormField
                           control={form.control}
                           name="quantity"
@@ -435,15 +495,21 @@ export function FlowItemModal({
                                   type="number"
                                   min="1"
                                   {...field}
+                                  // Bloqueio Global (ReadOnly) OU Bloqueio Específico (Corte)
                                   disabled={isQuantityDisabled}
-                                  className={isQuantityDisabled ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"}
+                                  className={
+                                    isQuantityDisabled
+                                      ? "bg-slate-100 text-slate-500 cursor-not-allowed"
+                                      : "bg-white"
+                                  }
                                   value={field.value?.toString() ?? ""}
                                   onChange={(e) =>
                                     field.onChange(e.target.value)
                                   }
                                 />
                               </FormControl>
-                              {isQuantityDisabled && (
+                              {/* Mostra aviso específico se não for ReadOnly Global mas estiver travado pela regra do Corte */}
+                              {!isReadOnly && isQuantityDisabled && (
                                 <p className="text-[10px] text-amber-600 font-medium">
                                   * Editável apenas no Corte
                                 </p>
@@ -451,6 +517,7 @@ export function FlowItemModal({
                             </FormItem>
                           )}
                         />
+
                         <FormField
                           control={form.control}
                           name="priority"
@@ -460,6 +527,7 @@ export function FlowItemModal({
                               <Select
                                 onValueChange={field.onChange}
                                 value={field.value?.toString()}
+                                disabled={isReadOnly}
                               >
                                 <FormControl>
                                   <SelectTrigger>
@@ -477,17 +545,6 @@ export function FlowItemModal({
                             </FormItem>
                           )}
                         />
-                        {/* <FormField control={form.control} name="stageId" render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Etapa Atual</FormLabel>
-                                                        <Select onValueChange={field.onChange} value={field.value}>
-                                                            <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                                                            <SelectContent>
-                                                                {stages.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </FormItem>
-                                                )} /> */}
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-dashed">
@@ -502,6 +559,7 @@ export function FlowItemModal({
                               <Select
                                 onValueChange={field.onChange}
                                 value={field.value}
+                                disabled={isReadOnly}
                               >
                                 <FormControl>
                                   <SelectTrigger>
@@ -533,6 +591,7 @@ export function FlowItemModal({
                               <Select
                                 onValueChange={field.onChange}
                                 value={field.value}
+                                disabled={isReadOnly}
                               >
                                 <FormControl>
                                   <SelectTrigger>
@@ -569,6 +628,7 @@ export function FlowItemModal({
                                   type="date"
                                   {...field}
                                   value={field.value || ""}
+                                  disabled={isReadOnly}
                                 />
                               </FormControl>
                             </FormItem>
@@ -587,6 +647,7 @@ export function FlowItemModal({
                                   type="date"
                                   {...field}
                                   value={field.value || ""}
+                                  disabled={isReadOnly}
                                 />
                               </FormControl>
                             </FormItem>
@@ -605,6 +666,7 @@ export function FlowItemModal({
                                   type="date"
                                   {...field}
                                   value={field.value || ""}
+                                  disabled={isReadOnly}
                                 />
                               </FormControl>
                             </FormItem>
@@ -613,6 +675,7 @@ export function FlowItemModal({
                       </div>
                     </TabsContent>
 
+                    {/* --- TAB MEDIA --- */}
                     <TabsContent value="media" className="space-y-6">
                       {/* 1. MÍDIAS JÁ SALVAS */}
                       {isEditing &&
@@ -624,7 +687,7 @@ export function FlowItemModal({
                             <CheckCircle2 size={12} /> Mídias Salvas
                           </Label>
 
-                          {/* Imagens */}
+                          {/* Imagens Salvas */}
                           {initialData.images?.length > 0 && (
                             <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
                               {initialData.images.map(
@@ -649,18 +712,20 @@ export function FlowItemModal({
                                         >
                                           <Maximize2 size={14} />
                                         </button>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setRemovedImageIds((p) => [
-                                              ...p,
-                                              img.id,
-                                            ])
-                                          }
-                                          className="text-red-400 hover:text-red-500 hover:scale-110"
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
+                                        {!isReadOnly && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setRemovedImageIds((p) => [
+                                                ...p,
+                                                img.id,
+                                              ])
+                                            }
+                                            className="text-red-400 hover:text-red-500 hover:scale-110"
+                                          >
+                                            <Trash2 size={14} />
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                   ),
@@ -668,7 +733,7 @@ export function FlowItemModal({
                             </div>
                           )}
 
-                          {/* Vídeos */}
+                          {/* Vídeos Salvos */}
                           {initialData.videos?.length > 0 && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               {initialData.videos.map(
@@ -679,18 +744,15 @@ export function FlowItemModal({
                                       className="relative rounded-lg overflow-hidden border bg-slate-100 aspect-video group shadow-sm flex flex-col"
                                     >
                                       <div className="relative flex-1 bg-black overflow-hidden">
-                                        <video className="w-full h-full object-cover opacity-80">
+                                        <video
+                                          className="w-full h-full object-cover opacity-80"
+                                          controls
+                                        >
                                           <source
                                             src={video.url}
                                             type="video/mp4"
                                           />
                                         </video>
-                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                          <PlayCircle
-                                            size={32}
-                                            className="text-white/70"
-                                          />
-                                        </div>
                                       </div>
                                       <div className="flex items-center justify-between p-2 bg-white h-8">
                                         <span
@@ -699,18 +761,20 @@ export function FlowItemModal({
                                         >
                                           {truncateFileName(video.filename, 20)}
                                         </span>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setRemovedVideoIds((p) => [
-                                              ...p,
-                                              video.id,
-                                            ])
-                                          }
-                                          className="text-red-500 hover:bg-red-50 p-1 rounded"
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
+                                        {!isReadOnly && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setRemovedVideoIds((p) => [
+                                                ...p,
+                                                video.id,
+                                              ])
+                                            }
+                                            className="text-red-500 hover:bg-red-50 p-1 rounded"
+                                          >
+                                            <Trash2 size={14} />
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                   ),
@@ -718,7 +782,7 @@ export function FlowItemModal({
                             </div>
                           )}
 
-                          {/* Áudios */}
+                          {/* Áudios Salvos */}
                           {initialData.audios?.length > 0 && (
                             <div className="space-y-2">
                               {initialData.audios.map(
@@ -737,18 +801,20 @@ export function FlowItemModal({
                                         controls
                                         className="h-7 flex-1 w-full min-w-0"
                                       />
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          setRemovedAudioIds((p) => [
-                                            ...p,
-                                            aud.id,
-                                          ])
-                                        }
-                                        className="text-red-500 hover:bg-red-50 p-1 rounded"
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
+                                      {!isReadOnly && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setRemovedAudioIds((p) => [
+                                              ...p,
+                                              aud.id,
+                                            ])
+                                          }
+                                          className="text-red-500 hover:bg-red-50 p-1 rounded"
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      )}
                                     </div>
                                   ),
                               )}
@@ -759,99 +825,114 @@ export function FlowItemModal({
 
                       <Separator />
 
-                      {/* 2. ÁREA DE UPLOAD */}
-                      <Label className="text-sm font-bold flex items-center gap-2">
-                        <UploadCloud size={16} /> Adicionar Novas Mídias
-                      </Label>
+                      {/* 2. ÁREA DE UPLOAD (Apenas se NÃO for ReadOnly) */}
+                      {!isReadOnly && (
+                        <>
+                          <Label className="text-sm font-bold flex items-center gap-2">
+                            <UploadCloud size={16} /> Adicionar Novas Mídias
+                          </Label>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-lg p-4 flex flex-col items-center justify-center hover:bg-blue-50 cursor-pointer relative h-32 transition-colors">
-                          <Input
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            onChange={(e) =>
-                              e.target.files &&
-                              setImages((p) => [
-                                ...p,
-                                ...Array.from(e.target.files!),
-                              ])
-                            }
-                          />
-                          <ImageIcon className="text-blue-400 mb-2" size={24} />
-                          <span className="text-xs text-blue-700 font-bold">
-                            Imagens
-                          </span>
-                          <span className="text-[10px] text-blue-400 mt-1">
-                            + Adicionar
-                          </span>
-                        </div>
-
-                        <div className="border-2 border-dashed border-purple-200 bg-purple-50/30 rounded-lg p-4 flex flex-col items-center justify-center hover:bg-purple-50 cursor-pointer relative h-32 transition-colors">
-                          <Input
-                            type="file"
-                            multiple
-                            accept="video/*"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            onChange={(e) =>
-                              e.target.files &&
-                              setVideos((p) => [
-                                ...p,
-                                ...Array.from(e.target.files!),
-                              ])
-                            }
-                          />
-                          <Video className="text-purple-400 mb-2" size={24} />
-                          <span className="text-xs text-purple-700 font-bold">
-                            Vídeos
-                          </span>
-                          <span className="text-[10px] text-purple-400 mt-1">
-                            + Adicionar
-                          </span>
-                        </div>
-
-                        <div className="flex flex-col gap-2 h-32">
-                          <div className="border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer relative flex-1">
-                            <Input
-                              type="file"
-                              multiple
-                              accept="audio/*"
-                              className="absolute inset-0 opacity-0 cursor-pointer"
-                              onChange={(e) =>
-                                e.target.files &&
-                                setAudios((p) => [
-                                  ...p,
-                                  ...Array.from(e.target.files!),
-                                ])
-                              }
-                            />
-                            <Music className="text-gray-400 mb-1" size={20} />
-                            <span className="text-[10px] text-gray-600 font-medium">
-                              Upload Áudio
-                            </span>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isRecording ? "destructive" : "outline"}
-                            onClick={
-                              isRecording ? stopRecording : startRecording
-                            }
-                            className="w-full text-xs h-8"
-                          >
-                            {isRecording ? (
-                              <Square
-                                size={12}
-                                className="mr-2 animate-pulse"
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-lg p-4 flex flex-col items-center justify-center hover:bg-blue-50 cursor-pointer relative h-32 transition-colors">
+                              <Input
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                onChange={(e) =>
+                                  e.target.files &&
+                                  setImages((p) => [
+                                    ...p,
+                                    ...Array.from(e.target.files!),
+                                  ])
+                                }
                               />
-                            ) : (
-                              <Mic size={12} className="mr-2" />
-                            )}
-                            {isRecording ? "Parar" : "Gravar Voz"}
-                          </Button>
-                        </div>
-                      </div>
+                              <ImageIcon
+                                className="text-blue-400 mb-2"
+                                size={24}
+                              />
+                              <span className="text-xs text-blue-700 font-bold">
+                                Imagens
+                              </span>
+                              <span className="text-[10px] text-blue-400 mt-1">
+                                + Adicionar
+                              </span>
+                            </div>
+
+                            <div className="border-2 border-dashed border-purple-200 bg-purple-50/30 rounded-lg p-4 flex flex-col items-center justify-center hover:bg-purple-50 cursor-pointer relative h-32 transition-colors">
+                              <Input
+                                type="file"
+                                multiple
+                                accept="video/*"
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                onChange={(e) =>
+                                  e.target.files &&
+                                  setVideos((p) => [
+                                    ...p,
+                                    ...Array.from(e.target.files!),
+                                  ])
+                                }
+                              />
+                              <Video
+                                className="text-purple-400 mb-2"
+                                size={24}
+                              />
+                              <span className="text-xs text-purple-700 font-bold">
+                                Vídeos
+                              </span>
+                              <span className="text-[10px] text-purple-400 mt-1">
+                                + Adicionar
+                              </span>
+                            </div>
+
+                            <div className="flex flex-col gap-2 h-32">
+                              <div className="border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer relative flex-1">
+                                <Input
+                                  type="file"
+                                  multiple
+                                  accept="audio/*"
+                                  className="absolute inset-0 opacity-0 cursor-pointer"
+                                  onChange={(e) =>
+                                    e.target.files &&
+                                    setAudios((p) => [
+                                      ...p,
+                                      ...Array.from(e.target.files!),
+                                    ])
+                                  }
+                                />
+                                <Music
+                                  className="text-gray-400 mb-1"
+                                  size={20}
+                                />
+                                <span className="text-[10px] text-gray-600 font-medium">
+                                  Upload Áudio
+                                </span>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={
+                                  isRecording ? "destructive" : "outline"
+                                }
+                                onClick={
+                                  isRecording ? stopRecording : startRecording
+                                }
+                                className="w-full text-xs h-8"
+                              >
+                                {isRecording ? (
+                                  <Square
+                                    size={12}
+                                    className="mr-2 animate-pulse"
+                                  />
+                                ) : (
+                                  <Mic size={12} className="mr-2" />
+                                )}
+                                {isRecording ? "Parar" : "Gravar Voz"}
+                              </Button>
+                            </div>
+                          </div>
+                        </>
+                      )}
 
                       {/* 3. PREVIEW DOS NOVOS ARQUIVOS */}
                       {(images.length > 0 ||
@@ -862,7 +943,7 @@ export function FlowItemModal({
                             Arquivos para Upload (Novos)
                           </Label>
 
-                          {/* Imagens */}
+                          {/* Imagens Novas */}
                           {images.length > 0 && (
                             <div className="grid grid-cols-4 gap-2 mb-2">
                               {images.map((img, i) => (
@@ -889,7 +970,7 @@ export function FlowItemModal({
                             </div>
                           )}
 
-                          {/* Vídeos */}
+                          {/* Vídeos Novos */}
                           {videos.map((v, i) => (
                             <div
                               key={i}
@@ -899,7 +980,6 @@ export function FlowItemModal({
                                 size={14}
                                 className="text-purple-500"
                               />
-                              {/* 🔥 AQUI APLICA O SLICE/TRUNCATE NO NOME DO VÍDEO NOVO 🔥 */}
                               <span
                                 className="text-[10px] flex-1 truncate"
                                 title={v.name}
@@ -916,7 +996,7 @@ export function FlowItemModal({
                             </div>
                           ))}
 
-                          {/* Áudios */}
+                          {/* Áudios Novos */}
                           {audios.map((a, i) => (
                             <div
                               key={i}
@@ -950,10 +1030,11 @@ export function FlowItemModal({
           </ScrollArea>
         </div>
 
+        {/* FOOTER */}
         <DialogFooter className="px-6 py-4 border-t bg-slate-50 shrink-0 flex items-center justify-between sm:justify-between">
-          {/* ESQUERDA: Botão de Excluir (Só aparece na edição) */}
+          {/* ESQUERDA: Botão de Excluir (Só se editando E tiver permissão) */}
           <div>
-            {isEditing && onDelete && initialData && (
+            {isEditing && onDelete && initialData && !isReadOnly && (
               <Button
                 type="button"
                 variant="ghost"
@@ -974,36 +1055,40 @@ export function FlowItemModal({
               onClick={onClose}
               disabled={isLoading}
             >
-              Cancelar
+              {isReadOnly ? "Fechar" : "Cancelar"}
             </Button>
 
-            {/* Botão de Salvar (Submit do Formulário) */}
-            <Button
-              form="flow-item-form"
-              type="submit"
-              className="bg-slate-800 hover:bg-slate-900 text-white" // Mudei para escuro para destacar o verde
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...
-                </>
-              ) : (
-                "Salvar Edição"
-              )}
-            </Button>
+            {/* 🔥 ESCONDE BOTÕES DE AÇÃO SE FOR READONLY */}
+            {!isReadOnly && (
+              <>
+                <Button
+                  form="flow-item-form"
+                  type="submit"
+                  className="bg-slate-800 hover:bg-slate-900 text-white"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
+                      Salvando...
+                    </>
+                  ) : (
+                    "Salvar Edição"
+                  )}
+                </Button>
 
-            {/* 🔥 BOTÃO DE AUTOMAÇÃO (Apenas na edição) 🔥 */}
-            {isEditing && onAdvance && initialData && (
-              <Button
-                type="button" // IMPORTANTE: type="button" para não submeter o form
-                onClick={() => onAdvance(initialData)}
-                disabled={isLoading}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-all border-emerald-600"
-              >
-                <CheckCircle2 size={18} className="mr-2" />
-                Concluir Etapa
-              </Button>
+                {isEditing && onAdvance && initialData && (
+                  <Button
+                    type="button"
+                    onClick={() => onAdvance(initialData)}
+                    disabled={isLoading}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-all border-emerald-600"
+                  >
+                    <CheckCircle2 size={18} className="mr-2" />
+                    Concluir Etapa
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </DialogFooter>

@@ -11,6 +11,7 @@ import {
   Package,
   Trash2,
   X,
+  Lock,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -171,6 +172,31 @@ export default function ProductFlowKanban() {
   const [stageColor, setStageColor] = useState("#2D3436");
   const [stageAllowedRole, setStageAllowedRole] = useState<string>(""); // 🔥 Novo Estado
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isModalReadOnly, setIsModalReadOnly] = useState(false);
+
+  // ===========================================================================
+  // 🛡️ LÓGICA DE PERMISSÃO (Espelho do Backend)
+  // ===========================================================================
+  const canUserEditStage = useCallback(
+    (stage: FlowStage) => {
+      if (!user) return false;
+
+      // 1. Superusuários (Ajuste conforme suas roles de sistema: ADMIN, MASTER, etc)
+      // Assumindo que user.role contém o nível de acesso do sistema
+      const systemRole = (user as any).role || "";
+      if (["MASTER", "ADMIN", "MANAGER"].includes(systemRole)) return true;
+
+      // 2. Etapa Livre
+      if (!stage.allowedRole || stage.allowedRole.trim() === "") return true;
+
+      // 3. Match Parcial (Lógica do Backend)
+      const userRole = user.professionalRole?.toLowerCase() || "";
+      const requiredRole = stage.allowedRole.toLowerCase();
+
+      return userRole.includes(requiredRole);
+    },
+    [user],
+  );
 
   // Exemplo de integração no componente principal
 
@@ -552,70 +578,102 @@ export default function ProductFlowKanban() {
       />
 
       <KanbanBoard>
-        {unifiedStages.map((stage) => (
-          <KanbanColumn
-            key={stage.id}
-            id={stage.id}
-            title={stage.name}
-            count={stage.items.length}
-            onDropItem={moveItem}
-            onAddItem={() => {
-              setActiveStageId(stage.id);
-              setIsItemModal(true);
-            }}
-            // 🔥 POPULAR ESTADO AO EDITAR ETAPA
-            onEditClick={() => {
-              setEditingStage(stage);
-              setStageName(stage.name);
-              setStageColor(stage.color || "#2D3436");
-              setStageAllowedRole(stage.allowedRole || "");
-              setIsStageModal(true);
-            }}
-            onDeleteClick={() => {
-              setItemToDelete({ type: "stage", id: stage.id });
-              setDeleteModalOpen(true);
-            }}
-          >
-            {stage.items.map((item) => (
-              <KanbanCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                subtitle={item.productRef}
-                priorityColor={item.flowColor}
-                coverImage={item.images[0]?.url}
-                onDragStart={(e) => onDragStart(e, item.id)}
-                onDoubleClick={() => {
-                  setPreviewItem(item);
-                  setIsPreviewModal(true);
-                }}
-                onEdit={() => {
-                  setEditingItem(item);
-                  setIsEditItemModal(true);
-                }}
-                onDelete={() => {
-                  setItemToDelete({ type: "item", id: item.id });
-                  setDeleteModalOpen(true);
-                }}
-                footer={
-                  <div className="flex justify-between items-center w-full">
-                    <span className="text-[10px] text-slate-400 font-bold">
-                      <Package size={10} className="inline mr-1" />
-                      {item.quantity}
-                    </span>
-                    <div
-                      className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
-                      style={{ backgroundColor: item.flowColor }}
-                    >
-                      {item.flowName}
+        {unifiedStages.map((stage) => {
+          // 🔥 Calcula permissão para ESTA coluna específica
+          const hasPermission = canUserEditStage(stage);
+          return (
+            <KanbanColumn
+              key={stage.id}
+              id={stage.id}
+              title={stage.name}
+              count={stage.items.length}
+              onDropItem={moveItem}
+              onAddItem={
+                hasPermission
+                  ? () => {
+                      setActiveStageId(stage.id);
+                      setIsModalReadOnly(false); // Criar é sempre editável se o botão aparecer
+                      setIsItemModal(true);
+                    }
+                  : undefined
+              }
+              // 🔥 POPULAR ESTADO AO EDITAR ETAPA
+              onEditClick={() => {
+                setEditingStage(stage);
+                setStageName(stage.name);
+                setStageColor(stage.color || "#2D3436");
+                setStageAllowedRole(stage.allowedRole || "");
+                setIsStageModal(true);
+              }}
+              onDeleteClick={() => {
+                setItemToDelete({ type: "stage", id: stage.id });
+                setDeleteModalOpen(true);
+              }}
+            >
+              {!hasPermission && (
+                <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
+                  <Lock size={10} /> Somente Leitura
+                </div>
+              )}
+              {stage.items.map((item) => (
+                <KanbanCard
+                  key={item.id}
+                  id={item.id}
+                  title={item.title}
+                  subtitle={item.productRef}
+                  priorityColor={item.flowColor}
+                  coverImage={item.images[0]?.url}
+                  onDragStart={
+                    hasPermission ? (e) => onDragStart(e, item.id) : undefined
+                  }
+                  // Duplo clique abre o modal. Se não tem permissão, abre como ReadOnly
+                  onDoubleClick={() => {
+                    setEditingItem(item);
+                    setIsModalReadOnly(!hasPermission); // Se não tem permissão, é ReadOnly
+                    setIsEditItemModal(true);
+                  }}
+                  // Só passa a função onEdit se tiver permissão (o card esconde o botão se for undefined)
+                  onEdit={
+                    hasPermission
+                      ? () => {
+                          setEditingItem(item);
+                          setIsModalReadOnly(false);
+                          setIsEditItemModal(true);
+                        }
+                      : undefined // TODO: remover tooltip
+                  }
+                  // Só permite excluir se tiver permissão
+                  onDelete={
+                    hasPermission
+                      ? () => {
+                          setItemToDelete({ type: "item", id: item.id });
+                          setDeleteModalOpen(true);
+                        }
+                      : undefined
+                  }
+                  // Só permite avançar se tiver permissão
+                  onComplete={
+                    hasPermission ? () => handleAdvanceItem(item) : undefined
+                  }
+                  footer={
+                    <div className="flex justify-between items-center w-full">
+                      <span className="text-[10px] text-slate-400 font-bold">
+                        <Package size={10} className="inline mr-1" />
+                        {item.quantity}
+                      </span>
+                      <div
+                        className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
+                        style={{ backgroundColor: item.flowColor }}
+                      >
+                        {item.flowName}
+                      </div>
                     </div>
-                  </div>
-                }
-                onComplete={() => handleAdvanceItem(item)}
-              />
-            ))}
-          </KanbanColumn>
-        ))}
+                  }
+                />
+              ))}
+            </KanbanColumn>
+          );
+        })}
       </KanbanBoard>
 
       <FlowItemModal
@@ -627,6 +685,7 @@ export default function ProductFlowKanban() {
         suppliers={suppliers}
         stages={[]}
         currentUserRole={user?.professionalRole || user?.role}
+        isReadOnly={false} // Criar novo é sempre editável
       />
 
       <FlowItemModal
@@ -649,6 +708,7 @@ export default function ProductFlowKanban() {
           setDeleteModalOpen(true);
         }}
         currentUserRole={user?.professionalRole || user?.role}
+        isReadOnly={isModalReadOnly}
       />
 
       <ConfirmDeleteModal
