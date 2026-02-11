@@ -683,7 +683,8 @@ export default function ProductFlowKanban() {
         isLoading={isSubmitting}
         users={users}
         suppliers={suppliers}
-        stages={[]}
+        stages={unifiedStages}
+        initialStageId={activeStageId}
         currentUserRole={user?.professionalRole || user?.role}
         isReadOnly={false} // Criar novo é sempre editável
       />
