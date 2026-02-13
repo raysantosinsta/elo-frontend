@@ -51,7 +51,7 @@ const PRODUCTION_ROLES = [
   "Revisor",        // Antes era "Revisão"
   "Acabamento",     // Acabamento pode ser setor ou cargo, mas mantenha igua{ value: "gerente", label: "Gerente" },l na coluna
   "Expedição",      // Antes era "Distribuição" ou "DPA"
-  "Gerente de Produção",
+  "Gerente",
   "Auxiliar de Produção",
 ];
 

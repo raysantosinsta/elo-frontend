@@ -66,7 +66,7 @@ const PROFESSIONAL_ROLES = [
   { value: "costureira", label: "Costureira / Costura" },
   { value: "acabamento", label: "Acabamento" },
   { value: "expedicao", label: "Expedição" },
-  { value: "Gerente de Produção", label: "Gerente de Produção" },
+  { value: "gerente", label: "Gerente" },
 ];
 
 // --- INTERFACES ---
@@ -375,10 +375,11 @@ export default function ProductFlowKanban() {
 
     // 🔥 PAYLOAD ATUALIZADO: Inclui allowedRole
     const payload = {
-      name: stageName,
-      color: stageColor,
-      allowedRole: stageAllowedRole === "all" ? null : stageAllowedRole,
-    };
+    name: stageName,
+    color: stageColor,
+    // SE for "all" ou string vazia, envie NULL para o backend ignorar a trava
+    allowedRole: (stageAllowedRole === "all" || !stageAllowedRole) ? null : stageAllowedRole,
+  };
 
     try {
       if (editingStage) {
