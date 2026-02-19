@@ -1,21 +1,34 @@
+// components/kanban/kanban-column.tsx
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Edit, MoreVertical, Plus, Trash2 } from "lucide-react";
 import React from "react";
+import { ColumnFilterIcons } from "./column-filter-icons";
 
 interface KanbanColumnProps {
   id: string;
   title: string;
   count: number;
   color?: string;
-  // 🔥 Ajustado para aceitar onAddItem ou onAddClick para evitar erros de tipagem
-  onAddClick?: () => void; 
-  onAddItem?: () => void; 
+  onAddClick?: () => void;
+  onAddItem?: () => void;
   onEditClick?: () => void;
   onDeleteClick?: () => void;
   onDropItem: (itemId: string, columnId: string) => void;
   children: React.ReactNode;
+  
+  // Novas props para filtros
+  onFilterOverdue?: () => void;
+  onFilterUpcoming?: () => void;
+  isOverdueFilterActive?: boolean;
+  isUpcomingFilterActive?: boolean;
+  filterDisabled?: boolean;
 }
 
 export function KanbanColumn({
@@ -24,11 +37,18 @@ export function KanbanColumn({
   count,
   color = "#2C3E50",
   onAddClick,
-  onAddItem, // 🔥 Adicionado aqui
+  onAddItem,
   onEditClick,
   onDeleteClick,
   onDropItem,
-  children
+  children,
+  
+  // Novas props com valores padrão
+  onFilterOverdue,
+  onFilterUpcoming,
+  isOverdueFilterActive = false,
+  isUpcomingFilterActive = false,
+  filterDisabled = false,
 }: KanbanColumnProps) {
   
   const handleDrop = (e: React.DragEvent) => {
@@ -37,7 +57,6 @@ export function KanbanColumn({
     if (itemId) onDropItem(itemId, id);
   };
 
-  // Helper para decidir qual função de "adicionar" usar
   const handleAdd = onAddItem || onAddClick;
 
   return (
@@ -47,34 +66,70 @@ export function KanbanColumn({
       onDrop={handleDrop}
     >
       {/* Header da Coluna */}
-      <div 
+      <div
         className="px-3 py-2 rounded-t-lg flex justify-between items-center text-white shadow-sm"
         style={{ backgroundColor: color }}
       >
         <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide truncate">
           {title}
-          <Badge variant="secondary" className="bg-white/20 text-white border-0 hover:bg-white/30 text-[9px] h-4 px-1">
+          <Badge
+            variant="secondary"
+            className="bg-white/20 text-white border-0 hover:bg-white/30 text-[9px] h-4 px-1"
+          >
             {count}
           </Badge>
         </div>
-        
+
         <div className="flex items-center gap-0.5">
-          {/* 🔥 Botão agora aceita qualquer um dos dois nomes passados */}
+          {/* ÍCONES DE FILTRO */}
+          {onFilterOverdue && onFilterUpcoming && (
+            <ColumnFilterIcons
+              onFilterOverdue={onFilterOverdue}
+              onFilterUpcoming={onFilterUpcoming}
+              isOverdueActive={isOverdueFilterActive}
+              isUpcomingActive={isUpcomingFilterActive}
+              disabled={filterDisabled}
+            />
+          )}
+
+          {/* Botão de Adicionar */}
           {handleAdd && (
-            <Button variant="ghost" size="icon" className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10" onClick={handleAdd}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10"
+              onClick={handleAdd}
+            >
               <Plus className="w-3 h-3" />
             </Button>
           )}
+          
+          {/* Menu de Opções */}
           {(onEditClick || onDeleteClick) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10"
+                >
                   <MoreVertical className="w-3 h-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {onEditClick && <DropdownMenuItem onClick={onEditClick}><Edit className="w-3.5 h-3.5 mr-2"/> Editar</DropdownMenuItem>}
-                {onDeleteClick && <DropdownMenuItem className="text-red-600" onClick={onDeleteClick}><Trash2 className="w-3.5 h-3.5 mr-2"/> Excluir</DropdownMenuItem>}
+                {onEditClick && (
+                  <DropdownMenuItem onClick={onEditClick}>
+                    <Edit className="w-3.5 h-3.5 mr-2" /> Editar
+                  </DropdownMenuItem>
+                )}
+                {onDeleteClick && (
+                  <DropdownMenuItem
+                    className="text-red-600"
+                    onClick={onDeleteClick}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}

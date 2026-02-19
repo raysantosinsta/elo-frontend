@@ -62,7 +62,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { te } from "date-fns/locale";
 
 // --- CONSTANTES ---
 const PROFESSIONAL_ROLES = [
@@ -101,7 +100,7 @@ interface FlowItem {
   flowColor?: string;
   flowName?: string;
   supplierId?: string;
-  assignedToId?: string; // 🔥 ADICIONAR ESTA LINHA
+  assignedToId?: string;
   assignedTo?: { id: string; name: string };
   supplier?: {
     id: string;
@@ -217,6 +216,14 @@ export default function ProductFlowKanban() {
   const [activeFilterProductRef, setActiveFilterProductRef] = useState("");
 
   // ===========================================================================
+  // 🎯 ESTADOS DE FILTRO POR COLUNA
+  // ===========================================================================
+  const [activeColumnFilter, setActiveColumnFilter] = useState<{
+    columnId: string | null;
+    filterType: "overdue" | "upcoming" | null;
+  }>({ columnId: null, filterType: null });
+
+  // ===========================================================================
   // 🛡️ LÓGICA DE PERMISSÃO
   // ===========================================================================
   const canUserEditStage = useCallback(
@@ -237,7 +244,102 @@ export default function ProductFlowKanban() {
   );
 
   // ===========================================================================
-  // 🔄 FUNÇÕES DE FILTRO
+  // 🔄 FUNÇÕES DE FILTRO POR COLUNA (CORRIGIDO - TIMEZONE)
+  // ===========================================================================
+  const handleColumnFilterOverdue = (columnId: string) => {
+    // Se já está filtrando por esta coluna com o mesmo tipo, limpa o filtro
+    if (
+      activeColumnFilter.columnId === columnId &&
+      activeColumnFilter.filterType === "overdue"
+    ) {
+      setActiveColumnFilter({ columnId: null, filterType: null });
+    } else {
+      setActiveColumnFilter({ columnId, filterType: "overdue" });
+    }
+  };
+
+  const handleColumnFilterUpcoming = (columnId: string) => {
+    // Se já está filtrando por esta coluna com o mesmo tipo, limpa o filtro
+    if (
+      activeColumnFilter.columnId === columnId &&
+      activeColumnFilter.filterType === "upcoming"
+    ) {
+      setActiveColumnFilter({ columnId: null, filterType: null });
+    } else {
+      setActiveColumnFilter({ columnId, filterType: "upcoming" });
+    }
+  };
+
+  // Função para filtrar itens de uma coluna específica
+
+  // ===========================================================================
+  // 🔄 FUNÇÕES DE FILTRO POR COLUNA (CORRIGIDO - SEM TIMEZONE)
+  // ===========================================================================
+  const filterColumnItems = (stage: FlowStage) => {
+    // Se não há filtro ativo ou não é para esta coluna, retorna todos os itens
+    if (
+      activeColumnFilter.columnId !== stage.id ||
+      !activeColumnFilter.filterType
+    ) {
+      return stage.items;
+    }
+
+    console.log(`🔍 Filtrando coluna: ${stage.name} (${stage.id})`);
+    console.log(`   Tipo de filtro: ${activeColumnFilter.filterType}`);
+
+    // Obter data atual no formato YYYY-MM-DD (UTC)
+    const todayUTC = new Date();
+    const year = todayUTC.getUTCFullYear();
+    const month = String(todayUTC.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(todayUTC.getUTCDate()).padStart(2, "0");
+    const todayStr = `${year}-${month}-${day}`;
+
+    console.log(`   Data atual (UTC): ${todayStr}`);
+
+    const filtered = stage.items.filter((item) => {
+      // Para "Atrasados": usa dueDate (prazo final)
+      // Para "Próximos a vencer": usa productionStartedAt (data de início da produção)
+      const dateToCompare =
+        activeColumnFilter.filterType === "upcoming"
+          ? item.productionStartedAt
+          : item.dueDate;
+
+      if (!dateToCompare) {
+        console.log(`   Item ${item.title} - Sem data, ignorado`);
+        return false;
+      }
+
+      // Extrair apenas a parte da data (YYYY-MM-DD) da string ISO
+      const itemDateStr = dateToCompare.split("T")[0];
+
+      console.log(`   Item ${item.title}:`);
+      console.log(`      - Data original: ${dateToCompare}`);
+      console.log(`      - Data (YYYY-MM-DD): ${itemDateStr}`);
+      console.log(`      - Data atual (UTC): ${todayStr}`);
+
+      if (activeColumnFilter.filterType === "overdue") {
+        // Atrasado: dueDate < data atual
+        const isOverdue = itemDateStr < todayStr;
+        console.log(`      - Atrasado? ${isOverdue}`);
+        return isOverdue;
+      } else if (activeColumnFilter.filterType === "upcoming") {
+        // Próximo a vencer: productionStartedAt === data atual
+        const isUpcoming = itemDateStr === todayStr;
+        console.log(`      - Próximo a vencer (hoje)? ${isUpcoming}`);
+        return isUpcoming;
+      }
+
+      return true;
+    });
+
+    console.log(
+      `   Total filtrados: ${filtered.length} de ${stage.items.length}`,
+    );
+    return filtered;
+  };
+
+  // ===========================================================================
+  // 🔄 FUNÇÕES DE FILTRO GLOBAL
   // ===========================================================================
 
   // Inicializar filtros temporários com base na URL
@@ -248,7 +350,7 @@ export default function ProductFlowKanban() {
     const endDateParam = searchParams.get("endDate");
     const assignedParam = searchParams.get("assignedToId");
     const supplierParam = searchParams.get("supplierId");
-    const productRefParam = searchParams.get("productRef"); // 🔥 NOVO
+    const productRefParam = searchParams.get("productRef");
 
     // Valores temporários
     if (filterParam === "overdue") {
@@ -280,7 +382,6 @@ export default function ProductFlowKanban() {
     }
 
     if (productRefParam) {
-      // 🔥 NOVO
       setTempFilterProductRef(productRefParam);
     }
 
@@ -298,49 +399,31 @@ export default function ProductFlowKanban() {
     setActiveFilterUpcoming(filterParam === "upcoming");
     setActiveFilterAssignedTo(assignedParam || "all");
     setActiveFilterSupplier(supplierParam || "all");
-    setActiveFilterProductRef(productRefParam || ""); // 🔥 NOVO
+    setActiveFilterProductRef(productRefParam || "");
   }, [searchParams]);
 
   const handleFilterClick = async () => {
-  setIsFiltering(true);
+    setIsFiltering(true);
 
-  console.log("🔍 Valores antes de aplicar:", {
-    tempFilterProductRef,
-    tempFilterStartDate,
-    tempFilterEndDate,
-    tempFilterDateType,
-    tempFilterOverdue,
-    tempFilterUpcoming,
-    tempFilterAssignedTo,
-    tempFilterSupplier,
-  });
+    // Construir parâmetros da URL usando valores TEMPORÁRIOS
+    const params = new URLSearchParams();
 
-  // Construir parâmetros da URL usando valores TEMPORÁRIOS
-  const params = new URLSearchParams();
+    if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
+    if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
+    if (tempFilterDateType) params.set("dateType", tempFilterDateType);
+    if (tempFilterOverdue) params.set("filter", "overdue");
+    if (tempFilterUpcoming) params.set("filter", "upcoming");
+    if (tempFilterAssignedTo !== "all")
+      params.set("assignedToId", tempFilterAssignedTo);
+    if (tempFilterSupplier !== "all")
+      params.set("supplierId", tempFilterSupplier);
+    if (tempFilterProductRef && tempFilterProductRef.trim() !== "") {
+      params.set("productRef", tempFilterProductRef.trim());
+    }
 
-  if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
-  if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
-  if (tempFilterDateType) params.set("dateType", tempFilterDateType);
-  if (tempFilterOverdue) params.set("filter", "overdue");
-  if (tempFilterUpcoming) params.set("filter", "upcoming");
-  if (tempFilterAssignedTo !== "all")
-    params.set("assignedToId", tempFilterAssignedTo);
-  if (tempFilterSupplier !== "all")
-    params.set("supplierId", tempFilterSupplier);
-  if (tempFilterProductRef && tempFilterProductRef.trim() !== "") {
-    params.set("productRef", tempFilterProductRef.trim());
-  }
-
-  console.log("🔍 Enviando requisição com params:", params.toString());
-
-  // Atualizar URL - isso vai disparar o useEffect que observa searchParams
-  router.push(`?${params.toString()}`);
-  
-  // NOTA: Não chamamos fetchFilteredBoards() aqui porque o useEffect vai chamar automaticamente
-  // quando a URL mudar e os estados ativos forem atualizados
-  
-  // O setIsFiltering(false) será feito pelo useEffect quando a busca terminar
-};
+    // Atualizar URL
+    router.push(`?${params.toString()}`);
+  };
 
   const handleClearFilters = async () => {
     // Limpar valores temporários
@@ -374,90 +457,82 @@ export default function ProductFlowKanban() {
     }
   };
 
-  // const toggleUpcomingFilter = () => {
-  //   if (tempFilterUpcoming) {
-  //     setTempFilterUpcoming(false);
-  //   } else {
-  //     setTempFilterUpcoming(true);
-  //     setTempFilterOverdue(false);
-  //     setTempFilterStartDate("");
-  //     setTempFilterEndDate("");
-  //   }
-  // };
+  const fetchFilteredBoards = useCallback(
+    async (paramsFromUrl?: URLSearchParams) => {
+      if (selectedFlowIds.length === 0) {
+        setBoards([]);
+        setLoading(false);
+        return;
+      }
 
-  const fetchFilteredBoards = useCallback(async (paramsFromUrl?: URLSearchParams) => {
-  if (selectedFlowIds.length === 0) {
-    setBoards([]);
-    setLoading(false);
-    return;
-  }
+      setLoading(true);
 
-  setLoading(true);
-  
-  try {
-    // Usar params passados ou buscar da URL
-    const params = paramsFromUrl || new URLSearchParams(window.location.search);
-    
-    const startDate = params.get("startDate");
-    const endDate = params.get("endDate");
-    const dateType = params.get("dateType");
-    const filter = params.get("filter");
-    const assignedToId = params.get("assignedToId");
-    const supplierId = params.get("supplierId");
-    const productRef = params.get("productRef");
+      try {
+        // Usar params passados ou buscar da URL
+        const params =
+          paramsFromUrl || new URLSearchParams(window.location.search);
 
-    // Construir params para a API
-    const apiParams = new URLSearchParams();
-    
-    if (startDate) apiParams.set("startDate", new Date(startDate).toISOString());
-    if (endDate) apiParams.set("endDate", new Date(endDate).toISOString());
-    if (dateType) apiParams.set("dateType", dateType);
-    if (filter === "overdue") apiParams.set("isOverdue", "true");
-    if (filter === "upcoming") apiParams.set("isUpcoming", "true");
-    if (assignedToId && assignedToId !== "all")
-      apiParams.set("assignedToId", assignedToId);
-    if (supplierId && supplierId !== "all")
-      apiParams.set("supplierId", supplierId);
-    if (productRef && productRef.trim() !== "") {
-      apiParams.set("productRef", productRef.trim());
-    }
+        const startDate = params.get("startDate");
+        const endDate = params.get("endDate");
+        const dateType = params.get("dateType");
+        const filter = params.get("filter");
+        const assignedToId = params.get("assignedToId");
+        const supplierId = params.get("supplierId");
+        const productRef = params.get("productRef");
 
-    console.log("🔍 Fetch com params:", apiParams.toString());
+        // Construir params para a API
+        const apiParams = new URLSearchParams();
 
-    // Buscar itens filtrados
-    const response = await api.get(`/flow/filter/items?${apiParams.toString()}`);
-    console.log("✅ Resposta da API:", response.data);
+        if (startDate)
+          apiParams.set("startDate", new Date(startDate).toISOString());
+        if (endDate) apiParams.set("endDate", new Date(endDate).toISOString());
+        if (dateType) apiParams.set("dateType", dateType);
+        if (filter === "overdue") apiParams.set("isOverdue", "true");
+        if (filter === "upcoming") apiParams.set("isUpcoming", "true");
+        if (assignedToId && assignedToId !== "all")
+          apiParams.set("assignedToId", assignedToId);
+        if (supplierId && supplierId !== "all")
+          apiParams.set("supplierId", supplierId);
+        if (productRef && productRef.trim() !== "") {
+          apiParams.set("productRef", productRef.trim());
+        }
 
-    const filteredItems = response.data;
+        // Buscar itens filtrados
+        const response = await api.get(
+          `/flow/filter/items?${apiParams.toString()}`,
+        );
+        const filteredItems = response.data;
 
-    // Para cada flow selecionado, reconstruir o board com itens filtrados
-    const boardsPromises = selectedFlowIds.map(async (flowId) => {
-      const boardRes = await api.get(`/flow/${flowId}/board`);
-      const board = boardRes.data;
+        // Para cada flow selecionado, reconstruir o board com itens filtrados
+        const boardsPromises = selectedFlowIds.map(async (flowId) => {
+          const boardRes = await api.get(`/flow/${flowId}/board`);
+          const board = boardRes.data;
 
-      // Filtrar os itens em cada stage
-      board.stages = board.stages.map((stage: FlowStage) => ({
-        ...stage,
-        items: stage.items.filter((item: FlowItem) =>
-          filteredItems.some(
-            (filteredItem: FlowItem) => filteredItem.id === item.id,
-          ),
-        ),
-      }));
+          // Filtrar os itens em cada stage
+          board.stages = board.stages.map((stage: FlowStage) => ({
+            ...stage,
+            items: stage.items.filter((item: FlowItem) =>
+              filteredItems.some(
+                (filteredItem: FlowItem) => filteredItem.id === item.id,
+              ),
+            ),
+          }));
 
-      return board;
-    });
+          return board;
+        });
 
-    const filteredBoards = await Promise.all(boardsPromises);
-    setBoards(filteredBoards);
-  } catch (error) {
-    toast.error("Erro ao aplicar filtros");
-    console.error(error);
-  } finally {
-    setLoading(false);
-    setIsFiltering(false); // 🔥 Garantir que isFiltering seja false quando terminar
-  }
-}, [selectedFlowIds]);
+        const filteredBoards = await Promise.all(boardsPromises);
+        setBoards(filteredBoards);
+      } catch (error) {
+        toast.error("Erro ao aplicar filtros");
+        console.error(error);
+      } finally {
+        setLoading(false);
+        setIsFiltering(false);
+      }
+    },
+    [selectedFlowIds],
+  );
 
   // ===========================================================================
   // 🔄 FUNÇÕES DE DADOS
@@ -481,7 +556,7 @@ export default function ProductFlowKanban() {
     } catch {
       toast.error("Erro ao carregar dados iniciais");
     }
-  }, [user?.company?.id]);
+  }, [user?.company?.id, selectedFlowIds.length]);
 
   const fetchSelectedBoards = useCallback(async () => {
     if (selectedFlowIds.length === 0) {
@@ -504,22 +579,21 @@ export default function ProductFlowKanban() {
   }, [selectedFlowIds]);
 
   // Sincronizar estados ativos com a URL
-  // Sincronizar estados ativos com a URL
-useEffect(() => {
-  const urlParams = new URLSearchParams(window.location.search);
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
 
-  setActiveFilterStartDate(urlParams.get("startDate")?.split("T")[0] || "");
-  setActiveFilterEndDate(urlParams.get("endDate")?.split("T")[0] || "");
-  setActiveFilterDateType(
-    (urlParams.get("dateType") as "productionStartedAt" | "dueDate") ||
-      "productionStartedAt",
-  );
-  setActiveFilterOverdue(urlParams.get("filter") === "overdue");
-  setActiveFilterUpcoming(urlParams.get("filter") === "upcoming");
-  setActiveFilterAssignedTo(urlParams.get("assignedToId") || "all");
-  setActiveFilterSupplier(urlParams.get("supplierId") || "all");
-  setActiveFilterProductRef(urlParams.get("productRef") || "");
-}, [searchParams]); // 🔥 Dependência em searchParams para reagir a mudanças na URL
+    setActiveFilterStartDate(urlParams.get("startDate")?.split("T")[0] || "");
+    setActiveFilterEndDate(urlParams.get("endDate")?.split("T")[0] || "");
+    setActiveFilterDateType(
+      (urlParams.get("dateType") as "productionStartedAt" | "dueDate") ||
+        "productionStartedAt",
+    );
+    setActiveFilterOverdue(urlParams.get("filter") === "overdue");
+    setActiveFilterUpcoming(urlParams.get("filter") === "upcoming");
+    setActiveFilterAssignedTo(urlParams.get("assignedToId") || "all");
+    setActiveFilterSupplier(urlParams.get("supplierId") || "all");
+    setActiveFilterProductRef(urlParams.get("productRef") || "");
+  }, [searchParams]);
 
   // ===========================================================================
   // 🎯 EFEITOS
@@ -530,35 +604,36 @@ useEffect(() => {
   }, [fetchInitialData]);
 
   // Efeito para aplicar filtros quando os filtros ATIVOS mudarem
-  // Efeito para aplicar filtros quando os filtros ATIVOS mudarem
-useEffect(() => {
-  const hasFilters =
-    activeFilterStartDate ||
-    activeFilterEndDate ||
-    activeFilterOverdue ||
-    activeFilterUpcoming ||
-    activeFilterAssignedTo !== "all" ||
-    activeFilterSupplier !== "all" ||
-    activeFilterProductRef;
+  useEffect(() => {
+    const hasFilters =
+      activeFilterStartDate ||
+      activeFilterEndDate ||
+      activeFilterOverdue ||
+      activeFilterUpcoming ||
+      activeFilterAssignedTo !== "all" ||
+      activeFilterSupplier !== "all" ||
+      activeFilterProductRef;
 
-  if (hasFilters && selectedFlowIds.length > 0) {
-    // Usar os valores da URL atual
-    const params = new URLSearchParams(window.location.search);
-    fetchFilteredBoards(params);
-  } else if (selectedFlowIds.length > 0 && !hasFilters) {
-    fetchSelectedBoards();
-    setIsFiltering(false); // Garantir que isFiltering seja false
-  }
-}, [
-  activeFilterStartDate,
-  activeFilterEndDate,
-  activeFilterOverdue,
-  activeFilterUpcoming,
-  activeFilterAssignedTo,
-  activeFilterSupplier,
-  activeFilterProductRef,
-  selectedFlowIds,
-]);
+    if (hasFilters && selectedFlowIds.length > 0) {
+      // Usar os valores da URL atual
+      const params = new URLSearchParams(window.location.search);
+      fetchFilteredBoards(params);
+    } else if (selectedFlowIds.length > 0 && !hasFilters) {
+      fetchSelectedBoards();
+      setIsFiltering(false);
+    }
+  }, [
+    activeFilterStartDate,
+    activeFilterEndDate,
+    activeFilterOverdue,
+    activeFilterUpcoming,
+    activeFilterAssignedTo,
+    activeFilterSupplier,
+    activeFilterProductRef,
+    selectedFlowIds,
+    fetchFilteredBoards,
+    fetchSelectedBoards,
+  ]);
 
   // ===========================================================================
   // 🎯 OUTRAS FUNÇÕES
@@ -834,7 +909,7 @@ useEffect(() => {
     activeFilterUpcoming ||
     activeFilterAssignedTo !== "all" ||
     activeFilterSupplier !== "all" ||
-    activeFilterProductRef; // 🔥 NOVO
+    activeFilterProductRef;
 
   // Verificar se há filtros temporários diferentes dos ativos (para habilitar botão Filtrar)
   const hasTempChanges =
@@ -845,7 +920,7 @@ useEffect(() => {
     tempFilterAssignedTo !== activeFilterAssignedTo ||
     tempFilterSupplier !== activeFilterSupplier ||
     tempFilterDateType !== activeFilterDateType ||
-    tempFilterProductRef !== activeFilterProductRef; // 🔥 NOVO
+    tempFilterProductRef !== activeFilterProductRef;
 
   return (
     <KanbanLayout>
@@ -1021,10 +1096,6 @@ useEffect(() => {
               className="h-8 text-xs pl-8"
               value={tempFilterProductRef}
               onChange={(e) => {
-                console.log(
-                  "🔍 Mudando tempFilterProductRef para:",
-                  e.target.value,
-                );
                 setTempFilterProductRef(e.target.value);
               }}
               onKeyDown={(e) => {
@@ -1038,20 +1109,6 @@ useEffect(() => {
         </div>
 
         <div className="flex items-end gap-2">
-          {/* <Button
-            size="sm"
-            variant={tempFilterUpcoming ? "default" : "outline"}
-            className={`h-8 text-xs ${
-              tempFilterUpcoming
-                ? "bg-amber-500 text-white hover:bg-amber-600"
-                : ""
-            }`}
-            onClick={toggleUpcomingFilter}
-          >
-            <Clock className="w-3 h-3 mr-2" />
-            Próximos
-          </Button> */}
-
           <Button
             size="sm"
             variant={tempFilterOverdue ? "destructive" : "outline"}
@@ -1096,21 +1153,56 @@ useEffect(() => {
             </Button>
           )}
         </div>
+
+        {/* Botão para limpar filtro de coluna */}
+        {activeColumnFilter.columnId && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs text-slate-400 hover:text-red-500"
+            onClick={() =>
+              setActiveColumnFilter({ columnId: null, filterType: null })
+            }
+          >
+            <X className="w-3 h-3 mr-1" />
+            Limpar Filtro da Coluna
+          </Button>
+        )}
       </KanbanFilter>
 
       <KanbanBoard>
         {unifiedStages.map((stage) => {
           const hasPermission = canUserEditStage(stage);
+
+          // Aplicar filtro específico da coluna
+          const filteredItems = filterColumnItems(stage);
+
+          // Verificar se esta coluna tem filtro ativo
+          const isOverdueActive =
+            activeColumnFilter.columnId === stage.id &&
+            activeColumnFilter.filterType === "overdue";
+
+          const isUpcomingActive =
+            activeColumnFilter.columnId === stage.id &&
+            activeColumnFilter.filterType === "upcoming";
+
           return (
             <KanbanColumn
               key={stage.id}
               id={stage.id}
               title={stage.name}
-              count={stage.items.length}
+              count={filteredItems.length}
+              color={stage.color}
               onDropItem={moveItem}
               onAddItem={
                 hasPermission
                   ? () => {
+                      console.log(
+                        "📝 Adicionando item na coluna:",
+                        stage.name,
+                        "com permissão:",
+                        hasPermission,
+                      );
                       setActiveStageId(stage.id);
                       setIsModalReadOnly(false);
                       setIsItemModal(true);
@@ -1118,6 +1210,7 @@ useEffect(() => {
                   : undefined
               }
               onEditClick={() => {
+                console.log("✏️ Editando coluna:", stage.name);
                 setEditingStage(stage);
                 setStageName(stage.name);
                 setStageColor(stage.color || "#2D3436");
@@ -1125,16 +1218,63 @@ useEffect(() => {
                 setIsStageModal(true);
               }}
               onDeleteClick={() => {
+                console.log("🗑️ Deletando coluna:", stage.name);
+
                 setItemToDelete({ type: "stage", id: stage.id });
                 setDeleteModalOpen(true);
               }}
+              // Novas props para filtros
+              onFilterOverdue={() => handleColumnFilterOverdue(stage.id)}
+              onFilterUpcoming={() => handleColumnFilterUpcoming(stage.id)}
+              isOverdueFilterActive={isOverdueActive}
+              isUpcomingFilterActive={isUpcomingActive}
+              filterDisabled={false}
             >
+              
               {!hasPermission && (
                 <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
                   <Lock size={10} /> Somente Leitura
                 </div>
               )}
-              {stage.items.map((item) => (
+
+              {/* Mostrar indicador visual de filtro ativo */}
+              {(isOverdueActive || isUpcomingActive) && (
+                <div
+                  className="mb-2 p-1 text-[8px] font-bold uppercase text-center rounded bg-opacity-20 flex items-center justify-center gap-1"
+                  style={{
+                    backgroundColor: isOverdueActive
+                      ? "#ef444420"
+                      : "#f59e0b20",
+                    color: isOverdueActive ? "#ef4444" : "#f59e0b",
+                    border: `1px solid ${isOverdueActive ? "#ef4444" : "#f59e0b"}30`,
+                  }}
+                >
+                  {isOverdueActive ? (
+                    <>
+                      <AlertTriangle size={10} />
+                      Filtrando: Atrasados
+                    </>
+                  ) : (
+                    <>
+                      <Clock size={10} />
+                      Filtrando: Vencem hoje
+                    </>
+                  )}
+                  <button
+                    className="ml-1 hover:opacity-70"
+                    onClick={() =>
+                      setActiveColumnFilter({
+                        columnId: null,
+                        filterType: null,
+                      })
+                    }
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              )}
+
+              {filteredItems.map((item) => (
                 <KanbanCard
                   key={item.id}
                   id={item.id}
