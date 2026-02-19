@@ -124,6 +124,7 @@ interface FlowStage {
   color?: string;
   allowedRole?: string;
   items: FlowItem[];
+  flowId?: string; // 🔥 Adicionar esta linha
 }
 
 interface ProductFlow {
@@ -222,6 +223,10 @@ export default function ProductFlowKanban() {
     columnId: string | null;
     filterType: "overdue" | "upcoming" | null;
   }>({ columnId: null, filterType: null });
+
+  const [modalSelectedFlowId, setModalSelectedFlowId] = useState<string | null>(
+    null,
+  );
 
   // ===========================================================================
   // 🛡️ LÓGICA DE PERMISSÃO
@@ -783,17 +788,22 @@ export default function ProductFlowKanban() {
     }
   };
 
+  // ===========================================================================
+  // 🎯 HANDLE ITEM SUBMIT CORRIGIDO
+  // ===========================================================================
   const handleItemSubmit = async (
     values: any,
     files: any,
     removedMedia: any,
   ): Promise<void> => {
-    if (selectedFlowIds.length === 0) {
-      toast.error("Selecione um fluxo");
-      return;
-    }
     setIsSubmitting(true);
     try {
+      console.log("📦 Valores do formulário:", values);
+      console.log("📁 Arquivos:", files);
+      console.log("🗑️ Mídias removidas:", removedMedia);
+      console.log("🎯 activeStageId (da coluna):", activeStageId);
+      console.log("🔍 selectedFlowIds (ativo):", selectedFlowIds);
+
       const uploadMedia = async (itemId: string, files: any) => {
         const upload = (file: File, type: string) => {
           const fd = new FormData();
@@ -813,6 +823,7 @@ export default function ProductFlowKanban() {
       };
 
       if (editingItem) {
+        console.log("✏️ Editando item:", editingItem.id);
         await api.put(`/flow/items/${editingItem.id}`, {
           ...values,
           removeImageIds: removedMedia.images,
@@ -822,13 +833,52 @@ export default function ProductFlowKanban() {
         if (files) await uploadMedia(editingItem.id, files);
         toast.success("Item atualizado");
       } else {
+        // 🔥 Usar o flowId selecionado no modal
+        const flowIdToUse =
+          values.flowId && values.flowId !== "none"
+            ? values.flowId
+            : selectedFlowIds[0];
+
+        // 🔥 Usar a etapa selecionada no modal (pode ser de qualquer fluxo)
+        const stageIdToUse = values.stageId;
+
+        console.log("🎯 flowIdToUse:", flowIdToUse);
+        console.log("🎯 stageIdToUse (do formulário):", stageIdToUse);
+
+        if (!flowIdToUse) {
+          toast.error("Selecione um fluxo");
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (!stageIdToUse) {
+          toast.error("Selecione uma etapa");
+          setIsSubmitting(false);
+          return;
+        }
+
+        // 🔥 REMOVIDA a validação frontend - confiamos no backend
+        // O backend vai validar se a etapa pertence ao fluxo
+
+        const payload = {
+          ...values,
+          flowId: flowIdToUse,
+          stageId: stageIdToUse,
+        };
+
+        console.log("📦 Payload enviado:", payload);
+
         const { data: newItem } = await api.post(
-          `/flow/${selectedFlowIds[0]}/items`,
-          { ...values, flowId: selectedFlowIds[0], stageId: activeStageId },
+          `/flow/${flowIdToUse}/items`,
+          payload,
         );
+
+        console.log("✅ Item criado:", newItem);
+
         if (newItem?.id && files) await uploadMedia(newItem.id, files);
         toast.success("Item criado");
       }
+
       setIsItemModal(false);
       setIsEditItemModal(false);
       setEditingItem(null);
@@ -838,35 +888,67 @@ export default function ProductFlowKanban() {
         activeFilterEndDate ||
         activeFilterOverdue ||
         activeFilterUpcoming;
+
       if (hasFilters) {
         await fetchFilteredBoards();
       } else {
         await fetchSelectedBoards();
       }
-    } catch {
-      toast.error("Erro ao salvar item");
+    } catch (error: any) {
+      console.error("❌ Erro detalhado:", error);
+      console.error("❌ Resposta do servidor:", error.response?.data);
+      console.error("❌ Status:", error.response?.status);
+
+      const errorMsg = error.response?.data?.message || "Erro ao salvar item";
+      toast.error(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const unifiedStages = useMemo(() => {
-    const stageGroups: Record<string, FlowStage> = {};
-    boards.forEach((board) => {
-      const flowColor = board.color || "#D35400";
-      board.stages.forEach((stage) => {
-        const key = stage.name.toUpperCase();
-        if (!stageGroups[key]) stageGroups[key] = { ...stage, items: [] };
-        const itemsWithMetadata = stage.items.map((item) => ({
+  // ===========================================================================
+// 🎯 UNIFIED STAGES - CORRIGIDO COM LOGS
+// ===========================================================================
+const unifiedStages = useMemo(() => {
+  console.log("📊 Boards disponíveis:", boards.map(b => ({ id: b.id, name: b.name })));
+  
+  // Criar um array plano com todas as etapas de todos os boards
+  const allStages: FlowStage[] = [];
+  
+  boards.forEach((board) => {
+    console.log(`📋 Processando board: ${board.name} (${board.id})`);
+    console.log(`   Etapas do board:`, board.stages.map(s => ({ id: s.id, name: s.name })));
+    
+    const flowColor = board.color || "#D35400";
+    board.stages.forEach((stage) => {
+      // Criar uma cópia da etapa com os metadados do fluxo
+      const stageWithFlow = {
+        ...stage,
+        flowId: board.id,
+        flowName: board.name,
+        flowColor: flowColor,
+        items: stage.items.map((item) => ({
           ...item,
           flowColor,
           flowName: board.name,
-        }));
-        stageGroups[key].items.push(...itemsWithMetadata);
-      });
+        })),
+      };
+      allStages.push(stageWithFlow);
+      
+      console.log(`   ✅ Etapa adicionada: ${stage.name} (${stage.id}) -> flowId: ${board.id}`);
     });
-    return Object.values(stageGroups).sort((a, b) => a.order - b.order);
-  }, [boards]);
+  });
+  
+  console.log("📊 unifiedStages FINAL:", allStages.map(s => ({ 
+    id: s.id, 
+    name: s.name, 
+    flowId: s.flowId,
+    flowName: s.flowName 
+  })));
+  
+  // Ordenar por ordem
+  return allStages.sort((a, b) => a.order - b.order);
+}, [boards]);
 
   const { moveItem, onDragStart } = useKanbanDrag({
     items: unifiedStages.flatMap((s) => s.items),
@@ -1173,11 +1255,8 @@ export default function ProductFlowKanban() {
       <KanbanBoard>
         {unifiedStages.map((stage) => {
           const hasPermission = canUserEditStage(stage);
-
-          // Aplicar filtro específico da coluna
           const filteredItems = filterColumnItems(stage);
 
-          // Verificar se esta coluna tem filtro ativo
           const isOverdueActive =
             activeColumnFilter.columnId === stage.id &&
             activeColumnFilter.filterType === "overdue";
@@ -1202,8 +1281,11 @@ export default function ProductFlowKanban() {
                         stage.name,
                         "com permissão:",
                         hasPermission,
+                        "flowId:",
+                        stage.flowId,
                       );
                       setActiveStageId(stage.id);
+                      setModalSelectedFlowId(stage.flowId ?? null); // 🔥 CORRIGIDO
                       setIsModalReadOnly(false);
                       setIsItemModal(true);
                     }
@@ -1219,25 +1301,21 @@ export default function ProductFlowKanban() {
               }}
               onDeleteClick={() => {
                 console.log("🗑️ Deletando coluna:", stage.name);
-
                 setItemToDelete({ type: "stage", id: stage.id });
                 setDeleteModalOpen(true);
               }}
-              // Novas props para filtros
               onFilterOverdue={() => handleColumnFilterOverdue(stage.id)}
               onFilterUpcoming={() => handleColumnFilterUpcoming(stage.id)}
               isOverdueFilterActive={isOverdueActive}
               isUpcomingFilterActive={isUpcomingActive}
               filterDisabled={false}
             >
-              
               {!hasPermission && (
                 <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
                   <Lock size={10} /> Somente Leitura
                 </div>
               )}
 
-              {/* Mostrar indicador visual de filtro ativo */}
               {(isOverdueActive || isUpcomingActive) && (
                 <div
                   className="mb-2 p-1 text-[8px] font-bold uppercase text-center rounded bg-opacity-20 flex items-center justify-center gap-1"
@@ -1333,13 +1411,18 @@ export default function ProductFlowKanban() {
 
       <FlowItemModal
         isOpen={isItemModal}
-        onClose={() => setIsItemModal(false)}
+        onClose={() => {
+          setIsItemModal(false);
+          setModalSelectedFlowId(null); // Limpa ao fechar
+        }}
         onSubmit={handleItemSubmit}
         isLoading={isSubmitting}
         users={users}
         suppliers={suppliers}
+        flows={flows}
         stages={unifiedStages}
         initialStageId={activeStageId}
+        initialFlowId={modalSelectedFlowId} // 🔥 NOVA PROP
         currentUserRole={user?.professionalRole || (user as any)?.role}
         isReadOnly={false}
       />
@@ -1351,10 +1434,12 @@ export default function ProductFlowKanban() {
           setEditingItem(null);
         }}
         initialData={editingItem}
+        initialFlowId={editingItem?.flowId} // 🔥 Adicionar esta linha
         onSubmit={handleItemSubmit}
         isLoading={isSubmitting}
         users={users}
         suppliers={suppliers}
+        flows={flows}
         stages={unifiedStages}
         initialStageId={activeStageId}
         onAdvance={handleAdvanceItem}

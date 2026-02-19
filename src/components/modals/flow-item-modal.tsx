@@ -9,6 +9,7 @@ import {
   Edit,
   Factory,
   ImageIcon,
+  Layers,
   Loader2,
   Lock,
   Maximize2,
@@ -83,8 +84,8 @@ export interface FlowItem {
   flowName?: string;
 
   supplierId?: string;
-  assignedToId?: string;  // 🔥 Campo direto
-  assignedTo?: { id: string; name: string }; // Opcional, para dados relacionados
+  assignedToId?: string;
+  assignedTo?: { id: string; name: string };
 
   dueDate?: string;
   productionStartedAt?: string;
@@ -95,11 +96,24 @@ export interface FlowItem {
   videos: FlowMedia[];
 }
 
+export interface FlowStage {
+  id: string;
+  name: string;
+  order: number;
+  color?: string;
+  allowedRole?: string;
+  items?: FlowItem[];
+  flowId?: string;
+  flowName?: string;
+  flowColor?: string;
+}
+
 interface FlowItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialData?: FlowItem | null;
   initialStageId?: string | null;
+  initialFlowId?: string | null;
   onSubmit: (
     values: any,
     files: { images: File[]; audios: File[]; videos: File[] },
@@ -108,13 +122,10 @@ interface FlowItemModalProps {
   isLoading: boolean;
   users: { id: string; name: string }[];
   suppliers: { id: string; name: string; category?: string }[];
-  stages: { id: string; name: string; order: number }[]; // name opcional para evitar erro se não vier
-
-  // 🔥 Props de Permissão
+  flows?: { id: string; name: string; color?: string }[];
+  stages: FlowStage[];
   currentUserRole?: string;
   isReadOnly?: boolean;
-
-  // Ações
   onDelete?: (id: string) => void;
   onAdvance?: (item: FlowItem) => Promise<void>;
 }
@@ -132,6 +143,7 @@ const itemSchema = z.object({
   stageId: z.string().optional(),
   assignedToId: z.string().optional(),
   supplierId: z.string().optional(),
+  flowId: z.string().optional(),
   dueDate: z.string().optional(),
   productionStartedAt: z.string().optional(),
   deliveryAt: z.string().optional(),
@@ -146,11 +158,13 @@ export function FlowItemModal({
   onClose,
   initialData,
   initialStageId,
+  initialFlowId,
   onSubmit,
   isLoading,
   users,
   suppliers,
   stages,
+  flows = [],
   currentUserRole,
   onDelete,
   onAdvance,
@@ -172,6 +186,9 @@ export function FlowItemModal({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // --- Estado para etapas filtradas ---
+  const [filteredStages, setFilteredStages] = useState<FlowStage[]>(stages);
+
   // --- Hook Form ---
   const form = useForm({
     resolver: zodResolver(itemSchema),
@@ -192,59 +209,214 @@ export function FlowItemModal({
     },
   });
 
-// --- Efeito: Popular Dados ao Abrir ---
-useEffect(() => {
-  if (isOpen) {
-    setImages([]);
-    setVideos([]);
-    setAudios([]);
-    setRemovedImageIds([]);
-    setRemovedVideoIds([]);
-    setRemovedAudioIds([]);
-    setIsRecording(false);
+  // Monitorar mudanças no fluxo selecionado
+  const selectedFlowId = form.watch("flowId");
 
-    if (initialData) {
-      form.reset({
-        title: initialData.title,
-        description: initialData.description || "",
-        orderNumber: initialData.orderNumber || "",
-        productRef: initialData.productRef || "",
-        quantity: initialData.quantity,
-        priority: initialData.priority,
-        status: initialData.status,
-        stageId: initialData.stageId || "",
-        // 🔥 CORREÇÃO AQUI: assignedToId direto, não assignedTo?.id
-        assignedToId: initialData.assignedToId || "unassigned",
-        supplierId: initialData.supplierId || "internal",
-        dueDate: initialData.dueDate
-          ? initialData.dueDate.substring(0, 10)
-          : "",
-        productionStartedAt: initialData.productionStartedAt
-          ? initialData.productionStartedAt.substring(0, 10)
-          : "",
-        deliveryAt: initialData.deliveryAt
-          ? initialData.deliveryAt.substring(0, 10)
-          : "",
-      });
-    } else {
-      form.reset({
-        title: "",
-        description: "",
-        orderNumber: "",
-        productRef: "",
-        quantity: 1,
-        priority: 3,
-        status: "PENDENTE",
-        stageId: initialStageId || (stages.length > 0 ? stages[0].id : ""),
-        assignedToId: "unassigned",
-        supplierId: "internal",
-        dueDate: "",
-        productionStartedAt: "",
-        deliveryAt: "",
-      });
+  // ===========================================================================
+  // 🎯 EFEITO PARA LIMPAR ESTADOS QUANDO MODAL ABRE
+  // ===========================================================================
+  useEffect(() => {
+    if (isOpen) {
+      // Limpar estados de mídia
+      setImages([]);
+      setVideos([]);
+      setAudios([]);
+      setRemovedImageIds([]);
+      setRemovedVideoIds([]);
+      setRemovedAudioIds([]);
+      setIsRecording(false);
+
+      if (initialData) {
+        // 🔥 EDIÇÃO - preencher com dados do item existente
+        console.log("📝 Editando item:", initialData);
+
+        // Verificar se a etapa ainda existe
+        const stageExists = stages.some((s) => s.id === initialData.stageId);
+
+        form.reset({
+          title: initialData.title,
+          description: initialData.description || "",
+          orderNumber: initialData.orderNumber || "",
+          productRef: initialData.productRef || "",
+          quantity: initialData.quantity,
+          priority: initialData.priority,
+          status: initialData.status,
+          stageId: stageExists ? initialData.stageId || "" : "",
+          assignedToId: initialData.assignedToId || "unassigned",
+          supplierId: initialData.supplierId || "internal",
+          flowId: initialData.flowId || "none",
+          dueDate: initialData.dueDate
+            ? initialData.dueDate.substring(0, 10)
+            : "",
+          productionStartedAt: initialData.productionStartedAt
+            ? initialData.productionStartedAt.substring(0, 10)
+            : "",
+          deliveryAt: initialData.deliveryAt
+            ? initialData.deliveryAt.substring(0, 10)
+            : "",
+        });
+      } else {
+        // 🔥 NOVO ITEM - definir valores iniciais
+        console.log("➕ Criando novo item");
+        console.log("   initialFlowId:", initialFlowId);
+        console.log("   initialStageId:", initialStageId);
+        console.log(
+          "   flows disponíveis:",
+          flows.map((f) => ({ id: f.id, name: f.name })),
+        );
+
+        // Determinar o fluxo inicial
+        let initialFlow = "none";
+
+        // Prioridade 1: initialFlowId passado do componente pai
+        if (initialFlowId) {
+          initialFlow = initialFlowId;
+          console.log("   Usando initialFlowId:", initialFlow);
+        }
+        // Prioridade 2: primeiro fluxo da lista
+        else if (flows.length > 0) {
+          initialFlow = flows[0].id;
+          console.log("   Usando primeiro fluxo da lista:", initialFlow);
+        }
+
+        // Determinar a etapa inicial (opcional - pode vir da coluna)
+        let initialStage = "";
+
+        // Se tiver initialStageId E fluxo selecionado, verificar se a etapa existe
+        if (initialStageId && initialFlow !== "none") {
+          const stageExists = stages.some(
+            (s) => s.id === initialStageId && s.flowId === initialFlow,
+          );
+
+          if (stageExists) {
+            initialStage = initialStageId;
+            console.log(
+              "   Usando initialStageId (pertence ao fluxo):",
+              initialStage,
+            );
+          } else {
+            console.log(
+              "   initialStageId ignorado - não pertence ao fluxo selecionado",
+            );
+          }
+        }
+
+        // Reset do formulário com valores iniciais
+        form.reset({
+          title: "",
+          description: "",
+          orderNumber: "",
+          productRef: "",
+          quantity: 1,
+          priority: 3,
+          status: "PENDENTE",
+          stageId: initialStage,
+          assignedToId: "unassigned",
+          supplierId: "internal",
+          flowId: initialFlow,
+          dueDate: "",
+          productionStartedAt: "",
+          deliveryAt: "",
+        });
+
+        console.log(
+          "   Form reset com flowId:",
+          initialFlow,
+          "stageId:",
+          initialStage,
+        );
+      }
     }
-  }
-}, [isOpen, initialData, stages, form, initialStageId]);
+  }, [isOpen, initialData, form, initialStageId, initialFlowId, flows, stages]);
+
+  // ===========================================================================
+  // 🎯 EFEITO PARA FILTRAR ETAPAS QUANDO O FLUXO MUDAR
+  // ===========================================================================
+  useEffect(() => {
+    console.log("🔄 ===== INÍCIO DO FILTRO DE ETAPAS =====");
+    console.log("   selectedFlowId:", selectedFlowId);
+    console.log("   Total de stages recebidas:", stages.length);
+    
+    // Log de todas as stages com seus flowIds
+    console.log("   Stages disponíveis:");
+    stages.forEach((stage, index) => {
+      console.log(`     [${index}] ${stage.name} (${stage.id}) -> flowId: ${stage.flowId || 'SEM FLOWID'}`);
+    });
+
+    if (selectedFlowId && selectedFlowId !== "none") {
+      console.log(`   Filtrando etapas para flowId: ${selectedFlowId}`);
+
+      // Filtrar apenas as etapas do fluxo selecionado
+      const stagesOfSelectedFlow = stages.filter(
+        (stage) => stage.flowId === selectedFlowId,
+      );
+
+      console.log(`   Etapas encontradas para este fluxo: ${stagesOfSelectedFlow.length}`);
+      stagesOfSelectedFlow.forEach((stage, index) => {
+        console.log(`     [${index}] ${stage.name} (${stage.id})`);
+      });
+
+      // 🔥 IMPORTANTE: Atualizar o estado das etapas filtradas
+      setFilteredStages(stagesOfSelectedFlow);
+
+      // Verificar se a etapa atualmente selecionada pertence ao novo fluxo
+      const currentStageId = form.getValues("stageId");
+      console.log("   Etapa atualmente selecionada:", currentStageId || "nenhuma");
+
+      if (currentStageId) {
+        const stageBelongsToNewFlow = stagesOfSelectedFlow.some(
+          (s) => s.id === currentStageId,
+        );
+
+        if (!stageBelongsToNewFlow) {
+          console.log(
+            "   ⚠️ Etapa atual não pertence ao novo fluxo - limpando seleção",
+          );
+          // 🔥 Limpar a etapa selecionada
+          form.setValue("stageId", "", {
+            shouldValidate: true,
+            shouldDirty: true,
+            shouldTouch: true,
+          });
+        } else {
+          console.log("   ✅ Etapa atual mantida - pertence ao novo fluxo");
+        }
+      }
+    } else {
+      // Se não tiver fluxo selecionado, mostrar todas as etapas
+      console.log("   Nenhum fluxo selecionado - mostrando todas as etapas");
+      setFilteredStages(stages);
+    }
+    console.log("🔄 ===== FIM DO FILTRO DE ETAPAS =====\n");
+  }, [selectedFlowId, stages, form]);
+
+  // ===========================================================================
+  // 🎯 EFEITO PARA DEBUG DO FILTERED STAGES
+  // ===========================================================================
+  useEffect(() => {
+    console.log("📊 filteredStages ATUALIZADO:", {
+      length: filteredStages.length,
+      stages: filteredStages.map(s => ({ 
+        id: s.id, 
+        name: s.name, 
+        flowId: s.flowId 
+      }))
+    });
+  }, [filteredStages]);
+
+  // ===========================================================================
+  // 🎯 EFEITO PARA ATUALIZAR FILTRO QUANDO STAGES MUDAREM
+  // ===========================================================================
+  useEffect(() => {
+    if (selectedFlowId && selectedFlowId !== "none") {
+      const stagesOfSelectedFlow = stages.filter(
+        (stage) => stage.flowId === selectedFlowId,
+      );
+      setFilteredStages(stagesOfSelectedFlow);
+    } else {
+      setFilteredStages(stages);
+    }
+  }, [stages, selectedFlowId]);
 
   // --- Funções de Gravação de Áudio ---
   const startRecording = async () => {
@@ -302,6 +474,7 @@ useEffect(() => {
         values.assignedToId === "unassigned" || !values.assignedToId
           ? null
           : values.assignedToId,
+      flowId: values.flowId === "none" ? null : values.flowId,
       dueDate: values.dueDate || null,
       productionStartedAt: values.productionStartedAt || null,
       deliveryAt: values.deliveryAt || null,
@@ -330,30 +503,17 @@ useEffect(() => {
   };
 
   // --- Lógica de Permissão do Campo Quantidade ---
-
-  // 1. Monitora qual etapa está selecionada no formulário
   const selectedStageId = form.watch("stageId");
 
-  // 2. Calcula se o campo deve ficar desabilitado
   const isQuantityDisabled = useMemo(() => {
-    // A. Encontra o objeto da etapa atual baseada no ID selecionado
     const currentStage = stages.find((s) => s.id === selectedStageId);
-
-    // B. Verifica se a etapa tem "Corte" no nome (Case insensitive)
     const isCorteStage = currentStage?.name?.toLowerCase().includes("corte");
-
-    // C. Verifica se o usuário tem o cargo de "Corte" ou "Cortador"
     const userHasCorteRole =
       currentUserRole?.toLowerCase().includes("cortador") ||
       currentUserRole?.toLowerCase().includes("corte");
-
-    // D. Regra final: Só é editável se estiver na etapa de Corte E o usuário for do Corte.
     const canEdit = isCorteStage && userHasCorteRole;
-
-    return !canEdit; // Retorna true para desabilitar
+    return !canEdit;
   }, [selectedStageId, stages, currentUserRole]);
-
-  // ===========================================================================
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -413,8 +573,53 @@ useEffect(() => {
 
                     {/* --- TAB DETALHES --- */}
                     <TabsContent value="details" className="space-y-4">
-                      {/* Ao usar disabled={isReadOnly} nos inputs, garantimos que nada seja editado */}
+                      {/* SELECT DE FLUXO (COLEÇÃO) - NO TOPO */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                        <FormField
+                          control={form.control}
+                          name="flowId"
+                          render={({ field }) => (
+                            <FormItem className="col-span-2 md:col-span-1">
+                              <FormLabel className="flex items-center gap-2">
+                                <Layers size={14} /> Coleção (Fluxo)
+                              </FormLabel>
+                              <Select
+                                onValueChange={field.onChange}
+                                value={field.value || "none"}
+                                disabled={isReadOnly}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Selecione um fluxo..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="none">
+                                    Nenhum fluxo
+                                  </SelectItem>
+                                  {flows?.map((flow) => (
+                                    <SelectItem key={flow.id} value={flow.id}>
+                                      <div className="flex items-center gap-2">
+                                        {flow.color && (
+                                          <div
+                                            className="w-3 h-3 rounded-full"
+                                            style={{
+                                              backgroundColor: flow.color,
+                                            }}
+                                          />
+                                        )}
+                                        <span>{flow.name}</span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
 
+                      {/* TÍTULO E CAMPOS BÁSICOS */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={form.control}
@@ -433,6 +638,7 @@ useEffect(() => {
                             </FormItem>
                           )}
                         />
+
                         <FormField
                           control={form.control}
                           name="productRef"
@@ -449,6 +655,7 @@ useEffect(() => {
                             </FormItem>
                           )}
                         />
+
                         <FormField
                           control={form.control}
                           name="orderNumber"
@@ -465,6 +672,7 @@ useEffect(() => {
                             </FormItem>
                           )}
                         />
+
                         <FormField
                           control={form.control}
                           name="description"
@@ -484,8 +692,85 @@ useEffect(() => {
                         />
                       </div>
 
+                      {/* SELEÇÃO DE ETAPA */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="stageId"
+                          render={({ field }) => (
+                            <FormItem className="col-span-2 md:col-span-1">
+                              <FormLabel>Etapa</FormLabel>
+                              <Select
+                                onValueChange={(value) => {
+                                  console.log("📝 Etapa selecionada:", value);
+                                  field.onChange(value);
+                                }}
+                                value={field.value || ""}
+                                disabled={isReadOnly}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue
+                                      placeholder={
+                                        !selectedFlowId ||
+                                        selectedFlowId === "none"
+                                          ? "Selecione um fluxo primeiro"
+                                          : filteredStages.length === 0
+                                            ? "Nenhuma etapa neste fluxo"
+                                            : "Selecione uma etapa"
+                                      }
+                                    />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {filteredStages.length > 0 ? (
+                                    filteredStages.map((stage) => (
+                                      <SelectItem
+                                        key={stage.id}
+                                        value={stage.id}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          {stage.color && (
+                                            <div
+                                              className="w-3 h-3 rounded-full"
+                                              style={{
+                                                backgroundColor: stage.color,
+                                              }}
+                                            />
+                                          )}
+                                          <span>{stage.name}</span>
+                                          {stage.flowName && (
+                                            <span className="text-xs text-slate-400 ml-2">
+                                              ({stage.flowName})
+                                            </span>
+                                          )}
+                                        </div>
+                                      </SelectItem>
+                                    ))
+                                  ) : (
+                                    <SelectItem value="no-stages" disabled>
+                                      {!selectedFlowId ||
+                                      selectedFlowId === "none"
+                                        ? "Selecione um fluxo primeiro"
+                                        : "Nenhuma etapa disponível"}
+                                    </SelectItem>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              {selectedFlowId &&
+                                selectedFlowId !== "none" &&
+                                filteredStages.length === 0 && (
+                                  <p className="text-[10px] text-amber-600 mt-1">
+                                    Nenhuma etapa encontrada para este fluxo
+                                  </p>
+                                )}
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* QUANTIDADE E PRIORIDADE */}
                       <div className="grid grid-cols-3 gap-4">
-                        {/* 🔥 CAMPO QUANTIDADE COM LÓGICA ESPECÍFICA 🔥 */}
                         <FormField
                           control={form.control}
                           name="quantity"
@@ -497,7 +782,6 @@ useEffect(() => {
                                   type="number"
                                   min="1"
                                   {...field}
-                                  // Bloqueio Global (ReadOnly) OU Bloqueio Específico (Corte)
                                   disabled={isQuantityDisabled}
                                   className={
                                     isQuantityDisabled
@@ -510,7 +794,6 @@ useEffect(() => {
                                   }
                                 />
                               </FormControl>
-                              {/* Mostra aviso específico se não for ReadOnly Global mas estiver travado pela regra do Corte */}
                               {!isReadOnly && isQuantityDisabled && (
                                 <p className="text-[10px] text-amber-600 font-medium">
                                   * Editável apenas no Corte
@@ -549,6 +832,7 @@ useEffect(() => {
                         />
                       </div>
 
+                      {/* RESPONSÁVEL E OFICINA */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-dashed">
                         <FormField
                           control={form.control}
@@ -582,6 +866,7 @@ useEffect(() => {
                             </FormItem>
                           )}
                         />
+
                         <FormField
                           control={form.control}
                           name="supplierId"
@@ -616,6 +901,7 @@ useEffect(() => {
                         />
                       </div>
 
+                      {/* DATAS */}
                       <div className="grid grid-cols-3 gap-4 pt-4 border-t border-dashed">
                         <FormField
                           control={form.control}
@@ -623,7 +909,7 @@ useEffect(() => {
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className="text-xs font-bold uppercase">
-                                Proximos a vencer
+                                Próximos a vencer
                               </FormLabel>
                               <FormControl>
                                 <Input
@@ -636,6 +922,7 @@ useEffect(() => {
                             </FormItem>
                           )}
                         />
+
                         <FormField
                           control={form.control}
                           name="dueDate"
@@ -1015,7 +1302,6 @@ useEffect(() => {
 
         {/* FOOTER */}
         <DialogFooter className="px-6 py-4 border-t bg-slate-50 shrink-0 flex items-center justify-between sm:justify-between">
-          {/* ESQUERDA: Botão de Excluir (Só se editando E tiver permissão) */}
           <div>
             {isEditing && onDelete && initialData && !isReadOnly && (
               <Button
@@ -1030,7 +1316,6 @@ useEffect(() => {
             )}
           </div>
 
-          {/* DIREITA: Cancelar, Salvar e Automação */}
           <div className="flex gap-2">
             <Button
               type="button"
@@ -1041,7 +1326,6 @@ useEffect(() => {
               {isReadOnly ? "Fechar" : "Cancelar"}
             </Button>
 
-            {/* 🔥 ESCONDE BOTÕES DE AÇÃO SE FOR READONLY */}
             {!isReadOnly && (
               <>
                 <Button
