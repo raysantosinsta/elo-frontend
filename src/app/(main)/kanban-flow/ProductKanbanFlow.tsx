@@ -12,9 +12,14 @@ import {
   Trash2,
   X,
   Lock,
+  Filter as FilterIcon,
+  AlertTriangle,
+  Clock,
+  Loader2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useSearchParams, useRouter } from "next/navigation";
 
 // --- Infraestrutura ---
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +32,7 @@ import { KanbanCard } from "@/components/kanban/kanban-card";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { KanbanHeader } from "@/components/kanban/kanban-header";
 import { KanbanLayout } from "@/components/kanban/kanban-layout";
+import { KanbanFilter } from "@/components/kanban/kanban-filter";
 
 // --- UI Components ---
 import { Button } from "@/components/ui/button";
@@ -56,9 +62,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { te } from "date-fns/locale";
 
 // --- CONSTANTES ---
-// Lista de cargos profissionais da sua empresa
 const PROFESSIONAL_ROLES = [
   { value: "modelista", label: "Modelista / Modelagem" },
   { value: "piloteira", label: "Piloteira / Pilotagem" },
@@ -75,11 +81,13 @@ interface FlowMedia {
   url: string;
   filename: string;
 }
+
 interface UserProfile {
   id: string;
   name: string;
-  professionalRole?: string; // 🔥 Adicionado
+  professionalRole?: string;
 }
+
 interface FlowItem {
   id: string;
   title: string;
@@ -93,6 +101,8 @@ interface FlowItem {
   flowColor?: string;
   flowName?: string;
   supplierId?: string;
+  assignedToId?: string; // 🔥 ADICIONAR ESTA LINHA
+  assignedTo?: { id: string; name: string };
   supplier?: {
     id: string;
     name: string;
@@ -101,25 +111,29 @@ interface FlowItem {
     state?: string;
   };
   dueDate?: string;
+  productionStartedAt?: string;
   images: FlowMedia[];
   audios: FlowMedia[];
   videos: FlowMedia[];
   description?: string;
 }
+
 interface FlowStage {
   id: string;
   name: string;
   order: number;
   color?: string;
-  allowedRole?: string; // 🔥 Campo de Cargo Permitido
+  allowedRole?: string;
   items: FlowItem[];
 }
+
 interface ProductFlow {
   id: string;
   name: string;
   color?: string;
   stages: FlowStage[];
 }
+
 interface FlowTemplate {
   id: string;
   name: string;
@@ -136,7 +150,8 @@ const formatDateShort = (d: string) =>
 
 export default function ProductFlowKanban() {
   const { user } = useAuth();
-  console.log("user", user);
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   // --- Estados de Dados ---
   const [flows, setFlows] = useState<ProductFlow[]>([]);
@@ -170,26 +185,49 @@ export default function ProductFlowKanban() {
   const [newFlowColor, setNewFlowColor] = useState("#D35400");
   const [stageName, setStageName] = useState("");
   const [stageColor, setStageColor] = useState("#2D3436");
-  const [stageAllowedRole, setStageAllowedRole] = useState<string>(""); // 🔥 Novo Estado
+  const [stageAllowedRole, setStageAllowedRole] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isModalReadOnly, setIsModalReadOnly] = useState(false);
 
+  // --- ESTADOS DE FILTRO (valores temporários do formulário) ---
+  const [tempFilterDateType, setTempFilterDateType] = useState<
+    "productionStartedAt" | "dueDate"
+  >("productionStartedAt");
+  const [tempFilterStartDate, setTempFilterStartDate] = useState("");
+  const [tempFilterEndDate, setTempFilterEndDate] = useState("");
+  const [tempFilterOverdue, setTempFilterOverdue] = useState(false);
+  const [tempFilterUpcoming, setTempFilterUpcoming] = useState(false);
+  const [tempFilterAssignedTo, setTempFilterAssignedTo] = useState("all");
+  const [tempFilterSupplier, setTempFilterSupplier] = useState("all");
+
+  // --- ESTADOS DE FILTRO ATIVOS (aplicados) ---
+  const [activeFilterDateType, setActiveFilterDateType] = useState<
+    "productionStartedAt" | "dueDate"
+  >("productionStartedAt");
+  const [activeFilterStartDate, setActiveFilterStartDate] = useState("");
+  const [activeFilterEndDate, setActiveFilterEndDate] = useState("");
+  const [activeFilterOverdue, setActiveFilterOverdue] = useState(false);
+  const [activeFilterUpcoming, setActiveFilterUpcoming] = useState(false);
+  const [activeFilterAssignedTo, setActiveFilterAssignedTo] = useState("all");
+  const [activeFilterSupplier, setActiveFilterSupplier] = useState("all");
+
+  const [isFiltering, setIsFiltering] = useState(false);
+
+  const [tempFilterProductRef, setTempFilterProductRef] = useState("");
+  const [activeFilterProductRef, setActiveFilterProductRef] = useState("");
+
   // ===========================================================================
-  // 🛡️ LÓGICA DE PERMISSÃO (Espelho do Backend)
+  // 🛡️ LÓGICA DE PERMISSÃO
   // ===========================================================================
   const canUserEditStage = useCallback(
     (stage: FlowStage) => {
       if (!user) return false;
 
-      // 1. Superusuários (Ajuste conforme suas roles de sistema: ADMIN, MASTER, etc)
-      // Assumindo que user.role contém o nível de acesso do sistema
       const systemRole = (user as any).role || "";
       if (["MASTER", "ADMIN", "MANAGER"].includes(systemRole)) return true;
 
-      // 2. Etapa Livre
       if (!stage.allowedRole || stage.allowedRole.trim() === "") return true;
 
-      // 3. Match Parcial (Lógica do Backend)
       const userRole = user.professionalRole?.toLowerCase() || "";
       const requiredRole = stage.allowedRole.toLowerCase();
 
@@ -198,37 +236,233 @@ export default function ProductFlowKanban() {
     [user],
   );
 
-  // Exemplo de integração no componente principal
+  // ===========================================================================
+  // 🔄 FUNÇÕES DE FILTRO
+  // ===========================================================================
 
-  const handleAdvanceItem = async (item: FlowItem) => {
-    // 1. Optimistic UI (Feedback imediato)
-    toast.loading("Avançando item...", { id: "advance-toast" });
+  // Inicializar filtros temporários com base na URL
+  useEffect(() => {
+    const filterParam = searchParams.get("filter");
+    const typeParam = searchParams.get("dateType");
+    const startDateParam = searchParams.get("startDate");
+    const endDateParam = searchParams.get("endDate");
+    const assignedParam = searchParams.get("assignedToId");
+    const supplierParam = searchParams.get("supplierId");
+    const productRefParam = searchParams.get("productRef"); // 🔥 NOVO
 
-    try {
-      // 2. Chamada à API
-      await api.post(`/flow/items/${item.id}/advance`);
+    // Valores temporários
+    if (filterParam === "overdue") {
+      setTempFilterOverdue(true);
+      setTempFilterUpcoming(false);
+    } else if (filterParam === "upcoming") {
+      setTempFilterUpcoming(true);
+      setTempFilterOverdue(false);
+    }
 
-      // 3. Sucesso
-      toast.success(`Item "${item.title}" movido para próxima etapa!`, {
-        id: "advance-toast",
-      });
+    if (typeParam === "productionStartedAt" || typeParam === "dueDate") {
+      setTempFilterDateType(typeParam);
+    }
 
-      // 4. Fecha modais se estiverem abertos
-      setIsPreviewModal(false);
-      setIsEditItemModal(false);
+    if (startDateParam) {
+      setTempFilterStartDate(startDateParam.split("T")[0]);
+    }
 
-      // 5. Recarrega o board
-      fetchSelectedBoards();
-    } catch (error: any) {
-      // 6. Tratamento de Erro
-      const errorMsg = error.response?.data?.message || "Erro ao mover item.";
-      toast.error(errorMsg, { id: "advance-toast" });
+    if (endDateParam) {
+      setTempFilterEndDate(endDateParam.split("T")[0]);
+    }
+
+    if (assignedParam) {
+      setTempFilterAssignedTo(assignedParam);
+    }
+
+    if (supplierParam) {
+      setTempFilterSupplier(supplierParam);
+    }
+
+    if (productRefParam) {
+      // 🔥 NOVO
+      setTempFilterProductRef(productRefParam);
+    }
+
+    // Inicializar filtros ativos com os valores da URL
+    setActiveFilterDateType(
+      typeParam === "productionStartedAt" || typeParam === "dueDate"
+        ? typeParam
+        : "productionStartedAt",
+    );
+    setActiveFilterStartDate(
+      startDateParam ? startDateParam.split("T")[0] : "",
+    );
+    setActiveFilterEndDate(endDateParam ? endDateParam.split("T")[0] : "");
+    setActiveFilterOverdue(filterParam === "overdue");
+    setActiveFilterUpcoming(filterParam === "upcoming");
+    setActiveFilterAssignedTo(assignedParam || "all");
+    setActiveFilterSupplier(supplierParam || "all");
+    setActiveFilterProductRef(productRefParam || ""); // 🔥 NOVO
+  }, [searchParams]);
+
+  const handleFilterClick = async () => {
+  setIsFiltering(true);
+
+  console.log("🔍 Valores antes de aplicar:", {
+    tempFilterProductRef,
+    tempFilterStartDate,
+    tempFilterEndDate,
+    tempFilterDateType,
+    tempFilterOverdue,
+    tempFilterUpcoming,
+    tempFilterAssignedTo,
+    tempFilterSupplier,
+  });
+
+  // Construir parâmetros da URL usando valores TEMPORÁRIOS
+  const params = new URLSearchParams();
+
+  if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
+  if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
+  if (tempFilterDateType) params.set("dateType", tempFilterDateType);
+  if (tempFilterOverdue) params.set("filter", "overdue");
+  if (tempFilterUpcoming) params.set("filter", "upcoming");
+  if (tempFilterAssignedTo !== "all")
+    params.set("assignedToId", tempFilterAssignedTo);
+  if (tempFilterSupplier !== "all")
+    params.set("supplierId", tempFilterSupplier);
+  if (tempFilterProductRef && tempFilterProductRef.trim() !== "") {
+    params.set("productRef", tempFilterProductRef.trim());
+  }
+
+  console.log("🔍 Enviando requisição com params:", params.toString());
+
+  // Atualizar URL - isso vai disparar o useEffect que observa searchParams
+  router.push(`?${params.toString()}`);
+  
+  // NOTA: Não chamamos fetchFilteredBoards() aqui porque o useEffect vai chamar automaticamente
+  // quando a URL mudar e os estados ativos forem atualizados
+  
+  // O setIsFiltering(false) será feito pelo useEffect quando a busca terminar
+};
+
+  const handleClearFilters = async () => {
+    // Limpar valores temporários
+    setTempFilterStartDate("");
+    setTempFilterEndDate("");
+    setTempFilterOverdue(false);
+    setTempFilterUpcoming(false);
+    setTempFilterAssignedTo("all");
+    setTempFilterSupplier("all");
+    setTempFilterDateType("productionStartedAt");
+    setTempFilterProductRef("");
+
+    // Limpar URL
+    router.push("/kanban-flow");
+
+    // Aguardar a navegação
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Recarregar dados sem filtros
+    await fetchSelectedBoards();
+  };
+
+  const toggleOverdueFilter = () => {
+    if (tempFilterOverdue) {
+      setTempFilterOverdue(false);
+    } else {
+      setTempFilterOverdue(true);
+      setTempFilterUpcoming(false);
+      setTempFilterStartDate("");
+      setTempFilterEndDate("");
     }
   };
 
-  /**
-   * Busca fluxos, recursos e templates iniciais.
-   */
+  // const toggleUpcomingFilter = () => {
+  //   if (tempFilterUpcoming) {
+  //     setTempFilterUpcoming(false);
+  //   } else {
+  //     setTempFilterUpcoming(true);
+  //     setTempFilterOverdue(false);
+  //     setTempFilterStartDate("");
+  //     setTempFilterEndDate("");
+  //   }
+  // };
+
+  const fetchFilteredBoards = useCallback(async (paramsFromUrl?: URLSearchParams) => {
+  if (selectedFlowIds.length === 0) {
+    setBoards([]);
+    setLoading(false);
+    return;
+  }
+
+  setLoading(true);
+  
+  try {
+    // Usar params passados ou buscar da URL
+    const params = paramsFromUrl || new URLSearchParams(window.location.search);
+    
+    const startDate = params.get("startDate");
+    const endDate = params.get("endDate");
+    const dateType = params.get("dateType");
+    const filter = params.get("filter");
+    const assignedToId = params.get("assignedToId");
+    const supplierId = params.get("supplierId");
+    const productRef = params.get("productRef");
+
+    // Construir params para a API
+    const apiParams = new URLSearchParams();
+    
+    if (startDate) apiParams.set("startDate", new Date(startDate).toISOString());
+    if (endDate) apiParams.set("endDate", new Date(endDate).toISOString());
+    if (dateType) apiParams.set("dateType", dateType);
+    if (filter === "overdue") apiParams.set("isOverdue", "true");
+    if (filter === "upcoming") apiParams.set("isUpcoming", "true");
+    if (assignedToId && assignedToId !== "all")
+      apiParams.set("assignedToId", assignedToId);
+    if (supplierId && supplierId !== "all")
+      apiParams.set("supplierId", supplierId);
+    if (productRef && productRef.trim() !== "") {
+      apiParams.set("productRef", productRef.trim());
+    }
+
+    console.log("🔍 Fetch com params:", apiParams.toString());
+
+    // Buscar itens filtrados
+    const response = await api.get(`/flow/filter/items?${apiParams.toString()}`);
+    console.log("✅ Resposta da API:", response.data);
+
+    const filteredItems = response.data;
+
+    // Para cada flow selecionado, reconstruir o board com itens filtrados
+    const boardsPromises = selectedFlowIds.map(async (flowId) => {
+      const boardRes = await api.get(`/flow/${flowId}/board`);
+      const board = boardRes.data;
+
+      // Filtrar os itens em cada stage
+      board.stages = board.stages.map((stage: FlowStage) => ({
+        ...stage,
+        items: stage.items.filter((item: FlowItem) =>
+          filteredItems.some(
+            (filteredItem: FlowItem) => filteredItem.id === item.id,
+          ),
+        ),
+      }));
+
+      return board;
+    });
+
+    const filteredBoards = await Promise.all(boardsPromises);
+    setBoards(filteredBoards);
+  } catch (error) {
+    toast.error("Erro ao aplicar filtros");
+    console.error(error);
+  } finally {
+    setLoading(false);
+    setIsFiltering(false); // 🔥 Garantir que isFiltering seja false quando terminar
+  }
+}, [selectedFlowIds]);
+
+  // ===========================================================================
+  // 🔄 FUNÇÕES DE DADOS
+  // ===========================================================================
+
   const fetchInitialData = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
@@ -249,9 +483,6 @@ export default function ProductFlowKanban() {
     }
   }, [user?.company?.id]);
 
-  /**
-   * Carrega os quadros selecionados.
-   */
   const fetchSelectedBoards = useCallback(async () => {
     if (selectedFlowIds.length === 0) {
       setBoards([]);
@@ -272,16 +503,96 @@ export default function ProductFlowKanban() {
     }
   }, [selectedFlowIds]);
 
+  // Sincronizar estados ativos com a URL
+  // Sincronizar estados ativos com a URL
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+
+  setActiveFilterStartDate(urlParams.get("startDate")?.split("T")[0] || "");
+  setActiveFilterEndDate(urlParams.get("endDate")?.split("T")[0] || "");
+  setActiveFilterDateType(
+    (urlParams.get("dateType") as "productionStartedAt" | "dueDate") ||
+      "productionStartedAt",
+  );
+  setActiveFilterOverdue(urlParams.get("filter") === "overdue");
+  setActiveFilterUpcoming(urlParams.get("filter") === "upcoming");
+  setActiveFilterAssignedTo(urlParams.get("assignedToId") || "all");
+  setActiveFilterSupplier(urlParams.get("supplierId") || "all");
+  setActiveFilterProductRef(urlParams.get("productRef") || "");
+}, [searchParams]); // 🔥 Dependência em searchParams para reagir a mudanças na URL
+
+  // ===========================================================================
+  // 🎯 EFEITOS
+  // ===========================================================================
+
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
-  useEffect(() => {
-    fetchSelectedBoards();
-  }, [selectedFlowIds, fetchSelectedBoards]);
 
-  /**
-   * Cria um novo fluxo.
-   */
+  // Efeito para aplicar filtros quando os filtros ATIVOS mudarem
+  // Efeito para aplicar filtros quando os filtros ATIVOS mudarem
+useEffect(() => {
+  const hasFilters =
+    activeFilterStartDate ||
+    activeFilterEndDate ||
+    activeFilterOverdue ||
+    activeFilterUpcoming ||
+    activeFilterAssignedTo !== "all" ||
+    activeFilterSupplier !== "all" ||
+    activeFilterProductRef;
+
+  if (hasFilters && selectedFlowIds.length > 0) {
+    // Usar os valores da URL atual
+    const params = new URLSearchParams(window.location.search);
+    fetchFilteredBoards(params);
+  } else if (selectedFlowIds.length > 0 && !hasFilters) {
+    fetchSelectedBoards();
+    setIsFiltering(false); // Garantir que isFiltering seja false
+  }
+}, [
+  activeFilterStartDate,
+  activeFilterEndDate,
+  activeFilterOverdue,
+  activeFilterUpcoming,
+  activeFilterAssignedTo,
+  activeFilterSupplier,
+  activeFilterProductRef,
+  selectedFlowIds,
+]);
+
+  // ===========================================================================
+  // 🎯 OUTRAS FUNÇÕES
+  // ===========================================================================
+
+  const handleAdvanceItem = async (item: FlowItem) => {
+    toast.loading("Avançando item...", { id: "advance-toast" });
+
+    try {
+      await api.post(`/flow/items/${item.id}/advance`);
+
+      toast.success(`Item "${item.title}" movido para próxima etapa!`, {
+        id: "advance-toast",
+      });
+
+      setIsPreviewModal(false);
+      setIsEditItemModal(false);
+
+      const hasFilters =
+        activeFilterStartDate ||
+        activeFilterEndDate ||
+        activeFilterOverdue ||
+        activeFilterUpcoming;
+      if (hasFilters) {
+        await fetchFilteredBoards();
+      } else {
+        await fetchSelectedBoards();
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || "Erro ao mover item.";
+      toast.error(errorMsg, { id: "advance-toast" });
+    }
+  };
+
   const handleCreateFlow = async () => {
     if (!flowName.trim()) return toast.error("Nome obrigatório");
     try {
@@ -299,9 +610,6 @@ export default function ProductFlowKanban() {
     }
   };
 
-  /**
-   * Salva o conjunto de etapas atual como um template.
-   */
   const handleSaveTemplate = async () => {
     if (selectedFlowIds.length === 0)
       return toast.error("Selecione um fluxo base");
@@ -317,9 +625,6 @@ export default function ProductFlowKanban() {
     }
   };
 
-  /**
-   * Aplica um template de etapas ao fluxo atual.
-   */
   const handleApplyTemplate = async () => {
     if (!selectedTemplateId || selectedFlowIds.length === 0)
       return toast.error("Selecione template e fluxo");
@@ -334,9 +639,6 @@ export default function ProductFlowKanban() {
     }
   };
 
-  /**
-   * Gerencia deleção de itens, etapas ou templates.
-   */
   const handleDeleteExecute = async () => {
     if (!itemToDelete) return;
     try {
@@ -357,7 +659,17 @@ export default function ProductFlowKanban() {
         );
         toast.success("Excluído!");
       }
-      fetchSelectedBoards();
+
+      const hasFilters =
+        activeFilterStartDate ||
+        activeFilterEndDate ||
+        activeFilterOverdue ||
+        activeFilterUpcoming;
+      if (hasFilters) {
+        await fetchFilteredBoards();
+      } else {
+        await fetchSelectedBoards();
+      }
     } catch {
       toast.error("Erro ao excluir");
     } finally {
@@ -366,20 +678,18 @@ export default function ProductFlowKanban() {
     }
   };
 
-  /**
-   * Gerencia criação/edição de etapas.
-   */
   const handleStageSubmit = async () => {
     if (!stageName.trim()) return toast.error("Nome obrigatório");
     setIsSubmitting(true);
 
-    // 🔥 PAYLOAD ATUALIZADO: Inclui allowedRole
     const payload = {
-    name: stageName,
-    color: stageColor,
-    // SE for "all" ou string vazia, envie NULL para o backend ignorar a trava
-    allowedRole: (stageAllowedRole === "all" || !stageAllowedRole) ? null : stageAllowedRole,
-  };
+      name: stageName,
+      color: stageColor,
+      allowedRole:
+        stageAllowedRole === "all" || !stageAllowedRole
+          ? null
+          : stageAllowedRole,
+    };
 
     try {
       if (editingStage) {
@@ -398,9 +708,6 @@ export default function ProductFlowKanban() {
     }
   };
 
-  /**
-   * Gerencia criação/edição de itens.
-   */
   const handleItemSubmit = async (
     values: any,
     files: any,
@@ -450,7 +757,17 @@ export default function ProductFlowKanban() {
       setIsItemModal(false);
       setIsEditItemModal(false);
       setEditingItem(null);
-      await fetchSelectedBoards();
+
+      const hasFilters =
+        activeFilterStartDate ||
+        activeFilterEndDate ||
+        activeFilterOverdue ||
+        activeFilterUpcoming;
+      if (hasFilters) {
+        await fetchFilteredBoards();
+      } else {
+        await fetchSelectedBoards();
+      }
     } catch {
       toast.error("Erro ao salvar item");
     } finally {
@@ -458,16 +775,12 @@ export default function ProductFlowKanban() {
     }
   };
 
-  /**
-   * Lógica de unificação multi-fluxo.
-   */
   const unifiedStages = useMemo(() => {
     const stageGroups: Record<string, FlowStage> = {};
     boards.forEach((board) => {
       const flowColor = board.color || "#D35400";
       board.stages.forEach((stage) => {
         const key = stage.name.toUpperCase();
-        // Preserva o allowedRole da etapa original
         if (!stageGroups[key]) stageGroups[key] = { ...stage, items: [] };
         const itemsWithMetadata = stage.items.map((item) => ({
           ...item,
@@ -486,7 +799,17 @@ export default function ProductFlowKanban() {
     idField: "stageId",
     moveCallback: async (itemId, newStageId) => {
       await api.put(`/flow/items/${itemId}/move`, { newStageId });
-      fetchSelectedBoards();
+
+      const hasFilters =
+        activeFilterStartDate ||
+        activeFilterEndDate ||
+        activeFilterOverdue ||
+        activeFilterUpcoming;
+      if (hasFilters) {
+        await fetchFilteredBoards();
+      } else {
+        await fetchSelectedBoards();
+      }
     },
   });
 
@@ -495,18 +818,46 @@ export default function ProductFlowKanban() {
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
     );
 
+  if (loading && boards.length === 0) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
+        <Loader2 className="animate-spin text-[#D35400]" size={32} />
+      </div>
+    );
+  }
+
+  // Verificar se há filtros ativos para mostrar o botão de limpar
+  const hasActiveFilters =
+    activeFilterStartDate ||
+    activeFilterEndDate ||
+    activeFilterOverdue ||
+    activeFilterUpcoming ||
+    activeFilterAssignedTo !== "all" ||
+    activeFilterSupplier !== "all" ||
+    activeFilterProductRef; // 🔥 NOVO
+
+  // Verificar se há filtros temporários diferentes dos ativos (para habilitar botão Filtrar)
+  const hasTempChanges =
+    tempFilterStartDate !== activeFilterStartDate ||
+    tempFilterEndDate !== activeFilterEndDate ||
+    tempFilterOverdue !== activeFilterOverdue ||
+    tempFilterUpcoming !== activeFilterUpcoming ||
+    tempFilterAssignedTo !== activeFilterAssignedTo ||
+    tempFilterSupplier !== activeFilterSupplier ||
+    tempFilterDateType !== activeFilterDateType ||
+    tempFilterProductRef !== activeFilterProductRef; // 🔥 NOVO
+
   return (
     <KanbanLayout>
       <KanbanHeader
         title="Esteira de Produção"
         icon={<Factory size={20} />}
         onAddFlow={() => setIsFlowModal(true)}
-        // 🔥 RESETAR ESTADO AO ADICIONAR ETAPA
         onAddStage={() => {
           setEditingStage(null);
           setStageName("");
           setStageColor("#2D3436");
-          setStageAllowedRole(""); // Reset
+          setStageAllowedRole("");
           setIsStageModal(true);
         }}
         templates={templates}
@@ -578,9 +929,177 @@ export default function ProductFlowKanban() {
         }
       />
 
+      {/* KANBAN FILTER */}
+      <KanbanFilter>
+        <div className="grid gap-1 min-w-[140px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Filtrar Por
+          </label>
+          <select
+            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
+            value={tempFilterDateType}
+            onChange={(e) =>
+              setTempFilterDateType(
+                e.target.value as "productionStartedAt" | "dueDate",
+              )
+            }
+          >
+            <option value="productionStartedAt">Próximos a vencer</option>
+            <option value="dueDate">Prazo Final</option>
+          </select>
+        </div>
+
+        <div className="grid gap-1">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            De
+          </label>
+          <Input
+            type="date"
+            className="h-8 text-xs w-32"
+            value={tempFilterStartDate}
+            onChange={(e) => setTempFilterStartDate(e.target.value)}
+          />
+        </div>
+
+        <div className="grid gap-1">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Até
+          </label>
+          <Input
+            type="date"
+            className="h-8 text-xs w-32"
+            value={tempFilterEndDate}
+            onChange={(e) => setTempFilterEndDate(e.target.value)}
+          />
+        </div>
+
+        <div className="grid gap-1 min-w-[140px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Responsável
+          </label>
+          <select
+            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
+            value={tempFilterAssignedTo}
+            onChange={(e) => setTempFilterAssignedTo(e.target.value)}
+          >
+            <option value="all">Todos</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid gap-1 min-w-[140px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Oficina
+          </label>
+          <select
+            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
+            value={tempFilterSupplier}
+            onChange={(e) => setTempFilterSupplier(e.target.value)}
+          >
+            <option value="all">Todas</option>
+            <option value="internal">Produção Interna</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid gap-1 min-w-[180px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Referência do Produto
+          </label>
+          <div className="relative">
+            <Input
+              type="text"
+              placeholder="Buscar por ref..."
+              className="h-8 text-xs pl-8"
+              value={tempFilterProductRef}
+              onChange={(e) => {
+                console.log(
+                  "🔍 Mudando tempFilterProductRef para:",
+                  e.target.value,
+                );
+                setTempFilterProductRef(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleFilterClick();
+                }
+              }}
+            />
+            <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
+          </div>
+        </div>
+
+        <div className="flex items-end gap-2">
+          {/* <Button
+            size="sm"
+            variant={tempFilterUpcoming ? "default" : "outline"}
+            className={`h-8 text-xs ${
+              tempFilterUpcoming
+                ? "bg-amber-500 text-white hover:bg-amber-600"
+                : ""
+            }`}
+            onClick={toggleUpcomingFilter}
+          >
+            <Clock className="w-3 h-3 mr-2" />
+            Próximos
+          </Button> */}
+
+          <Button
+            size="sm"
+            variant={tempFilterOverdue ? "destructive" : "outline"}
+            className={`h-8 text-xs ${
+              tempFilterOverdue ? "bg-red-500 text-white hover:bg-red-600" : ""
+            }`}
+            onClick={toggleOverdueFilter}
+          >
+            <AlertTriangle className="w-3 h-3 mr-2" />
+            Atrasados
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="default"
+            className="h-8 text-xs min-w-[100px] bg-orange-600 hover:bg-orange-700"
+            onClick={handleFilterClick}
+            disabled={isFiltering}
+          >
+            {isFiltering ? (
+              <>
+                <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Filtrando...
+              </>
+            ) : (
+              <>
+                <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
+              </>
+            )}
+          </Button>
+
+          {hasActiveFilters && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+              onClick={handleClearFilters}
+              title="Limpar Filtros"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
+      </KanbanFilter>
+
       <KanbanBoard>
         {unifiedStages.map((stage) => {
-          // 🔥 Calcula permissão para ESTA coluna específica
           const hasPermission = canUserEditStage(stage);
           return (
             <KanbanColumn
@@ -593,12 +1112,11 @@ export default function ProductFlowKanban() {
                 hasPermission
                   ? () => {
                       setActiveStageId(stage.id);
-                      setIsModalReadOnly(false); // Criar é sempre editável se o botão aparecer
+                      setIsModalReadOnly(false);
                       setIsItemModal(true);
                     }
                   : undefined
               }
-              // 🔥 POPULAR ESTADO AO EDITAR ETAPA
               onEditClick={() => {
                 setEditingStage(stage);
                 setStageName(stage.name);
@@ -627,13 +1145,11 @@ export default function ProductFlowKanban() {
                   onDragStart={
                     hasPermission ? (e) => onDragStart(e, item.id) : undefined
                   }
-                  // Duplo clique abre o modal. Se não tem permissão, abre como ReadOnly
                   onDoubleClick={() => {
                     setEditingItem(item);
-                    setIsModalReadOnly(!hasPermission); // Se não tem permissão, é ReadOnly
+                    setIsModalReadOnly(!hasPermission);
                     setIsEditItemModal(true);
                   }}
-                  // Só passa a função onEdit se tiver permissão (o card esconde o botão se for undefined)
                   onEdit={
                     hasPermission
                       ? () => {
@@ -641,9 +1157,8 @@ export default function ProductFlowKanban() {
                           setIsModalReadOnly(false);
                           setIsEditItemModal(true);
                         }
-                      : undefined // TODO: remover tooltip
+                      : undefined
                   }
-                  // Só permite excluir se tiver permissão
                   onDelete={
                     hasPermission
                       ? () => {
@@ -652,7 +1167,6 @@ export default function ProductFlowKanban() {
                         }
                       : undefined
                   }
-                  // Só permite avançar se tiver permissão
                   onComplete={
                     hasPermission ? () => handleAdvanceItem(item) : undefined
                   }
@@ -686,8 +1200,8 @@ export default function ProductFlowKanban() {
         suppliers={suppliers}
         stages={unifiedStages}
         initialStageId={activeStageId}
-        currentUserRole={user?.professionalRole || user?.role}
-        isReadOnly={false} // Criar novo é sempre editável
+        currentUserRole={user?.professionalRole || (user as any)?.role}
+        isReadOnly={false}
       />
 
       <FlowItemModal
@@ -701,15 +1215,15 @@ export default function ProductFlowKanban() {
         isLoading={isSubmitting}
         users={users}
         suppliers={suppliers}
-        stages={unifiedStages} // 🔥 Mude de [] para unifiedStages
-        initialStageId={activeStageId} // Passa a coluna onde clicou no "+"
+        stages={unifiedStages}
+        initialStageId={activeStageId}
         onAdvance={handleAdvanceItem}
         onDelete={(id) => {
           setIsEditItemModal(false);
           setItemToDelete({ type: "item", id });
           setDeleteModalOpen(true);
         }}
-        currentUserRole={user?.professionalRole || user?.role}
+        currentUserRole={user?.professionalRole || (user as any)?.role}
         isReadOnly={isModalReadOnly}
       />
 
@@ -796,7 +1310,7 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* 🔥 MODAL DE STAGE ATUALIZADO (com Select de Cargo) */}
+      {/* Modal de Stage */}
       <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -812,7 +1326,6 @@ export default function ProductFlowKanban() {
               />
             </div>
 
-            {/* 🔥 NOVO SELECT DE CARGO */}
             <div className="space-y-2">
               <Label>Cargo Permitido (Quem pode mover?)</Label>
               <Select

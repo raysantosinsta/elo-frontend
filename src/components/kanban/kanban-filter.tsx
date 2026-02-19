@@ -1,8 +1,21 @@
+/* eslint-disable @next/next/no-img-element */
 import { Filter } from "lucide-react";
 import React from "react";
 
 interface KanbanFilterProps {
   children: React.ReactNode;
+}
+
+// Interface para os filtros
+export interface FilterParams {
+  startDate?: string;
+  endDate?: string;
+  dateType?: 'productionStartedAt' | 'dueDate';
+  isOverdue?: boolean;
+  isUpcoming?: boolean;
+  assignedToId?: string;
+  supplierId?: string;
+  status?: string;
 }
 
 export function KanbanFilter({ children }: KanbanFilterProps) {

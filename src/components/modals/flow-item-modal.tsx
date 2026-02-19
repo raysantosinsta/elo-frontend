@@ -83,7 +83,8 @@ export interface FlowItem {
   flowName?: string;
 
   supplierId?: string;
-  assignedTo?: { id: string; name: string };
+  assignedToId?: string;  // 🔥 Campo direto
+  assignedTo?: { id: string; name: string }; // Opcional, para dados relacionados
 
   dueDate?: string;
   productionStartedAt?: string;
@@ -191,58 +192,59 @@ export function FlowItemModal({
     },
   });
 
-  // --- Efeito: Popular Dados ao Abrir ---
-  useEffect(() => {
-    if (isOpen) {
-      setImages([]);
-      setVideos([]);
-      setAudios([]);
-      setRemovedImageIds([]);
-      setRemovedVideoIds([]);
-      setRemovedAudioIds([]);
-      setIsRecording(false);
+// --- Efeito: Popular Dados ao Abrir ---
+useEffect(() => {
+  if (isOpen) {
+    setImages([]);
+    setVideos([]);
+    setAudios([]);
+    setRemovedImageIds([]);
+    setRemovedVideoIds([]);
+    setRemovedAudioIds([]);
+    setIsRecording(false);
 
-      if (initialData) {
-        form.reset({
-          title: initialData.title,
-          description: initialData.description || "",
-          orderNumber: initialData.orderNumber || "",
-          productRef: initialData.productRef || "",
-          quantity: initialData.quantity,
-          priority: initialData.priority,
-          status: initialData.status,
-          stageId: initialData.stageId || "",
-          assignedToId: initialData.assignedTo?.id || "unassigned",
-          supplierId: initialData.supplierId || "internal",
-          dueDate: initialData.dueDate
-            ? initialData.dueDate.substring(0, 10)
-            : "",
-          productionStartedAt: initialData.productionStartedAt
-            ? initialData.productionStartedAt.substring(0, 10)
-            : "",
-          deliveryAt: initialData.deliveryAt
-            ? initialData.deliveryAt.substring(0, 10)
-            : "",
-        });
-      } else {
-        form.reset({
-          title: "",
-          description: "",
-          orderNumber: "",
-          productRef: "",
-          quantity: 1,
-          priority: 3,
-          status: "PENDENTE",
-          stageId: initialStageId || (stages.length > 0 ? stages[0].id : ""),
-          assignedToId: "unassigned",
-          supplierId: "internal",
-          dueDate: "",
-          productionStartedAt: "",
-          deliveryAt: "",
-        });
-      }
+    if (initialData) {
+      form.reset({
+        title: initialData.title,
+        description: initialData.description || "",
+        orderNumber: initialData.orderNumber || "",
+        productRef: initialData.productRef || "",
+        quantity: initialData.quantity,
+        priority: initialData.priority,
+        status: initialData.status,
+        stageId: initialData.stageId || "",
+        // 🔥 CORREÇÃO AQUI: assignedToId direto, não assignedTo?.id
+        assignedToId: initialData.assignedToId || "unassigned",
+        supplierId: initialData.supplierId || "internal",
+        dueDate: initialData.dueDate
+          ? initialData.dueDate.substring(0, 10)
+          : "",
+        productionStartedAt: initialData.productionStartedAt
+          ? initialData.productionStartedAt.substring(0, 10)
+          : "",
+        deliveryAt: initialData.deliveryAt
+          ? initialData.deliveryAt.substring(0, 10)
+          : "",
+      });
+    } else {
+      form.reset({
+        title: "",
+        description: "",
+        orderNumber: "",
+        productRef: "",
+        quantity: 1,
+        priority: 3,
+        status: "PENDENTE",
+        stageId: initialStageId || (stages.length > 0 ? stages[0].id : ""),
+        assignedToId: "unassigned",
+        supplierId: "internal",
+        dueDate: "",
+        productionStartedAt: "",
+        deliveryAt: "",
+      });
     }
-  }, [isOpen, initialData, stages, form, initialStageId]);
+  }
+}, [isOpen, initialData, stages, form, initialStageId]);
 
   // --- Funções de Gravação de Áudio ---
   const startRecording = async () => {
@@ -617,30 +619,11 @@ export function FlowItemModal({
                       <div className="grid grid-cols-3 gap-4 pt-4 border-t border-dashed">
                         <FormField
                           control={form.control}
-                          name="dueDate"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-xs font-bold uppercase">
-                                Prazo
-                              </FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="date"
-                                  {...field}
-                                  value={field.value || ""}
-                                  disabled={isReadOnly}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
                           name="productionStartedAt"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className="text-xs font-bold uppercase">
-                                Início
+                                Proximos a vencer
                               </FormLabel>
                               <FormControl>
                                 <Input
@@ -655,11 +638,11 @@ export function FlowItemModal({
                         />
                         <FormField
                           control={form.control}
-                          name="deliveryAt"
+                          name="dueDate"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className="text-xs font-bold uppercase">
-                                Entrega
+                                Prazo Final
                               </FormLabel>
                               <FormControl>
                                 <Input
