@@ -83,7 +83,7 @@ export interface FlowItem {
   flowName?: string;
 
   supplierId?: string;
-  assignedToId?: string;  // 🔥 Campo direto
+  assignedToId?: string; // 🔥 Campo direto
   assignedTo?: { id: string; name: string }; // Opcional, para dados relacionados
 
   dueDate?: string;
@@ -124,10 +124,10 @@ interface FlowItemModalProps {
 const itemSchema = z.object({
   title: z.string().min(1, "Título é obrigatório"),
   description: z.string().optional(),
-  orderNumber: z.string().optional(),
+  // orderNumber: z.string().optional(),
   productRef: z.string().optional(),
   quantity: z.coerce.number().min(1, "Quantidade mínima é 1").default(1),
-  priority: z.coerce.number().min(1).max(5).default(3),
+  // priority: z.coerce.number().min(1).max(5).default(3),
   status: z.string().default("PENDENTE"),
   stageId: z.string().optional(),
   assignedToId: z.string().optional(),
@@ -178,10 +178,10 @@ export function FlowItemModal({
     defaultValues: {
       title: "",
       description: "",
-      orderNumber: "",
+      // orderNumber: "",
       productRef: "",
       quantity: 1,
-      priority: 3,
+      // priority: 3,
       status: "PENDENTE",
       stageId: "",
       assignedToId: "",
@@ -192,59 +192,59 @@ export function FlowItemModal({
     },
   });
 
-// --- Efeito: Popular Dados ao Abrir ---
-useEffect(() => {
-  if (isOpen) {
-    setImages([]);
-    setVideos([]);
-    setAudios([]);
-    setRemovedImageIds([]);
-    setRemovedVideoIds([]);
-    setRemovedAudioIds([]);
-    setIsRecording(false);
+  // --- Efeito: Popular Dados ao Abrir ---
+  useEffect(() => {
+    if (isOpen) {
+      setImages([]);
+      setVideos([]);
+      setAudios([]);
+      setRemovedImageIds([]);
+      setRemovedVideoIds([]);
+      setRemovedAudioIds([]);
+      setIsRecording(false);
 
-    if (initialData) {
-      form.reset({
-        title: initialData.title,
-        description: initialData.description || "",
-        orderNumber: initialData.orderNumber || "",
-        productRef: initialData.productRef || "",
-        quantity: initialData.quantity,
-        priority: initialData.priority,
-        status: initialData.status,
-        stageId: initialData.stageId || "",
-        // 🔥 CORREÇÃO AQUI: assignedToId direto, não assignedTo?.id
-        assignedToId: initialData.assignedToId || "unassigned",
-        supplierId: initialData.supplierId || "internal",
-        dueDate: initialData.dueDate
-          ? initialData.dueDate.substring(0, 10)
-          : "",
-        productionStartedAt: initialData.productionStartedAt
-          ? initialData.productionStartedAt.substring(0, 10)
-          : "",
-        deliveryAt: initialData.deliveryAt
-          ? initialData.deliveryAt.substring(0, 10)
-          : "",
-      });
-    } else {
-      form.reset({
-        title: "",
-        description: "",
-        orderNumber: "",
-        productRef: "",
-        quantity: 1,
-        priority: 3,
-        status: "PENDENTE",
-        stageId: initialStageId || (stages.length > 0 ? stages[0].id : ""),
-        assignedToId: "unassigned",
-        supplierId: "internal",
-        dueDate: "",
-        productionStartedAt: "",
-        deliveryAt: "",
-      });
+      if (initialData) {
+        form.reset({
+          title: initialData.title,
+          description: initialData.description || "",
+          // orderNumber: initialData.orderNumber || "",
+          productRef: initialData.productRef || "",
+          quantity: initialData.quantity,
+          // priority: initialData.priority,
+          status: initialData.status,
+          stageId: initialData.stageId || "",
+          // 🔥 CORREÇÃO AQUI: assignedToId direto, não assignedTo?.id
+          assignedToId: initialData.assignedToId || "unassigned",
+          supplierId: initialData.supplierId || "internal",
+          dueDate: initialData.dueDate
+            ? initialData.dueDate.substring(0, 10)
+            : "",
+          productionStartedAt: initialData.productionStartedAt
+            ? initialData.productionStartedAt.substring(0, 10)
+            : "",
+          deliveryAt: initialData.deliveryAt
+            ? initialData.deliveryAt.substring(0, 10)
+            : "",
+        });
+      } else {
+        form.reset({
+          title: "",
+          description: "",
+          // orderNumber: "",
+          productRef: "",
+          quantity: 1,
+          // priority: 3,
+          status: "PENDENTE",
+          stageId: initialStageId || (stages.length > 0 ? stages[0].id : ""),
+          assignedToId: "unassigned",
+          supplierId: "internal",
+          dueDate: "",
+          productionStartedAt: "",
+          deliveryAt: "",
+        });
+      }
     }
-  }
-}, [isOpen, initialData, stages, form, initialStageId]);
+  }, [isOpen, initialData, stages, form, initialStageId]);
 
   // --- Funções de Gravação de Áudio ---
   const startRecording = async () => {
@@ -449,22 +449,7 @@ useEffect(() => {
                             </FormItem>
                           )}
                         />
-                        <FormField
-                          control={form.control}
-                          name="orderNumber"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Nº Pedido</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="PED-123"
-                                  {...field}
-                                  disabled={isReadOnly}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
+
                         <FormField
                           control={form.control}
                           name="description"
@@ -516,34 +501,6 @@ useEffect(() => {
                                   * Editável apenas no Corte
                                 </p>
                               )}
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="priority"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Prioridade</FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
-                                value={field.value?.toString()}
-                                disabled={isReadOnly}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Selecione" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="1">
-                                    Alta (Urgente)
-                                  </SelectItem>
-                                  <SelectItem value="2">Média</SelectItem>
-                                  <SelectItem value="3">Baixa</SelectItem>
-                                </SelectContent>
-                              </Select>
                             </FormItem>
                           )}
                         />

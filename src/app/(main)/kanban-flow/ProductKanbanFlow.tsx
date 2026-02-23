@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Clock,
   Loader2,
+  Edit,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -126,10 +127,11 @@ interface FlowStage {
   items: FlowItem[];
 }
 
-interface ProductFlow {
+export interface ProductFlow {
   id: string;
   name: string;
   color?: string;
+  deadline?: string;
   stages: FlowStage[];
 }
 
@@ -223,6 +225,18 @@ export default function ProductFlowKanban() {
     filterType: "overdue" | "upcoming" | null;
   }>({ columnId: null, filterType: null });
 
+  const [deadline, setDeadline] = useState("");
+
+  // ===========================================================================
+  // 🔥 ESTADOS PARA EDIÇÃO DE FLUXO
+  // ===========================================================================
+  const [editFlowId, setEditFlowId] = useState<string | null>(null);
+  const [editFlowName, setEditFlowName] = useState("");
+  const [editFlowColor, setEditFlowColor] = useState("#D35400");
+  const [editFlowDeadline, setEditFlowDeadline] = useState("");
+  const [isEditFlowModalOpen, setIsEditFlowModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   // ===========================================================================
   // 🛡️ LÓGICA DE PERMISSÃO
   // ===========================================================================
@@ -244,10 +258,9 @@ export default function ProductFlowKanban() {
   );
 
   // ===========================================================================
-  // 🔄 FUNÇÕES DE FILTRO POR COLUNA (CORRIGIDO - TIMEZONE)
+  // 🔄 FUNÇÕES DE FILTRO POR COLUNA
   // ===========================================================================
   const handleColumnFilterOverdue = (columnId: string) => {
-    // Se já está filtrando por esta coluna com o mesmo tipo, limpa o filtro
     if (
       activeColumnFilter.columnId === columnId &&
       activeColumnFilter.filterType === "overdue"
@@ -259,7 +272,6 @@ export default function ProductFlowKanban() {
   };
 
   const handleColumnFilterUpcoming = (columnId: string) => {
-    // Se já está filtrando por esta coluna com o mesmo tipo, limpa o filtro
     if (
       activeColumnFilter.columnId === columnId &&
       activeColumnFilter.filterType === "upcoming"
@@ -270,13 +282,7 @@ export default function ProductFlowKanban() {
     }
   };
 
-  // Função para filtrar itens de uma coluna específica
-
-  // ===========================================================================
-  // 🔄 FUNÇÕES DE FILTRO POR COLUNA (CORRIGIDO - SEM TIMEZONE)
-  // ===========================================================================
   const filterColumnItems = (stage: FlowStage) => {
-    // Se não há filtro ativo ou não é para esta coluna, retorna todos os itens
     if (
       activeColumnFilter.columnId !== stage.id ||
       !activeColumnFilter.filterType
@@ -284,57 +290,31 @@ export default function ProductFlowKanban() {
       return stage.items;
     }
 
-    console.log(`🔍 Filtrando coluna: ${stage.name} (${stage.id})`);
-    console.log(`   Tipo de filtro: ${activeColumnFilter.filterType}`);
-
-    // Obter data atual no formato YYYY-MM-DD (UTC)
     const todayUTC = new Date();
     const year = todayUTC.getUTCFullYear();
     const month = String(todayUTC.getUTCMonth() + 1).padStart(2, "0");
     const day = String(todayUTC.getUTCDate()).padStart(2, "0");
     const todayStr = `${year}-${month}-${day}`;
 
-    console.log(`   Data atual (UTC): ${todayStr}`);
-
     const filtered = stage.items.filter((item) => {
-      // Para "Atrasados": usa dueDate (prazo final)
-      // Para "Próximos a vencer": usa productionStartedAt (data de início da produção)
       const dateToCompare =
         activeColumnFilter.filterType === "upcoming"
           ? item.productionStartedAt
           : item.dueDate;
 
-      if (!dateToCompare) {
-        console.log(`   Item ${item.title} - Sem data, ignorado`);
-        return false;
-      }
+      if (!dateToCompare) return false;
 
-      // Extrair apenas a parte da data (YYYY-MM-DD) da string ISO
       const itemDateStr = dateToCompare.split("T")[0];
 
-      console.log(`   Item ${item.title}:`);
-      console.log(`      - Data original: ${dateToCompare}`);
-      console.log(`      - Data (YYYY-MM-DD): ${itemDateStr}`);
-      console.log(`      - Data atual (UTC): ${todayStr}`);
-
       if (activeColumnFilter.filterType === "overdue") {
-        // Atrasado: dueDate < data atual
-        const isOverdue = itemDateStr < todayStr;
-        console.log(`      - Atrasado? ${isOverdue}`);
-        return isOverdue;
+        return itemDateStr < todayStr;
       } else if (activeColumnFilter.filterType === "upcoming") {
-        // Próximo a vencer: productionStartedAt === data atual
-        const isUpcoming = itemDateStr === todayStr;
-        console.log(`      - Próximo a vencer (hoje)? ${isUpcoming}`);
-        return isUpcoming;
+        return itemDateStr === todayStr;
       }
 
       return true;
     });
 
-    console.log(
-      `   Total filtrados: ${filtered.length} de ${stage.items.length}`,
-    );
     return filtered;
   };
 
@@ -352,7 +332,6 @@ export default function ProductFlowKanban() {
     const supplierParam = searchParams.get("supplierId");
     const productRefParam = searchParams.get("productRef");
 
-    // Valores temporários
     if (filterParam === "overdue") {
       setTempFilterOverdue(true);
       setTempFilterUpcoming(false);
@@ -385,7 +364,6 @@ export default function ProductFlowKanban() {
       setTempFilterProductRef(productRefParam);
     }
 
-    // Inicializar filtros ativos com os valores da URL
     setActiveFilterDateType(
       typeParam === "productionStartedAt" || typeParam === "dueDate"
         ? typeParam
@@ -405,7 +383,6 @@ export default function ProductFlowKanban() {
   const handleFilterClick = async () => {
     setIsFiltering(true);
 
-    // Construir parâmetros da URL usando valores TEMPORÁRIOS
     const params = new URLSearchParams();
 
     if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
@@ -421,12 +398,10 @@ export default function ProductFlowKanban() {
       params.set("productRef", tempFilterProductRef.trim());
     }
 
-    // Atualizar URL
     router.push(`?${params.toString()}`);
   };
 
   const handleClearFilters = async () => {
-    // Limpar valores temporários
     setTempFilterStartDate("");
     setTempFilterEndDate("");
     setTempFilterOverdue(false);
@@ -436,13 +411,10 @@ export default function ProductFlowKanban() {
     setTempFilterDateType("productionStartedAt");
     setTempFilterProductRef("");
 
-    // Limpar URL
     router.push("/kanban-flow");
 
-    // Aguardar a navegação
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // Recarregar dados sem filtros
     await fetchSelectedBoards();
   };
 
@@ -468,7 +440,6 @@ export default function ProductFlowKanban() {
       setLoading(true);
 
       try {
-        // Usar params passados ou buscar da URL
         const params =
           paramsFromUrl || new URLSearchParams(window.location.search);
 
@@ -480,7 +451,6 @@ export default function ProductFlowKanban() {
         const supplierId = params.get("supplierId");
         const productRef = params.get("productRef");
 
-        // Construir params para a API
         const apiParams = new URLSearchParams();
 
         if (startDate)
@@ -497,18 +467,15 @@ export default function ProductFlowKanban() {
           apiParams.set("productRef", productRef.trim());
         }
 
-        // Buscar itens filtrados
         const response = await api.get(
           `/flow/filter/items?${apiParams.toString()}`,
         );
         const filteredItems = response.data;
 
-        // Para cada flow selecionado, reconstruir o board com itens filtrados
         const boardsPromises = selectedFlowIds.map(async (flowId) => {
           const boardRes = await api.get(`/flow/${flowId}/board`);
           const board = boardRes.data;
 
-          // Filtrar os itens em cada stage
           board.stages = board.stages.map((stage: FlowStage) => ({
             ...stage,
             items: stage.items.filter((item: FlowItem) =>
@@ -603,7 +570,6 @@ export default function ProductFlowKanban() {
     fetchInitialData();
   }, [fetchInitialData]);
 
-  // Efeito para aplicar filtros quando os filtros ATIVOS mudarem
   useEffect(() => {
     const hasFilters =
       activeFilterStartDate ||
@@ -615,7 +581,6 @@ export default function ProductFlowKanban() {
       activeFilterProductRef;
 
     if (hasFilters && selectedFlowIds.length > 0) {
-      // Usar os valores da URL atual
       const params = new URLSearchParams(window.location.search);
       fetchFilteredBoards(params);
     } else if (selectedFlowIds.length > 0 && !hasFilters) {
@@ -636,7 +601,7 @@ export default function ProductFlowKanban() {
   ]);
 
   // ===========================================================================
-  // 🎯 OUTRAS FUNÇÕES
+  // 🎯 FUNÇÕES PRINCIPAIS
   // ===========================================================================
 
   const handleAdvanceItem = async (item: FlowItem) => {
@@ -670,18 +635,97 @@ export default function ProductFlowKanban() {
 
   const handleCreateFlow = async () => {
     if (!flowName.trim()) return toast.error("Nome obrigatório");
+
     try {
-      const { data } = await api.post(`/flow`, {
+      const payload: any = {
         name: flowName,
         color: newFlowColor,
-      });
+      };
+
+      if (deadline) {
+        const deadlineDate = new Date(deadline);
+        deadlineDate.setUTCHours(12, 0, 0, 0);
+        payload.deadline = deadlineDate.toISOString();
+      }
+
+      const { data } = await api.post(`/flow`, payload);
       setFlows((prev) => [...prev, data]);
       setSelectedFlowIds((prev) => [...prev, data.id]);
       setIsFlowModal(false);
       setFlowName("");
+      setNewFlowColor("#D35400");
+      setDeadline("");
       toast.success("Fluxo criado!");
     } catch {
       toast.error("Erro ao criar fluxo");
+    }
+  };
+
+  // ===========================================================================
+  // 🔥 FUNÇÕES DE EDIÇÃO DE FLUXO
+  // ===========================================================================
+  const openEditModal = (flow: ProductFlow) => {
+    setEditFlowId(flow.id);
+    setEditFlowName(flow.name);
+    setEditFlowColor(flow.color || "#D35400");
+
+    if (flow.deadline) {
+      const date = new Date(flow.deadline);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      setEditFlowDeadline(`${year}-${month}-${day}`);
+    } else {
+      setEditFlowDeadline("");
+    }
+
+    setIsEditFlowModalOpen(true);
+  };
+
+  const handleUpdateFlow = async () => {
+    if (!editFlowId) return;
+    if (!editFlowName.trim()) {
+      toast.error("Nome do fluxo é obrigatório");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const payload: any = {
+        name: editFlowName,
+        color: editFlowColor,
+      };
+
+      if (editFlowDeadline) {
+        const deadlineDate = new Date(editFlowDeadline);
+        deadlineDate.setUTCHours(12, 0, 0, 0);
+        payload.deadline = deadlineDate.toISOString();
+      } else {
+        payload.deadline = null;
+      }
+
+      await api.put(`/flow/${editFlowId}`, payload);
+
+      setFlows((prev) =>
+        prev.map((f) =>
+          f.id === editFlowId
+            ? {
+                ...f,
+                name: editFlowName,
+                color: editFlowColor,
+                deadline: payload.deadline,
+              }
+            : f,
+        ),
+      );
+
+      toast.success("Fluxo atualizado com sucesso!");
+      setIsEditFlowModalOpen(false);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Erro ao atualizar fluxo");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -901,7 +945,6 @@ export default function ProductFlowKanban() {
     );
   }
 
-  // Verificar se há filtros ativos para mostrar o botão de limpar
   const hasActiveFilters =
     activeFilterStartDate ||
     activeFilterEndDate ||
@@ -911,7 +954,6 @@ export default function ProductFlowKanban() {
     activeFilterSupplier !== "all" ||
     activeFilterProductRef;
 
-  // Verificar se há filtros temporários diferentes dos ativos (para habilitar botão Filtrar)
   const hasTempChanges =
     tempFilterStartDate !== activeFilterStartDate ||
     tempFilterEndDate !== activeFilterEndDate ||
@@ -921,6 +963,17 @@ export default function ProductFlowKanban() {
     tempFilterSupplier !== activeFilterSupplier ||
     tempFilterDateType !== activeFilterDateType ||
     tempFilterProductRef !== activeFilterProductRef;
+
+  const calculateDaysRemaining = (deadlineDate: string): number => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const deadline = new Date(deadlineDate);
+    deadline.setHours(0, 0, 0, 0);
+
+    const diffTime = deadline.getTime() - today.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
 
   return (
     <KanbanLayout>
@@ -959,44 +1012,108 @@ export default function ProductFlowKanban() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent
-                  className="w-64 p-2 bg-[#2C3E50] border-white/10 text-white"
+                  className="w-80 p-2 bg-[#2C3E50] border-white/10 text-white"
                   align="end"
                 >
-                  {flows.map((f) => (
-                    <div
-                      key={f.id}
-                      className={cn(
-                        "group flex items-center justify-between p-2 rounded-md transition-all",
-                        selectedFlowIds.includes(f.id)
-                          ? "bg-white/10 text-white"
-                          : "text-slate-400 hover:bg-white/5",
-                      )}
-                    >
-                      <div
-                        className="flex items-center gap-2 cursor-pointer flex-1"
-                        onClick={() => toggleFlow(f.id)}
-                      >
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 py-2">
+                    Selecione os Fluxos
+                  </div>
+                  <div className="space-y-1 max-h-[300px] overflow-y-auto custom-scrollbar">
+                    {flows.map((f) => {
+                      const daysRemaining = f.deadline
+                        ? calculateDaysRemaining(f.deadline)
+                        : null;
+
+                      return (
                         <div
-                          className="w-3 h-3 rounded-full border border-white/20"
-                          style={{ backgroundColor: f.color || "#D35400" }}
-                        />
-                        <span className="text-sm font-medium">{f.name}</span>
-                        {selectedFlowIds.includes(f.id) && (
-                          <Check size={14} className="text-orange-500 ml-1" />
-                        )}
+                          key={f.id}
+                          className={cn(
+                            "group flex items-center justify-between p-2 rounded-md transition-all",
+                            selectedFlowIds.includes(f.id)
+                              ? "bg-white/10 text-white"
+                              : "text-slate-400 hover:bg-white/5",
+                          )}
+                        >
+                          <div
+                            className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
+                            onClick={() => toggleFlow(f.id)}
+                          >
+                            <div
+                              className="w-3 h-3 rounded-full border border-white/20 flex-shrink-0"
+                              style={{ backgroundColor: f.color || "#D35400" }}
+                            />
+                            <span className="text-sm font-medium truncate">
+                              {f.name}
+                            </span>
+                            {selectedFlowIds.includes(f.id) && (
+                              <Check
+                                size={14}
+                                className="text-orange-500 ml-1 flex-shrink-0"
+                              />
+                            )}
+                          </div>
+
+                          {f.deadline && daysRemaining !== null && (
+                            <div className="flex-shrink-0 ml-2">
+                              {daysRemaining < 0 ? (
+                                <span className="text-[9px] font-bold bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full border border-red-500/30 whitespace-nowrap">
+                                  {Math.abs(daysRemaining)}d atrasado
+                                </span>
+                              ) : daysRemaining === 0 ? (
+                                <span className="text-[9px] font-bold bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full border border-orange-500/30 whitespace-nowrap">
+                                  Hoje!
+                                </span>
+                              ) : daysRemaining <= 3 ? (
+                                <span className="text-[9px] font-bold bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-500/30 whitespace-nowrap">
+                                  {daysRemaining}d
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full border border-green-500/30 whitespace-nowrap">
+                                  {daysRemaining}d
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-1 ml-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditModal(f);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-blue-400 hover:bg-blue-500/10 rounded"
+                            >
+                              <Edit size={14} />
+                            </button>
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setItemToDelete({ type: "stage", id: f.id });
+                                setDeleteModalOpen(true);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:bg-red-500/10 rounded"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {flows.some((f) => f.deadline) && (
+                    <div className="mt-2 pt-2 border-t border-white/10">
+                      <div className="flex items-center gap-2 text-[9px] text-slate-400">
+                        <Calendar size={10} />
+                        <span>Prazos:</span>
+                        <span className="text-green-400">● OK</span>
+                        <span className="text-yellow-400">● ≤3d</span>
+                        <span className="text-orange-400">● Hoje</span>
+                        <span className="text-red-400">● Atrasado</span>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setItemToDelete({ type: "stage", id: f.id });
-                          setDeleteModalOpen(true);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:bg-red-500/10 rounded"
-                      >
-                        <Trash2 size={14} />
-                      </button>
                     </div>
-                  ))}
+                  )}
                 </PopoverContent>
               </Popover>
             </div>
@@ -1004,7 +1121,6 @@ export default function ProductFlowKanban() {
         }
       />
 
-      {/* KANBAN FILTER */}
       <KanbanFilter>
         <div className="grid gap-1 min-w-[140px]">
           <label className="text-[10px] uppercase font-bold text-slate-400">
@@ -1154,7 +1270,6 @@ export default function ProductFlowKanban() {
           )}
         </div>
 
-        {/* Botão para limpar filtro de coluna */}
         {activeColumnFilter.columnId && (
           <Button
             size="sm"
@@ -1173,11 +1288,8 @@ export default function ProductFlowKanban() {
       <KanbanBoard>
         {unifiedStages.map((stage) => {
           const hasPermission = canUserEditStage(stage);
-
-          // Aplicar filtro específico da coluna
           const filteredItems = filterColumnItems(stage);
 
-          // Verificar se esta coluna tem filtro ativo
           const isOverdueActive =
             activeColumnFilter.columnId === stage.id &&
             activeColumnFilter.filterType === "overdue";
@@ -1197,12 +1309,6 @@ export default function ProductFlowKanban() {
               onAddItem={
                 hasPermission
                   ? () => {
-                      console.log(
-                        "📝 Adicionando item na coluna:",
-                        stage.name,
-                        "com permissão:",
-                        hasPermission,
-                      );
                       setActiveStageId(stage.id);
                       setIsModalReadOnly(false);
                       setIsItemModal(true);
@@ -1210,7 +1316,6 @@ export default function ProductFlowKanban() {
                   : undefined
               }
               onEditClick={() => {
-                console.log("✏️ Editando coluna:", stage.name);
                 setEditingStage(stage);
                 setStageName(stage.name);
                 setStageColor(stage.color || "#2D3436");
@@ -1218,26 +1323,21 @@ export default function ProductFlowKanban() {
                 setIsStageModal(true);
               }}
               onDeleteClick={() => {
-                console.log("🗑️ Deletando coluna:", stage.name);
-
                 setItemToDelete({ type: "stage", id: stage.id });
                 setDeleteModalOpen(true);
               }}
-              // Novas props para filtros
               onFilterOverdue={() => handleColumnFilterOverdue(stage.id)}
               onFilterUpcoming={() => handleColumnFilterUpcoming(stage.id)}
               isOverdueFilterActive={isOverdueActive}
               isUpcomingFilterActive={isUpcomingActive}
               filterDisabled={false}
             >
-              
               {!hasPermission && (
                 <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
                   <Lock size={10} /> Somente Leitura
                 </div>
               )}
 
-              {/* Mostrar indicador visual de filtro ativo */}
               {(isOverdueActive || isUpcomingActive) && (
                 <div
                   className="mb-2 p-1 text-[8px] font-bold uppercase text-center rounded bg-opacity-20 flex items-center justify-center gap-1"
@@ -1374,7 +1474,6 @@ export default function ProductFlowKanban() {
         title={`Excluir ${itemToDelete?.type === "item" ? "produto" : itemToDelete?.type === "template" ? "template" : "etapa/fluxo"}?`}
       />
 
-      {/* Modal Preview */}
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl bg-white rounded-xl">
           <div className="px-6 py-4 border-b sticky top-0 bg-white z-20 flex justify-between items-center">
@@ -1450,7 +1549,6 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Stage */}
       <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -1526,25 +1624,76 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Flow */}
       <Dialog open={isFlowModal} onOpenChange={setIsFlowModal}>
         <DialogContent className="bg-white">
           <DialogHeader>
             <DialogTitle>Novo Fluxo</DialogTitle>
           </DialogHeader>
           <div className="py-4 space-y-4 text-sm font-medium">
-            <Label>Nome</Label>
-            <Input
-              value={flowName}
-              onChange={(e) => setFlowName(e.target.value)}
-            />
-            <Label>Cor do Fluxo</Label>
-            <Input
-              type="color"
-              value={newFlowColor}
-              onChange={(e) => setNewFlowColor(e.target.value)}
-              className="h-10 w-full"
-            />
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input
+                value={flowName}
+                onChange={(e) => setFlowName(e.target.value)}
+                placeholder="Ex: Coleção Verão 2024"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cor do Fluxo</Label>
+              <div className="flex gap-2 items-center">
+                <Input
+                  type="color"
+                  value={newFlowColor}
+                  onChange={(e) => setNewFlowColor(e.target.value)}
+                  className="h-10 w-12 p-1 cursor-pointer"
+                />
+                <Input
+                  value={newFlowColor}
+                  onChange={(e) => setNewFlowColor(e.target.value)}
+                  className="flex-1 uppercase"
+                  placeholder="#D35400"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Calendar size={16} className="text-orange-500" />
+                Prazo Final da Coleção
+              </Label>
+              <Input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="w-full"
+                min={new Date().toISOString().split("T")[0]}
+              />
+              <p className="text-xs text-muted-foreground">
+                Data limite para conclusão de todos os itens desta coleção
+              </p>
+            </div>
+
+            {deadline && (
+              <div className="mt-2 p-3 bg-slate-50 rounded-lg border">
+                <p className="text-xs font-medium text-slate-500 mb-2">
+                  Preview:
+                </p>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: newFlowColor }}
+                  />
+                  <span className="text-sm font-medium">
+                    {flowName || "Novo Fluxo"}
+                  </span>
+                  <span className="text-xs text-slate-400">•</span>
+                  <span className="text-xs text-slate-600">
+                    Prazo: {new Date(deadline).toLocaleDateString("pt-BR")}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -1552,6 +1701,92 @@ export default function ProductFlowKanban() {
               className="bg-orange-600 text-white"
             >
               Criar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Edição de Fluxo */}
+      <Dialog open={isEditFlowModalOpen} onOpenChange={setIsEditFlowModalOpen}>
+        <DialogContent className="bg-white">
+          <DialogHeader>
+            <DialogTitle>Editar Fluxo</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4 text-sm font-medium">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input
+                value={editFlowName}
+                onChange={(e) => setEditFlowName(e.target.value)}
+                placeholder="Ex: Coleção Verão 2024"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cor do Fluxo</Label>
+              <div className="flex gap-2 items-center">
+                <Input
+                  type="color"
+                  value={editFlowColor}
+                  onChange={(e) => setEditFlowColor(e.target.value)}
+                  className="h-10 w-12 p-1 cursor-pointer"
+                />
+                <Input
+                  value={editFlowColor}
+                  onChange={(e) => setEditFlowColor(e.target.value)}
+                  className="flex-1 uppercase"
+                  placeholder="#D35400"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Calendar size={16} className="text-orange-500" />
+                Prazo Final da Coleção
+              </Label>
+              <Input
+                type="date"
+                value={editFlowDeadline}
+                onChange={(e) => setEditFlowDeadline(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                Deixe em branco para remover o prazo
+              </p>
+            </div>
+
+            {editFlowDeadline && (
+              <div className="mt-2 p-3 bg-slate-50 rounded-lg border">
+                <p className="text-xs font-medium text-slate-500 mb-2">
+                  Preview:
+                </p>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: editFlowColor }}
+                  />
+                  <span className="text-sm font-medium">
+                    {editFlowName || "Fluxo"}
+                  </span>
+                  <span className="text-xs text-slate-400">•</span>
+                  <span className="text-xs text-slate-600">
+                    Prazo: {new Date(editFlowDeadline).toLocaleDateString("pt-BR")}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditFlowModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleUpdateFlow}
+              className="bg-orange-600 text-white"
+              disabled={isSaving}
+            >
+              {isSaving ? "Salvando..." : "Salvar Alterações"}
             </Button>
           </DialogFooter>
         </DialogContent>
