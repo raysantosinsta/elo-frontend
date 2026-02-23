@@ -83,7 +83,8 @@ export interface FlowItem {
   flowName?: string;
 
   supplierId?: string;
-  assignedTo?: { id: string; name: string };
+  assignedToId?: string; // 🔥 Campo direto
+  assignedTo?: { id: string; name: string }; // Opcional, para dados relacionados
 
   dueDate?: string;
   productionStartedAt?: string;
@@ -123,10 +124,10 @@ interface FlowItemModalProps {
 const itemSchema = z.object({
   title: z.string().min(1, "Título é obrigatório"),
   description: z.string().optional(),
-  orderNumber: z.string().optional(),
+  // orderNumber: z.string().optional(),
   productRef: z.string().optional(),
   quantity: z.coerce.number().min(1, "Quantidade mínima é 1").default(1),
-  priority: z.coerce.number().min(1).max(5).default(3),
+  // priority: z.coerce.number().min(1).max(5).default(3),
   status: z.string().default("PENDENTE"),
   stageId: z.string().optional(),
   assignedToId: z.string().optional(),
@@ -177,10 +178,10 @@ export function FlowItemModal({
     defaultValues: {
       title: "",
       description: "",
-      orderNumber: "",
+      // orderNumber: "",
       productRef: "",
       quantity: 1,
-      priority: 3,
+      // priority: 3,
       status: "PENDENTE",
       stageId: "",
       assignedToId: "",
@@ -206,13 +207,14 @@ export function FlowItemModal({
         form.reset({
           title: initialData.title,
           description: initialData.description || "",
-          orderNumber: initialData.orderNumber || "",
+          // orderNumber: initialData.orderNumber || "",
           productRef: initialData.productRef || "",
           quantity: initialData.quantity,
-          priority: initialData.priority,
+          // priority: initialData.priority,
           status: initialData.status,
           stageId: initialData.stageId || "",
-          assignedToId: initialData.assignedTo?.id || "unassigned",
+          // 🔥 CORREÇÃO AQUI: assignedToId direto, não assignedTo?.id
+          assignedToId: initialData.assignedToId || "unassigned",
           supplierId: initialData.supplierId || "internal",
           dueDate: initialData.dueDate
             ? initialData.dueDate.substring(0, 10)
@@ -228,10 +230,10 @@ export function FlowItemModal({
         form.reset({
           title: "",
           description: "",
-          orderNumber: "",
+          // orderNumber: "",
           productRef: "",
           quantity: 1,
-          priority: 3,
+          // priority: 3,
           status: "PENDENTE",
           stageId: initialStageId || (stages.length > 0 ? stages[0].id : ""),
           assignedToId: "unassigned",
@@ -447,22 +449,7 @@ export function FlowItemModal({
                             </FormItem>
                           )}
                         />
-                        <FormField
-                          control={form.control}
-                          name="orderNumber"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Nº Pedido</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="PED-123"
-                                  {...field}
-                                  disabled={isReadOnly}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
+
                         <FormField
                           control={form.control}
                           name="description"
@@ -514,34 +501,6 @@ export function FlowItemModal({
                                   * Editável apenas no Corte
                                 </p>
                               )}
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="priority"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Prioridade</FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
-                                value={field.value?.toString()}
-                                disabled={isReadOnly}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Selecione" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="1">
-                                    Alta (Urgente)
-                                  </SelectItem>
-                                  <SelectItem value="2">Média</SelectItem>
-                                  <SelectItem value="3">Baixa</SelectItem>
-                                </SelectContent>
-                              </Select>
                             </FormItem>
                           )}
                         />
@@ -617,30 +576,11 @@ export function FlowItemModal({
                       <div className="grid grid-cols-3 gap-4 pt-4 border-t border-dashed">
                         <FormField
                           control={form.control}
-                          name="dueDate"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-xs font-bold uppercase">
-                                Prazo
-                              </FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="date"
-                                  {...field}
-                                  value={field.value || ""}
-                                  disabled={isReadOnly}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
                           name="productionStartedAt"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className="text-xs font-bold uppercase">
-                                Início
+                                Proximos a vencer
                               </FormLabel>
                               <FormControl>
                                 <Input
@@ -655,11 +595,11 @@ export function FlowItemModal({
                         />
                         <FormField
                           control={form.control}
-                          name="deliveryAt"
+                          name="dueDate"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className="text-xs font-bold uppercase">
-                                Entrega
+                                Prazo Final
                               </FormLabel>
                               <FormControl>
                                 <Input

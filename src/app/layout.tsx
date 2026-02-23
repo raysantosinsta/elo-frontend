@@ -7,6 +7,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 import { SidebarProvider } from "@/hooks/SidebarContext";
 import { ErrorProvider } from "@/contexts/error-context";
+import QueryProvider from "@/providers/query-provider"; // <-- Importado aqui
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({
@@ -20,7 +21,6 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
-
 };
 
 export default function RootLayout({
@@ -33,12 +33,14 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
-          <SidebarProvider>
-            <ErrorProvider>
-              {children}
-            </ErrorProvider>
-            <Toaster position="top-right" richColors closeButton />
-          </SidebarProvider>
+          <QueryProvider> {/* 1. Coloque o QueryProvider aqui */}
+            <SidebarProvider>
+              <ErrorProvider>
+                {children} {/* 2. Agora o MainLayout e as páginas estão protegidos */}
+              </ErrorProvider>
+              <Toaster position="top-right" richColors closeButton />
+            </SidebarProvider>
+          </QueryProvider>
         </AuthProvider>
       </body>
     </html>
