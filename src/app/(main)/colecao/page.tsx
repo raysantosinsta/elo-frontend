@@ -557,7 +557,7 @@ const formatDate = (dateString?: string) => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-[400px] w-full mt-4">
+          <div className="h-[400px] w-full mt-4 min-w-[300px] min-h-[300px]">
             {loadingSelected ? (
               <div className="flex h-full items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />

@@ -20,24 +20,18 @@ import {
   Bell,
   Calendar,
   CarFront,
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Clock,
-  DollarSign,
   Factory,
-  FileText,
   Home,
   KanbanSquare,
   MessageSquare,
-  RefreshCw,
-  Users,
+  Users
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useMemo } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
 // --- 1. DEFINIÇÃO DA ESTRUTURA DO MENU ---
 const menuItems = [
@@ -47,6 +41,7 @@ const menuItems = [
     subItems: [
       { title: "Company", href: "/" },
       { title: "Usuario", href: "/dashboard-user" },
+       { title: "Coleção", href: "/colecao" }, // 👈 NOVO ITEM ADICIONADO AQUI
     ]
   },
   { 
