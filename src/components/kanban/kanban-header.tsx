@@ -4,7 +4,7 @@
 import React, { useState } from "react";
 import { 
   Plus, Menu, X, Settings, ChevronDown, Layers, 
-  Save, Check, Trash2, Copy, LayoutTemplate
+  Save, Check, Trash2, Copy, LayoutTemplate, Columns
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,10 +32,10 @@ interface KanbanHeaderProps {
   title: string;
   subtitle?: string;
   icon?: React.ReactNode;
-  onAddColumn?: () => void;
+  onAddColumn?: () => void;      // ← ADICIONADO: Para Kanbans simples (ProductKanban)
   onAddFlow?: () => void;   
   onAddStage?: () => void;  
-  templates?: Template[]; // Tipagem melhorada
+  templates?: Template[];
   selectedTemplateId?: string;
   onSelectTemplate?: (id: string) => void;
   onApplyTemplate?: () => void;
@@ -49,7 +49,7 @@ export function KanbanHeader({
   title,
   subtitle,
   icon,
-  onAddColumn,
+  onAddColumn,                   // ← RECEBIDO
   onAddFlow,
   onAddStage,
   templates = [],
@@ -157,7 +157,7 @@ export function KanbanHeader({
             </div>
           )}
 
-          {/* BOTÃO ADICIONAR */}
+          {/* BOTÃO ADICIONAR - AGORA COM OPÇÃO PARA COLUNA */}
           {(onAddFlow || onAddStage || onAddColumn) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -167,7 +167,8 @@ export function KanbanHeader({
                   <ChevronDown size={14} className="opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl">
+              <DropdownMenuContent align="end" className="w-64 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl">
+                {/* OPÇÃO PARA FLUXO */}
                 {onAddFlow && (
                   <DropdownMenuItem onClick={onAddFlow} className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 focus:text-white rounded-md border-none outline-none">
                     <Layers size={16} className="text-[#D35400]" />
@@ -177,12 +178,25 @@ export function KanbanHeader({
                     </div>
                   </DropdownMenuItem>
                 )}
+                
+                {/* OPÇÃO PARA ETAPA/ESTÁGIO */}
                 {onAddStage && (
                   <DropdownMenuItem onClick={onAddStage} className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 focus:text-white rounded-md border-none outline-none">
                     <Plus size={16} className="text-[#95A5A6]" />
                     <div className="flex flex-col">
                       <span className="text-sm font-bold">Nova Etapa</span>
                       <span className="text-[10px] text-[#95A5A6]">Adicionar coluna ao fluxo</span>
+                    </div>
+                  </DropdownMenuItem>
+                )}
+                
+                {/* 🔥 NOVA OPÇÃO PARA COLUNA - PARA KANBANS SIMPLES 🔥 */}
+                {onAddColumn && (
+                  <DropdownMenuItem onClick={onAddColumn} className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 focus:text-white rounded-md border-none outline-none">
+                    <Columns size={16} className="text-[#3498DB]" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold">Nova Coluna</span>
+                      <span className="text-[10px] text-[#95A5A6]">Adicionar coluna ao kanban</span>
                     </div>
                   </DropdownMenuItem>
                 )}
@@ -219,7 +233,7 @@ export function KanbanHeader({
         </div>
       </div>
 
-      {/* 🔥 MENU MOBILE IMPLEMENTADO 🔥 */}
+      {/* 🔥 MENU MOBILE - TAMBÉM ATUALIZADO COM OPÇÃO DE COLUNA 🔥 */}
       {isMobileMenuOpen && (
         <div className="md:hidden absolute top-full left-0 right-0 bg-[#2C3E50] border-t border-[#95A5A6]/20 shadow-xl p-4 flex flex-col gap-4 animate-in slide-in-from-top-5">
             {/* Ações Mobile */}
@@ -232,6 +246,12 @@ export function KanbanHeader({
                 {onAddStage && (
                     <Button onClick={() => { onAddStage(); setIsMobileMenuOpen(false); }} variant="outline" className="bg-transparent border-[#95A5A6]/30 text-[#F5F0E6] hover:bg-white/5 justify-start">
                         <Plus size={16} className="mr-2 text-[#95A5A6]" /> Nova Etapa
+                    </Button>
+                )}
+                {/* 🔥 OPÇÃO MOBILE PARA COLUNA 🔥 */}
+                {onAddColumn && (
+                    <Button onClick={() => { onAddColumn(); setIsMobileMenuOpen(false); }} variant="outline" className="bg-transparent border-[#95A5A6]/30 text-[#F5F0E6] hover:bg-white/5 justify-start">
+                        <Columns size={16} className="mr-2 text-[#3498DB]" /> Nova Coluna
                     </Button>
                 )}
             </div>
