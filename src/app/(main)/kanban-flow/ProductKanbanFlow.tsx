@@ -377,6 +377,7 @@ export default function ProductFlowKanban() {
   // ===========================================================================
   // 🔄 FUNÇÕES DE FILTRO POR COLUNA
   // ===========================================================================
+  // Quando ativar um filtro de coluna, desative o outro automaticamente
   const handleColumnFilterOverdue = (columnId: string) => {
     if (
       activeColumnFilter.columnId === columnId &&
@@ -384,7 +385,12 @@ export default function ProductFlowKanban() {
     ) {
       setActiveColumnFilter({ columnId: null, filterType: null });
     } else {
+      // Se for ativar overdue, desativa qualquer filtro upcoming ativo
       setActiveColumnFilter({ columnId, filterType: "overdue" });
+
+      // Opcional: Limpar filtros temporários
+      setTempFilterUpcoming(false);
+      setTempFilterOverdue(false);
     }
   };
 
@@ -395,45 +401,73 @@ export default function ProductFlowKanban() {
     ) {
       setActiveColumnFilter({ columnId: null, filterType: null });
     } else {
+      // Se for ativar upcoming, desativa qualquer filtro overdue ativo
       setActiveColumnFilter({ columnId, filterType: "upcoming" });
+
+      // Opcional: Limpar filtros temporários
+      setTempFilterUpcoming(false);
+      setTempFilterOverdue(false);
     }
   };
 
   const filterColumnItems = (stage: FlowStage) => {
-    if (
-      activeColumnFilter.columnId !== stage.id ||
-      !activeColumnFilter.filterType
-    ) {
-      return stage.items;
+  if (
+    activeColumnFilter.columnId !== stage.id ||
+    !activeColumnFilter.filterType
+  ) {
+    return stage.items;
+  }
+
+  const todayUTC = new Date();
+  const year = todayUTC.getUTCFullYear();
+  const month = String(todayUTC.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(todayUTC.getUTCDate()).padStart(2, "0");
+  const todayStr = `${year}-${month}-${day}`;
+
+  const filtered = stage.items.filter((item) => {
+    if (activeColumnFilter.filterType === "overdue") {
+      // 🔴 FILTRO DE ATRASADOS: dueDate < hoje
+      const dueDate = item.dueDate?.split("T")[0];
+      if (!dueDate) return false;
+      return dueDate < todayStr;
+    } 
+    else if (activeColumnFilter.filterType === "upcoming") {
+      // 🟡 FILTRO DE PRÓXIMOS A VENCER: 
+      // 1. productionStartedAt === hoje
+      // 2. NÃO pode estar atrasado (dueDate >= hoje OU dueDate não existe)
+      const startDate = item.productionStartedAt?.split("T")[0];
+      if (!startDate) return false;
+      
+      // Verifica se é pra iniciar hoje
+      const isStartingToday = startDate === todayStr;
+      if (!isStartingToday) return false;
+      
+      // Verifica se NÃO está atrasado (dueDate >= hoje ou dueDate não existe)
+      const dueDate = item.dueDate?.split("T")[0];
+      if (!dueDate) return true; // Se não tem dueDate, considera como válido
+      
+      // Só mostra se dueDate for >= hoje (não está atrasado)
+      return dueDate >= todayStr;
     }
 
-    const todayUTC = new Date();
-    const year = todayUTC.getUTCFullYear();
-    const month = String(todayUTC.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(todayUTC.getUTCDate()).padStart(2, "0");
-    const todayStr = `${year}-${month}-${day}`;
+    return true;
+  });
 
-    const filtered = stage.items.filter((item) => {
-      const dateToCompare =
-        activeColumnFilter.filterType === "upcoming"
-          ? item.productionStartedAt
-          : item.dueDate;
+  console.log(`[FILTER] Coluna: ${stage.name}`, {
+    filterType: activeColumnFilter.filterType,
+    totalItems: stage.items.length,
+    filteredItems: filtered.length,
+    items: filtered.map(i => ({
+      title: i.title,
+      productionStartedAt: i.productionStartedAt,
+      dueDate: i.dueDate,
+      isUpcoming: i.productionStartedAt?.split("T")[0] === todayStr,
+      isOverdue: i.dueDate ? i.dueDate.split("T")[0] < todayStr : false
+    }))
+  });
 
-      if (!dateToCompare) return false;
-
-      const itemDateStr = dateToCompare.split("T")[0];
-
-      if (activeColumnFilter.filterType === "overdue") {
-        return itemDateStr < todayStr;
-      } else if (activeColumnFilter.filterType === "upcoming") {
-        return itemDateStr === todayStr;
-      }
-
-      return true;
-    });
-
-    return filtered;
-  };
+  return filtered;
+};
 
   // ===========================================================================
   // 🔄 FUNÇÕES DE FILTRO GLOBAL
@@ -1604,12 +1638,12 @@ export default function ProductFlowKanban() {
                   {isOverdueActive ? (
                     <>
                       <AlertTriangle size={10} />
-                      Filtrando: Atrasados
+                      Filtrando: Atrasados (dueDate &lt; hoje)
                     </>
                   ) : (
                     <>
                       <Clock size={10} />
-                      Filtrando: Vencem hoje
+                      Filtrando: Iniciam hoje (productionStartedAt = hoje)
                     </>
                   )}
                   <button
