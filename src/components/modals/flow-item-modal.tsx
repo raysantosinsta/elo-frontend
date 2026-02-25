@@ -1016,18 +1016,6 @@ export function FlowItemModal({
                     "Salvar Edição"
                   )}
                 </Button>
-
-                {isEditing && onAdvance && initialData && (
-                  <Button
-                    type="button"
-                    onClick={() => onAdvance(initialData)}
-                    disabled={isLoading}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-all border-emerald-600"
-                  >
-                    <CheckCircle2 size={18} className="mr-2" />
-                    Concluir Etapa
-                  </Button>
-                )}
               </>
             )}
           </div>
