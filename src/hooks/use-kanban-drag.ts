@@ -16,7 +16,9 @@ interface UseKanbanDragProps<T extends BaseItem> {
   // O nome do campo que define a coluna (ex: 'columnId' para Tasks, 'stageId' para FlowItems)
   idField: keyof T;
   // A função assíncrona que chama a API
-  moveCallback: (itemId: string, newColumnId: string) => Promise<void>;
+  moveCallback: (itemId: string, newColumnId: string, responsibleId?: string) => Promise<void>;
+  // 🔥 NOVO: Callback para abrir modal quando necessário
+  onRequireResponsible?: (itemId: string, targetColumnId: string, targetColumnName: string) => void;
 }
 
 export function useKanbanDrag<T extends BaseItem>({
@@ -24,6 +26,7 @@ export function useKanbanDrag<T extends BaseItem>({
   setItems,
   idField,
   moveCallback,
+  onRequireResponsible,
 }: UseKanbanDragProps<T>) {
 
   /**
@@ -38,19 +41,38 @@ export function useKanbanDrag<T extends BaseItem>({
   /**
    * Função lógica para mover o item.
    * Não depende do evento 'DragEvent', facilitando o uso com o componente KanbanColumn.
-   * * @param itemId ID do item sendo movido
+   * @param itemId ID do item sendo movido
    * @param targetColumnId ID da coluna de destino
    */
-  const moveItem = async (itemId: string, targetColumnId: string) => {
+  const moveItem = async (itemId: string, targetColumnId: string, targetColumnName?: string) => {
     const item = items.find((i) => i.id === itemId);
     
     // Se o item não existe ou já está na coluna destino, ignora
     if (!item || item[idField] === targetColumnId) return;
 
-    // 1. Guardar estado anterior para rollback em caso de erro
+    // 🔥 VERIFICA SE A COLUNA DESTINO EXIGE SELEÇÃO DE RESPONSÁVEL
+    // Isso será implementado no componente principal, que tem acesso às colunas
+    if (onRequireResponsible) {
+      // Dispara o callback para abrir o modal
+      onRequireResponsible(itemId, targetColumnId, targetColumnName || "destino");
+      return; // Interrompe o movimento - o modal vai continuar depois
+    }
+
+    // Se não precisa de responsável, executa o movimento direto
+    await executeMove(itemId, targetColumnId);
+  };
+
+  /**
+   * 🔥 NOVA FUNÇÃO: Executa o movimento após seleção de responsável
+   */
+  const executeMove = async (itemId: string, targetColumnId: string, responsibleId?: string) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+
+    // Guarda estado anterior para rollback
     const previousItems = [...items];
 
-    // 2. Atualização Otimista (Optimistic Update) - Atualiza a UI imediatamente
+    // Atualização Otimista
     setItems((prev) =>
       prev.map((i) =>
         i.id === itemId ? { ...i, [idField]: targetColumnId } : i
@@ -58,11 +80,11 @@ export function useKanbanDrag<T extends BaseItem>({
     );
 
     try {
-      // 3. Chama a API
-      await moveCallback(itemId, targetColumnId);
+      // Chama a API com o responsável (se fornecido)
+      await moveCallback(itemId, targetColumnId, responsibleId);
     } catch (error) {
       console.error("Erro ao mover item:", error);
-      // 4. Rollback: Volta o estado anterior se der erro
+      // Rollback
       setItems(previousItems);
       toast.error("Erro ao mover o item. A ação foi desfeita.");
     }
@@ -71,5 +93,6 @@ export function useKanbanDrag<T extends BaseItem>({
   return {
     onDragStart,
     moveItem,
+    executeMove, // 🔥 Exporta para uso no componente principal
   };
 }

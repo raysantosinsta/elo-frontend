@@ -63,6 +63,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { CompleteStageModal } from "@/components/modals/complete-stage-modal";
 
 // --- CONSTANTES ---
 const PROFESSIONAL_ROLES = [
@@ -236,6 +237,112 @@ export default function ProductFlowKanban() {
   const [editFlowDeadline, setEditFlowDeadline] = useState("");
   const [isEditFlowModalOpen, setIsEditFlowModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  /// ===========================================================================
+  // 🎯 ESTADOS PARA MODAL DE CONCLUSÃO DE ETAPA
+  // ===========================================================================
+  const [isCompleteStageModalOpen, setIsCompleteStageModalOpen] =
+    useState(false);
+  const [completingItem, setCompletingItem] = useState<FlowItem | null>(null);
+  const [nextStageForCompletion, setNextStageForCompletion] = useState<{
+    id: string;
+    name: string;
+    allowedRole?: string | null;
+  } | null>(null);
+
+  // ===========================================================================
+  // 🎯 ESTADOS PARA MODAL DE ARRASTAR
+  // ===========================================================================
+  const [isDragModalOpen, setIsDragModalOpen] = useState(false);
+  const [dragItemId, setDragItemId] = useState<string | null>(null);
+  const [dragTargetStage, setDragTargetStage] = useState<{
+    id: string;
+    name: string;
+    allowedRole?: string | null;
+  } | null>(null);
+
+  // ===========================================================================
+  // 🎯 NOVA FUNÇÃO PARA ABRIR MODAL DE CONCLUSÃO (SUBSTITUI A CHAMADA)
+  // ===========================================================================
+  const handleOpenCompleteModal = (item: FlowItem) => {
+    // Encontrar a próxima etapa
+    const currentBoard = boards.find((b) => b.id === item.flowId);
+    if (!currentBoard) return;
+
+    const allStages = [...currentBoard.stages].sort(
+      (a, b) => a.order - b.order,
+    );
+    const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
+    const nextStage = allStages[currentIndex + 1];
+
+    // Se não há próxima etapa, executa o avanço normal (pode ser fim da esteira)
+    if (!nextStage) {
+      handleAdvanceItem(item);
+      return;
+    }
+
+    // Verifica se a próxima etapa EXIGE seleção de responsável
+    if (
+      nextStage.allowedRole &&
+      nextStage.allowedRole !== "all" &&
+      nextStage.allowedRole !== "null" &&
+      nextStage.allowedRole.trim() !== ""
+    ) {
+      // Abre modal para selecionar responsável
+      setCompletingItem(item);
+      setNextStageForCompletion({
+        id: nextStage.id,
+        name: nextStage.name,
+        allowedRole: nextStage.allowedRole,
+      });
+      setIsCompleteStageModalOpen(true);
+    } else {
+      // Se não exige responsável, usa o avanço normal
+      handleAdvanceItem(item);
+    }
+  };
+
+  // ===========================================================================
+  // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL (NOVO FLUXO)
+  // ===========================================================================
+  const handleCompleteWithResponsible = async (responsibleId: string) => {
+    if (!completingItem || !nextStageForCompletion) return;
+
+    toast.loading("Concluindo etapa...", { id: "complete-stage" });
+
+    try {
+      // Usa o endpoint de move em vez de advance, pois precisa passar o responsável
+      await api.put(`/flow/items/${completingItem.id}/move`, {
+        newStageId: nextStageForCompletion.id,
+        assignedToId: responsibleId,
+      });
+
+      toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
+        id: "complete-stage",
+      });
+
+      // Atualiza os boards
+      const hasFilters =
+        activeFilterStartDate ||
+        activeFilterEndDate ||
+        activeFilterOverdue ||
+        activeFilterUpcoming;
+
+      if (hasFilters) {
+        await fetchFilteredBoards();
+      } else {
+        await fetchSelectedBoards();
+      }
+
+      setIsCompleteStageModalOpen(false);
+      setCompletingItem(null);
+      setNextStageForCompletion(null);
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.message || "Erro ao concluir etapa.";
+      toast.error(errorMsg, { id: "complete-stage" });
+    }
+  };
 
   // ===========================================================================
   // 🛡️ LÓGICA DE PERMISSÃO
@@ -601,9 +708,8 @@ export default function ProductFlowKanban() {
   ]);
 
   // ===========================================================================
-  // 🎯 FUNÇÕES PRINCIPAIS
+  // 🎯 FUNÇÃO ORIGINAL DE AVANÇAR (MANTIDA FUNCIONANDO)
   // ===========================================================================
-
   const handleAdvanceItem = async (item: FlowItem) => {
     toast.loading("Avançando item...", { id: "advance-toast" });
 
@@ -622,6 +728,7 @@ export default function ProductFlowKanban() {
         activeFilterEndDate ||
         activeFilterOverdue ||
         activeFilterUpcoming;
+
       if (hasFilters) {
         await fetchFilteredBoards();
       } else {
@@ -912,25 +1019,76 @@ export default function ProductFlowKanban() {
     return Object.values(stageGroups).sort((a, b) => a.order - b.order);
   }, [boards]);
 
-  const { moveItem, onDragStart } = useKanbanDrag({
+  const { moveItem, onDragStart, executeMove } = useKanbanDrag({
     items: unifiedStages.flatMap((s) => s.items),
     setItems: () => {},
     idField: "stageId",
-    moveCallback: async (itemId, newStageId) => {
-      await api.put(`/flow/items/${itemId}/move`, { newStageId });
+    moveCallback: async (itemId, newStageId, responsibleId) => {
+      await api.put(`/flow/items/${itemId}/move`, {
+        newStageId,
+        assignedToId: responsibleId,
+      });
 
       const hasFilters =
         activeFilterStartDate ||
         activeFilterEndDate ||
         activeFilterOverdue ||
         activeFilterUpcoming;
+
       if (hasFilters) {
         await fetchFilteredBoards();
       } else {
         await fetchSelectedBoards();
       }
     },
+    onRequireResponsible: (itemId, targetStageId, targetStageName) => {
+      // Encontra a coluna de destino
+      const targetStage = unifiedStages.find((s) => s.id === targetStageId);
+
+      if (
+        targetStage?.allowedRole &&
+        targetStage.allowedRole !== "all" &&
+        targetStage.allowedRole !== "null" &&
+        targetStage.allowedRole.trim() !== ""
+      ) {
+        // Abre o modal para arrastar
+        setDragItemId(itemId);
+        setDragTargetStage({
+          id: targetStage.id,
+          name: targetStage.name,
+          allowedRole: targetStage.allowedRole,
+        });
+        setIsDragModalOpen(true);
+      } else {
+        // Move direto
+        executeMove(itemId, targetStageId);
+      }
+    },
   });
+
+  // ===========================================================================
+  // 🎯 FUNÇÃO PARA CONFIRMAR MOVIMENTO COM RESPONSÁVEL
+  // ===========================================================================
+  const handleDragWithResponsible = async (responsibleId: string) => {
+    if (!dragItemId || !dragTargetStage) return;
+
+    toast.loading("Movendo item...", { id: "drag-move" });
+
+    try {
+      await executeMove(dragItemId, dragTargetStage.id, responsibleId);
+
+      toast.success(`Item movido para "${dragTargetStage.name}"!`, {
+        id: "drag-move",
+      });
+
+      setIsDragModalOpen(false);
+      setDragItemId(null);
+      setDragTargetStage(null);
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || "Erro ao mover item.";
+      toast.error(errorMsg, { id: "drag-move" });
+    }
+  };
 
   const toggleFlow = (id: string) =>
     setSelectedFlowIds((prev) =>
@@ -1418,7 +1576,9 @@ export default function ProductFlowKanban() {
                       : undefined
                   }
                   onComplete={
-                    hasPermission ? () => handleAdvanceItem(item) : undefined
+                    hasPermission
+                      ? () => handleOpenCompleteModal(item)
+                      : undefined
                   }
                   footer={
                     <div className="flex justify-between items-center w-full">
@@ -1805,6 +1965,45 @@ export default function ProductFlowKanban() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal para Concluir Etapa (botão) */}
+      <CompleteStageModal
+        isOpen={isCompleteStageModalOpen}
+        onClose={() => {
+          setIsCompleteStageModalOpen(false);
+          setCompletingItem(null);
+          setNextStageForCompletion(null);
+        }}
+        onConfirm={handleCompleteWithResponsible}
+        itemTitle={completingItem?.title || ""}
+        currentStage={
+          unifiedStages.find((s) => s.id === completingItem?.stageId)?.name ||
+          ""
+        }
+        nextStage={nextStageForCompletion}
+        isLoading={isSubmitting}
+      />
+
+      {/* Modal para Arrastar */}
+      <CompleteStageModal
+        isOpen={isDragModalOpen}
+        onClose={() => {
+          setIsDragModalOpen(false);
+          setDragItemId(null);
+          setDragTargetStage(null);
+        }}
+        onConfirm={handleDragWithResponsible}
+        itemTitle={
+          unifiedStages.flatMap((s) => s.items).find((i) => i.id === dragItemId)
+            ?.title || ""
+        }
+        currentStage={
+          unifiedStages.find((s) => s.items.some((i) => i.id === dragItemId))
+            ?.name || ""
+        }
+        nextStage={dragTargetStage}
+        isLoading={isSubmitting}
+      />
     </KanbanLayout>
   );
 }
