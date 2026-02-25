@@ -303,19 +303,29 @@ export default function ProductFlowKanban() {
   };
 
   // ===========================================================================
-  // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL (NOVO FLUXO)
+  // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL (AGORA ACEITA TIPO)
   // ===========================================================================
-  const handleCompleteWithResponsible = async (responsibleId: string) => {
+  const handleCompleteWithResponsible = async (
+    responsibleId: string,
+    type: "user" | "supplier",
+  ) => {
     if (!completingItem || !nextStageForCompletion) return;
 
     toast.loading("Concluindo etapa...", { id: "complete-stage" });
 
     try {
-      // Usa o endpoint de move em vez de advance, pois precisa passar o responsável
-      await api.put(`/flow/items/${completingItem.id}/move`, {
+      // Prepara o payload baseado no tipo
+      const payload: any = {
         newStageId: nextStageForCompletion.id,
-        assignedToId: responsibleId,
-      });
+      };
+
+      if (type === "user") {
+        payload.assignedToId = responsibleId;
+      } else {
+        payload.supplierId = responsibleId;
+      }
+
+      await api.put(`/flow/items/${completingItem.id}/move`, payload);
 
       toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
         id: "complete-stage",
@@ -1019,15 +1029,30 @@ export default function ProductFlowKanban() {
     return Object.values(stageGroups).sort((a, b) => a.order - b.order);
   }, [boards]);
 
+  // ===========================================================================
+  // 🔥 HOOK DE DRAG - VERIFIQUE SE ESTÁ CORRETO
+  // ===========================================================================
   const { moveItem, onDragStart, executeMove } = useKanbanDrag({
     items: unifiedStages.flatMap((s) => s.items),
-    setItems: () => {},
+    setItems: () => {}, // Isso pode ser um problema - você precisa de uma função real
     idField: "stageId",
-    moveCallback: async (itemId, newStageId, responsibleId) => {
-      await api.put(`/flow/items/${itemId}/move`, {
+    moveCallback: async (itemId, newStageId, responsibleId, type) => {
+      console.log("[moveCallback] Chamado", {
+        itemId,
         newStageId,
-        assignedToId: responsibleId,
+        responsibleId,
+        type,
       });
+
+      const payload: any = { newStageId };
+
+      if (type === "supplier") {
+        payload.supplierId = responsibleId;
+      } else if (type === "user") {
+        payload.assignedToId = responsibleId;
+      }
+
+      await api.put(`/flow/items/${itemId}/move`, payload);
 
       const hasFilters =
         activeFilterStartDate ||
@@ -1042,16 +1067,48 @@ export default function ProductFlowKanban() {
       }
     },
     onRequireResponsible: (itemId, targetStageId, targetStageName) => {
+      console.log("[onRequireResponsible] Chamado", {
+        itemId,
+        targetStageId,
+        targetStageName,
+      });
+
       // Encontra a coluna de destino
       const targetStage = unifiedStages.find((s) => s.id === targetStageId);
 
+      if (!targetStage) {
+        console.error("Coluna destino não encontrada:", targetStageId);
+        return;
+      }
+
+      console.log("[onRequireResponsible] Coluna encontrada:", targetStage);
+
+      // 🔥 VERIFICA SE É OFICINA (case insensitive)
+      const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
+
+      // Se for oficina, sempre abre modal (precisa selecionar oficina)
+      if (isOficina) {
+        console.log("[onRequireResponsible] É oficina, abrindo modal");
+        setDragItemId(itemId);
+        setDragTargetStage({
+          id: targetStage.id,
+          name: targetStage.name,
+          allowedRole: targetStage.allowedRole,
+        });
+        setIsDragModalOpen(true);
+        return;
+      }
+
+      // Se não é oficina, verifica se tem cargo específico
       if (
         targetStage?.allowedRole &&
         targetStage.allowedRole !== "all" &&
         targetStage.allowedRole !== "null" &&
         targetStage.allowedRole.trim() !== ""
       ) {
-        // Abre o modal para arrastar
+        console.log(
+          "[onRequireResponsible] Tem cargo específico, abrindo modal",
+        );
         setDragItemId(itemId);
         setDragTargetStage({
           id: targetStage.id,
@@ -1061,21 +1118,40 @@ export default function ProductFlowKanban() {
         setIsDragModalOpen(true);
       } else {
         // Move direto
+        console.log(
+          "[onRequireResponsible] Sem necessidade de responsável, movendo direto",
+        );
         executeMove(itemId, targetStageId);
       }
     },
   });
 
   // ===========================================================================
-  // 🎯 FUNÇÃO PARA CONFIRMAR MOVIMENTO COM RESPONSÁVEL
+  // 🎯 FUNÇÃO PARA ARRASTAR COM RESPONSÁVEL
   // ===========================================================================
-  const handleDragWithResponsible = async (responsibleId: string) => {
-    if (!dragItemId || !dragTargetStage) return;
+  const handleDragWithResponsible = async (
+    responsibleId: string,
+    type: "user" | "supplier",
+  ) => {
+    if (!dragItemId || !dragTargetStage) {
+      console.error(
+        "handleDragWithResponsible: dragItemId ou dragTargetStage é null",
+        { dragItemId, dragTargetStage },
+      );
+      return;
+    }
+
+    console.log("[handleDragWithResponsible] Chamado", {
+      dragItemId,
+      dragTargetStage,
+      responsibleId,
+      type,
+    });
 
     toast.loading("Movendo item...", { id: "drag-move" });
 
     try {
-      await executeMove(dragItemId, dragTargetStage.id, responsibleId);
+      await executeMove(dragItemId, dragTargetStage.id, responsibleId, type);
 
       toast.success(`Item movido para "${dragTargetStage.name}"!`, {
         id: "drag-move",
@@ -1085,6 +1161,7 @@ export default function ProductFlowKanban() {
       setDragItemId(null);
       setDragTargetStage(null);
     } catch (error: any) {
+      console.error("[handleDragWithResponsible] Erro:", error);
       const errorMsg = error.response?.data?.message || "Erro ao mover item.";
       toast.error(errorMsg, { id: "drag-move" });
     }
@@ -1473,7 +1550,14 @@ export default function ProductFlowKanban() {
               title={stage.name}
               count={filteredItems.length}
               color={stage.color}
-              onDropItem={moveItem}
+              onDropItem={(itemId) => {
+                console.log("[KanbanColumn] onDropItem chamado", {
+                  itemId,
+                  stageId: stage.id,
+                  stageName: stage.name,
+                });
+                moveItem(itemId, stage.id, stage.name);
+              }}
               onAddItem={
                 hasPermission
                   ? () => {
@@ -1551,7 +1635,15 @@ export default function ProductFlowKanban() {
                   priorityColor={item.flowColor}
                   coverImage={item.images[0]?.url}
                   onDragStart={
-                    hasPermission ? (e) => onDragStart(e, item.id) : undefined
+                    hasPermission
+                      ? (e) => {
+                          console.log(
+                            "[KanbanCard] onDragStart chamado para item:",
+                            item.id,
+                          );
+                          onDragStart(e, item.id);
+                        }
+                      : undefined
                   }
                   onDoubleClick={() => {
                     setEditingItem(item);
