@@ -1004,11 +1004,21 @@ export default function ProductFlowKanban() {
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="bg-white/10 text-white border-white/20 h-9 text-xs"
+                    className="bg-white/10 text-white border-white/20 h-9 text-xs max-w-[250px]"
                   >
-                    <Layers size={16} className="mr-2" /> Fluxos Ativos (
-                    {selectedFlowIds.length}){" "}
-                    <ChevronDown size={14} className="ml-2 opacity-50" />
+                    <Layers size={16} className="mr-2 flex-shrink-0" />
+                    <span className="truncate">
+                      {selectedFlowIds.length === 0
+                        ? "Nenhum fluxo selecionado"
+                        : selectedFlowIds.length === 1
+                          ? flows.find((f) => f.id === selectedFlowIds[0])
+                              ?.name || "Fluxo"
+                          : `${selectedFlowIds.length} fluxos adicionados`}
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      className="ml-2 opacity-50 flex-shrink-0"
+                    />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent
@@ -1771,14 +1781,18 @@ export default function ProductFlowKanban() {
                   </span>
                   <span className="text-xs text-slate-400">•</span>
                   <span className="text-xs text-slate-600">
-                    Prazo: {new Date(editFlowDeadline).toLocaleDateString("pt-BR")}
+                    Prazo:{" "}
+                    {new Date(editFlowDeadline).toLocaleDateString("pt-BR")}
                   </span>
                 </div>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditFlowModalOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditFlowModalOpen(false)}
+            >
               Cancelar
             </Button>
             <Button
