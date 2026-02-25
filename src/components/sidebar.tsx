@@ -26,22 +26,24 @@ import {
   Factory,
   Home,
   KanbanSquare,
+  LayoutDashboard,
   MessageSquare,
+  Shield, // 👈 IMPORT ADICIONADO
   Users
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 // --- 1. DEFINIÇÃO DA ESTRUTURA DO MENU ---
 const menuItems = [
   { 
     title: "Dashboard", 
-    icon: LayoutDashboard, // Usei LayoutDashboard para o ícone de Dashboard
+    icon: LayoutDashboard,
     subItems: [
       { title: "Company", href: "/" },
       { title: "Usuario", href: "/dashboard-user" },
-       { title: "Coleção", href: "/colecao" }, // 👈 NOVO ITEM ADICIONADO AQUI
+      { title: "Coleção", href: "/colecao" },
     ]
   },
   { 
@@ -67,9 +69,9 @@ const menuItems = [
   { title: "Rotas", href: "/route-planner", icon: CarFront },
   { title: "Fornecedores", href: "/suppliers", icon: Factory },
   { title: "Usuários", href: "/users", icon: Users },
+  // 👇 NOVO ITEM - AUDIT
+  { title: "Audit", href: "/audit", icon: Shield },
 ];
-
-import { LayoutDashboard } from "lucide-react";
 
 function SidebarContent({
   collapsed,
@@ -81,42 +83,62 @@ function SidebarContent({
   const pathname = usePathname();
   const { user } = useAuth();
   
-  // 1. Mantenha apenas o estado para cliques manuais
+  // LOG 1: Verificar o usuário
+  console.log("🔍 [Sidebar] Usuário atual:", user);
+  console.log("🔍 [Sidebar] Role do usuário:", user?.role);
+  
   const [userToggledMenus, setUserToggledMenus] = useState<Record<string, boolean>>({});
 
   const toggleMenu = (title: string) => {
     setUserToggledMenus((prev) => ({ ...prev, [title]: !prev[title] }));
   };
 
-  // --- 2. LÓGICA DE PERMISSÕES ---
-  const filteredMenuItems = useMemo(() => {
-    if (!user) return [];
+  // LOG 2: Verificar todos os itens do menu antes do filtro
+  useEffect(() => {
+    console.log("📋 [Sidebar] Todos os itens do menu:", menuItems.map(item => item.title));
+  }, []);
 
-    return menuItems.map(item => {
-        if (!item.subItems) {
-            let isAllowed = true;
-            if (user.role === "MASTER") {
-                const allowedForMaster = ["/empresas", "/users", "/"];
-                isAllowed = allowedForMaster.includes(item.href || "");
-            } else if (user.role === "ADMIN") {
-                isAllowed = item.href !== "/empresas";
-            } else if (user.role === "EMPLOYER") {
-                isAllowed = item.href !== "/empresas" && item.href !== "/users";
-            }
-            return isAllowed ? item : null;
+  // --- 2. LÓGICA DE PERMISSÕES SIMPLIFICADA ---
+  const filteredMenuItems = useMemo(() => {
+    if (!user) {
+      console.log("⚠️ [Sidebar] Usuário não encontrado");
+      return [];
+    }
+
+    console.log("🎯 [Sidebar] Filtrando itens para role:", user.role);
+
+    const filtered = menuItems.filter(item => {
+      // LOG 3: Verificar cada item
+      console.log(`📌 Verificando item: ${item.title}`);
+      
+      // Se for ADMIN ou MASTER, mostra todos os itens
+      if (user.role === "ADMIN" || user.role === "MASTER") {
+        console.log(`✅ Item ${item.title} liberado para ${user.role}`);
+        return true;
+      }
+      
+      // Para EMPLOYER, remove alguns itens
+      if (user.role === "EMPLOYER") {
+        if (item.href === "/empresas" || item.href === "/users") {
+          console.log(`❌ Item ${item.title} removido para EMPLOYER`);
+          return false;
         }
-        if (user.role === "MASTER") return null; 
-        return item; 
-    }).filter(Boolean) as typeof menuItems;
+      }
+      
+      console.log(`✅ Item ${item.title} mantido`);
+      return true;
+    });
+
+    console.log("📊 [Sidebar] Itens após filtro:", filtered.map(item => item.title));
+    return filtered;
   }, [user]);
 
   const { notifications, unreadCount, loading, refresh, markAsRead, markAllAsRead } = useNotifications();
 
   return (
     <div className={cn("flex flex-col h-full bg-[#2C3E50] text-white transition-all duration-300", collapsed ? "w-20" : "w-full")}>
-      {/* Header Sidebar (Omitido por brevidade, manter igual ao seu) */}
+      {/* Header Sidebar */}
       <div className={cn("flex items-center justify-between p-5 border-b border-white/10 h-20", collapsed && "justify-center px-2")}>
-         {/* ... seu código de header e notificações ... */}
          {!collapsed && (
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-[#D35400] rounded-xl flex items-center justify-center shadow-md">
@@ -125,7 +147,6 @@ function SidebarContent({
             <span className="font-bold text-xl tracking-tight">Highlander</span>
           </div>
         )}
-        {/* Adicionei o botão de notificações de volta aqui */}
         <div className={cn("flex items-center", collapsed ? "justify-center" : "")}>
           <Popover>
             <PopoverTrigger asChild>
@@ -138,7 +159,6 @@ function SidebarContent({
                 )}
               </Button>
             </PopoverTrigger>
-            {/* PopoverContent igual */}
           </Popover>
         </div>
       </div>
@@ -151,10 +171,6 @@ function SidebarContent({
             if (item.subItems) {
                 const isGroupActive = item.subItems.some(sub => pathname === sub.href);
                 
-                // --- A MÁGICA ESTÁ AQUI: DERIVAÇÃO DE ESTADO ---
-                // O menu está aberto se:
-                // 1. O usuário clicou para abrir (userToggledMenus[item.title] === true)
-                // 2. OU a URL atual está dentro deste grupo e o usuário ainda NÃO fechou manualmente
                 const isOpen = userToggledMenus[item.title] !== undefined 
                     ? userToggledMenus[item.title] 
                     : isGroupActive;
@@ -250,12 +266,10 @@ function SidebarContent({
           })}
         </div>
       </ScrollArea>
-      {/* Footer Profile omitido, manter igual */}
     </div>
   );
 }
 
-// Sidebar Wrapper principal (Mantém igual ao seu)
 export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { isOpen, close } = useSidebar();
