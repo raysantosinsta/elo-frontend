@@ -29,7 +29,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Shield, // 👈 IMPORT ADICIONADO
-  Users
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -37,22 +37,22 @@ import { useMemo, useState, useEffect } from "react";
 
 // --- 1. DEFINIÇÃO DA ESTRUTURA DO MENU ---
 const menuItems = [
-  { 
-    title: "Dashboard", 
+  {
+    title: "Dashboard",
     icon: LayoutDashboard,
     subItems: [
       { title: "Company", href: "/" },
       { title: "Usuario", href: "/dashboard-user" },
       { title: "Coleção", href: "/colecao" },
-    ]
+    ],
   },
-  { 
-    title: "Kanban", 
+  {
+    title: "Kanban",
     icon: KanbanSquare,
     subItems: [
       { title: "Profissional", href: "/Kanban" },
       { title: "Produto", href: "/kanban-flow" },
-    ]
+    ],
   },
   { title: "Chats", href: "/chats", icon: MessageSquare },
   { title: "Calendário", href: "/agenda", icon: Calendar },
@@ -60,10 +60,14 @@ const menuItems = [
     title: "Relatórios",
     icon: BarChart3,
     subItems: [
-      { title: "Profissionais", href: "/professionals/report", icon: BarChart3 },
+      {
+        title: "Profissionais",
+        href: "/professionals/report",
+        icon: BarChart3,
+      },
       { title: "Tarefas", href: "/tasks/report", icon: BarChart2 },
       { title: "Produtos", href: "/product/report", icon: BarChart },
-    ]
+    ],
   },
   { title: "Empresas", href: "/empresas", icon: Home },
   { title: "Rotas", href: "/route-planner", icon: CarFront },
@@ -82,12 +86,14 @@ function SidebarContent({
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  
+
   // LOG 1: Verificar o usuário
   console.log("🔍 [Sidebar] Usuário atual:", user);
   console.log("🔍 [Sidebar] Role do usuário:", user?.role);
-  
-  const [userToggledMenus, setUserToggledMenus] = useState<Record<string, boolean>>({});
+
+  const [userToggledMenus, setUserToggledMenus] = useState<
+    Record<string, boolean>
+  >({});
 
   const toggleMenu = (title: string) => {
     setUserToggledMenus((prev) => ({ ...prev, [title]: !prev[title] }));
@@ -95,7 +101,10 @@ function SidebarContent({
 
   // LOG 2: Verificar todos os itens do menu antes do filtro
   useEffect(() => {
-    console.log("📋 [Sidebar] Todos os itens do menu:", menuItems.map(item => item.title));
+    console.log(
+      "📋 [Sidebar] Todos os itens do menu:",
+      menuItems.map((item) => item.title),
+    );
   }, []);
 
   // --- 2. LÓGICA DE PERMISSÕES SIMPLIFICADA ---
@@ -107,16 +116,16 @@ function SidebarContent({
 
     console.log("🎯 [Sidebar] Filtrando itens para role:", user.role);
 
-    const filtered = menuItems.filter(item => {
+    const filtered = menuItems.filter((item) => {
       // LOG 3: Verificar cada item
       console.log(`📌 Verificando item: ${item.title}`);
-      
+
       // Se for ADMIN ou MASTER, mostra todos os itens
       if (user.role === "ADMIN" || user.role === "MASTER") {
         console.log(`✅ Item ${item.title} liberado para ${user.role}`);
         return true;
       }
-      
+
       // Para EMPLOYER, remove alguns itens
       if (user.role === "EMPLOYER") {
         if (item.href === "/empresas" || item.href === "/users") {
@@ -124,22 +133,42 @@ function SidebarContent({
           return false;
         }
       }
-      
+
       console.log(`✅ Item ${item.title} mantido`);
       return true;
     });
 
-    console.log("📊 [Sidebar] Itens após filtro:", filtered.map(item => item.title));
+    console.log(
+      "📊 [Sidebar] Itens após filtro:",
+      filtered.map((item) => item.title),
+    );
     return filtered;
   }, [user]);
 
-  const { notifications, unreadCount, loading, refresh, markAsRead, markAllAsRead } = useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    refresh,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications();
 
   return (
-    <div className={cn("flex flex-col h-full bg-[#2C3E50] text-white transition-all duration-300", collapsed ? "w-20" : "w-full")}>
+    <div
+      className={cn(
+        "flex flex-col h-full bg-[#2C3E50] text-white transition-all duration-300",
+        collapsed ? "w-20" : "w-full",
+      )}
+    >
       {/* Header Sidebar */}
-      <div className={cn("flex items-center justify-between p-5 border-b border-white/10 h-20", collapsed && "justify-center px-2")}>
-         {!collapsed && (
+      <div
+        className={cn(
+          "flex items-center justify-between p-5 border-b border-white/10 h-20",
+          collapsed && "justify-center px-2",
+        )}
+      >
+        {!collapsed && (
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-[#D35400] rounded-xl flex items-center justify-center shadow-md">
               <Home className="w-5 h-5 text-white" />
@@ -147,10 +176,16 @@ function SidebarContent({
             <span className="font-bold text-xl tracking-tight">Highlander</span>
           </div>
         )}
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "")}>
+        <div
+          className={cn("flex items-center", collapsed ? "justify-center" : "")}
+        >
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 relative text-gray-300 hover:bg-white/10 hover:text-white">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 relative text-gray-300 hover:bg-white/10 hover:text-white"
+              >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#D35400] text-[10px] font-bold text-white ring-2 ring-[#2C3E50]">
@@ -167,96 +202,143 @@ function SidebarContent({
         <div className="space-y-1.5">
           {filteredMenuItems.map((item) => {
             const Icon = item.icon;
-            
+
             if (item.subItems) {
-                const isGroupActive = item.subItems.some(sub => pathname === sub.href);
-                
-                const isOpen = userToggledMenus[item.title] !== undefined 
-                    ? userToggledMenus[item.title] 
-                    : isGroupActive;
+              const isGroupActive = item.subItems.some(
+                (sub) => pathname === sub.href,
+              );
 
-                if (collapsed) {
-                    return (
-                        <Popover key={item.title}>
-                            <PopoverTrigger asChild>
-                                <div className={cn(
-                                    "flex items-center justify-center rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 cursor-pointer",
-                                    isGroupActive ? "bg-[#D35400] text-white" : "text-gray-300 hover:bg-white/10 hover:text-white"
-                                )}>
-                                    <Icon className="w-5 h-5" />
-                                </div>
-                            </PopoverTrigger>
-                            <PopoverContent side="right" className="w-56 p-2 bg-[#2C3E50] border-white/10 text-white ml-2">
-                                <p className="text-xs font-bold text-gray-400 px-2 py-1 mb-1">{item.title}</p>
-                                {item.subItems.map((sub) => (
-                                    <Link key={sub.href} href={sub.href} onClick={onItemClick}>
-                                        <div className={cn(
-                                            "rounded-md px-2 py-2 text-sm hover:bg-white/10 transition-colors",
-                                            pathname === sub.href && "bg-white/10 text-[#D35400]"
-                                        )}>
-                                            {sub.title}
-                                        </div>
-                                    </Link>
-                                ))}
-                            </PopoverContent>
-                        </Popover>
-                    )
-                }
+              const isOpen =
+                userToggledMenus[item.title] !== undefined
+                  ? userToggledMenus[item.title]
+                  : isGroupActive;
 
+              if (collapsed) {
                 return (
-                    <div key={item.title} className="space-y-1">
-                        <button
-                            onClick={() => toggleMenu(item.title)}
-                            className={cn(
-                                "w-full flex items-center justify-between rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 group hover:bg-white/10 hover:text-white",
-                                isGroupActive ? "text-white" : "text-gray-300"
-                            )}
-                        >
-                            <div className="flex items-center">
-                                <Icon className={cn("w-5 h-5 mr-3 transition-transform", isGroupActive ? "text-[#D35400]" : "text-gray-400")} />
-                                <span>{item.title}</span>
-                            </div>
-                            <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isOpen ? "transform rotate-180" : "")} />
-                        </button>
-
-                        {isOpen && (
-                            <div className="ml-4 pl-4 border-l border-white/10 space-y-1 animate-in slide-in-from-top-2 duration-200">
-                                {item.subItems.map((sub) => {
-                                    const isSubActive = pathname === sub.href;
-                                    return (
-                                        <Link key={sub.href} href={sub.href} onClick={onItemClick}>
-                                            <div className={cn(
-                                                "flex items-center rounded-lg px-3 py-2 text-sm transition-all",
-                                                isSubActive 
-                                                    ? "text-[#D35400] font-bold bg-white/5" 
-                                                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                                            )}>
-                                                <span>{sub.title}</span>
-                                            </div>
-                                        </Link>
-                                    )
-                                })}
-                            </div>
+                  <Popover key={item.title}>
+                    <PopoverTrigger asChild>
+                      <div
+                        className={cn(
+                          "flex items-center justify-center rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 cursor-pointer",
+                          isGroupActive
+                            ? "bg-[#D35400] text-white"
+                            : "text-gray-300 hover:bg-white/10 hover:text-white",
                         )}
-                    </div>
+                      >
+                        <Icon className="w-5 h-5" />
+                      </div>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      side="right"
+                      className="w-56 p-2 bg-[#2C3E50] border-white/10 text-white ml-2"
+                    >
+                      <p className="text-xs font-bold text-gray-400 px-2 py-1 mb-1">
+                        {item.title}
+                      </p>
+                      {item.subItems.map((sub) => (
+                        <Link
+                          key={sub.href}
+                          href={sub.href}
+                          onClick={onItemClick}
+                        >
+                          <div
+                            className={cn(
+                              "rounded-md px-2 py-2 text-sm hover:bg-white/10 transition-colors",
+                              pathname === sub.href &&
+                                "bg-white/10 text-[#D35400]",
+                            )}
+                          >
+                            {sub.title}
+                          </div>
+                        </Link>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
                 );
+              }
+
+              return (
+                <div key={item.title} className="space-y-1">
+                  <button
+                    onClick={() => toggleMenu(item.title)}
+                    className={cn(
+                      "w-full flex items-center justify-between rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 group hover:bg-white/10 hover:text-white",
+                      isGroupActive ? "text-white" : "text-gray-300",
+                    )}
+                  >
+                    <div className="flex items-center">
+                      <Icon
+                        className={cn(
+                          "w-5 h-5 mr-3 transition-transform",
+                          isGroupActive ? "text-[#D35400]" : "text-gray-400",
+                        )}
+                      />
+                      <span>{item.title}</span>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        "w-4 h-4 transition-transform duration-200",
+                        isOpen ? "transform rotate-180" : "",
+                      )}
+                    />
+                  </button>
+
+                  {isOpen && (
+                    <div className="ml-4 pl-4 border-l border-white/10 space-y-1 animate-in slide-in-from-top-2 duration-200">
+                      {item.subItems.map((sub) => {
+                        const isSubActive = pathname === sub.href;
+                        return (
+                          <Link
+                            key={sub.href}
+                            href={sub.href}
+                            onClick={onItemClick}
+                          >
+                            <div
+                              className={cn(
+                                "flex items-center rounded-lg px-3 py-2 text-sm transition-all",
+                                isSubActive
+                                  ? "text-[#D35400] font-bold bg-white/5"
+                                  : "text-gray-400 hover:text-white hover:bg-white/5",
+                              )}
+                            >
+                              <span>{sub.title}</span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
             }
 
-            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`));
-            
+            const isActive =
+              pathname === item.href ||
+              (item.href !== "/" && pathname.startsWith(`${item.href}/`));
+
             return (
-              <Link key={item.title} href={item.href || "#"} onClick={onItemClick}>
-                <div className={cn(
+              <Link
+                key={item.title}
+                href={item.href || "#"}
+                onClick={onItemClick}
+              >
+                <div
+                  className={cn(
                     "flex items-center rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 group relative overflow-hidden",
-                    isActive ? "bg-[#D35400] text-white shadow-md" : "text-gray-300 hover:bg-white/10 hover:text-white",
-                    collapsed ? "justify-center" : "justify-start"
+                    isActive
+                      ? "bg-[#D35400] text-white shadow-md"
+                      : "text-gray-300 hover:bg-white/10 hover:text-white",
+                    collapsed ? "justify-center" : "justify-start",
                   )}
                   title={collapsed ? item.title : undefined}
                 >
-                  <Icon className={cn(
+                  <Icon
+                    className={cn(
                       "w-5 h-5 transition-transform duration-200 group-hover:scale-110",
                       collapsed ? "mr-0" : "mr-3",
-                      isActive ? "text-white" : "text-gray-400 group-hover:text-white"
+                      isActive
+                        ? "text-white"
+                        : "text-gray-400 group-hover:text-white",
                     )}
                   />
                   {!collapsed && <span className="truncate">{item.title}</span>}
@@ -276,16 +358,34 @@ export function Sidebar({ className }: SidebarProps) {
 
   return (
     <>
-      <div className={cn("hidden md:flex flex-col h-full border-r border-white/10 transition-all duration-300 bg-[#2C3E50]", collapsed ? "w-20" : "w-72", className)}>
+      <div
+        className={cn(
+          "hidden md:flex flex-col h-full border-r border-white/10 transition-all duration-300 bg-[#2C3E50]",
+          collapsed ? "w-20" : "w-72",
+          className,
+        )}
+      >
         <SidebarContent collapsed={collapsed} />
         <div className="bg-[#2C3E50] p-2 flex justify-center border-t border-white/10">
-          <Button variant="ghost" size="sm" onClick={() => setCollapsed(!collapsed)} className="text-gray-400 hover:text-white hover:bg-white/10 w-full">
-            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCollapsed(!collapsed)}
+            className="text-gray-400 hover:text-white hover:bg-white/10 w-full"
+          >
+            {collapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
           </Button>
         </div>
       </div>
       <Sheet open={isOpen} onOpenChange={close}>
-        <SheetContent side="left" className="p-0 border-none w-72 bg-[#2C3E50] text-white">
+        <SheetContent
+          side="left"
+          className="p-0 border-none w-72 bg-[#2C3E50] text-white"
+        >
           <SidebarContent collapsed={false} onItemClick={close} />
         </SheetContent>
       </Sheet>
