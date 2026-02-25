@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, User } from "lucide-react";
+import { Loader2, User, Building2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { api } from "@/services/api";
 import { toast } from "sonner";
@@ -23,7 +23,7 @@ import { toast } from "sonner";
 interface CompleteStageModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (responsibleId: string) => Promise<void>;
+  onConfirm: (responsibleId: string, type: 'user' | 'supplier') => Promise<void>;
   itemTitle: string;
   currentStage: string;
   nextStage: {
@@ -41,6 +41,14 @@ interface UserProfile {
   email?: string;
 }
 
+interface Supplier {
+  id: string;
+  name: string;
+  category?: string;
+  city?: string;
+  state?: string;
+}
+
 export function CompleteStageModal({
   isOpen,
   onClose,
@@ -51,17 +59,29 @@ export function CompleteStageModal({
   isLoading = false,
 }: CompleteStageModalProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
   const [availableUsers, setAvailableUsers] = useState<UserProfile[]>([]);
+  const [availableSuppliers, setAvailableSuppliers] = useState<Supplier[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [confirming, setConfirming] = useState(false);
+
+  // 🔥 Verifica se a coluna destino é OFICINA (case insensitive)
+  const isOficina = nextStage?.name?.trim().toLowerCase() === 'oficina';
 
   // Reset estado quando o modal abre
   useEffect(() => {
     if (isOpen && nextStage) {
       setSelectedUserId("");
-      fetchUsersByRole();
+      setSelectedSupplierId("");
+      
+      if (isOficina) {
+        fetchSuppliers();
+      } else {
+        fetchUsersByRole();
+      }
     }
-  }, [isOpen, nextStage]);
+  }, [isOpen, nextStage, isOficina]);
 
   const fetchUsersByRole = async () => {
     // Se não tem cargo específico ou é "all", busca todos os usuários ativos da empresa
@@ -72,9 +92,7 @@ export function CompleteStageModal({
       
       setLoadingUsers(true);
       try {
-        // Usa o endpoint company para buscar todos da empresa atual
         const response = await api.get("/users/company");
-        // Filtra apenas ativos (já vem do backend, mas garantimos)
         setAvailableUsers(response.data.filter((u: any) => u.status === "ACTIVE"));
       } catch (error) {
         toast.error("Erro ao carregar usuários");
@@ -85,7 +103,7 @@ export function CompleteStageModal({
       return;
     }
 
-    // Tem cargo específico - usa o novo endpoint by-role
+    // Tem cargo específico
     setLoadingUsers(true);
     try {
       const response = await api.get(`/users/by-role?role=${encodeURIComponent(nextStage.allowedRole)}`);
@@ -102,15 +120,42 @@ export function CompleteStageModal({
     }
   };
 
+  // 🔥 NOVO: Buscar fornecedores/oficinas
+  const fetchSuppliers = async () => {
+    setLoadingSuppliers(true);
+    try {
+      const response = await api.get("/suppliers");
+      // Filtra apenas fornecedores ativos, se houver campo status
+      const suppliers = response.data.data || response.data;
+      setAvailableSuppliers(suppliers);
+    } catch (error) {
+      toast.error("Erro ao carregar oficinas");
+      console.error(error);
+    } finally {
+      setLoadingSuppliers(false);
+    }
+  };
+
   const handleConfirm = async () => {
-    if (!selectedUserId) {
-      toast.error("Selecione um responsável para a próxima etapa");
-      return;
+    if (isOficina) {
+      if (!selectedSupplierId) {
+        toast.error("Selecione uma oficina responsável");
+        return;
+      }
+    } else {
+      if (!selectedUserId) {
+        toast.error("Selecione um responsável para a próxima etapa");
+        return;
+      }
     }
 
     setConfirming(true);
     try {
-      await onConfirm(selectedUserId);
+      if (isOficina) {
+        await onConfirm(selectedSupplierId, 'supplier');
+      } else {
+        await onConfirm(selectedUserId, 'user');
+      }
       onClose();
     } catch (error) {
       console.error(error);
@@ -150,7 +195,11 @@ export function CompleteStageModal({
       <DialogContent className="bg-white sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <User size={18} className="text-orange-500" />
+            {isOficina ? (
+              <Building2 size={18} className="text-orange-500" />
+            ) : (
+              <User size={18} className="text-orange-500" />
+            )}
             Concluir Etapa
           </DialogTitle>
         </DialogHeader>
@@ -171,72 +220,117 @@ export function CompleteStageModal({
             </div>
           </div>
 
-          {/* Seletor de responsável */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-1">
-              Responsável da Próxima Etapa
-              {nextStage.allowedRole && 
-               nextStage.allowedRole !== "all" && 
-               nextStage.allowedRole !== "null" && 
-               nextStage.allowedRole.trim() !== "" && (
-                <span className="text-xs font-normal text-slate-400 ml-1">
-                  (Cargo necessário: {nextStage.allowedRole})
-                </span>
-              )}
-            </Label>
+          {/* Campo dinâmico baseado no destino */}
+          {isOficina ? (
+            // 🏭 CAMPO DE OFICINA
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <Building2 size={16} className="text-slate-400" />
+                Oficina Responsável
+              </Label>
 
-            {loadingUsers ? (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="animate-spin text-orange-500" size={20} />
-              </div>
-            ) : (
-              <Select
-                value={selectedUserId}
-                onValueChange={setSelectedUserId}
-                disabled={confirming || isLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um responsável..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableUsers.length === 0 ? (
-                    <SelectItem value="no-users" disabled>
-                      Nenhum usuário disponível
-                    </SelectItem>
-                  ) : (
-                    availableUsers.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        <div className="flex items-center gap-2">
-                          <span>{user.name}</span>
-                          {user.professionalRole && (
-                            <span className="text-xs text-slate-400">
-                              ({user.professionalRole})
-                            </span>
-                          )}
-                        </div>
+              {loadingSuppliers ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="animate-spin text-orange-500" size={20} />
+                </div>
+              ) : (
+                <Select
+                  value={selectedSupplierId}
+                  onValueChange={setSelectedSupplierId}
+                  disabled={confirming || isLoading}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma oficina..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSuppliers.length === 0 ? (
+                      <SelectItem value="no-suppliers" disabled>
+                        Nenhuma oficina disponível
                       </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            )}
-
-            {availableUsers.length === 0 && !loadingUsers && nextStage.allowedRole && (
-              <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                <span>⚠️</span>
-                Nenhum usuário encontrado com o cargo {nextStage.allowedRole}
-              </p>
-            )}
-          </div>
-
-          {/* Aviso se não houver usuários */}
-          {availableUsers.length === 0 && !loadingUsers && (
-            <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded">
-              Não há usuários disponíveis para esta etapa. 
-              {nextStage.allowedRole && nextStage.allowedRole !== "all" && (
-                <span> Verifique se existem usuários cadastrados com o cargo <strong>{nextStage.allowedRole}</strong>.</span>
+                    ) : (
+                      availableSuppliers.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          <div className="flex items-center gap-2">
+                            <span>{supplier.name}</span>
+                            {supplier.city && supplier.state && (
+                              <span className="text-xs text-slate-400">
+                                ({supplier.city}/{supplier.state})
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               )}
-            </p>
+
+              {availableSuppliers.length === 0 && !loadingSuppliers && (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <span>⚠️</span>
+                  Nenhuma oficina cadastrada. Cadastre uma oficina primeiro.
+                </p>
+              )}
+            </div>
+          ) : (
+            // 👤 CAMPO DE FUNCIONÁRIO
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <User size={16} className="text-slate-400" />
+                Responsável da Próxima Etapa
+                {nextStage.allowedRole && 
+                 nextStage.allowedRole !== "all" && 
+                 nextStage.allowedRole !== "null" && 
+                 nextStage.allowedRole.trim() !== "" && (
+                  <span className="text-xs font-normal text-slate-400 ml-1">
+                    (Cargo necessário: {nextStage.allowedRole})
+                  </span>
+                )}
+              </Label>
+
+              {loadingUsers ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="animate-spin text-orange-500" size={20} />
+                </div>
+              ) : (
+                <Select
+                  value={selectedUserId}
+                  onValueChange={setSelectedUserId}
+                  disabled={confirming || isLoading}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um responsável..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableUsers.length === 0 ? (
+                      <SelectItem value="no-users" disabled>
+                        Nenhum usuário disponível
+                      </SelectItem>
+                    ) : (
+                      availableUsers.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          <div className="flex items-center gap-2">
+                            <span>{user.name}</span>
+                            {user.professionalRole && (
+                              <span className="text-xs text-slate-400">
+                                ({user.professionalRole})
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {availableUsers.length === 0 && !loadingUsers && nextStage.allowedRole && (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <span>⚠️</span>
+                  Nenhum usuário encontrado com o cargo &quot;{nextStage.allowedRole}&quot;
+                </p>
+              )}
+            </div>
           )}
         </div>
 
@@ -250,7 +344,13 @@ export function CompleteStageModal({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={!selectedUserId || loadingUsers || confirming || isLoading}
+            disabled={
+              (isOficina ? !selectedSupplierId : !selectedUserId) || 
+              loadingUsers || 
+              loadingSuppliers || 
+              confirming || 
+              isLoading
+            }
             className="bg-orange-600 hover:bg-orange-700 text-white"
           >
             {confirming ? (
