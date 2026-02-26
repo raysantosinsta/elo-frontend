@@ -411,63 +411,62 @@ export default function ProductFlowKanban() {
   };
 
   const filterColumnItems = (stage: FlowStage) => {
-  if (
-    activeColumnFilter.columnId !== stage.id ||
-    !activeColumnFilter.filterType
-  ) {
-    return stage.items;
-  }
-
-  const todayUTC = new Date();
-  const year = todayUTC.getUTCFullYear();
-  const month = String(todayUTC.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(todayUTC.getUTCDate()).padStart(2, "0");
-  const todayStr = `${year}-${month}-${day}`;
-
-  const filtered = stage.items.filter((item) => {
-    if (activeColumnFilter.filterType === "overdue") {
-      // 🔴 FILTRO DE ATRASADOS: dueDate < hoje
-      const dueDate = item.dueDate?.split("T")[0];
-      if (!dueDate) return false;
-      return dueDate < todayStr;
-    } 
-    else if (activeColumnFilter.filterType === "upcoming") {
-      // 🟡 FILTRO DE PRÓXIMOS A VENCER: 
-      // 1. productionStartedAt === hoje
-      // 2. NÃO pode estar atrasado (dueDate >= hoje OU dueDate não existe)
-      const startDate = item.productionStartedAt?.split("T")[0];
-      if (!startDate) return false;
-      
-      // Verifica se é pra iniciar hoje
-      const isStartingToday = startDate === todayStr;
-      if (!isStartingToday) return false;
-      
-      // Verifica se NÃO está atrasado (dueDate >= hoje ou dueDate não existe)
-      const dueDate = item.dueDate?.split("T")[0];
-      if (!dueDate) return true; // Se não tem dueDate, considera como válido
-      
-      // Só mostra se dueDate for >= hoje (não está atrasado)
-      return dueDate >= todayStr;
+    if (
+      activeColumnFilter.columnId !== stage.id ||
+      !activeColumnFilter.filterType
+    ) {
+      return stage.items;
     }
 
-    return true;
-  });
+    const todayUTC = new Date();
+    const year = todayUTC.getUTCFullYear();
+    const month = String(todayUTC.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(todayUTC.getUTCDate()).padStart(2, "0");
+    const todayStr = `${year}-${month}-${day}`;
 
-  console.log(`[FILTER] Coluna: ${stage.name}`, {
-    filterType: activeColumnFilter.filterType,
-    totalItems: stage.items.length,
-    filteredItems: filtered.length,
-    items: filtered.map(i => ({
-      title: i.title,
-      productionStartedAt: i.productionStartedAt,
-      dueDate: i.dueDate,
-      isUpcoming: i.productionStartedAt?.split("T")[0] === todayStr,
-      isOverdue: i.dueDate ? i.dueDate.split("T")[0] < todayStr : false
-    }))
-  });
+    const filtered = stage.items.filter((item) => {
+      if (activeColumnFilter.filterType === "overdue") {
+        // 🔴 FILTRO DE ATRASADOS: dueDate < hoje
+        const dueDate = item.dueDate?.split("T")[0];
+        if (!dueDate) return false;
+        return dueDate < todayStr;
+      } else if (activeColumnFilter.filterType === "upcoming") {
+        // 🟡 FILTRO DE PRÓXIMOS A VENCER:
+        // 1. productionStartedAt === hoje
+        // 2. NÃO pode estar atrasado (dueDate >= hoje OU dueDate não existe)
+        const startDate = item.productionStartedAt?.split("T")[0];
+        if (!startDate) return false;
 
-  return filtered;
-};
+        // Verifica se é pra iniciar hoje
+        const isStartingToday = startDate === todayStr;
+        if (!isStartingToday) return false;
+
+        // Verifica se NÃO está atrasado (dueDate >= hoje ou dueDate não existe)
+        const dueDate = item.dueDate?.split("T")[0];
+        if (!dueDate) return true; // Se não tem dueDate, considera como válido
+
+        // Só mostra se dueDate for >= hoje (não está atrasado)
+        return dueDate >= todayStr;
+      }
+
+      return true;
+    });
+
+    console.log(`[FILTER] Coluna: ${stage.name}`, {
+      filterType: activeColumnFilter.filterType,
+      totalItems: stage.items.length,
+      filteredItems: filtered.length,
+      items: filtered.map((i) => ({
+        title: i.title,
+        productionStartedAt: i.productionStartedAt,
+        dueDate: i.dueDate,
+        isUpcoming: i.productionStartedAt?.split("T")[0] === todayStr,
+        isOverdue: i.dueDate ? i.dueDate.split("T")[0] < todayStr : false,
+      })),
+    });
+
+    return filtered;
+  };
 
   // ===========================================================================
   // 🔄 FUNÇÕES DE FILTRO GLOBAL
@@ -1051,11 +1050,16 @@ export default function ProductFlowKanban() {
       const flowColor = board.color || "#D35400";
       board.stages.forEach((stage) => {
         const key = stage.name.toUpperCase();
-        if (!stageGroups[key]) stageGroups[key] = { ...stage, items: [] };
+        if (!stageGroups[key]) {
+          // 🔥 Usa o stageId do PRIMEIRO fluxo como referência canônica
+          stageGroups[key] = { ...stage, items: [] };
+        }
         const itemsWithMetadata = stage.items.map((item) => ({
           ...item,
           flowColor,
           flowName: board.name,
+          // 🔥 Preserva o stageId ORIGINAL do item (não sobrescreve com o do outro fluxo)
+          _originalStageId: item.stageId,
         }));
         stageGroups[key].items.push(...itemsWithMetadata);
       });
@@ -1101,31 +1105,25 @@ export default function ProductFlowKanban() {
       }
     },
     onRequireResponsible: (itemId, targetStageId, targetStageName) => {
-      console.log("[onRequireResponsible] Chamado", {
-        itemId,
-        targetStageId,
-        targetStageName,
-      });
-
-      // Encontra a coluna de destino
-      const targetStage = unifiedStages.find((s) => s.id === targetStageId);
+      // 🔥 Busca por NOME, não por ID — porque unifiedStages usa o id do primeiro fluxo
+      const targetStage = unifiedStages.find(
+        (s) => s.name.toLowerCase() === targetStageName.toLowerCase(),
+      );
 
       if (!targetStage) {
-        console.error("Coluna destino não encontrada:", targetStageId);
+        console.error(
+          "Coluna destino não encontrada pelo nome:",
+          targetStageName,
+        );
         return;
       }
 
-      console.log("[onRequireResponsible] Coluna encontrada:", targetStage);
-
-      // 🔥 VERIFICA SE É OFICINA (case insensitive)
       const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
 
-      // Se for oficina, sempre abre modal (precisa selecionar oficina)
       if (isOficina) {
-        console.log("[onRequireResponsible] É oficina, abrindo modal");
         setDragItemId(itemId);
         setDragTargetStage({
-          id: targetStage.id,
+          id: targetStageId, // 🔥 USA O targetStageId ORIGINAL (correto para o fluxo do item)
           name: targetStage.name,
           allowedRole: targetStage.allowedRole,
         });
@@ -1133,28 +1131,20 @@ export default function ProductFlowKanban() {
         return;
       }
 
-      // Se não é oficina, verifica se tem cargo específico
       if (
         targetStage?.allowedRole &&
         targetStage.allowedRole !== "all" &&
         targetStage.allowedRole !== "null" &&
         targetStage.allowedRole.trim() !== ""
       ) {
-        console.log(
-          "[onRequireResponsible] Tem cargo específico, abrindo modal",
-        );
         setDragItemId(itemId);
         setDragTargetStage({
-          id: targetStage.id,
+          id: targetStageId, // 🔥 USA O targetStageId ORIGINAL (correto para o fluxo do item)
           name: targetStage.name,
           allowedRole: targetStage.allowedRole,
         });
         setIsDragModalOpen(true);
       } else {
-        // Move direto
-        console.log(
-          "[onRequireResponsible] Sem necessidade de responsável, movendo direto",
-        );
         executeMove(itemId, targetStageId);
       }
     },
@@ -1585,12 +1575,51 @@ export default function ProductFlowKanban() {
               count={filteredItems.length}
               color={stage.color}
               onDropItem={(itemId) => {
-                console.log("[KanbanColumn] onDropItem chamado", {
-                  itemId,
-                  stageId: stage.id,
-                  stageName: stage.name,
-                });
-                moveItem(itemId, stage.id, stage.name);
+                const allItems = unifiedStages.flatMap((s) => s.items);
+                const draggingItem = allItems.find((i) => i.id === itemId);
+
+                // 🔥 LOG DETALHADO
+                console.log(
+                  "[onDropItem] boards disponíveis:",
+                  boards.map((b) => ({ id: b.id, name: b.name })),
+                );
+                console.log(
+                  "[onDropItem] draggingItem.flowId:",
+                  draggingItem?.flowId,
+                );
+                console.log(
+                  "[onDropItem] stage destino name:",
+                  stage.name,
+                  "id:",
+                  stage.id,
+                );
+
+                const itemBoard = boards.find(
+                  (b) => b.id === draggingItem?.flowId,
+                );
+                console.log(
+                  "[onDropItem] itemBoard encontrado:",
+                  itemBoard
+                    ? { id: itemBoard.id, name: itemBoard.name }
+                    : "NÃO ENCONTRADO",
+                );
+
+                const correctStage = itemBoard?.stages.find(
+                  (s) => s.name.toUpperCase() === stage.name.toUpperCase(),
+                );
+                console.log(
+                  "[onDropItem] correctStage:",
+                  correctStage
+                    ? { id: correctStage.id, name: correctStage.name }
+                    : "NÃO ENCONTRADO",
+                );
+                console.log(
+                  "[onDropItem] todos stages do itemBoard:",
+                  itemBoard?.stages.map((s) => ({ id: s.id, name: s.name })),
+                );
+
+                const targetStageId = correctStage?.id ?? stage.id;
+                moveItem(itemId, targetStageId, stage.name);
               }}
               onAddItem={
                 hasPermission
