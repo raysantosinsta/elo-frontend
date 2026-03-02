@@ -159,21 +159,6 @@ export function FlowItemModal({
 }: FlowItemModalProps) {
   const isEditing = !!initialData;
 
-  // LOG INICIAL CRÍTICO
-  console.log("🔴🔴🔴 [FlowItemModal] INÍCIO - Props recebidas:", {
-    isOpen,
-    isEditing,
-    initialDataId: initialData?.id,
-    initialDataQuantity: initialData?.quantity,
-    stagesCount: stages.length,
-    isReadOnly,
-    currentUserSystemRole, // ← ISSO É CRÍTICO!
-    currentUserRole,
-    currentUserSystemRoleType: typeof currentUserSystemRole,
-    currentUserSystemRoleValue: currentUserSystemRole,
-    adminRolesEsperados: ADMIN_ROLES,
-  });
-
   // --- Estados de Mídia ---
   const [images, setImages] = useState<File[]>([]);
   const [videos, setVideos] = useState<File[]>([]);
@@ -211,21 +196,9 @@ export function FlowItemModal({
     },
   });
 
-  useEffect(() => {
-    if (initialData && stages.length > 0) {
-      console.log("🔍 DEBUG - Verificando stages:", {
-        itemStageId: initialData.stageId,
-        stages: stages.map((s) => ({ id: s.id, name: s.name })),
-        found: stages.some((s) => s.id === initialData.stageId),
-      });
-    }
-  }, [initialData, stages]);
-
   // --- Efeito: Popular Dados ao Abrir ---
   useEffect(() => {
     if (isOpen) {
-      console.log("📝 [FlowItemModal] Abrindo modal");
-
       setImages([]);
       setVideos([]);
       setAudios([]);
@@ -240,13 +213,6 @@ export function FlowItemModal({
       setIsInCorte(false);
 
       if (initialData) {
-        console.log("📝 [FlowItemModal] Populando com dados existentes:", {
-          id: initialData.id,
-          title: initialData.title,
-          quantity: initialData.quantity,
-          stageId: initialData.stageId,
-        });
-
         form.reset({
           title: initialData.title,
           description: initialData.description || "",
@@ -267,11 +233,6 @@ export function FlowItemModal({
             : "",
         });
       } else {
-        console.log(
-          "📝 [FlowItemModal] Criando novo item, stage inicial:",
-          initialStageId,
-        );
-
         form.reset({
           title: "",
           description: "",
@@ -310,7 +271,6 @@ export function FlowItemModal({
       recorder.start();
       setIsRecording(true);
     } catch (err) {
-      console.error(err);
       toast.error("Erro ao acessar microfone.");
     }
   };
@@ -336,82 +296,33 @@ export function FlowItemModal({
   // 🔥 Verifica se uma etapa é de Corte
   const isCorteStage = useCallback((stageName: string): boolean => {
     const name = stageName?.toLowerCase().trim() || "";
-    const result = CORTE_KEYWORDS.some((keyword) => name.includes(keyword));
-    console.log(
-      `🔍 [isCorteStage] "${stageName}" -> ${result ? "É CORTE" : "NÃO É CORTE"}`,
-    );
-    return result;
+    return CORTE_KEYWORDS.some((keyword) => name.includes(keyword));
   }, []);
 
-  // 🔥 Verifica se o usuário é ADMIN (MASTER, ADMIN, MANAGER) - COM LOG DETALHADO
+  // 🔥 Verifica se o usuário é ADMIN (MASTER, ADMIN, MANAGER)
   const isUserAdmin = useCallback((): boolean => {
-    console.log("🔴🔴🔴 [isUserAdmin] VERIFICANDO ADMIN - INÍCIO");
-    console.log(
-      "[isUserAdmin] currentUserSystemRole recebido:",
-      currentUserSystemRole,
-    );
-    console.log("[isUserAdmin] Tipo:", typeof currentUserSystemRole);
-
-    // Pega da props
     const systemRole = currentUserSystemRole;
-
-    if (!systemRole) {
-      console.log("🔴 [isUserAdmin] systemRole é falsy:", systemRole);
-      return false;
-    }
-
-    const adminRoles = ["MASTER", "ADMIN", "MANAGER"];
-    const result = adminRoles.includes(systemRole);
-
-    console.log(
-      `🔍 [isUserAdmin] SystemRole: "${systemRole}" -> ${result ? "✅ É ADMIN" : "❌ NÃO É ADMIN"}`,
-    );
-    console.log(
-      "🔴🔴🔴 [isUserAdmin] VERIFICANDO ADMIN - FIM, resultado:",
-      result,
-    );
-
-    return result;
+    if (!systemRole) return false;
+    return ADMIN_ROLES.includes(systemRole);
   }, [currentUserSystemRole]);
 
   // 🔥 Verifica se o usuário tem permissão de Corte (cargo de corte)
   const userHasCortePermission = useCallback((): boolean => {
     const role = currentUserRole?.toLowerCase() || "";
-    const result = CORTE_KEYWORDS.some((keyword) => role.includes(keyword));
-    console.log(
-      `🔍 [userHasCortePermission] Role: "${currentUserRole}" -> ${result ? "TEM PERMISSÃO" : "NÃO TEM PERMISSÃO"}`,
-    );
-    return result;
+    return CORTE_KEYWORDS.some((keyword) => role.includes(keyword));
   }, [currentUserRole]);
 
-  // 🔥 VERIFICA SE O USUÁRIO PODE EDITAR A QUANTIDADE - COM LOG
+  // 🔥 VERIFICA SE O USUÁRIO PODE EDITAR A QUANTIDADE
   const canEditQuantity = useMemo(() => {
-    console.log("🔴🔴🔴 [canEditQuantity] CALCULANDO - INÍCIO");
-
     const isAdmin = isUserAdmin();
-    console.log("[canEditQuantity] isUserAdmin():", isAdmin);
-    console.log("[canEditQuantity] isInCorte:", isInCorte);
-    console.log(
-      "[canEditQuantity] userHasCortePermission:",
-      userHasCortePermission(),
-    );
-
+    
     // 👑 ADMIN PODE TUDO! (independente da coluna)
     if (isAdmin) {
-      console.log(
-        "👑👑👑 [canEditQuantity] ADMIN DETECTADO - PODE EDITAR EM QUALQUER COLUNA! 👑👑👑",
-      );
       return true; // ADMIN SEMPRE PODE EDITAR
     }
 
     // Para não-admin: só pode editar se estiver na coluna Corte E tiver permissão
-    const canEdit = isInCorte && userHasCortePermission();
-    console.log(
-      `🔑 [canEditQuantity] ${canEdit ? "PODE" : "NÃO PODE"} editar (não-admin)`,
-    );
-
-    console.log("🔴🔴🔴 [canEditQuantity] RESULTADO FINAL:", canEdit);
-    return canEdit;
+    return isInCorte && userHasCortePermission();
   }, [isInCorte, isUserAdmin, userHasCortePermission]);
 
   // 🔥 Monitora a etapa atual e calcula a posição em relação ao Corte
@@ -421,58 +332,20 @@ export function FlowItemModal({
     ? isCorteStage(currentStage.name)
     : false;
 
-  console.log("📍 [FlowItemModal] Estado atual:", {
-    selectedStageId,
-    currentStageName: currentStage?.name,
-    isCurrentStageCorte,
-    hasPassedCorte,
-    isInCorte,
-  });
-
   // 🔥 Efeito para determinar a posição do item em relação à coluna Corte
   useEffect(() => {
-    console.log("🔄 [FlowItemModal] Calculando posição...", {
-      hasStages: stages.length > 0,
-      isEditing,
-      hasInitialData: !!initialData,
-    });
-
     if (!stages.length) {
-      console.log("⚠️ [FlowItemModal] Sem stages para calcular posição");
       return;
     }
 
-    console.log(
-      "📊 Stages recebidas:",
-      stages.map((s) => ({
-        id: s.id,
-        name: s.name,
-        order: s.order,
-      })),
-    );
-
     // Ordena as etapas por ordem
     const sortedStages = [...stages].sort((a, b) => a.order - b.order);
-    console.log(
-      "📊 Stages ordenadas:",
-      sortedStages.map((s) => ({
-        name: s.name,
-        order: s.order,
-      })),
-    );
 
     // Encontra o índice da etapa de Corte
     const corteIndex = sortedStages.findIndex((s) => isCorteStage(s.name));
-    console.log(
-      `📍 Índice da etapa Corte: ${corteIndex}`,
-      corteIndex !== -1
-        ? `(${sortedStages[corteIndex]?.name})`
-        : "(não encontrada)",
-    );
 
     // Se não tem coluna Corte, não aplica a regra
     if (corteIndex === -1) {
-      console.log("⚠️ Nenhuma etapa de Corte encontrada");
       setHasPassedCorte(false);
       setIsInCorte(false);
       return;
@@ -480,10 +353,6 @@ export function FlowItemModal({
 
     // Para criação de novo item
     if (!isEditing) {
-      console.log("🆕 Criando novo item");
-      console.log(`📍 Stage selecionada: ${selectedStageId}`);
-      console.log(`📍 É etapa de Corte? ${isCurrentStageCorte}`);
-
       setIsInCorte(isCurrentStageCorte);
       setHasPassedCorte(false);
       return;
@@ -491,38 +360,24 @@ export function FlowItemModal({
 
     // Para edição de item existente
     if (initialData) {
-      console.log("📝 Editando item existente");
-      console.log(`📍 Stage atual do item: ${initialData.stageId}`);
-
       // Verifica se o stage do item existe nos stages atuais
       const stageExists = sortedStages.some(
         (s) => s.id === initialData.stageId,
       );
-      console.log(`📍 Stage existe na lista? ${stageExists}`);
 
       if (!stageExists) {
-        console.error("❌ ERRO CRÍTICO: Stage do item não encontrado!", {
-          itemStageId: initialData.stageId,
-          availableStages: sortedStages.map((s) => ({
-            id: s.id,
-            name: s.name,
-          })),
-        });
         return;
       }
 
       const currentItemStageIndex = sortedStages.findIndex(
         (s) => s.id === initialData.stageId,
       );
-      console.log(`📍 Índice da etapa atual do item: ${currentItemStageIndex}`);
 
       // Está na coluna Corte
       const inCorte = currentItemStageIndex === corteIndex;
-      console.log(`📍 Está na coluna Corte? ${inCorte}`);
 
       // Já passou da coluna Corte (está depois)
       const passedCorte = currentItemStageIndex > corteIndex;
-      console.log(`📍 Já passou da coluna Corte? ${passedCorte}`);
 
       setIsInCorte(inCorte);
       setHasPassedCorte(passedCorte);
@@ -536,90 +391,48 @@ export function FlowItemModal({
     isCorteStage,
   ]);
 
-  // 🔥 Lógica principal do campo quantidade - COM LOG
+  // 🔥 Lógica principal do campo quantidade
   const isQuantityDisabled = useMemo(() => {
-    console.log("🔴🔴🔴 [isQuantityDisabled] CALCULANDO - INÍCIO");
-    console.log("[isQuantityDisabled] isReadOnly:", isReadOnly);
-    console.log("[isQuantityDisabled] hasPassedCorte:", hasPassedCorte);
-    console.log("[isQuantityDisabled] isInCorte:", isInCorte);
-    console.log("[isQuantityDisabled] isEditing:", isEditing);
-    console.log("[isQuantityDisabled] canEditQuantity:", canEditQuantity);
-    console.log("[isQuantityDisabled] isUserAdmin:", isUserAdmin());
-
     // Se for modo leitura global, desabilita
     if (isReadOnly) {
-      console.log("🧮 isQuantityDisabled = true (isReadOnly)");
       return true;
     }
 
     // Se NÃO pode editar quantidade, desabilita
     if (!canEditQuantity) {
-      console.log("🧮 isQuantityDisabled = true (canEditQuantity = false)");
       return true;
     }
 
-    console.log("🧮 isQuantityDisabled = false (pode editar!)");
     return false;
   }, [isReadOnly, hasPassedCorte, canEditQuantity]);
 
   // 🔥 Verifica se a quantidade é obrigatória
   const isQuantityRequired = useMemo(() => {
-    console.log("⚠️ [isQuantityRequired] Calculando:", {
-      hasPassedCorte,
-      isInCorte,
-      isUserAdmin: isUserAdmin(),
-    });
-
     // Para ADMIN, quantidade nunca é obrigatória (pode gerenciar como quiser)
     if (isUserAdmin()) {
-      console.log("⚠️ isQuantityRequired = false (ADMIN)");
       return false;
     }
 
     // Para não-admin, quantidade é obrigatória no Corte
     if (isInCorte) {
-      console.log("⚠️ isQuantityRequired = true (no Corte)");
       return true;
     }
 
-    console.log("⚠️ isQuantityRequired = false");
     return false;
   }, [hasPassedCorte, isInCorte, isUserAdmin]);
 
   // --- Submit do formulário com validação extra ---
   const handleSubmit = async (values: ItemFormValues) => {
-    console.log("🚀 [handleSubmit] Iniciando submit com valores:", {
-      ...values,
-      hasPassedCorte,
-      isInCorte,
-      isQuantityRequired,
-      canEditQuantity,
-      isUserAdmin: isUserAdmin(),
-    });
-
     // 🔥 VALIDAÇÃO CRÍTICA: Converte para número e verifica
     const quantityNum = Number(values.quantity);
     const isAdmin = isUserAdmin();
 
-    console.log("[handleSubmit] isAdmin:", isAdmin);
-    console.log("[handleSubmit] quantityNum:", quantityNum);
-    console.log("[handleSubmit] isInCorte:", isInCorte);
-
     // ADMIN pode passar qualquer valor - PULA VALIDAÇÃO
     if (isAdmin) {
-      console.log(
-        "👑👑👑 [handleSubmit] ADMIN DETECTADO - Pulando TODAS as validações de quantidade! 👑👑👑",
-      );
       // Continua mesmo com quantidade zero
     } else {
       // Para não-admin no Corte, quantidade é obrigatória e > 0
       if (isInCorte && (!quantityNum || quantityNum < 1)) {
-        console.log("❌ [handleSubmit] VALIDAÇÃO FALHOU: quantidade inválida", {
-          quantity: values.quantity,
-          quantityNum,
-          isInCorte,
-        });
-
         setShowQuantityWarning(true);
         toast.error(
           "Você está na coluna Corte. A quantidade é obrigatória e deve ser maior que zero.",
@@ -627,8 +440,6 @@ export function FlowItemModal({
         return;
       }
     }
-
-    console.log("✅ [handleSubmit] Validação OK, prosseguindo com submit");
 
     const payload = {
       ...values,
