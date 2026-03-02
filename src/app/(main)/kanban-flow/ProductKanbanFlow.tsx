@@ -1800,46 +1800,48 @@ export default function ProductFlowKanban() {
       </KanbanBoard>
 
       {/* Modal de Criação de Item */}
-      <FlowItemModal
-        isOpen={isItemModal}
-        onClose={() => {
-          setIsItemModal(false);
-          setCurrentItemStages([]);
-        }}
-        onSubmit={handleItemSubmit}
-        isLoading={isSubmitting || isModalLoading}
-        users={users}
-        suppliers={suppliers}
-        stages={currentItemStages}
-        initialStageId={activeStageId}
-        currentUserRole={user?.professionalRole || (user as any)?.role}
-        isReadOnly={false}
-      />
+<FlowItemModal
+  isOpen={isItemModal}
+  onClose={() => {
+    setIsItemModal(false);
+    setCurrentItemStages([]);
+  }}
+  onSubmit={handleItemSubmit}
+  isLoading={isSubmitting || isModalLoading}
+  users={users}
+  suppliers={suppliers}
+  stages={currentItemStages}
+  initialStageId={activeStageId}
+  currentUserRole={user?.professionalRole}
+  currentUserSystemRole={user?.role} // 👈 ADICIONADO - CRÍTICO!
+  isReadOnly={false}
+/>
 
-      {/* Modal de Edição de Item */}
-      <FlowItemModal
-        isOpen={isEditItemModal}
-        onClose={() => {
-          setIsEditItemModal(false);
-          setEditingItem(null);
-          setCurrentItemStages([]);
-        }}
-        initialData={editingItem}
-        onSubmit={handleItemSubmit}
-        isLoading={isSubmitting || isModalLoading}
-        users={users}
-        suppliers={suppliers}
-        stages={currentItemStages}
-        initialStageId={activeStageId}
-        onAdvance={handleAdvanceItem}
-        onDelete={(id) => {
-          setIsEditItemModal(false);
-          setItemToDelete({ type: "item", id });
-          setDeleteModalOpen(true);
-        }}
-        currentUserRole={user?.professionalRole || (user as any)?.role}
-        isReadOnly={isModalReadOnly}
-      />
+{/* Modal de Edição de Item */}
+<FlowItemModal
+  isOpen={isEditItemModal}
+  onClose={() => {
+    setIsEditItemModal(false);
+    setEditingItem(null);
+    setCurrentItemStages([]);
+  }}
+  initialData={editingItem}
+  onSubmit={handleItemSubmit}
+  isLoading={isSubmitting || isModalLoading}
+  users={users}
+  suppliers={suppliers}
+  stages={currentItemStages}
+  initialStageId={activeStageId}
+  onAdvance={handleAdvanceItem}
+  onDelete={(id) => {
+    setIsEditItemModal(false);
+    setItemToDelete({ type: "item", id });
+    setDeleteModalOpen(true);
+  }}
+  currentUserRole={user?.professionalRole}
+  currentUserSystemRole={user?.role} // 👈 ADICIONADO - CRÍTICO!
+  isReadOnly={isModalReadOnly}
+/>
 
       <ConfirmDeleteModal
         isOpen={deleteModalOpen}

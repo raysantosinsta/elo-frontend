@@ -14,7 +14,7 @@ import {
   Trash2,
   User,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -159,15 +159,19 @@ export function FlowItemModal({
 }: FlowItemModalProps) {
   const isEditing = !!initialData;
 
-  console.log("🔍 [FlowItemModal] Renderizando com props:", {
+  // LOG INICIAL CRÍTICO
+  console.log("🔴🔴🔴 [FlowItemModal] INÍCIO - Props recebidas:", {
     isOpen,
     isEditing,
     initialDataId: initialData?.id,
     initialDataQuantity: initialData?.quantity,
     stagesCount: stages.length,
     isReadOnly,
-    currentUserSystemRole,
+    currentUserSystemRole, // ← ISSO É CRÍTICO!
     currentUserRole,
+    currentUserSystemRoleType: typeof currentUserSystemRole,
+    currentUserSystemRoleValue: currentUserSystemRole,
+    adminRolesEsperados: ADMIN_ROLES,
   });
 
   // --- Estados de Mídia ---
@@ -330,53 +334,72 @@ export function FlowItemModal({
   };
 
   // 🔥 Verifica se uma etapa é de Corte
-  const isCorteStage = (stageName: string): boolean => {
+  const isCorteStage = useCallback((stageName: string): boolean => {
     const name = stageName?.toLowerCase().trim() || "";
     const result = CORTE_KEYWORDS.some((keyword) => name.includes(keyword));
     console.log(
       `🔍 [isCorteStage] "${stageName}" -> ${result ? "É CORTE" : "NÃO É CORTE"}`,
     );
     return result;
-  };
+  }, []);
 
-  // 🔥 Verifica se o usuário é ADMIN (MASTER, ADMIN, MANAGER)
-  const isUserAdmin = (): boolean => {
-    if (!currentUserSystemRole) return false;
-    const result = ADMIN_ROLES.includes(currentUserSystemRole);
-    console.log(
-      `🔍 [isUserAdmin] SystemRole: "${currentUserSystemRole}" -> ${result ? "É ADMIN" : "NÃO É ADMIN"}`,
-    );
+  // 🔥 Verifica se o usuário é ADMIN (MASTER, ADMIN, MANAGER) - COM LOG DETALHADO
+  const isUserAdmin = useCallback((): boolean => {
+    console.log("🔴🔴🔴 [isUserAdmin] VERIFICANDO ADMIN - INÍCIO");
+    console.log("[isUserAdmin] currentUserSystemRole recebido:", currentUserSystemRole);
+    console.log("[isUserAdmin] Tipo:", typeof currentUserSystemRole);
+    
+    // Pega da props
+    const systemRole = currentUserSystemRole;
+
+    if (!systemRole) {
+      console.log("🔴 [isUserAdmin] systemRole é falsy:", systemRole);
+      return false;
+    }
+
+    const adminRoles = ["MASTER", "ADMIN", "MANAGER"];
+    const result = adminRoles.includes(systemRole);
+
+    console.log(`🔍 [isUserAdmin] SystemRole: "${systemRole}" -> ${result ? "✅ É ADMIN" : "❌ NÃO É ADMIN"}`);
+    console.log("🔴🔴🔴 [isUserAdmin] VERIFICANDO ADMIN - FIM, resultado:", result);
+    
     return result;
-  };
+  }, [currentUserSystemRole]);
 
   // 🔥 Verifica se o usuário tem permissão de Corte (cargo de corte)
-  const userHasCortePermission = (): boolean => {
+  const userHasCortePermission = useCallback((): boolean => {
     const role = currentUserRole?.toLowerCase() || "";
     const result = CORTE_KEYWORDS.some((keyword) => role.includes(keyword));
     console.log(
       `🔍 [userHasCortePermission] Role: "${currentUserRole}" -> ${result ? "TEM PERMISSÃO" : "NÃO TEM PERMISSÃO"}`,
     );
     return result;
-  };
+  }, [currentUserRole]);
 
-  // 🔥 Verifica se o usuário pode editar a quantidade
+  // 🔥 VERIFICA SE O USUÁRIO PODE EDITAR A QUANTIDADE - COM LOG
   const canEditQuantity = useMemo(() => {
-    // 1. Se for ADMIN, pode sempre editar (independente da etapa)
-    if (isUserAdmin()) {
-      console.log("👑 [canEditQuantity] ADMIN pode editar sempre");
-      return true;
+    console.log("🔴🔴🔴 [canEditQuantity] CALCULANDO - INÍCIO");
+    
+    const isAdmin = isUserAdmin();
+    console.log("[canEditQuantity] isUserAdmin():", isAdmin);
+    console.log("[canEditQuantity] isInCorte:", isInCorte);
+    console.log("[canEditQuantity] userHasCortePermission:", userHasCortePermission());
+    
+    // 👑 ADMIN PODE TUDO! (independente da coluna)
+    if (isAdmin) {
+      console.log("👑👑👑 [canEditQuantity] ADMIN DETECTADO - PODE EDITAR EM QUALQUER COLUNA! 👑👑👑");
+      return true; // ADMIN SEMPRE PODE EDITAR
     }
 
-    // 2. Se NÃO for ADMIN, só pode editar se:
-    //    - Estiver na coluna Corte E tiver permissão de corte
+    // Para não-admin: só pode editar se estiver na coluna Corte E tiver permissão
     const canEdit = isInCorte && userHasCortePermission();
-    console.log(`🔑 [canEditQuantity] ${canEdit ? "PODE" : "NÃO PODE"} editar`, {
-      isInCorte,
-      userHasCortePermission: userHasCortePermission(),
-      isAdmin: isUserAdmin()
-    });
+    console.log(
+      `🔑 [canEditQuantity] ${canEdit ? "PODE" : "NÃO PODE"} editar (não-admin)`,
+    );
+
+    console.log("🔴🔴🔴 [canEditQuantity] RESULTADO FINAL:", canEdit);
     return canEdit;
-  }, [isInCorte]);
+  }, [isInCorte, isUserAdmin, userHasCortePermission]);
 
   // 🔥 Monitora a etapa atual e calcula a posição em relação ao Corte
   const selectedStageId = form.watch("stageId");
@@ -392,17 +415,6 @@ export function FlowItemModal({
     hasPassedCorte,
     isInCorte,
   });
-
-  // 🔥 Efeito para determinar a posição do item em relação à coluna Corte
-  useEffect(() => {
-    if (initialData && stages.length > 0) {
-      console.log("🔍 DEBUG - Verificando stages:", {
-        itemStageId: initialData.stageId,
-        stages: stages.map((s) => ({ id: s.id, name: s.name })),
-        found: stages.some((s) => s.id === initialData.stageId),
-      });
-    }
-  }, [initialData, stages]);
 
   // 🔥 Efeito para determinar a posição do item em relação à coluna Corte
   useEffect(() => {
@@ -502,17 +514,17 @@ export function FlowItemModal({
       setIsInCorte(inCorte);
       setHasPassedCorte(passedCorte);
     }
-  }, [stages, initialData, isEditing, selectedStageId, isCurrentStageCorte]);
+  }, [stages, initialData, isEditing, selectedStageId, isCurrentStageCorte, isCorteStage]);
 
-  // 🔥 Lógica principal do campo quantidade
+  // 🔥 Lógica principal do campo quantidade - COM LOG
   const isQuantityDisabled = useMemo(() => {
-    console.log("🧮 [isQuantityDisabled] Calculando:", {
-      isReadOnly,
-      hasPassedCorte,
-      isInCorte,
-      isEditing,
-      canEditQuantity,
-    });
+    console.log("🔴🔴🔴 [isQuantityDisabled] CALCULANDO - INÍCIO");
+    console.log("[isQuantityDisabled] isReadOnly:", isReadOnly);
+    console.log("[isQuantityDisabled] hasPassedCorte:", hasPassedCorte);
+    console.log("[isQuantityDisabled] isInCorte:", isInCorte);
+    console.log("[isQuantityDisabled] isEditing:", isEditing);
+    console.log("[isQuantityDisabled] canEditQuantity:", canEditQuantity);
+    console.log("[isQuantityDisabled] isUserAdmin:", isUserAdmin());
 
     // Se for modo leitura global, desabilita
     if (isReadOnly) {
@@ -520,13 +532,13 @@ export function FlowItemModal({
       return true;
     }
 
-    // Se NÃO pode editar quantidade (nem admin, nem corte), desabilita
+    // Se NÃO pode editar quantidade, desabilita
     if (!canEditQuantity) {
-      console.log("🧮 isQuantityDisabled = true (sem permissão)");
+      console.log("🧮 isQuantityDisabled = true (canEditQuantity = false)");
       return true;
     }
 
-    console.log("🧮 isQuantityDisabled = false");
+    console.log("🧮 isQuantityDisabled = false (pode editar!)");
     return false;
   }, [isReadOnly, hasPassedCorte, canEditQuantity]);
 
@@ -552,7 +564,7 @@ export function FlowItemModal({
 
     console.log("⚠️ isQuantityRequired = false");
     return false;
-  }, [hasPassedCorte, isInCorte]);
+  }, [hasPassedCorte, isInCorte, isUserAdmin]);
 
   // --- Submit do formulário com validação extra ---
   const handleSubmit = async (values: ItemFormValues) => {
@@ -562,24 +574,36 @@ export function FlowItemModal({
       isInCorte,
       isQuantityRequired,
       canEditQuantity,
+      isUserAdmin: isUserAdmin(),
     });
 
     // 🔥 VALIDAÇÃO CRÍTICA: Converte para número e verifica
     const quantityNum = Number(values.quantity);
+    const isAdmin = isUserAdmin();
 
-    // Para não-admin no Corte, quantidade é obrigatória e > 0
-    if (!isUserAdmin() && isInCorte && (!quantityNum || quantityNum < 1)) {
-      console.log("❌ [handleSubmit] VALIDAÇÃO FALHOU: quantidade inválida", {
-        quantity: values.quantity,
-        quantityNum,
-        isInCorte,
-      });
+    console.log("[handleSubmit] isAdmin:", isAdmin);
+    console.log("[handleSubmit] quantityNum:", quantityNum);
+    console.log("[handleSubmit] isInCorte:", isInCorte);
 
-      setShowQuantityWarning(true);
-      toast.error(
-        "Você está na coluna Corte. A quantidade é obrigatória e deve ser maior que zero.",
-      );
-      return;
+    // ADMIN pode passar qualquer valor - PULA VALIDAÇÃO
+    if (isAdmin) {
+      console.log("👑👑👑 [handleSubmit] ADMIN DETECTADO - Pulando TODAS as validações de quantidade! 👑👑👑");
+      // Continua mesmo com quantidade zero
+    } else {
+      // Para não-admin no Corte, quantidade é obrigatória e > 0
+      if (isInCorte && (!quantityNum || quantityNum < 1)) {
+        console.log("❌ [handleSubmit] VALIDAÇÃO FALHOU: quantidade inválida", {
+          quantity: values.quantity,
+          quantityNum,
+          isInCorte,
+        });
+
+        setShowQuantityWarning(true);
+        toast.error(
+          "Você está na coluna Corte. A quantidade é obrigatória e deve ser maior que zero.",
+        );
+        return;
+      }
     }
 
     console.log("✅ [handleSubmit] Validação OK, prosseguindo com submit");
@@ -626,14 +650,14 @@ export function FlowItemModal({
   const quantityContextMessage = useMemo(() => {
     if (isReadOnly) return null;
 
-    // ADMIN pode sempre editar
+    // 👑 ADMIN - Mensagem especial
     if (isUserAdmin()) {
       return {
-        type: "info",
+        type: "admin",
         icon: <User size={14} />,
         title: "👑 ADMIN",
         message:
-          "Você é administrador e pode gerenciar a quantidade em qualquer etapa.",
+          "Você é administrador e pode editar a quantidade em qualquer etapa.",
       };
     }
 
@@ -643,17 +667,7 @@ export function FlowItemModal({
           type: "info",
           icon: <Lock size={14} />,
           title: "🔒 Bloqueado",
-          message:
-            "A quantidade só pode ser editada na coluna Corte por usuários com cargo de Corte.",
-        };
-      }
-      if (!userHasCortePermission()) {
-        return {
-          type: "error",
-          icon: <Lock size={14} />,
-          title: "⛔ Sem permissão",
-          message:
-            "Apenas usuários com cargo de Corte podem editar a quantidade nesta coluna.",
+          message: "A quantidade só pode ser editada na coluna Corte.",
         };
       }
     }
@@ -663,19 +677,12 @@ export function FlowItemModal({
         type: "warning",
         icon: <AlertCircle size={14} />,
         title: "⚠️ Quantidade obrigatória",
-        message:
-          "Você está na coluna Corte. A quantidade é obrigatória para não-administradores.",
+        message: "Você está na coluna Corte. A quantidade é obrigatória.",
       };
     }
 
-    return {
-      type: "info",
-      icon: <AlertCircle size={14} />,
-      title: "ℹ️ Quantidade opcional",
-      message:
-        "Você pode informar a quantidade agora, mas ela será obrigatória na coluna Corte para não-administradores.",
-    };
-  }, [isReadOnly, canEditQuantity, isInCorte]);
+    return null;
+  }, [isReadOnly, canEditQuantity, isInCorte, isUserAdmin, userHasCortePermission]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -808,6 +815,8 @@ export function FlowItemModal({
                               canEditQuantity,
                               "isQuantityRequired:",
                               isQuantityRequired,
+                              "isQuantityDisabled:",
+                              isQuantityDisabled,
                             );
 
                             return (
@@ -836,6 +845,9 @@ export function FlowItemModal({
                                         quantityContextMessage.type ===
                                           "info" &&
                                           "bg-blue-50 text-blue-700 border-blue-200",
+                                        quantityContextMessage.type ===
+                                          "admin" &&
+                                          "bg-purple-50 text-purple-700 border-purple-200",
                                       )}
                                     >
                                       {quantityContextMessage.icon}
@@ -856,13 +868,13 @@ export function FlowItemModal({
                                     className={cn(
                                       "text-lg font-bold",
                                       isQuantityDisabled &&
-                                        "bg-slate-100 text-slate-500 cursor-not-allowed",
+                                        "bg-slate-100 text-slate-500 cursor-not-allowed opacity-50",
                                       showQuantityWarning &&
                                         isQuantityRequired &&
                                         "border-red-500 ring-red-500",
                                       isUserAdmin() &&
                                         !isQuantityDisabled &&
-                                        "border-purple-300 focus:border-purple-500",
+                                        "border-purple-300 focus:border-purple-500 bg-purple-50",
                                     )}
                                     value={field.value?.toString() ?? "0"}
                                     onChange={(e) => {
@@ -903,7 +915,9 @@ export function FlowItemModal({
                                     <br />• isUserAdmin:{" "}
                                     {isUserAdmin() ? "true ✅" : "false ❌"}
                                     <br />• userHasCortePermission:{" "}
-                                    {userHasCortePermission() ? "true ✅" : "false ❌"}
+                                    {userHasCortePermission()
+                                      ? "true ✅"
+                                      : "false ❌"}
                                     <br />• canEditQuantity:{" "}
                                     {canEditQuantity ? "true ✅" : "false ❌"}
                                     <br />• isQuantityRequired:{" "}
@@ -922,30 +936,38 @@ export function FlowItemModal({
 
                                   <p className="text-[10px] text-slate-600 mt-1">
                                     <strong>Regras de quantidade:</strong>
-                                    <br />• {isUserAdmin() 
-                                        ? "👑 ADMIN: Pode editar em qualquer etapa" 
-                                        : isInCorte && userHasCortePermission()
-                                          ? "✏️ PODE editar (no Corte com permissão)"
-                                          : isInCorte && !userHasCortePermission()
-                                            ? "🔒 BLOQUEADO (no Corte sem permissão)"
-                                            : "🔒 BLOQUEADO (fora do Corte)"}
+                                    <br />•{" "}
+                                    {isUserAdmin()
+                                      ? "👑 ADMIN: Pode editar em qualquer etapa"
+                                      : isInCorte && userHasCortePermission()
+                                        ? "✏️ PODE editar (no Corte com permissão)"
+                                        : isInCorte && !userHasCortePermission()
+                                          ? "🔒 BLOQUEADO (no Corte sem permissão)"
+                                          : "🔒 BLOQUEADO (fora do Corte)"}
                                   </p>
 
-                                  {!isUserAdmin() && isInCorte && !userHasCortePermission() && (
-                                    <p className="text-[10px] text-red-500 mt-1 font-bold">
-                                      ⚠️ Apenas usuários com cargo de Corte podem editar quantidade nesta coluna.
-                                    </p>
-                                  )}
+                                  {!isUserAdmin() &&
+                                    isInCorte &&
+                                    !userHasCortePermission() && (
+                                      <p className="text-[10px] text-red-500 mt-1 font-bold">
+                                        ⚠️ Apenas usuários com cargo de Corte
+                                        podem editar quantidade nesta coluna.
+                                      </p>
+                                    )}
 
-                                  {!isUserAdmin() && isInCorte && userHasCortePermission() && (
-                                    <p className="text-[10px] text-amber-500 mt-1 font-bold">
-                                      ⚠️ Lembre-se: quantidade deve ser MAIOR QUE ZERO!
-                                    </p>
-                                  )}
+                                  {!isUserAdmin() &&
+                                    isInCorte &&
+                                    userHasCortePermission() && (
+                                      <p className="text-[10px] text-amber-500 mt-1 font-bold">
+                                        ⚠️ Lembre-se: quantidade deve ser MAIOR
+                                        QUE ZERO!
+                                      </p>
+                                    )}
 
                                   {isUserAdmin() && (
                                     <p className="text-[10px] text-purple-600 mt-1 font-bold">
-                                      👑 Você é ADMIN e tem controle total sobre a quantidade.
+                                      👑 Você é ADMIN e tem controle total sobre
+                                      a quantidade.
                                     </p>
                                   )}
                                 </div>
@@ -1110,9 +1132,9 @@ export function FlowItemModal({
                 type="submit"
                 className={cn(
                   "text-white",
-                  isUserAdmin() 
-                    ? "bg-purple-700 hover:bg-purple-800" 
-                    : "bg-slate-800 hover:bg-slate-900"
+                  isUserAdmin()
+                    ? "bg-purple-700 hover:bg-purple-800"
+                    : "bg-slate-800 hover:bg-slate-900",
                 )}
                 disabled={isLoading}
               >
