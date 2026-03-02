@@ -346,9 +346,12 @@ export function FlowItemModal({
   // 🔥 Verifica se o usuário é ADMIN (MASTER, ADMIN, MANAGER) - COM LOG DETALHADO
   const isUserAdmin = useCallback((): boolean => {
     console.log("🔴🔴🔴 [isUserAdmin] VERIFICANDO ADMIN - INÍCIO");
-    console.log("[isUserAdmin] currentUserSystemRole recebido:", currentUserSystemRole);
+    console.log(
+      "[isUserAdmin] currentUserSystemRole recebido:",
+      currentUserSystemRole,
+    );
     console.log("[isUserAdmin] Tipo:", typeof currentUserSystemRole);
-    
+
     // Pega da props
     const systemRole = currentUserSystemRole;
 
@@ -360,9 +363,14 @@ export function FlowItemModal({
     const adminRoles = ["MASTER", "ADMIN", "MANAGER"];
     const result = adminRoles.includes(systemRole);
 
-    console.log(`🔍 [isUserAdmin] SystemRole: "${systemRole}" -> ${result ? "✅ É ADMIN" : "❌ NÃO É ADMIN"}`);
-    console.log("🔴🔴🔴 [isUserAdmin] VERIFICANDO ADMIN - FIM, resultado:", result);
-    
+    console.log(
+      `🔍 [isUserAdmin] SystemRole: "${systemRole}" -> ${result ? "✅ É ADMIN" : "❌ NÃO É ADMIN"}`,
+    );
+    console.log(
+      "🔴🔴🔴 [isUserAdmin] VERIFICANDO ADMIN - FIM, resultado:",
+      result,
+    );
+
     return result;
   }, [currentUserSystemRole]);
 
@@ -379,15 +387,20 @@ export function FlowItemModal({
   // 🔥 VERIFICA SE O USUÁRIO PODE EDITAR A QUANTIDADE - COM LOG
   const canEditQuantity = useMemo(() => {
     console.log("🔴🔴🔴 [canEditQuantity] CALCULANDO - INÍCIO");
-    
+
     const isAdmin = isUserAdmin();
     console.log("[canEditQuantity] isUserAdmin():", isAdmin);
     console.log("[canEditQuantity] isInCorte:", isInCorte);
-    console.log("[canEditQuantity] userHasCortePermission:", userHasCortePermission());
-    
+    console.log(
+      "[canEditQuantity] userHasCortePermission:",
+      userHasCortePermission(),
+    );
+
     // 👑 ADMIN PODE TUDO! (independente da coluna)
     if (isAdmin) {
-      console.log("👑👑👑 [canEditQuantity] ADMIN DETECTADO - PODE EDITAR EM QUALQUER COLUNA! 👑👑👑");
+      console.log(
+        "👑👑👑 [canEditQuantity] ADMIN DETECTADO - PODE EDITAR EM QUALQUER COLUNA! 👑👑👑",
+      );
       return true; // ADMIN SEMPRE PODE EDITAR
     }
 
@@ -514,7 +527,14 @@ export function FlowItemModal({
       setIsInCorte(inCorte);
       setHasPassedCorte(passedCorte);
     }
-  }, [stages, initialData, isEditing, selectedStageId, isCurrentStageCorte, isCorteStage]);
+  }, [
+    stages,
+    initialData,
+    isEditing,
+    selectedStageId,
+    isCurrentStageCorte,
+    isCorteStage,
+  ]);
 
   // 🔥 Lógica principal do campo quantidade - COM LOG
   const isQuantityDisabled = useMemo(() => {
@@ -587,7 +607,9 @@ export function FlowItemModal({
 
     // ADMIN pode passar qualquer valor - PULA VALIDAÇÃO
     if (isAdmin) {
-      console.log("👑👑👑 [handleSubmit] ADMIN DETECTADO - Pulando TODAS as validações de quantidade! 👑👑👑");
+      console.log(
+        "👑👑👑 [handleSubmit] ADMIN DETECTADO - Pulando TODAS as validações de quantidade! 👑👑👑",
+      );
       // Continua mesmo com quantidade zero
     } else {
       // Para não-admin no Corte, quantidade é obrigatória e > 0
@@ -650,7 +672,7 @@ export function FlowItemModal({
   const quantityContextMessage = useMemo(() => {
     if (isReadOnly) return null;
 
-    // 👑 ADMIN - Mensagem especial
+    // 👑 ADMIN - Mensagem especial (APENAS ISSO)
     if (isUserAdmin()) {
       return {
         type: "admin",
@@ -661,6 +683,7 @@ export function FlowItemModal({
       };
     }
 
+    // Usuário comum - mensagens simples
     if (!canEditQuantity) {
       if (!isInCorte) {
         return {
@@ -682,7 +705,13 @@ export function FlowItemModal({
     }
 
     return null;
-  }, [isReadOnly, canEditQuantity, isInCorte, isUserAdmin, userHasCortePermission]);
+  }, [
+    isReadOnly,
+    canEditQuantity,
+    isInCorte,
+    isUserAdmin,
+    userHasCortePermission,
+  ]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -808,17 +837,6 @@ export function FlowItemModal({
                           control={form.control}
                           name="quantity"
                           render={({ field }) => {
-                            console.log(
-                              "🎨 Renderizando campo quantity com valor:",
-                              field.value,
-                              "canEditQuantity:",
-                              canEditQuantity,
-                              "isQuantityRequired:",
-                              isQuantityRequired,
-                              "isQuantityDisabled:",
-                              isQuantityDisabled,
-                            );
-
                             return (
                               <FormItem>
                                 <div className="flex items-center justify-between mb-2">
@@ -830,32 +848,6 @@ export function FlowItemModal({
                                       </span>
                                     )}
                                   </FormLabel>
-
-                                  {/* 🔥 CONTEXT MESSAGE */}
-                                  {quantityContextMessage && (
-                                    <div
-                                      className={cn(
-                                        "flex items-center gap-1 text-xs px-2 py-1 rounded border",
-                                        quantityContextMessage.type ===
-                                          "error" &&
-                                          "bg-red-50 text-red-700 border-red-200",
-                                        quantityContextMessage.type ===
-                                          "warning" &&
-                                          "bg-amber-50 text-amber-700 border-amber-200",
-                                        quantityContextMessage.type ===
-                                          "info" &&
-                                          "bg-blue-50 text-blue-700 border-blue-200",
-                                        quantityContextMessage.type ===
-                                          "admin" &&
-                                          "bg-purple-50 text-purple-700 border-purple-200",
-                                      )}
-                                    >
-                                      {quantityContextMessage.icon}
-                                      <span className="max-w-[300px] truncate">
-                                        {quantityContextMessage.title}
-                                      </span>
-                                    </div>
-                                  )}
                                 </div>
 
                                 <FormControl>
@@ -879,10 +871,6 @@ export function FlowItemModal({
                                     value={field.value?.toString() ?? "0"}
                                     onChange={(e) => {
                                       const newValue = e.target.value;
-                                      console.log(
-                                        "📝 Quantidade alterada para:",
-                                        newValue,
-                                      );
                                       field.onChange(newValue);
                                       setShowQuantityWarning(false);
                                     }}
@@ -894,83 +882,16 @@ export function FlowItemModal({
                                   />
                                 </FormControl>
 
-                                {/* 🔥 AVISO DE VALIDAÇÃO */}
+                                {/* 🔥 AVISO DE VALIDAÇÃO - APENAS QUANDO NECESSÁRIO */}
                                 {showQuantityWarning && isQuantityRequired && (
                                   <p className="text-xs text-red-500 font-medium flex items-center gap-1 mt-1">
-                                    <AlertCircle size={12} />
-                                    A quantidade é obrigatória e deve ser maior que zero na coluna Corte.
+                                    <AlertCircle size={12} />A quantidade é
+                                    obrigatória e deve ser maior que zero na
+                                    coluna Corte.
                                   </p>
                                 )}
 
                                 <FormMessage />
-
-                                {/* INFORMAÇÕES ADICIONAIS COM LOGS VISÍVEIS */}
-                                <div className="mt-2 p-2 bg-slate-50 rounded border border-slate-200">
-                                  <p className="text-[10px] text-slate-600 font-mono">
-                                    <strong>DEBUG - Estado atual:</strong>
-                                    <br />• hasPassedCorte:{" "}
-                                    {hasPassedCorte ? "true ✅" : "false ❌"}
-                                    <br />• isInCorte:{" "}
-                                    {isInCorte ? "true ✅" : "false ❌"}
-                                    <br />• isUserAdmin:{" "}
-                                    {isUserAdmin() ? "true ✅" : "false ❌"}
-                                    <br />• userHasCortePermission:{" "}
-                                    {userHasCortePermission()
-                                      ? "true ✅"
-                                      : "false ❌"}
-                                    <br />• canEditQuantity:{" "}
-                                    {canEditQuantity ? "true ✅" : "false ❌"}
-                                    <br />• isQuantityRequired:{" "}
-                                    {isQuantityRequired
-                                      ? "true ✅"
-                                      : "false ❌"}
-                                    <br />• isQuantityDisabled:{" "}
-                                    {isQuantityDisabled
-                                      ? "true ✅"
-                                      : "false ❌"}
-                                    <br />• Quantidade atual:{" "}
-                                    {(field.value as any) || "nenhuma"}
-                                    <br />• Etapa atual:{" "}
-                                    {currentStage?.name || "nenhuma"}
-                                  </p>
-
-                                  <p className="text-[10px] text-slate-600 mt-1">
-                                    <strong>Regras de quantidade:</strong>
-                                    <br />•{" "}
-                                    {isUserAdmin()
-                                      ? "👑 ADMIN: Pode editar em qualquer etapa"
-                                      : isInCorte && userHasCortePermission()
-                                        ? "✏️ PODE editar (no Corte com permissão)"
-                                        : isInCorte && !userHasCortePermission()
-                                          ? "🔒 BLOQUEADO (no Corte sem permissão)"
-                                          : "🔒 BLOQUEADO (fora do Corte)"}
-                                  </p>
-
-                                  {!isUserAdmin() &&
-                                    isInCorte &&
-                                    !userHasCortePermission() && (
-                                      <p className="text-[10px] text-red-500 mt-1 font-bold">
-                                        ⚠️ Apenas usuários com cargo de Corte
-                                        podem editar quantidade nesta coluna.
-                                      </p>
-                                    )}
-
-                                  {!isUserAdmin() &&
-                                    isInCorte &&
-                                    userHasCortePermission() && (
-                                      <p className="text-[10px] text-amber-500 mt-1 font-bold">
-                                        ⚠️ Lembre-se: quantidade deve ser MAIOR
-                                        QUE ZERO!
-                                      </p>
-                                    )}
-
-                                  {isUserAdmin() && (
-                                    <p className="text-[10px] text-purple-600 mt-1 font-bold">
-                                      👑 Você é ADMIN e tem controle total sobre
-                                      a quantidade.
-                                    </p>
-                                  )}
-                                </div>
                               </FormItem>
                             );
                           }}
