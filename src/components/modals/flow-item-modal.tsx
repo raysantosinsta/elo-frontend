@@ -1204,9 +1204,7 @@ export function FlowItemModal({
                         </div>
                       ) : (
                         // Caso 2: Único fluxo - mostra texto informativo com a etapa
-                        !isEditing &&
-                        initialStageId &&
-                        currentStageInfo && null
+                        !isEditing && initialStageId && currentStageInfo && null
                       )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
