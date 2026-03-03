@@ -8,11 +8,12 @@ import {
   AlertTriangle,
   Edit,
   Factory,
+  Layers,
   Loader2,
   Lock,
   Plus,
   Trash2,
-  User
+  User,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -94,6 +95,7 @@ interface FlowStage {
   order: number;
   color?: string;
   allowedRole?: string;
+  flowId: string;
 }
 
 interface FlowItemModalProps {
@@ -110,6 +112,8 @@ interface FlowItemModalProps {
   users: { id: string; name: string }[];
   suppliers: { id: string; name: string; category?: string }[];
   stages: FlowStage[];
+  // 🔥 Lista de fluxos disponíveis (com valor padrão)
+  flows?: { id: string; name: string; color?: string }[];
 
   // 🔥 Props de Permissão
   currentUserRole?: string;
@@ -119,6 +123,8 @@ interface FlowItemModalProps {
   // Ações
   onDelete?: (id: string) => void;
   onAdvance?: (item: FlowItem) => Promise<void>;
+  // 🔥 Callback quando o fluxo mudar para buscar stages
+  onFlowChange?: (flowId: string) => Promise<FlowStage[]>;
 }
 
 // --- SCHEMA DE VALIDAÇÃO ---
@@ -129,6 +135,8 @@ const itemSchema = z.object({
   productRef: z.string().optional(),
   quantity: z.coerce.number().min(0, "Quantidade mínima").default(1),
   status: z.string().default("PENDENTE"),
+  // 🔥 Campo flowId obrigatório
+  flowId: z.string().min(1, "Coleção é obrigatória"),
   stageId: z.string().optional(),
   assignedToId: z.string().optional(),
   supplierId: z.string().optional(),
@@ -155,10 +163,12 @@ export function FlowItemModal({
   users,
   suppliers,
   stages,
+  flows = [], // 🔥 VALOR PADRÃO: array vazio
   currentUserRole,
   currentUserSystemRole,
   onDelete,
   onAdvance,
+  onFlowChange,
   isReadOnly = false,
 }: FlowItemModalProps) {
   const isEditing = !!initialData;
@@ -183,10 +193,16 @@ export function FlowItemModal({
   const [isInCorte, setIsInCorte] = useState(false);
 
   // ===========================================================================
-  // 🔥 NOVOS ESTADOS PARA HISTÓRICO
+  // 🔥 ESTADOS PARA HISTÓRICO
   // ===========================================================================
   const [historyLogs, setHistoryLogs] = useState<AuditLogEntry[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // ===========================================================================
+  // 🔥 NOVOS ESTADOS PARA SELEÇÃO DE FLUXO
+  // ===========================================================================
+  const [availableStages, setAvailableStages] = useState<FlowStage[]>([]);
+  const [isLoadingStages, setIsLoadingStages] = useState(false);
 
   // --- Hook Form ---
   const form = useForm({
@@ -197,6 +213,7 @@ export function FlowItemModal({
       productRef: "",
       quantity: 0,
       status: "PENDENTE",
+      flowId: "",
       stageId: "",
       assignedToId: "",
       supplierId: "",
@@ -206,13 +223,15 @@ export function FlowItemModal({
     },
   });
 
+  // Watch para monitorar o fluxo selecionado
+  const selectedFlowId = form.watch("flowId");
+
   // ===========================================================================
   // 🔥 FUNÇÃO PARA BUSCAR HISTÓRICO DO ITEM
   // ===========================================================================
   const fetchItemHistory = useCallback(async (itemId: string) => {
     setIsLoadingHistory(true);
     try {
-      // 🔥 AJUSTE A URL CONFORME SUA API
       const response = await api.get(`/audit/item/${itemId}`);
       setHistoryLogs(response.data);
     } catch (error) {
@@ -223,66 +242,229 @@ export function FlowItemModal({
     }
   }, []);
 
-  // --- Efeito: Popular Dados ao Abrir ---
-  useEffect(() => {
-    if (isOpen) {
-      setImages([]);
-      setVideos([]);
-      setAudios([]);
-      setRemovedImageIds([]);
-      setRemovedVideoIds([]);
-      setRemovedAudioIds([]);
-      setIsRecording(false);
-      setShowQuantityWarning(false);
+  // ===========================================================================
+  // 🔥 FUNÇÃO PARA BUSCAR STAGES QUANDO O FLUXO MUDAR - CORRIGIDA
+  // ===========================================================================
+  const handleFlowChange = useCallback(
+    async (flowId: string) => {
+      console.log("🔄 [FlowItemModal] Mudando para flow:", flowId);
 
-      // Resetar estados de validação
-      setHasPassedCorte(false);
-      setIsInCorte(false);
-
-      // 🔥 Se for edição, busca o histórico
-      if (initialData?.id) {
-        fetchItemHistory(initialData.id);
-      } else {
-        setHistoryLogs([]); // Limpa histórico para novo item
+      if (!flowId) {
+        setAvailableStages([]);
+        return;
       }
 
-      if (initialData) {
-        form.reset({
-          title: initialData.title,
-          description: initialData.description || "",
-          productRef: initialData.productRef || "",
-          quantity: initialData.quantity,
-          status: initialData.status,
-          stageId: initialData.stageId || "",
-          assignedToId: initialData.assignedToId || "unassigned",
-          supplierId: initialData.supplierId || "internal",
-          dueDate: initialData.dueDate
-            ? initialData.dueDate.substring(0, 10)
-            : "",
-          productionStartedAt: initialData.productionStartedAt
-            ? initialData.productionStartedAt.substring(0, 10)
-            : "",
-          deliveryAt: initialData.deliveryAt
-            ? initialData.deliveryAt.substring(0, 10)
-            : "",
-        });
+      setIsLoadingStages(true);
+
+      // 🔥 RESETA A STAGE SELECIONADA
+      form.setValue("stageId", "");
+
+      try {
+        if (onFlowChange) {
+          console.log("📡 Buscando stages do flow via callback...");
+          const stagesFromParent = await onFlowChange(flowId);
+          console.log("✅ Stages recebidas:", stagesFromParent.length);
+          console.log(
+            "📋 Lista de stages:",
+            stagesFromParent.map((s) => ({ id: s.id, name: s.name })),
+          );
+
+          setAvailableStages(stagesFromParent);
+
+          // ✅ NÃO SELECIONA AUTOMATICAMENTE - DEIXA O USUÁRIO ESCOLHER
+        } else {
+          // 🔥 Fallback - NÃO USA MAIS O PROP 'stages'
+          console.log("📡 Buscando stages via API direta...");
+          try {
+            const response = await api.get(`/flow/${flowId}/stages`);
+            setAvailableStages(response.data);
+          } catch (error) {
+            console.error("Erro ao buscar stages:", error);
+            setAvailableStages([]);
+          }
+        }
+      } catch (error) {
+        console.error("❌ Erro ao buscar stages:", error);
+        toast.error("Erro ao carregar etapas do fluxo");
+        setAvailableStages([]);
+      } finally {
+        setIsLoadingStages(false);
+      }
+    },
+    [onFlowChange, form],
+  ); // 🔥 Remove 'stages' das dependências
+
+  // ===========================================================================
+  // 🔥 EFEITO PARA POPULAR DADOS AO ABRIR
+  // ===========================================================================
+  useEffect(() => {
+    // Só executa quando o modal abre
+    if (!isOpen) return;
+
+    console.log("📂 [FlowItemModal] Abrindo modal");
+    console.log("initialData:", initialData);
+    console.log("initialStageId:", initialStageId);
+
+    // Resetar estados
+    setImages([]);
+    setVideos([]);
+    setAudios([]);
+    setRemovedImageIds([]);
+    setRemovedVideoIds([]);
+    setRemovedAudioIds([]);
+    setIsRecording(false);
+    setShowQuantityWarning(false);
+    setHasPassedCorte(false);
+    setIsInCorte(false);
+    setAvailableStages([]);
+
+    // 🔥 Se for edição, busca o histórico
+    if (initialData?.id) {
+      fetchItemHistory(initialData.id);
+    } else {
+      setHistoryLogs([]);
+    }
+
+    // 🔥 Reset do formulário baseado nos dados
+    if (initialData) {
+      console.log("📝 Populando formulário com dados existentes");
+      form.reset({
+        title: initialData.title,
+        description: initialData.description || "",
+        productRef: initialData.productRef || "",
+        quantity: initialData.quantity,
+        status: initialData.status,
+        flowId: initialData.flowId,
+        stageId: initialData.stageId || "",
+        assignedToId: initialData.assignedToId || "unassigned",
+        supplierId: initialData.supplierId || "internal",
+        dueDate: initialData.dueDate
+          ? initialData.dueDate.substring(0, 10)
+          : "",
+        productionStartedAt: initialData.productionStartedAt
+          ? initialData.productionStartedAt.substring(0, 10)
+          : "",
+        deliveryAt: initialData.deliveryAt
+          ? initialData.deliveryAt.substring(0, 10)
+          : "",
+      });
+
+      // 🔥 Busca stages do fluxo selecionado
+      if (initialData.flowId) {
+        console.log(
+          "🔄 Buscando stages para o flow do item:",
+          initialData.flowId,
+        );
+        setTimeout(() => {
+          handleFlowChange(initialData.flowId);
+        }, 100);
+      }
+    } else {
+      // 🔥 Para novo item
+      console.log("🆕 Criando novo item");
+
+      // Se tiver initialStageId, significa que veio do clique no botão "+" de uma coluna
+      if (initialStageId) {
+        console.log("🎯 initialStageId presente:", initialStageId);
+
+        // Busca a stage correspondente para descobrir o flowId
+        const stage = stages.find((s) => s.id === initialStageId);
+
+        if (stage) {
+          console.log("✅ Stage encontrada:", stage);
+
+          form.reset({
+            title: "",
+            description: "",
+            productRef: "",
+            quantity: 0,
+            status: "PENDENTE",
+            flowId: stage.flowId,
+            stageId: initialStageId,
+            assignedToId: "unassigned",
+            supplierId: "internal",
+            dueDate: "",
+            productionStartedAt: "",
+            deliveryAt: "",
+          });
+
+          // Busca as stages do flow
+          setTimeout(() => {
+            handleFlowChange(stage.flowId);
+          }, 100);
+        } else {
+          console.warn(
+            "⚠️ Stage não encontrada para initialStageId:",
+            initialStageId,
+          );
+
+          // Fallback: usa o primeiro flow
+          const defaultFlowId = flows.length > 0 ? flows[0].id : "";
+
+          form.reset({
+            title: "",
+            description: "",
+            productRef: "",
+            quantity: 0,
+            status: "PENDENTE",
+            flowId: defaultFlowId,
+            stageId: "",
+            assignedToId: "unassigned",
+            supplierId: "internal",
+            dueDate: "",
+            productionStartedAt: "",
+            deliveryAt: "",
+          });
+
+          if (defaultFlowId) {
+            setTimeout(() => {
+              handleFlowChange(defaultFlowId);
+            }, 100);
+          }
+        }
       } else {
+        // Sem initialStageId, usa o primeiro flow
+        const defaultFlowId = flows.length > 0 ? flows[0].id : "";
+
         form.reset({
           title: "",
           description: "",
           productRef: "",
           quantity: 0,
           status: "PENDENTE",
-          stageId: initialStageId || (stages.length > 0 ? stages[0].id : ""),
+          flowId: defaultFlowId,
+          stageId: "",
           assignedToId: "unassigned",
           supplierId: "internal",
           dueDate: "",
           productionStartedAt: "",
           deliveryAt: "",
         });
+
+        if (defaultFlowId) {
+          setTimeout(() => {
+            handleFlowChange(defaultFlowId);
+          }, 100);
+        }
       }
     }
-  }, [isOpen, initialData, stages, form, initialStageId, fetchItemHistory]);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // 🔥 Dependência apenas em isOpen
+
+  // ===========================================================================
+  // 🔥 EFEITO PARA LOGS DE DEBUG
+  // ===========================================================================
+  useEffect(() => {
+    if (isOpen) {
+      console.log("📍 Estado atual:", {
+        selectedFlowId,
+        availableStages: availableStages.length,
+        selectedStageId: form.getValues("stageId"),
+        isLoadingStages,
+      });
+    }
+  }, [selectedFlowId, availableStages, form, isLoadingStages, isOpen]);
 
   // --- Funções de Gravação de Áudio ---
   const startRecording = async () => {
@@ -363,51 +545,42 @@ export function FlowItemModal({
   const canEditQuantity = useMemo(() => {
     const isAdmin = isUserAdmin();
 
-    // 👑 ADMIN PODE TUDO! (independente da coluna)
     if (isAdmin) {
-      return true; // ADMIN SEMPRE PODE EDITAR
+      return true;
     }
 
-    // Para não-admin: só pode editar se estiver na coluna Corte E tiver permissão
     return isInCorte && userHasCortePermission();
   }, [isInCorte, isUserAdmin, userHasCortePermission]);
 
-  // 🔥 Monitora a etapa atual e calcula a posição em relação ao Corte
+  // 🔥 Monitora a etapa atual
   const selectedStageId = form.watch("stageId");
-  const currentStage = stages.find((s) => s.id === selectedStageId);
+  const currentStage = availableStages.find((s) => s.id === selectedStageId);
   const isCurrentStageCorte = currentStage
     ? isCorteStage(currentStage.name)
     : false;
 
   // 🔥 Efeito para determinar a posição do item em relação à coluna Corte
   useEffect(() => {
-    if (!stages.length) {
+    if (!availableStages.length || !isOpen) {
       return;
     }
 
-    // Ordena as etapas por ordem
-    const sortedStages = [...stages].sort((a, b) => a.order - b.order);
-
-    // Encontra o índice da etapa de Corte
+    const sortedStages = [...availableStages].sort((a, b) => a.order - b.order);
     const corteIndex = sortedStages.findIndex((s) => isCorteStage(s.name));
 
-    // Se não tem coluna Corte, não aplica a regra
     if (corteIndex === -1) {
       setHasPassedCorte(false);
       setIsInCorte(false);
       return;
     }
 
-    // Para criação de novo item
     if (!isEditing) {
       setIsInCorte(isCurrentStageCorte);
       setHasPassedCorte(false);
       return;
     }
 
-    // Para edição de item existente
     if (initialData) {
-      // Verifica se o stage do item existe nos stages atuais
       const stageExists = sortedStages.some(
         (s) => s.id === initialData.stageId,
       );
@@ -420,65 +593,63 @@ export function FlowItemModal({
         (s) => s.id === initialData.stageId,
       );
 
-      // Está na coluna Corte
       const inCorte = currentItemStageIndex === corteIndex;
-
-      // Já passou da coluna Corte (está depois)
       const passedCorte = currentItemStageIndex > corteIndex;
 
       setIsInCorte(inCorte);
       setHasPassedCorte(passedCorte);
     }
   }, [
-    stages,
+    availableStages,
     initialData,
     isEditing,
     selectedStageId,
     isCurrentStageCorte,
     isCorteStage,
+    isOpen,
   ]);
 
   // 🔥 Lógica principal do campo quantidade
   const isQuantityDisabled = useMemo(() => {
-    // Se for modo leitura global, desabilita
-    if (isReadOnly) {
-      return true;
-    }
-
-    // Se NÃO pode editar quantidade, desabilita
-    if (!canEditQuantity) {
-      return true;
-    }
-
+    if (isReadOnly) return true;
+    if (!canEditQuantity) return true;
     return false;
   }, [isReadOnly, canEditQuantity]);
 
   // 🔥 Verifica se a quantidade é obrigatória
   const isQuantityRequired = useMemo(() => {
-    // Para ADMIN, quantidade nunca é obrigatória (pode gerenciar como quiser)
-    if (isUserAdmin()) {
-      return false;
-    }
-
-    // Para não-admin, quantidade é obrigatória no Corte
-    if (isInCorte) {
-      return true;
-    }
-
+    if (isUserAdmin()) return false;
+    if (isInCorte) return true;
     return false;
   }, [isInCorte, isUserAdmin]);
 
-  // --- Submit do formulário com validação extra ---
+  // --- Submit do formulário ---
   const handleSubmit = async (values: ItemFormValues) => {
-    // 🔥 VALIDAÇÃO CRÍTICA: Converte para número e verifica
+    console.log("📤 [FlowItemModal] Submetendo formulário:", values);
+
+    // 🔥 VALIDAÇÃO: verifica se a stage pertence ao flow selecionado
+    if (values.stageId) {
+      const stageBelongsToFlow = availableStages.some(
+        (s) => s.id === values.stageId,
+      );
+      if (!stageBelongsToFlow) {
+        console.error("❌ Stage não pertence ao flow selecionado:", {
+          flowId: values.flowId,
+          stageId: values.stageId,
+          stagesDisponiveis: availableStages.map((s) => ({
+            id: s.id,
+            name: s.name,
+          })),
+        });
+        toast.error("Etapa inválida para o fluxo selecionado");
+        return;
+      }
+    }
+
     const quantityNum = Number(values.quantity);
     const isAdmin = isUserAdmin();
 
-    // ADMIN pode passar qualquer valor - PULA VALIDAÇÃO
-    if (isAdmin) {
-      // Continua mesmo com quantidade zero
-    } else {
-      // Para não-admin no Corte, quantidade é obrigatória e > 0
+    if (!isAdmin) {
       if (isInCorte && (!quantityNum || quantityNum < 1)) {
         setShowQuantityWarning(true);
         toast.error(
@@ -488,9 +659,12 @@ export function FlowItemModal({
       }
     }
 
+    // 🔥 IMPORTANTE: NÃO USAR activeStageId, usar o values.stageId que veio do select
     const payload = {
       ...values,
       quantity: quantityNum,
+      flowId: values.flowId,
+      stageId: values.stageId, // ✅ USA O VALOR DO SELECT, NÃO activeStageId
       supplierId:
         values.supplierId === "internal" || !values.supplierId
           ? null
@@ -503,6 +677,8 @@ export function FlowItemModal({
       productionStartedAt: values.productionStartedAt || null,
       deliveryAt: values.deliveryAt || null,
     };
+
+    console.log("🚀 Payload final:", payload);
 
     await onSubmit(
       payload,
@@ -525,51 +701,6 @@ export function FlowItemModal({
     const keepChars = Math.floor((maxLength - ext.length - 3) / 2);
     return `${nameWithoutExt.substring(0, keepChars)}...${nameWithoutExt.substring(nameWithoutExt.length - keepChars)}${ext}`;
   };
-
-  // 🔥 Mensagem de contexto baseada no estado
-  const quantityContextMessage = useMemo(() => {
-    if (isReadOnly) return null;
-
-    // 👑 ADMIN - Mensagem especial
-    if (isUserAdmin()) {
-      return {
-        type: "admin",
-        icon: <User size={14} />,
-        title: "👑 ADMIN",
-        message:
-          "Você é administrador e pode editar a quantidade em qualquer etapa.",
-      };
-    }
-
-    // Usuário comum - mensagens simples
-    if (!canEditQuantity) {
-      if (!isInCorte) {
-        return {
-          type: "info",
-          icon: <Lock size={14} />,
-          title: "🔒 Bloqueado",
-          message: "A quantidade só pode ser editada na coluna Corte.",
-        };
-      }
-    }
-
-    if (isInCorte && userHasCortePermission()) {
-      return {
-        type: "warning",
-        icon: <AlertCircle size={14} />,
-        title: "⚠️ Quantidade obrigatória",
-        message: "Você está na coluna Corte. A quantidade é obrigatória.",
-      };
-    }
-
-    return null;
-  }, [
-    isReadOnly,
-    canEditQuantity,
-    isInCorte,
-    isUserAdmin,
-    userHasCortePermission,
-  ]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -636,6 +767,115 @@ export function FlowItemModal({
 
                     {/* --- TAB DETALHES --- */}
                     <TabsContent value="details" className="space-y-4">
+                      {/* 🔥 CAMPO COLEÇÃO/FLUXO */}
+                      <div className="grid grid-cols-1 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="flowId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="flex items-center gap-2">
+                                <Layers size={14} /> Coleção / Fluxo *
+                              </FormLabel>
+                              <Select
+                                onValueChange={(value) => {
+                                  console.log("🎯 Flow selecionado:", value);
+                                  field.onChange(value);
+                                  handleFlowChange(value);
+                                }}
+                                value={field.value}
+                                disabled={
+                                  isReadOnly ||
+                                  isLoadingStages ||
+                                  flows.length === 0
+                                }
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue
+                                      placeholder={
+                                        flows.length === 0
+                                          ? "Nenhuma coleção disponível"
+                                          : "Selecione uma coleção..."
+                                      }
+                                    />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {flows.map((flow) => (
+                                    <SelectItem key={flow.id} value={flow.id}>
+                                      <div className="flex items-center gap-2">
+                                        <div
+                                          className="w-3 h-3 rounded-full"
+                                          style={{
+                                            backgroundColor:
+                                              flow.color || "#D35400",
+                                          }}
+                                        />
+                                        {flow.name}
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* 🔥 CAMPO ETAPA - AGORA OBRIGATÓRIO SELECIONAR MANUALMENTE */}
+                      <div className="grid grid-cols-1 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="stageId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="flex items-center gap-2">
+                                <Layers size={14} /> Etapa *
+                              </FormLabel>
+                              <Select
+                                onValueChange={(value) => {
+                                  console.log("📍 Stage selecionada:", value);
+                                  field.onChange(value);
+                                }}
+                                value={field.value}
+                                disabled={
+                                  isReadOnly ||
+                                  !selectedFlowId ||
+                                  isLoadingStages ||
+                                  availableStages.length === 0
+                                }
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue
+                                      placeholder={
+                                        isLoadingStages
+                                          ? "Carregando etapas..."
+                                          : !selectedFlowId
+                                            ? "Selecione uma coleção primeiro"
+                                            : availableStages.length === 0
+                                              ? "Nenhuma etapa disponível"
+                                              : "Selecione uma etapa"
+                                      }
+                                    />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {availableStages.map((stage) => (
+                                    <SelectItem key={stage.id} value={stage.id}>
+                                      {stage.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={form.control}
@@ -690,7 +930,7 @@ export function FlowItemModal({
                         />
                       </div>
 
-                      {/* 🔥 CAMPO QUANTIDADE COM NOVA LÓGICA DE PERMISSÕES */}
+                      {/* 🔥 CAMPO QUANTIDADE */}
                       <div className="grid grid-cols-1 gap-4">
                         <FormField
                           control={form.control}
@@ -741,7 +981,6 @@ export function FlowItemModal({
                                   />
                                 </FormControl>
 
-                                {/* 🔥 AVISO DE VALIDAÇÃO - APENAS QUANDO NECESSÁRIO */}
                                 {showQuantityWarning && isQuantityRequired && (
                                   <p className="text-xs text-red-500 font-medium flex items-center gap-1 mt-1">
                                     <AlertCircle size={12} />A quantidade é
@@ -1191,9 +1430,9 @@ export function FlowItemModal({
                       <FlowHistoryModal
                         logs={historyLogs}
                         isLoading={isLoadingHistory}
-                        users={users} // Lista de usuários com id e name
-                        suppliers={suppliers} // Lista de fornecedores com id e name
-                        stages={stages} // ✅ CORRIGIDO: usa 'stages' em vez de 'currentItemStages'
+                        users={users}
+                        suppliers={suppliers}
+                        stages={stages}
                       />
                     </TabsContent>
                   </Tabs>
@@ -1205,7 +1444,7 @@ export function FlowItemModal({
 
         {/* FOOTER */}
         <DialogFooter className="px-6 py-4 border-t bg-slate-50 shrink-0 flex items-center justify-between sm:justify-between">
-          {/* ESQUERDA: Botão de Excluir (Só se editando E tiver permissão) */}
+          {/* ESQUERDA: Botão de Excluir */}
           <div>
             {isEditing && onDelete && initialData && !isReadOnly && (
               <Button
@@ -1231,7 +1470,6 @@ export function FlowItemModal({
               {isReadOnly ? "Fechar" : "Cancelar"}
             </Button>
 
-            {/* 🔥 BOTÃO DE SALVAR (só aparece se não for readonly) */}
             {!isReadOnly && (
               <Button
                 form="flow-item-form"
@@ -1242,7 +1480,7 @@ export function FlowItemModal({
                     ? "bg-purple-700 hover:bg-purple-800"
                     : "bg-slate-800 hover:bg-slate-900",
                 )}
-                disabled={isLoading}
+                disabled={isLoading || isLoadingStages}
               >
                 {isLoading ? (
                   <>
