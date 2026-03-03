@@ -8,11 +8,12 @@ import {
   AlertTriangle,
   Edit,
   Factory,
+  Layers,
   Loader2,
   Lock,
   Plus,
   Trash2,
-  User
+  User,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -94,6 +95,7 @@ interface FlowStage {
   order: number;
   color?: string;
   allowedRole?: string;
+  flowId: string;
 }
 
 interface FlowItemModalProps {
@@ -110,15 +112,22 @@ interface FlowItemModalProps {
   users: { id: string; name: string }[];
   suppliers: { id: string; name: string; category?: string }[];
   stages: FlowStage[];
+  // 🔥 Lista de fluxos disponíveis
+  flows?: { id: string; name: string; color?: string }[];
 
   // 🔥 Props de Permissão
   currentUserRole?: string;
   currentUserSystemRole?: string; // MASTER, ADMIN, MANAGER, etc
   isReadOnly?: boolean;
 
+  // 🔥 Indica se há múltiplos fluxos selecionados
+  hasMultipleFlows?: boolean;
+
   // Ações
   onDelete?: (id: string) => void;
   onAdvance?: (item: FlowItem) => Promise<void>;
+  // 🔥 Callback quando o fluxo mudar para buscar stages
+  onFlowChange?: (flowId: string) => Promise<FlowStage[]>;
 }
 
 // --- SCHEMA DE VALIDAÇÃO ---
@@ -129,6 +138,8 @@ const itemSchema = z.object({
   productRef: z.string().optional(),
   quantity: z.coerce.number().min(0, "Quantidade mínima").default(1),
   status: z.string().default("PENDENTE"),
+  // 🔥 Campo flowId opcional (quando tem múltiplos fluxos é obrigatório)
+  flowId: z.string().optional(),
   stageId: z.string().optional(),
   assignedToId: z.string().optional(),
   supplierId: z.string().optional(),
@@ -155,11 +166,14 @@ export function FlowItemModal({
   users,
   suppliers,
   stages,
+  flows = [], // 🔥 VALOR PADRÃO: array vazio
   currentUserRole,
   currentUserSystemRole,
   onDelete,
   onAdvance,
+  onFlowChange,
   isReadOnly = false,
+  hasMultipleFlows = false, // 🔥 NOVA PROP
 }: FlowItemModalProps) {
   const isEditing = !!initialData;
 
@@ -183,10 +197,16 @@ export function FlowItemModal({
   const [isInCorte, setIsInCorte] = useState(false);
 
   // ===========================================================================
-  // 🔥 NOVOS ESTADOS PARA HISTÓRICO
+  // 🔥 ESTADOS PARA HISTÓRICO
   // ===========================================================================
   const [historyLogs, setHistoryLogs] = useState<AuditLogEntry[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // ===========================================================================
+  // 🔥 ESTADOS PARA SELEÇÃO DE FLUXO
+  // ===========================================================================
+  const [availableStages, setAvailableStages] = useState<FlowStage[]>([]);
+  const [isLoadingStages, setIsLoadingStages] = useState(false);
 
   // --- Hook Form ---
   const form = useForm({
@@ -197,6 +217,7 @@ export function FlowItemModal({
       productRef: "",
       quantity: 0,
       status: "PENDENTE",
+      flowId: "",
       stageId: "",
       assignedToId: "",
       supplierId: "",
@@ -206,13 +227,16 @@ export function FlowItemModal({
     },
   });
 
+  // Watch para monitorar o fluxo selecionado (quando aplicável)
+  const selectedFlowId = form.watch("flowId");
+  const selectedStageId = form.watch("stageId");
+
   // ===========================================================================
   // 🔥 FUNÇÃO PARA BUSCAR HISTÓRICO DO ITEM
   // ===========================================================================
   const fetchItemHistory = useCallback(async (itemId: string) => {
     setIsLoadingHistory(true);
     try {
-      // 🔥 AJUSTE A URL CONFORME SUA API
       const response = await api.get(`/audit/item/${itemId}`);
       setHistoryLogs(response.data);
     } catch (error) {
@@ -223,66 +247,290 @@ export function FlowItemModal({
     }
   }, []);
 
-  // --- Efeito: Popular Dados ao Abrir ---
-  useEffect(() => {
-    if (isOpen) {
-      setImages([]);
-      setVideos([]);
-      setAudios([]);
-      setRemovedImageIds([]);
-      setRemovedVideoIds([]);
-      setRemovedAudioIds([]);
-      setIsRecording(false);
-      setShowQuantityWarning(false);
+  // ===========================================================================
+  // 🔥 FUNÇÃO PARA BUSCAR STAGES QUANDO O FLUXO MUDAR - CORRIGIDA
+  // ===========================================================================
+  const handleFlowChange = useCallback(
+    async (flowId: string) => {
+      console.log("🔄 [FlowItemModal] Mudando para flow:", flowId);
 
-      // Resetar estados de validação
-      setHasPassedCorte(false);
-      setIsInCorte(false);
-
-      // 🔥 Se for edição, busca o histórico
-      if (initialData?.id) {
-        fetchItemHistory(initialData.id);
-      } else {
-        setHistoryLogs([]); // Limpa histórico para novo item
+      // 🔥 Se não tiver múltiplos fluxos, não deve mudar o fluxo
+      if (!hasMultipleFlows) {
+        console.log("⚠️ Ignorando mudança de fluxo - modo único fluxo");
+        return;
       }
 
-      if (initialData) {
-        form.reset({
-          title: initialData.title,
-          description: initialData.description || "",
-          productRef: initialData.productRef || "",
-          quantity: initialData.quantity,
-          status: initialData.status,
-          stageId: initialData.stageId || "",
-          assignedToId: initialData.assignedToId || "unassigned",
-          supplierId: initialData.supplierId || "internal",
-          dueDate: initialData.dueDate
-            ? initialData.dueDate.substring(0, 10)
-            : "",
-          productionStartedAt: initialData.productionStartedAt
-            ? initialData.productionStartedAt.substring(0, 10)
-            : "",
-          deliveryAt: initialData.deliveryAt
-            ? initialData.deliveryAt.substring(0, 10)
-            : "",
-        });
-      } else {
+      if (!flowId) {
+        setAvailableStages([]);
+        return;
+      }
+
+      setIsLoadingStages(true);
+
+      // 🔥 RESETA A STAGE SELECIONADA
+      form.setValue("stageId", "");
+
+      try {
+        if (onFlowChange) {
+          console.log("📡 Buscando stages do flow via callback...");
+          const stagesFromParent = await onFlowChange(flowId);
+          console.log("✅ Stages recebidas:", stagesFromParent.length);
+          console.log(
+            "📋 Lista de stages:",
+            stagesFromParent.map((s) => ({ id: s.id, name: s.name })),
+          );
+
+          setAvailableStages(stagesFromParent);
+
+          // ✅ NÃO SELECIONA AUTOMATICAMENTE - DEIXA O USUÁRIO ESCOLHER
+        } else {
+          // 🔥 Fallback - busca direto da API
+          console.log("📡 Buscando stages via API direta...");
+          try {
+            const response = await api.get(`/flow/${flowId}/stages`);
+            setAvailableStages(response.data);
+          } catch (error) {
+            console.error("Erro ao buscar stages:", error);
+            setAvailableStages([]);
+          }
+        }
+      } catch (error) {
+        console.error("❌ Erro ao buscar stages:", error);
+        toast.error("Erro ao carregar etapas do fluxo");
+        setAvailableStages([]);
+      } finally {
+        setIsLoadingStages(false);
+      }
+    },
+    [onFlowChange, form, hasMultipleFlows],
+  ); // 🔥 Adiciona hasMultipleFlows nas dependências
+
+  // ===========================================================================
+  // 🔥 EFEITO PARA POPULAR DADOS AO ABRIR
+  // ===========================================================================
+  useEffect(() => {
+    // Só executa quando o modal abre
+    if (!isOpen) return;
+
+    console.log("📂 [FlowItemModal] Abrindo modal");
+    console.log("initialData:", initialData);
+    console.log("initialStageId:", initialStageId);
+    console.log("hasMultipleFlows:", hasMultipleFlows);
+    console.log("flows disponíveis:", flows.length);
+    console.log("stages disponíveis:", stages.length);
+
+    // Resetar estados
+    setImages([]);
+    setVideos([]);
+    setAudios([]);
+    setRemovedImageIds([]);
+    setRemovedVideoIds([]);
+    setRemovedAudioIds([]);
+    setIsRecording(false);
+    setShowQuantityWarning(false);
+    setHasPassedCorte(false);
+    setIsInCorte(false);
+    setAvailableStages([]);
+
+    // 🔥 Se for edição, busca o histórico
+    if (initialData?.id) {
+      fetchItemHistory(initialData.id);
+    } else {
+      setHistoryLogs([]);
+    }
+
+    // 🔥 Reset do formulário baseado nos dados
+    if (initialData) {
+      console.log("📝 Populando formulário com dados existentes");
+      form.reset({
+        title: initialData.title,
+        description: initialData.description || "",
+        productRef: initialData.productRef || "",
+        quantity: initialData.quantity,
+        status: initialData.status,
+        flowId: initialData.flowId,
+        stageId: initialData.stageId || "",
+        assignedToId: initialData.assignedToId || "unassigned",
+        supplierId: initialData.supplierId || "internal",
+        dueDate: initialData.dueDate
+          ? initialData.dueDate.substring(0, 10)
+          : "",
+        productionStartedAt: initialData.productionStartedAt
+          ? initialData.productionStartedAt.substring(0, 10)
+          : "",
+        deliveryAt: initialData.deliveryAt
+          ? initialData.deliveryAt.substring(0, 10)
+          : "",
+      });
+
+      // 🔥 Busca stages do fluxo selecionado
+      if (initialData.flowId) {
+        console.log(
+          "🔄 Buscando stages para o flow do item:",
+          initialData.flowId,
+        );
+        setTimeout(() => {
+          handleFlowChange(initialData.flowId);
+        }, 100);
+      }
+    } else {
+      // 🔥 Para novo item
+      console.log("🆕 Criando novo item");
+
+      // 🔥 CASO 1: Múltiplos fluxos selecionados
+      if (hasMultipleFlows) {
+        console.log(
+          "📌 Múltiplos fluxos detectados - usuário precisa escolher",
+        );
+
+        const defaultFlowId = flows.length > 0 ? flows[0].id : "";
+
         form.reset({
           title: "",
           description: "",
           productRef: "",
           quantity: 0,
           status: "PENDENTE",
-          stageId: initialStageId || (stages.length > 0 ? stages[0].id : ""),
+          flowId: defaultFlowId,
+          stageId: "",
           assignedToId: "unassigned",
           supplierId: "internal",
           dueDate: "",
           productionStartedAt: "",
           deliveryAt: "",
         });
+
+        if (defaultFlowId) {
+          setTimeout(() => {
+            handleFlowChange(defaultFlowId);
+          }, 100);
+        }
+      }
+      // 🔥 CASO 2: Único fluxo selecionado
+      else {
+        console.log("📌 Único fluxo detectado - usando fluxo selecionado");
+        console.log("initialStageId:", initialStageId);
+
+        // Pega o ID do único fluxo selecionado
+        const singleFlowId = flows.length > 0 ? flows[0].id : "";
+
+        if (!singleFlowId) {
+          console.error("❌ Nenhum fluxo disponível");
+          return;
+        }
+
+        // 🔥 VERIFICAÇÃO IMPORTANTE: Se tem initialStageId, usa ele
+        if (initialStageId) {
+          console.log("🎯 initialStageId presente:", initialStageId);
+
+          // Busca a stage correspondente para confirmar
+          const stage = stages.find((s) => s.id === initialStageId);
+
+          if (stage) {
+            console.log("✅ Stage encontrada:", stage);
+
+            form.reset({
+              title: "",
+              description: "",
+              productRef: "",
+              quantity: 0,
+              status: "PENDENTE",
+              flowId: stage.flowId, // Usa o flowId da stage
+              stageId: initialStageId, // 🔥 PRÉ-SELECIONA A STAGE
+              assignedToId: "unassigned",
+              supplierId: "internal",
+              dueDate: "",
+              productionStartedAt: "",
+              deliveryAt: "",
+            });
+
+            // Busca as stages do flow (opcional, para referência)
+            setTimeout(() => {
+              handleFlowChange(stage.flowId);
+            }, 100);
+          } else {
+            console.warn(
+              "⚠️ Stage não encontrada para initialStageId:",
+              initialStageId,
+            );
+            console.log(
+              "Stages disponíveis:",
+              stages.map((s) => ({ id: s.id, name: s.name })),
+            );
+
+            // Fallback: usa o fluxo padrão sem stage pré-selecionada
+            form.reset({
+              title: "",
+              description: "",
+              productRef: "",
+              quantity: 0,
+              status: "PENDENTE",
+              flowId: singleFlowId,
+              stageId: "",
+              assignedToId: "unassigned",
+              supplierId: "internal",
+              dueDate: "",
+              productionStartedAt: "",
+              deliveryAt: "",
+            });
+
+            setTimeout(() => {
+              handleFlowChange(singleFlowId);
+            }, 100);
+          }
+        } else {
+          // Sem initialStageId (improvável, mas por segurança)
+          console.warn("⚠️ Sem initialStageId mesmo com único fluxo");
+          console.log(
+            "Isso pode acontecer se o modal for aberto sem clicar em uma coluna",
+          );
+
+          form.reset({
+            title: "",
+            description: "",
+            productRef: "",
+            quantity: 0,
+            status: "PENDENTE",
+            flowId: singleFlowId,
+            stageId: "",
+            assignedToId: "unassigned",
+            supplierId: "internal",
+            dueDate: "",
+            productionStartedAt: "",
+            deliveryAt: "",
+          });
+
+          setTimeout(() => {
+            handleFlowChange(singleFlowId);
+          }, 100);
+        }
       }
     }
-  }, [isOpen, initialData, stages, form, initialStageId, fetchItemHistory]);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // 🔥 Dependência apenas em isOpen
+
+  // ===========================================================================
+  // 🔥 EFEITO PARA LOGS DE DEBUG
+  // ===========================================================================
+  useEffect(() => {
+    if (isOpen) {
+      console.log("📍 Estado atual:", {
+        selectedFlowId,
+        availableStages: availableStages.length,
+        selectedStageId,
+        isLoadingStages,
+        hasMultipleFlows,
+      });
+    }
+  }, [
+    selectedFlowId,
+    availableStages,
+    selectedStageId,
+    isLoadingStages,
+    hasMultipleFlows,
+    isOpen,
+  ]);
 
   // --- Funções de Gravação de Áudio ---
   const startRecording = async () => {
@@ -363,51 +611,41 @@ export function FlowItemModal({
   const canEditQuantity = useMemo(() => {
     const isAdmin = isUserAdmin();
 
-    // 👑 ADMIN PODE TUDO! (independente da coluna)
     if (isAdmin) {
-      return true; // ADMIN SEMPRE PODE EDITAR
+      return true;
     }
 
-    // Para não-admin: só pode editar se estiver na coluna Corte E tiver permissão
     return isInCorte && userHasCortePermission();
   }, [isInCorte, isUserAdmin, userHasCortePermission]);
 
-  // 🔥 Monitora a etapa atual e calcula a posição em relação ao Corte
-  const selectedStageId = form.watch("stageId");
-  const currentStage = stages.find((s) => s.id === selectedStageId);
+  // 🔥 Monitora a etapa atual
+  const currentStage = availableStages.find((s) => s.id === selectedStageId);
   const isCurrentStageCorte = currentStage
     ? isCorteStage(currentStage.name)
     : false;
 
   // 🔥 Efeito para determinar a posição do item em relação à coluna Corte
   useEffect(() => {
-    if (!stages.length) {
+    if (!availableStages.length || !isOpen) {
       return;
     }
 
-    // Ordena as etapas por ordem
-    const sortedStages = [...stages].sort((a, b) => a.order - b.order);
-
-    // Encontra o índice da etapa de Corte
+    const sortedStages = [...availableStages].sort((a, b) => a.order - b.order);
     const corteIndex = sortedStages.findIndex((s) => isCorteStage(s.name));
 
-    // Se não tem coluna Corte, não aplica a regra
     if (corteIndex === -1) {
       setHasPassedCorte(false);
       setIsInCorte(false);
       return;
     }
 
-    // Para criação de novo item
     if (!isEditing) {
       setIsInCorte(isCurrentStageCorte);
       setHasPassedCorte(false);
       return;
     }
 
-    // Para edição de item existente
     if (initialData) {
-      // Verifica se o stage do item existe nos stages atuais
       const stageExists = sortedStages.some(
         (s) => s.id === initialData.stageId,
       );
@@ -420,66 +658,279 @@ export function FlowItemModal({
         (s) => s.id === initialData.stageId,
       );
 
-      // Está na coluna Corte
       const inCorte = currentItemStageIndex === corteIndex;
-
-      // Já passou da coluna Corte (está depois)
       const passedCorte = currentItemStageIndex > corteIndex;
 
       setIsInCorte(inCorte);
       setHasPassedCorte(passedCorte);
     }
   }, [
-    stages,
+    availableStages,
     initialData,
     isEditing,
     selectedStageId,
     isCurrentStageCorte,
     isCorteStage,
+    isOpen,
   ]);
 
   // 🔥 Lógica principal do campo quantidade
   const isQuantityDisabled = useMemo(() => {
-    // Se for modo leitura global, desabilita
-    if (isReadOnly) {
-      return true;
-    }
-
-    // Se NÃO pode editar quantidade, desabilita
-    if (!canEditQuantity) {
-      return true;
-    }
-
+    if (isReadOnly) return true;
+    if (!canEditQuantity) return true;
     return false;
   }, [isReadOnly, canEditQuantity]);
 
   // 🔥 Verifica se a quantidade é obrigatória
   const isQuantityRequired = useMemo(() => {
-    // Para ADMIN, quantidade nunca é obrigatória (pode gerenciar como quiser)
-    if (isUserAdmin()) {
-      return false;
-    }
-
-    // Para não-admin, quantidade é obrigatória no Corte
-    if (isInCorte) {
-      return true;
-    }
-
+    if (isUserAdmin()) return false;
+    if (isInCorte) return true;
     return false;
   }, [isInCorte, isUserAdmin]);
 
-  // --- Submit do formulário com validação extra ---
+  // --- Submit do formulário ---
   const handleSubmit = async (values: ItemFormValues) => {
-    // 🔥 VALIDAÇÃO CRÍTICA: Converte para número e verifica
-    const quantityNum = Number(values.quantity);
+    console.log("\n");
+    console.log("=".repeat(80));
+    console.log("📤 [FlowItemModal] SUBMETENDO FORMULÁRIO");
+    console.log("=".repeat(80));
+    console.log("📦 Values recebidos:", {
+      title: values.title,
+      description: values.description,
+      productRef: values.productRef,
+      quantity: values.quantity,
+      status: values.status,
+      flowId: values.flowId,
+      stageId: values.stageId,
+      assignedToId: values.assignedToId,
+      supplierId: values.supplierId,
+      dueDate: values.dueDate,
+      productionStartedAt: values.productionStartedAt,
+      deliveryAt: values.deliveryAt,
+    });
+    console.log("📌 Contexto:", {
+      hasMultipleFlows,
+      initialStageId,
+      isEditing,
+      selectedFlowId: form.getValues("flowId"),
+      selectedStageId: form.getValues("stageId"),
+      flowsDisponiveis: flows.length,
+      stagesDisponiveis: stages.length,
+      availableStagesCount: availableStages.length,
+    });
+
+    // ===========================================================================
+    // 🔥 PASSO 1: PREPARAR PAYLOAD BASEADO NO CONTEXTO
+    // ===========================================================================
+    let payload: any;
+
+    if (hasMultipleFlows) {
+      // =========================================================================
+      // 🔥 CASO 1: MÚLTIPLOS FLUXOS - USUÁRIO ESCOLHEU TUDO
+      // =========================================================================
+      console.log("📌 Modo: Múltiplos fluxos - validando seleções do usuário");
+
+      // Validar se fluxo foi selecionado
+      if (!values.flowId) {
+        console.error("❌ flowId não informado");
+        toast.error("Selecione uma coleção");
+        return;
+      }
+
+      // Validar se etapa foi selecionada
+      if (!values.stageId) {
+        console.error("❌ stageId não informado");
+        toast.error("Selecione uma etapa");
+        return;
+      }
+
+      // Verificar se a stage pertence ao flow selecionado
+      console.log("🔍 Verificando se stage pertence ao flow:", {
+        flowId: values.flowId,
+        stageId: values.stageId,
+        stagesDisponiveis: availableStages.map((s) => ({
+          id: s.id,
+          name: s.name,
+        })),
+      });
+
+      const stageBelongsToFlow = availableStages.some(
+        (s) => s.id === values.stageId,
+      );
+      if (!stageBelongsToFlow) {
+        console.error("❌ Stage não pertence ao flow selecionado");
+        toast.error("Etapa inválida para o fluxo selecionado");
+        return;
+      }
+
+      console.log("✅ Stage pertence ao flow");
+
+      payload = {
+        ...values,
+        flowId: values.flowId,
+        stageId: values.stageId,
+      };
+    } else {
+      // =========================================================================
+      // 🔥 CASO 2: ÚNICO FLUXO - USA FLUXO SELECIONADO E STAGE DO CLIQUE
+      // =========================================================================
+      console.log(
+        "📌 Modo: Único fluxo - usando fluxo padrão e stage do clique",
+      );
+
+      const singleFlowId = flows.length > 0 ? flows[0].id : "";
+
+      if (!singleFlowId) {
+        console.error("❌ Nenhum fluxo disponível");
+        toast.error("Nenhum fluxo disponível");
+        return;
+      }
+
+      console.log("📌 Fluxo único:", {
+        singleFlowId,
+        flowName: flows[0]?.name,
+      });
+
+      // =========================================================================
+      // 🔥 VALIDAÇÃO PARA MODO CRIAÇÃO (NOVO ITEM)
+      // =========================================================================
+      if (!isEditing) {
+        console.log("📌 Modo criação - validando stage");
+
+        // Caso 1: Tem initialStageId (veio do clique no "+")
+        if (initialStageId) {
+          console.log("✅ initialStageId presente:", initialStageId);
+
+          // Verifica se a stage existe no array de stages
+          const stageExists = stages.some((s) => s.id === initialStageId);
+
+          if (!stageExists) {
+            console.error(
+              "❌ Stage não encontrada no array de stages:",
+              initialStageId,
+            );
+            console.log(
+              "Stages disponíveis:",
+              stages.map((s) => ({ id: s.id, name: s.name })),
+            );
+
+            // 🔥 TENTATIVA DE RECUPERAÇÃO: verifica se a stage está em availableStages
+            const stageInAvailable = availableStages.some(
+              (s) => s.id === initialStageId,
+            );
+
+            if (stageInAvailable) {
+              console.log(
+                "✅ Stage encontrada em availableStages, usando como fallback",
+              );
+              payload = {
+                ...values,
+                flowId: singleFlowId,
+                stageId: initialStageId,
+              };
+            } else {
+              toast.error("Etapa não encontrada");
+              return;
+            }
+          } else {
+            console.log("✅ Stage válida encontrada");
+            payload = {
+              ...values,
+              flowId: singleFlowId,
+              stageId: initialStageId,
+            };
+          }
+        }
+        // Caso 2: Não tem initialStageId (improvável, mas por segurança)
+        else {
+          console.warn(
+            "⚠️ initialStageId não encontrado, tentando usar values.stageId",
+          );
+
+          if (values.stageId) {
+            console.log(
+              "✅ Usando values.stageId como fallback:",
+              values.stageId,
+            );
+
+            // Verifica se a stage em values.stageId é válida
+            const stageExists =
+              stages.some((s) => s.id === values.stageId) ||
+              availableStages.some((s) => s.id === values.stageId);
+
+            if (stageExists) {
+              payload = {
+                ...values,
+                flowId: singleFlowId,
+                stageId: values.stageId,
+              };
+            } else {
+              console.error("❌ Stage inválida em values.stageId");
+              toast.error("Etapa inválida");
+              return;
+            }
+          } else {
+            console.error("❌ Nenhuma stage disponível para criar o item");
+            toast.error(
+              "Erro ao identificar etapa. Tente novamente ou selecione outro fluxo.",
+            );
+            return;
+          }
+        }
+      }
+      // =========================================================================
+      // 🔥 MODO EDIÇÃO (EDITANDO ITEM EXISTENTE)
+      // =========================================================================
+      else {
+        console.log("📌 Modo edição - usando stage do formulário");
+
+        if (!values.stageId) {
+          console.error("❌ stageId não informado no modo edição");
+          toast.error("Selecione uma etapa");
+          return;
+        }
+
+        // Verifica se a stage é válida
+        const stageExists =
+          stages.some((s) => s.id === values.stageId) ||
+          availableStages.some((s) => s.id === values.stageId);
+
+        if (!stageExists) {
+          console.error("❌ Stage inválida no modo edição:", values.stageId);
+          toast.error("Etapa inválida");
+          return;
+        }
+
+        payload = {
+          ...values,
+          flowId: singleFlowId,
+          stageId: values.stageId,
+        };
+      }
+    }
+
+    console.log("📦 Payload preparado:", {
+      ...payload,
+      flowId: payload.flowId,
+      stageId: payload.stageId,
+    });
+
+    // ===========================================================================
+    // 🔥 PASSO 2: VALIDAÇÃO DA QUANTIDADE
+    // ===========================================================================
+    const quantityNum = Number(payload.quantity);
     const isAdmin = isUserAdmin();
 
-    // ADMIN pode passar qualquer valor - PULA VALIDAÇÃO
-    if (isAdmin) {
-      // Continua mesmo com quantidade zero
-    } else {
-      // Para não-admin no Corte, quantidade é obrigatória e > 0
+    console.log("🔍 Validando quantidade:", {
+      quantity: quantityNum,
+      isAdmin,
+      isInCorte,
+      isQuantityRequired,
+    });
+
+    if (!isAdmin) {
       if (isInCorte && (!quantityNum || quantityNum < 1)) {
+        console.error("❌ Quantidade inválida para coluna Corte");
         setShowQuantityWarning(true);
         toast.error(
           "Você está na coluna Corte. A quantidade é obrigatória e deve ser maior que zero.",
@@ -488,31 +939,63 @@ export function FlowItemModal({
       }
     }
 
-    const payload = {
-      ...values,
+    // ===========================================================================
+    // 🔥 PASSO 3: PREPARAR VALORES FINAIS (TRATAR NULLS E DADOS ESPECIAIS)
+    // ===========================================================================
+    const finalPayload = {
+      title: payload.title,
+      description: payload.description || null,
+      productRef: payload.productRef || null,
       quantity: quantityNum,
-      supplierId:
-        values.supplierId === "internal" || !values.supplierId
-          ? null
-          : values.supplierId,
+      status: payload.status || "PENDENTE",
+      flowId: payload.flowId,
+      stageId: payload.stageId,
       assignedToId:
-        values.assignedToId === "unassigned" || !values.assignedToId
+        payload.assignedToId === "unassigned" || !payload.assignedToId
           ? null
-          : values.assignedToId,
-      dueDate: values.dueDate || null,
-      productionStartedAt: values.productionStartedAt || null,
-      deliveryAt: values.deliveryAt || null,
+          : payload.assignedToId,
+      supplierId:
+        payload.supplierId === "internal" || !payload.supplierId
+          ? null
+          : payload.supplierId,
+      dueDate: payload.dueDate || null,
+      productionStartedAt: payload.productionStartedAt || null,
+      deliveryAt: payload.deliveryAt || null,
+      orderNumber: payload.orderNumber || "",
+      priority: payload.priority || 3,
     };
 
-    await onSubmit(
-      payload,
-      { images, audios, videos },
-      {
-        images: removedImageIds,
-        audios: removedAudioIds,
-        videos: removedVideoIds,
-      },
-    );
+    console.log("🚀 Payload final a ser enviado:", finalPayload);
+    console.log("📦 Mídias:", {
+      images: images.length,
+      audios: audios.length,
+      videos: videos.length,
+    });
+    console.log("🗑️ Mídias removidas:", {
+      images: removedImageIds.length,
+      audios: removedAudioIds.length,
+      videos: removedVideoIds.length,
+    });
+
+    // ===========================================================================
+    // 🔥 PASSO 4: ENVIAR PARA O COMPONENTE PAI
+    // ===========================================================================
+    try {
+      await onSubmit(
+        finalPayload,
+        { images, audios, videos },
+        {
+          images: removedImageIds,
+          audios: removedAudioIds,
+          videos: removedVideoIds,
+        },
+      );
+
+      console.log("✅ Submit concluído com sucesso");
+    } catch (error) {
+      console.error("❌ Erro no submit:", error);
+      // O erro já será tratado no componente pai
+    }
   };
 
   // --- Helper de Texto ---
@@ -526,50 +1009,14 @@ export function FlowItemModal({
     return `${nameWithoutExt.substring(0, keepChars)}...${nameWithoutExt.substring(nameWithoutExt.length - keepChars)}${ext}`;
   };
 
-  // 🔥 Mensagem de contexto baseada no estado
-  const quantityContextMessage = useMemo(() => {
-    if (isReadOnly) return null;
+  // Encontra a stage atual para exibir no texto informativo
+  const currentStageInfo = useMemo(() => {
+    if (!initialStageId) return null;
+    return stages.find((s) => s.id === initialStageId);
+  }, [initialStageId, stages]);
 
-    // 👑 ADMIN - Mensagem especial
-    if (isUserAdmin()) {
-      return {
-        type: "admin",
-        icon: <User size={14} />,
-        title: "👑 ADMIN",
-        message:
-          "Você é administrador e pode editar a quantidade em qualquer etapa.",
-      };
-    }
-
-    // Usuário comum - mensagens simples
-    if (!canEditQuantity) {
-      if (!isInCorte) {
-        return {
-          type: "info",
-          icon: <Lock size={14} />,
-          title: "🔒 Bloqueado",
-          message: "A quantidade só pode ser editada na coluna Corte.",
-        };
-      }
-    }
-
-    if (isInCorte && userHasCortePermission()) {
-      return {
-        type: "warning",
-        icon: <AlertCircle size={14} />,
-        title: "⚠️ Quantidade obrigatória",
-        message: "Você está na coluna Corte. A quantidade é obrigatória.",
-      };
-    }
-
-    return null;
-  }, [
-    isReadOnly,
-    canEditQuantity,
-    isInCorte,
-    isUserAdmin,
-    userHasCortePermission,
-  ]);
+  // Se não tiver múltiplos fluxos, não mostra o campo de seleção de fluxo
+  const showFlowSelector = hasMultipleFlows;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -636,6 +1083,130 @@ export function FlowItemModal({
 
                     {/* --- TAB DETALHES --- */}
                     <TabsContent value="details" className="space-y-4">
+                      {/* 🔥 CAMPO COLEÇÃO/FLUXO - SÓ APARECE COM MÚLTIPLOS FLUXOS */}
+                      {showFlowSelector && (
+                        <div className="grid grid-cols-1 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="flowId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="flex items-center gap-2">
+                                  <Layers size={14} /> Coleção / Fluxo *
+                                </FormLabel>
+                                <Select
+                                  onValueChange={(value) => {
+                                    console.log("🎯 Flow selecionado:", value);
+                                    field.onChange(value);
+                                    // 🔥 Só chama handleFlowChange se tiver múltiplos fluxos
+                                    if (hasMultipleFlows) {
+                                      handleFlowChange(value);
+                                    }
+                                  }}
+                                  value={field.value}
+                                  disabled={
+                                    isReadOnly ||
+                                    isLoadingStages ||
+                                    flows.length === 0 ||
+                                    !hasMultipleFlows
+                                  }
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue
+                                        placeholder={
+                                          flows.length === 0
+                                            ? "Nenhuma coleção disponível"
+                                            : "Selecione uma coleção..."
+                                        }
+                                      />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {flows.map((flow) => (
+                                      <SelectItem key={flow.id} value={flow.id}>
+                                        <div className="flex items-center gap-2">
+                                          <div
+                                            className="w-3 h-3 rounded-full"
+                                            style={{
+                                              backgroundColor:
+                                                flow.color || "#D35400",
+                                            }}
+                                          />
+                                          {flow.name}
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      )}
+
+                      {/* 🔥 CAMPO ETAPA - CONDICIONAL */}
+                      {hasMultipleFlows ? (
+                        // Caso 1: Múltiplos fluxos - mostra select de etapa
+                        <div className="grid grid-cols-1 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="stageId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="flex items-center gap-2">
+                                  <Layers size={14} /> Etapa *
+                                </FormLabel>
+                                <Select
+                                  onValueChange={(value) => {
+                                    console.log("📍 Stage selecionada:", value);
+                                    field.onChange(value);
+                                  }}
+                                  value={field.value}
+                                  disabled={
+                                    isReadOnly ||
+                                    !selectedFlowId ||
+                                    isLoadingStages ||
+                                    availableStages.length === 0
+                                  }
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue
+                                        placeholder={
+                                          isLoadingStages
+                                            ? "Carregando etapas..."
+                                            : !selectedFlowId
+                                              ? "Selecione uma coleção primeiro"
+                                              : availableStages.length === 0
+                                                ? "Nenhuma etapa disponível"
+                                                : "Selecione uma etapa"
+                                        }
+                                      />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {availableStages.map((stage) => (
+                                      <SelectItem
+                                        key={stage.id}
+                                        value={stage.id}
+                                      >
+                                        {stage.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      ) : (
+                        // Caso 2: Único fluxo - mostra texto informativo com a etapa
+                        !isEditing && initialStageId && currentStageInfo && null
+                      )}
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={form.control}
@@ -690,7 +1261,7 @@ export function FlowItemModal({
                         />
                       </div>
 
-                      {/* 🔥 CAMPO QUANTIDADE COM NOVA LÓGICA DE PERMISSÕES */}
+                      {/* 🔥 CAMPO QUANTIDADE */}
                       <div className="grid grid-cols-1 gap-4">
                         <FormField
                           control={form.control}
@@ -741,7 +1312,6 @@ export function FlowItemModal({
                                   />
                                 </FormControl>
 
-                                {/* 🔥 AVISO DE VALIDAÇÃO - APENAS QUANDO NECESSÁRIO */}
                                 {showQuantityWarning && isQuantityRequired && (
                                   <p className="text-xs text-red-500 font-medium flex items-center gap-1 mt-1">
                                     <AlertCircle size={12} />A quantidade é
@@ -1191,9 +1761,9 @@ export function FlowItemModal({
                       <FlowHistoryModal
                         logs={historyLogs}
                         isLoading={isLoadingHistory}
-                        users={users} // Lista de usuários com id e name
-                        suppliers={suppliers} // Lista de fornecedores com id e name
-                        stages={stages} // ✅ CORRIGIDO: usa 'stages' em vez de 'currentItemStages'
+                        users={users}
+                        suppliers={suppliers}
+                        stages={stages}
                       />
                     </TabsContent>
                   </Tabs>
@@ -1205,7 +1775,7 @@ export function FlowItemModal({
 
         {/* FOOTER */}
         <DialogFooter className="px-6 py-4 border-t bg-slate-50 shrink-0 flex items-center justify-between sm:justify-between">
-          {/* ESQUERDA: Botão de Excluir (Só se editando E tiver permissão) */}
+          {/* ESQUERDA: Botão de Excluir */}
           <div>
             {isEditing && onDelete && initialData && !isReadOnly && (
               <Button
@@ -1231,7 +1801,6 @@ export function FlowItemModal({
               {isReadOnly ? "Fechar" : "Cancelar"}
             </Button>
 
-            {/* 🔥 BOTÃO DE SALVAR (só aparece se não for readonly) */}
             {!isReadOnly && (
               <Button
                 form="flow-item-form"
@@ -1242,7 +1811,7 @@ export function FlowItemModal({
                     ? "bg-purple-700 hover:bg-purple-800"
                     : "bg-slate-800 hover:bg-slate-900",
                 )}
-                disabled={isLoading}
+                disabled={isLoading || isLoadingStages}
               >
                 {isLoading ? (
                   <>

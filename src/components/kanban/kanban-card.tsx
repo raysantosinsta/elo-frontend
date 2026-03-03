@@ -55,23 +55,22 @@ export function KanbanCard({
   children
 }: KanbanCardProps) {
   
-  // 🔥 CORREÇÃO: Verifica se existe pelo menos uma ação disponível
   const hasActions = onComplete || onView || onEdit || onDelete || extraMenuItems;
 
   return (
     <Card
-      draggable={!!onDragStart} // Só é draggable se a função existir
+      draggable={!!onDragStart}
       onDragStart={(e) => onDragStart ? onDragStart(e) : e.preventDefault()}
       onDoubleClick={onDoubleClick}
       className={cn(
         "cursor-grab active:cursor-grabbing group transition-all duration-200",
-        "border-l-[4px] bg-white hover:shadow-md select-none relative mb-3 rounded-xl overflow-hidden flex flex-col"
+        "border-l-[4px] bg-white hover:shadow-md select-none relative mb-2 rounded-lg overflow-hidden flex flex-col"
       )}
       style={{ borderLeftColor: priorityColor }}
     >
-      {/* 🖼️ ÁREA DA IMAGEM */}
+      {/* 🖼️ IMAGEM MAIS COMPACTA */}
       {coverImage && (
-        <div className="w-full h-32 flex-shrink-0 overflow-hidden bg-slate-100 border-b border-slate-100">
+        <div className="w-full h-24 flex-shrink-0 overflow-hidden bg-slate-100">
           <img 
             src={coverImage} 
             alt={title} 
@@ -84,13 +83,13 @@ export function KanbanCard({
         </div>
       )}
 
-      <div className="p-3 flex flex-col flex-1">
-        {/* Status e Menu */}
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex flex-wrap gap-1 items-center">
+      <div className="p-2.5 flex flex-col flex-1">
+        {/* Status e Menu - MAIS JUNTOS */}
+        <div className="flex justify-between items-start gap-1 mb-1.5">
+          <div className="flex flex-wrap gap-1 items-center min-h-[24px]">
              {statusLabel && (
                <span 
-                 className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase leading-none"
+                 className="text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase leading-none inline-flex items-center"
                  style={{ color: statusColor, backgroundColor: `${statusColor}15` }}
                >
                  {statusLabel}
@@ -99,12 +98,11 @@ export function KanbanCard({
              {tags}
           </div>
 
-          {/* 🔥 SÓ RENDERIZA O MENU SE HOUVER AÇÕES */}
           {hasActions && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="text-slate-300 hover:text-slate-500 transition-colors p-1 hover:bg-slate-100 rounded">
-                  <MoreHorizontal size={16} />
+                <button className="text-slate-300 hover:text-slate-500 transition-colors p-0.5 hover:bg-slate-100 rounded-sm -mt-0.5 -mr-1">
+                  <MoreHorizontal size={14} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
@@ -116,9 +114,9 @@ export function KanbanCard({
                         e.stopPropagation();
                         onComplete();
                       }} 
-                      className="text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50 font-bold cursor-pointer"
+                      className="text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50 font-bold cursor-pointer text-sm py-1.5"
                     >
-                      <CheckCircle2 className="w-4 h-4 mr-2"/> 
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-2"/> 
                       Concluir Etapa
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -126,20 +124,20 @@ export function KanbanCard({
                 )}
 
                 {onView && (
-                  <DropdownMenuItem onClick={onView} className="cursor-pointer">
-                    <Eye className="w-4 h-4 mr-2"/> Ver
+                  <DropdownMenuItem onClick={onView} className="cursor-pointer text-sm py-1.5">
+                    <Eye className="w-3.5 h-3.5 mr-2"/> Ver
                   </DropdownMenuItem>
                 )}
                 
                 {onEdit && (
-                  <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
-                    <Edit className="w-4 h-4 mr-2"/> Editar
+                  <DropdownMenuItem onClick={onEdit} className="cursor-pointer text-sm py-1.5">
+                    <Edit className="w-3.5 h-3.5 mr-2"/> Editar
                   </DropdownMenuItem>
                 )}
                 
                 {onDelete && (
-                  <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer">
-                    <Trash2 className="w-4 h-4 mr-2"/> Excluir
+                  <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer text-sm py-1.5">
+                    <Trash2 className="w-3.5 h-3.5 mr-2"/> Excluir
                   </DropdownMenuItem>
                 )}
 
@@ -149,26 +147,28 @@ export function KanbanCard({
           )}
         </div>
 
-        {/* Título e Subtítulo */}
-        <div className="mb-2">
-            <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight group-hover:text-[#D35400] transition-colors">
+        {/* Título e Subtítulo - MAIS COMPACTOS */}
+        <div className="mb-1">
+            <h4 className="font-semibold text-xs text-slate-800 line-clamp-2 leading-snug group-hover:text-[#D35400] transition-colors">
               {title}
             </h4>
             {subtitle && (
-              <p className="text-[10px] text-slate-400 font-mono mt-1 uppercase truncate">
+              <p className="text-[9px] text-slate-400 font-mono mt-0.5 uppercase truncate leading-tight">
                 {subtitle}
               </p>
             )}
         </div>
 
-        {/* Conteúdo/Descrição */}
-        <div className="text-xs text-slate-500 line-clamp-2 mb-3">
-          {children}
-        </div>
+        {/* Conteúdo/Descrição - COM MENOS ESPAÇO */}
+        {children && (
+          <div className="text-[10px] text-slate-500 line-clamp-2 mb-1.5 leading-relaxed">
+            {children}
+          </div>
+        )}
 
-        {/* Footer */}
+        {/* Footer - MAIS COMPACTO */}
         {footer && (
-          <div className="mt-auto pt-2 border-t border-slate-50">
+          <div className="mt-auto pt-1.5 border-t border-slate-100 text-xs">
             {footer}
           </div>
         )}
