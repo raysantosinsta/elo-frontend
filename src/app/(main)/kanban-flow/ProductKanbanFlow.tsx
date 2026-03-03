@@ -337,6 +337,7 @@ export default function ProductFlowKanban() {
       "📋 Stages disponíveis:",
       itemBoard.stages.map((s) => ({ id: s.id, name: s.name })),
     );
+    console.log("🎯 Stage clicada:", stageId);
 
     // 🔥 Guarda o stageId que veio do clique
     setActiveStageId(stageId);
@@ -2236,17 +2237,17 @@ export default function ProductFlowKanban() {
         currentUserRole={user?.professionalRole}
         currentUserSystemRole={user?.role}
         isReadOnly={false}
+        // 🔥 NOVA PROP: indica se tem múltiplos fluxos selecionados
+        hasMultipleFlows={selectedFlowIds.length > 1}
         onFlowChange={async (flowId) => {
           try {
             console.log("🔄 Buscando stages para flow:", flowId);
 
-            // 🔥 RESETA O activeStageId
             setActiveStageId(null);
 
             const response = await api.get(`/flow/${flowId}/stages`);
             console.log("✅ Stages carregadas:", response.data.length);
 
-            // 🔥 ATUALIZA O currentItemStages COM AS NOVAS STAGES
             setCurrentItemStages(response.data);
 
             return response.data;
@@ -2257,6 +2258,7 @@ export default function ProductFlowKanban() {
           }
         }}
       />
+
       <FlowItemModal
         isOpen={isEditItemModal}
         onClose={() => {
@@ -2282,17 +2284,17 @@ export default function ProductFlowKanban() {
         currentUserRole={user?.professionalRole}
         currentUserSystemRole={user?.role}
         isReadOnly={isModalReadOnly}
+        // 🔥 NOVA PROP: indica se tem múltiplos fluxos selecionados
+        hasMultipleFlows={selectedFlowIds.length > 1}
         onFlowChange={async (flowId) => {
           try {
             console.log("🔄 Buscando stages para flow:", flowId);
 
-            // 🔥 RESETA O activeStageId
             setActiveStageId(null);
 
             const response = await api.get(`/flow/${flowId}/stages`);
             console.log("✅ Stages carregadas:", response.data.length);
 
-            // 🔥 ATUALIZA O currentItemStages COM AS NOVAS STAGES
             setCurrentItemStages(response.data);
 
             return response.data;

@@ -112,13 +112,16 @@ interface FlowItemModalProps {
   users: { id: string; name: string }[];
   suppliers: { id: string; name: string; category?: string }[];
   stages: FlowStage[];
-  // 🔥 Lista de fluxos disponíveis (com valor padrão)
+  // 🔥 Lista de fluxos disponíveis
   flows?: { id: string; name: string; color?: string }[];
 
   // 🔥 Props de Permissão
   currentUserRole?: string;
   currentUserSystemRole?: string; // MASTER, ADMIN, MANAGER, etc
   isReadOnly?: boolean;
+
+  // 🔥 Indica se há múltiplos fluxos selecionados
+  hasMultipleFlows?: boolean;
 
   // Ações
   onDelete?: (id: string) => void;
@@ -135,8 +138,8 @@ const itemSchema = z.object({
   productRef: z.string().optional(),
   quantity: z.coerce.number().min(0, "Quantidade mínima").default(1),
   status: z.string().default("PENDENTE"),
-  // 🔥 Campo flowId obrigatório
-  flowId: z.string().min(1, "Coleção é obrigatória"),
+  // 🔥 Campo flowId opcional (quando tem múltiplos fluxos é obrigatório)
+  flowId: z.string().optional(),
   stageId: z.string().optional(),
   assignedToId: z.string().optional(),
   supplierId: z.string().optional(),
@@ -170,6 +173,7 @@ export function FlowItemModal({
   onAdvance,
   onFlowChange,
   isReadOnly = false,
+  hasMultipleFlows = false, // 🔥 NOVA PROP
 }: FlowItemModalProps) {
   const isEditing = !!initialData;
 
@@ -199,7 +203,7 @@ export function FlowItemModal({
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   // ===========================================================================
-  // 🔥 NOVOS ESTADOS PARA SELEÇÃO DE FLUXO
+  // 🔥 ESTADOS PARA SELEÇÃO DE FLUXO
   // ===========================================================================
   const [availableStages, setAvailableStages] = useState<FlowStage[]>([]);
   const [isLoadingStages, setIsLoadingStages] = useState(false);
@@ -223,8 +227,9 @@ export function FlowItemModal({
     },
   });
 
-  // Watch para monitorar o fluxo selecionado
+  // Watch para monitorar o fluxo selecionado (quando aplicável)
   const selectedFlowId = form.watch("flowId");
+  const selectedStageId = form.watch("stageId");
 
   // ===========================================================================
   // 🔥 FUNÇÃO PARA BUSCAR HISTÓRICO DO ITEM
@@ -248,6 +253,12 @@ export function FlowItemModal({
   const handleFlowChange = useCallback(
     async (flowId: string) => {
       console.log("🔄 [FlowItemModal] Mudando para flow:", flowId);
+
+      // 🔥 Se não tiver múltiplos fluxos, não deve mudar o fluxo
+      if (!hasMultipleFlows) {
+        console.log("⚠️ Ignorando mudança de fluxo - modo único fluxo");
+        return;
+      }
 
       if (!flowId) {
         setAvailableStages([]);
@@ -273,7 +284,7 @@ export function FlowItemModal({
 
           // ✅ NÃO SELECIONA AUTOMATICAMENTE - DEIXA O USUÁRIO ESCOLHER
         } else {
-          // 🔥 Fallback - NÃO USA MAIS O PROP 'stages'
+          // 🔥 Fallback - busca direto da API
           console.log("📡 Buscando stages via API direta...");
           try {
             const response = await api.get(`/flow/${flowId}/stages`);
@@ -291,8 +302,8 @@ export function FlowItemModal({
         setIsLoadingStages(false);
       }
     },
-    [onFlowChange, form],
-  ); // 🔥 Remove 'stages' das dependências
+    [onFlowChange, form, hasMultipleFlows],
+  ); // 🔥 Adiciona hasMultipleFlows nas dependências
 
   // ===========================================================================
   // 🔥 EFEITO PARA POPULAR DADOS AO ABRIR
@@ -304,6 +315,9 @@ export function FlowItemModal({
     console.log("📂 [FlowItemModal] Abrindo modal");
     console.log("initialData:", initialData);
     console.log("initialStageId:", initialStageId);
+    console.log("hasMultipleFlows:", hasMultipleFlows);
+    console.log("flows disponíveis:", flows.length);
+    console.log("stages disponíveis:", stages.length);
 
     // Resetar estados
     setImages([]);
@@ -363,67 +377,12 @@ export function FlowItemModal({
       // 🔥 Para novo item
       console.log("🆕 Criando novo item");
 
-      // Se tiver initialStageId, significa que veio do clique no botão "+" de uma coluna
-      if (initialStageId) {
-        console.log("🎯 initialStageId presente:", initialStageId);
+      // 🔥 CASO 1: Múltiplos fluxos selecionados
+      if (hasMultipleFlows) {
+        console.log(
+          "📌 Múltiplos fluxos detectados - usuário precisa escolher",
+        );
 
-        // Busca a stage correspondente para descobrir o flowId
-        const stage = stages.find((s) => s.id === initialStageId);
-
-        if (stage) {
-          console.log("✅ Stage encontrada:", stage);
-
-          form.reset({
-            title: "",
-            description: "",
-            productRef: "",
-            quantity: 0,
-            status: "PENDENTE",
-            flowId: stage.flowId,
-            stageId: initialStageId,
-            assignedToId: "unassigned",
-            supplierId: "internal",
-            dueDate: "",
-            productionStartedAt: "",
-            deliveryAt: "",
-          });
-
-          // Busca as stages do flow
-          setTimeout(() => {
-            handleFlowChange(stage.flowId);
-          }, 100);
-        } else {
-          console.warn(
-            "⚠️ Stage não encontrada para initialStageId:",
-            initialStageId,
-          );
-
-          // Fallback: usa o primeiro flow
-          const defaultFlowId = flows.length > 0 ? flows[0].id : "";
-
-          form.reset({
-            title: "",
-            description: "",
-            productRef: "",
-            quantity: 0,
-            status: "PENDENTE",
-            flowId: defaultFlowId,
-            stageId: "",
-            assignedToId: "unassigned",
-            supplierId: "internal",
-            dueDate: "",
-            productionStartedAt: "",
-            deliveryAt: "",
-          });
-
-          if (defaultFlowId) {
-            setTimeout(() => {
-              handleFlowChange(defaultFlowId);
-            }, 100);
-          }
-        }
-      } else {
-        // Sem initialStageId, usa o primeiro flow
         const defaultFlowId = flows.length > 0 ? flows[0].id : "";
 
         form.reset({
@@ -447,6 +406,105 @@ export function FlowItemModal({
           }, 100);
         }
       }
+      // 🔥 CASO 2: Único fluxo selecionado
+      else {
+        console.log("📌 Único fluxo detectado - usando fluxo selecionado");
+        console.log("initialStageId:", initialStageId);
+
+        // Pega o ID do único fluxo selecionado
+        const singleFlowId = flows.length > 0 ? flows[0].id : "";
+
+        if (!singleFlowId) {
+          console.error("❌ Nenhum fluxo disponível");
+          return;
+        }
+
+        // 🔥 VERIFICAÇÃO IMPORTANTE: Se tem initialStageId, usa ele
+        if (initialStageId) {
+          console.log("🎯 initialStageId presente:", initialStageId);
+
+          // Busca a stage correspondente para confirmar
+          const stage = stages.find((s) => s.id === initialStageId);
+
+          if (stage) {
+            console.log("✅ Stage encontrada:", stage);
+
+            form.reset({
+              title: "",
+              description: "",
+              productRef: "",
+              quantity: 0,
+              status: "PENDENTE",
+              flowId: stage.flowId, // Usa o flowId da stage
+              stageId: initialStageId, // 🔥 PRÉ-SELECIONA A STAGE
+              assignedToId: "unassigned",
+              supplierId: "internal",
+              dueDate: "",
+              productionStartedAt: "",
+              deliveryAt: "",
+            });
+
+            // Busca as stages do flow (opcional, para referência)
+            setTimeout(() => {
+              handleFlowChange(stage.flowId);
+            }, 100);
+          } else {
+            console.warn(
+              "⚠️ Stage não encontrada para initialStageId:",
+              initialStageId,
+            );
+            console.log(
+              "Stages disponíveis:",
+              stages.map((s) => ({ id: s.id, name: s.name })),
+            );
+
+            // Fallback: usa o fluxo padrão sem stage pré-selecionada
+            form.reset({
+              title: "",
+              description: "",
+              productRef: "",
+              quantity: 0,
+              status: "PENDENTE",
+              flowId: singleFlowId,
+              stageId: "",
+              assignedToId: "unassigned",
+              supplierId: "internal",
+              dueDate: "",
+              productionStartedAt: "",
+              deliveryAt: "",
+            });
+
+            setTimeout(() => {
+              handleFlowChange(singleFlowId);
+            }, 100);
+          }
+        } else {
+          // Sem initialStageId (improvável, mas por segurança)
+          console.warn("⚠️ Sem initialStageId mesmo com único fluxo");
+          console.log(
+            "Isso pode acontecer se o modal for aberto sem clicar em uma coluna",
+          );
+
+          form.reset({
+            title: "",
+            description: "",
+            productRef: "",
+            quantity: 0,
+            status: "PENDENTE",
+            flowId: singleFlowId,
+            stageId: "",
+            assignedToId: "unassigned",
+            supplierId: "internal",
+            dueDate: "",
+            productionStartedAt: "",
+            deliveryAt: "",
+          });
+
+          setTimeout(() => {
+            handleFlowChange(singleFlowId);
+          }, 100);
+        }
+      }
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -460,11 +518,19 @@ export function FlowItemModal({
       console.log("📍 Estado atual:", {
         selectedFlowId,
         availableStages: availableStages.length,
-        selectedStageId: form.getValues("stageId"),
+        selectedStageId,
         isLoadingStages,
+        hasMultipleFlows,
       });
     }
-  }, [selectedFlowId, availableStages, form, isLoadingStages, isOpen]);
+  }, [
+    selectedFlowId,
+    availableStages,
+    selectedStageId,
+    isLoadingStages,
+    hasMultipleFlows,
+    isOpen,
+  ]);
 
   // --- Funções de Gravação de Áudio ---
   const startRecording = async () => {
@@ -553,7 +619,6 @@ export function FlowItemModal({
   }, [isInCorte, isUserAdmin, userHasCortePermission]);
 
   // 🔥 Monitora a etapa atual
-  const selectedStageId = form.watch("stageId");
   const currentStage = availableStages.find((s) => s.id === selectedStageId);
   const isCurrentStageCorte = currentStage
     ? isCorteStage(currentStage.name)
@@ -625,32 +690,247 @@ export function FlowItemModal({
 
   // --- Submit do formulário ---
   const handleSubmit = async (values: ItemFormValues) => {
-    console.log("📤 [FlowItemModal] Submetendo formulário:", values);
+    console.log("\n");
+    console.log("=".repeat(80));
+    console.log("📤 [FlowItemModal] SUBMETENDO FORMULÁRIO");
+    console.log("=".repeat(80));
+    console.log("📦 Values recebidos:", {
+      title: values.title,
+      description: values.description,
+      productRef: values.productRef,
+      quantity: values.quantity,
+      status: values.status,
+      flowId: values.flowId,
+      stageId: values.stageId,
+      assignedToId: values.assignedToId,
+      supplierId: values.supplierId,
+      dueDate: values.dueDate,
+      productionStartedAt: values.productionStartedAt,
+      deliveryAt: values.deliveryAt,
+    });
+    console.log("📌 Contexto:", {
+      hasMultipleFlows,
+      initialStageId,
+      isEditing,
+      selectedFlowId: form.getValues("flowId"),
+      selectedStageId: form.getValues("stageId"),
+      flowsDisponiveis: flows.length,
+      stagesDisponiveis: stages.length,
+      availableStagesCount: availableStages.length,
+    });
 
-    // 🔥 VALIDAÇÃO: verifica se a stage pertence ao flow selecionado
-    if (values.stageId) {
+    // ===========================================================================
+    // 🔥 PASSO 1: PREPARAR PAYLOAD BASEADO NO CONTEXTO
+    // ===========================================================================
+    let payload: any;
+
+    if (hasMultipleFlows) {
+      // =========================================================================
+      // 🔥 CASO 1: MÚLTIPLOS FLUXOS - USUÁRIO ESCOLHEU TUDO
+      // =========================================================================
+      console.log("📌 Modo: Múltiplos fluxos - validando seleções do usuário");
+
+      // Validar se fluxo foi selecionado
+      if (!values.flowId) {
+        console.error("❌ flowId não informado");
+        toast.error("Selecione uma coleção");
+        return;
+      }
+
+      // Validar se etapa foi selecionada
+      if (!values.stageId) {
+        console.error("❌ stageId não informado");
+        toast.error("Selecione uma etapa");
+        return;
+      }
+
+      // Verificar se a stage pertence ao flow selecionado
+      console.log("🔍 Verificando se stage pertence ao flow:", {
+        flowId: values.flowId,
+        stageId: values.stageId,
+        stagesDisponiveis: availableStages.map((s) => ({
+          id: s.id,
+          name: s.name,
+        })),
+      });
+
       const stageBelongsToFlow = availableStages.some(
         (s) => s.id === values.stageId,
       );
       if (!stageBelongsToFlow) {
-        console.error("❌ Stage não pertence ao flow selecionado:", {
-          flowId: values.flowId,
-          stageId: values.stageId,
-          stagesDisponiveis: availableStages.map((s) => ({
-            id: s.id,
-            name: s.name,
-          })),
-        });
+        console.error("❌ Stage não pertence ao flow selecionado");
         toast.error("Etapa inválida para o fluxo selecionado");
         return;
       }
+
+      console.log("✅ Stage pertence ao flow");
+
+      payload = {
+        ...values,
+        flowId: values.flowId,
+        stageId: values.stageId,
+      };
+    } else {
+      // =========================================================================
+      // 🔥 CASO 2: ÚNICO FLUXO - USA FLUXO SELECIONADO E STAGE DO CLIQUE
+      // =========================================================================
+      console.log(
+        "📌 Modo: Único fluxo - usando fluxo padrão e stage do clique",
+      );
+
+      const singleFlowId = flows.length > 0 ? flows[0].id : "";
+
+      if (!singleFlowId) {
+        console.error("❌ Nenhum fluxo disponível");
+        toast.error("Nenhum fluxo disponível");
+        return;
+      }
+
+      console.log("📌 Fluxo único:", {
+        singleFlowId,
+        flowName: flows[0]?.name,
+      });
+
+      // =========================================================================
+      // 🔥 VALIDAÇÃO PARA MODO CRIAÇÃO (NOVO ITEM)
+      // =========================================================================
+      if (!isEditing) {
+        console.log("📌 Modo criação - validando stage");
+
+        // Caso 1: Tem initialStageId (veio do clique no "+")
+        if (initialStageId) {
+          console.log("✅ initialStageId presente:", initialStageId);
+
+          // Verifica se a stage existe no array de stages
+          const stageExists = stages.some((s) => s.id === initialStageId);
+
+          if (!stageExists) {
+            console.error(
+              "❌ Stage não encontrada no array de stages:",
+              initialStageId,
+            );
+            console.log(
+              "Stages disponíveis:",
+              stages.map((s) => ({ id: s.id, name: s.name })),
+            );
+
+            // 🔥 TENTATIVA DE RECUPERAÇÃO: verifica se a stage está em availableStages
+            const stageInAvailable = availableStages.some(
+              (s) => s.id === initialStageId,
+            );
+
+            if (stageInAvailable) {
+              console.log(
+                "✅ Stage encontrada em availableStages, usando como fallback",
+              );
+              payload = {
+                ...values,
+                flowId: singleFlowId,
+                stageId: initialStageId,
+              };
+            } else {
+              toast.error("Etapa não encontrada");
+              return;
+            }
+          } else {
+            console.log("✅ Stage válida encontrada");
+            payload = {
+              ...values,
+              flowId: singleFlowId,
+              stageId: initialStageId,
+            };
+          }
+        }
+        // Caso 2: Não tem initialStageId (improvável, mas por segurança)
+        else {
+          console.warn(
+            "⚠️ initialStageId não encontrado, tentando usar values.stageId",
+          );
+
+          if (values.stageId) {
+            console.log(
+              "✅ Usando values.stageId como fallback:",
+              values.stageId,
+            );
+
+            // Verifica se a stage em values.stageId é válida
+            const stageExists =
+              stages.some((s) => s.id === values.stageId) ||
+              availableStages.some((s) => s.id === values.stageId);
+
+            if (stageExists) {
+              payload = {
+                ...values,
+                flowId: singleFlowId,
+                stageId: values.stageId,
+              };
+            } else {
+              console.error("❌ Stage inválida em values.stageId");
+              toast.error("Etapa inválida");
+              return;
+            }
+          } else {
+            console.error("❌ Nenhuma stage disponível para criar o item");
+            toast.error(
+              "Erro ao identificar etapa. Tente novamente ou selecione outro fluxo.",
+            );
+            return;
+          }
+        }
+      }
+      // =========================================================================
+      // 🔥 MODO EDIÇÃO (EDITANDO ITEM EXISTENTE)
+      // =========================================================================
+      else {
+        console.log("📌 Modo edição - usando stage do formulário");
+
+        if (!values.stageId) {
+          console.error("❌ stageId não informado no modo edição");
+          toast.error("Selecione uma etapa");
+          return;
+        }
+
+        // Verifica se a stage é válida
+        const stageExists =
+          stages.some((s) => s.id === values.stageId) ||
+          availableStages.some((s) => s.id === values.stageId);
+
+        if (!stageExists) {
+          console.error("❌ Stage inválida no modo edição:", values.stageId);
+          toast.error("Etapa inválida");
+          return;
+        }
+
+        payload = {
+          ...values,
+          flowId: singleFlowId,
+          stageId: values.stageId,
+        };
+      }
     }
 
-    const quantityNum = Number(values.quantity);
+    console.log("📦 Payload preparado:", {
+      ...payload,
+      flowId: payload.flowId,
+      stageId: payload.stageId,
+    });
+
+    // ===========================================================================
+    // 🔥 PASSO 2: VALIDAÇÃO DA QUANTIDADE
+    // ===========================================================================
+    const quantityNum = Number(payload.quantity);
     const isAdmin = isUserAdmin();
+
+    console.log("🔍 Validando quantidade:", {
+      quantity: quantityNum,
+      isAdmin,
+      isInCorte,
+      isQuantityRequired,
+    });
 
     if (!isAdmin) {
       if (isInCorte && (!quantityNum || quantityNum < 1)) {
+        console.error("❌ Quantidade inválida para coluna Corte");
         setShowQuantityWarning(true);
         toast.error(
           "Você está na coluna Corte. A quantidade é obrigatória e deve ser maior que zero.",
@@ -659,36 +939,63 @@ export function FlowItemModal({
       }
     }
 
-    // 🔥 IMPORTANTE: NÃO USAR activeStageId, usar o values.stageId que veio do select
-    const payload = {
-      ...values,
+    // ===========================================================================
+    // 🔥 PASSO 3: PREPARAR VALORES FINAIS (TRATAR NULLS E DADOS ESPECIAIS)
+    // ===========================================================================
+    const finalPayload = {
+      title: payload.title,
+      description: payload.description || null,
+      productRef: payload.productRef || null,
       quantity: quantityNum,
-      flowId: values.flowId,
-      stageId: values.stageId, // ✅ USA O VALOR DO SELECT, NÃO activeStageId
-      supplierId:
-        values.supplierId === "internal" || !values.supplierId
-          ? null
-          : values.supplierId,
+      status: payload.status || "PENDENTE",
+      flowId: payload.flowId,
+      stageId: payload.stageId,
       assignedToId:
-        values.assignedToId === "unassigned" || !values.assignedToId
+        payload.assignedToId === "unassigned" || !payload.assignedToId
           ? null
-          : values.assignedToId,
-      dueDate: values.dueDate || null,
-      productionStartedAt: values.productionStartedAt || null,
-      deliveryAt: values.deliveryAt || null,
+          : payload.assignedToId,
+      supplierId:
+        payload.supplierId === "internal" || !payload.supplierId
+          ? null
+          : payload.supplierId,
+      dueDate: payload.dueDate || null,
+      productionStartedAt: payload.productionStartedAt || null,
+      deliveryAt: payload.deliveryAt || null,
+      orderNumber: payload.orderNumber || "",
+      priority: payload.priority || 3,
     };
 
-    console.log("🚀 Payload final:", payload);
+    console.log("🚀 Payload final a ser enviado:", finalPayload);
+    console.log("📦 Mídias:", {
+      images: images.length,
+      audios: audios.length,
+      videos: videos.length,
+    });
+    console.log("🗑️ Mídias removidas:", {
+      images: removedImageIds.length,
+      audios: removedAudioIds.length,
+      videos: removedVideoIds.length,
+    });
 
-    await onSubmit(
-      payload,
-      { images, audios, videos },
-      {
-        images: removedImageIds,
-        audios: removedAudioIds,
-        videos: removedVideoIds,
-      },
-    );
+    // ===========================================================================
+    // 🔥 PASSO 4: ENVIAR PARA O COMPONENTE PAI
+    // ===========================================================================
+    try {
+      await onSubmit(
+        finalPayload,
+        { images, audios, videos },
+        {
+          images: removedImageIds,
+          audios: removedAudioIds,
+          videos: removedVideoIds,
+        },
+      );
+
+      console.log("✅ Submit concluído com sucesso");
+    } catch (error) {
+      console.error("❌ Erro no submit:", error);
+      // O erro já será tratado no componente pai
+    }
   };
 
   // --- Helper de Texto ---
@@ -701,6 +1008,15 @@ export function FlowItemModal({
     const keepChars = Math.floor((maxLength - ext.length - 3) / 2);
     return `${nameWithoutExt.substring(0, keepChars)}...${nameWithoutExt.substring(nameWithoutExt.length - keepChars)}${ext}`;
   };
+
+  // Encontra a stage atual para exibir no texto informativo
+  const currentStageInfo = useMemo(() => {
+    if (!initialStageId) return null;
+    return stages.find((s) => s.id === initialStageId);
+  }, [initialStageId, stages]);
+
+  // Se não tiver múltiplos fluxos, não mostra o campo de seleção de fluxo
+  const showFlowSelector = hasMultipleFlows;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -767,114 +1083,143 @@ export function FlowItemModal({
 
                     {/* --- TAB DETALHES --- */}
                     <TabsContent value="details" className="space-y-4">
-                      {/* 🔥 CAMPO COLEÇÃO/FLUXO */}
-                      <div className="grid grid-cols-1 gap-4">
-                        <FormField
-                          control={form.control}
-                          name="flowId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="flex items-center gap-2">
-                                <Layers size={14} /> Coleção / Fluxo *
-                              </FormLabel>
-                              <Select
-                                onValueChange={(value) => {
-                                  console.log("🎯 Flow selecionado:", value);
-                                  field.onChange(value);
-                                  handleFlowChange(value);
-                                }}
-                                value={field.value}
-                                disabled={
-                                  isReadOnly ||
-                                  isLoadingStages ||
-                                  flows.length === 0
-                                }
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue
-                                      placeholder={
-                                        flows.length === 0
-                                          ? "Nenhuma coleção disponível"
-                                          : "Selecione uma coleção..."
-                                      }
-                                    />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {flows.map((flow) => (
-                                    <SelectItem key={flow.id} value={flow.id}>
-                                      <div className="flex items-center gap-2">
-                                        <div
-                                          className="w-3 h-3 rounded-full"
-                                          style={{
-                                            backgroundColor:
-                                              flow.color || "#D35400",
-                                          }}
-                                        />
-                                        {flow.name}
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
+                      {/* 🔥 CAMPO COLEÇÃO/FLUXO - SÓ APARECE COM MÚLTIPLOS FLUXOS */}
+                      {showFlowSelector && (
+                        <div className="grid grid-cols-1 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="flowId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="flex items-center gap-2">
+                                  <Layers size={14} /> Coleção / Fluxo *
+                                </FormLabel>
+                                <Select
+                                  onValueChange={(value) => {
+                                    console.log("🎯 Flow selecionado:", value);
+                                    field.onChange(value);
+                                    // 🔥 Só chama handleFlowChange se tiver múltiplos fluxos
+                                    if (hasMultipleFlows) {
+                                      handleFlowChange(value);
+                                    }
+                                  }}
+                                  value={field.value}
+                                  disabled={
+                                    isReadOnly ||
+                                    isLoadingStages ||
+                                    flows.length === 0 ||
+                                    !hasMultipleFlows
+                                  }
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue
+                                        placeholder={
+                                          flows.length === 0
+                                            ? "Nenhuma coleção disponível"
+                                            : "Selecione uma coleção..."
+                                        }
+                                      />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {flows.map((flow) => (
+                                      <SelectItem key={flow.id} value={flow.id}>
+                                        <div className="flex items-center gap-2">
+                                          <div
+                                            className="w-3 h-3 rounded-full"
+                                            style={{
+                                              backgroundColor:
+                                                flow.color || "#D35400",
+                                            }}
+                                          />
+                                          {flow.name}
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      )}
 
-                      {/* 🔥 CAMPO ETAPA - AGORA OBRIGATÓRIO SELECIONAR MANUALMENTE */}
-                      <div className="grid grid-cols-1 gap-4">
-                        <FormField
-                          control={form.control}
-                          name="stageId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="flex items-center gap-2">
-                                <Layers size={14} /> Etapa *
-                              </FormLabel>
-                              <Select
-                                onValueChange={(value) => {
-                                  console.log("📍 Stage selecionada:", value);
-                                  field.onChange(value);
-                                }}
-                                value={field.value}
-                                disabled={
-                                  isReadOnly ||
-                                  !selectedFlowId ||
-                                  isLoadingStages ||
-                                  availableStages.length === 0
-                                }
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue
-                                      placeholder={
-                                        isLoadingStages
-                                          ? "Carregando etapas..."
-                                          : !selectedFlowId
-                                            ? "Selecione uma coleção primeiro"
-                                            : availableStages.length === 0
-                                              ? "Nenhuma etapa disponível"
-                                              : "Selecione uma etapa"
-                                      }
-                                    />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {availableStages.map((stage) => (
-                                    <SelectItem key={stage.id} value={stage.id}>
-                                      {stage.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
+                      {/* 🔥 CAMPO ETAPA - CONDICIONAL */}
+                      {hasMultipleFlows ? (
+                        // Caso 1: Múltiplos fluxos - mostra select de etapa
+                        <div className="grid grid-cols-1 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="stageId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="flex items-center gap-2">
+                                  <Layers size={14} /> Etapa *
+                                </FormLabel>
+                                <Select
+                                  onValueChange={(value) => {
+                                    console.log("📍 Stage selecionada:", value);
+                                    field.onChange(value);
+                                  }}
+                                  value={field.value}
+                                  disabled={
+                                    isReadOnly ||
+                                    !selectedFlowId ||
+                                    isLoadingStages ||
+                                    availableStages.length === 0
+                                  }
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue
+                                        placeholder={
+                                          isLoadingStages
+                                            ? "Carregando etapas..."
+                                            : !selectedFlowId
+                                              ? "Selecione uma coleção primeiro"
+                                              : availableStages.length === 0
+                                                ? "Nenhuma etapa disponível"
+                                                : "Selecione uma etapa"
+                                        }
+                                      />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {availableStages.map((stage) => (
+                                      <SelectItem
+                                        key={stage.id}
+                                        value={stage.id}
+                                      >
+                                        {stage.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      ) : (
+                        // Caso 2: Único fluxo - mostra texto informativo com a etapa
+                        !isEditing &&
+                        initialStageId &&
+                        currentStageInfo && (
+                          <div className="grid grid-cols-1 gap-4">
+                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <p className="text-sm text-slate-700">
+                                <span className="font-medium">Etapa:</span>{" "}
+                                {currentStageInfo.name}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Item será criado na etapa selecionada no kanban
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
