@@ -18,7 +18,7 @@ import {
   Loader2,
   Edit,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSearchParams, useRouter } from "next/navigation";
 
@@ -155,6 +155,11 @@ export default function ProductFlowKanban() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  // ===========================================================================
+  // 🔥 REF PARA CONTROLAR PRIMEIRA RENDERIZAÇÃO (EVITA LOOP INFINITO)
+  // ===========================================================================
+  const isFirstRender = useRef(true);
+
   // --- Estados de Dados ---
   const [flows, setFlows] = useState<ProductFlow[]>([]);
   const [selectedFlowIds, setSelectedFlowIds] = useState<string[]>([]);
@@ -201,6 +206,7 @@ export default function ProductFlowKanban() {
   const [tempFilterUpcoming, setTempFilterUpcoming] = useState(false);
   const [tempFilterAssignedTo, setTempFilterAssignedTo] = useState("all");
   const [tempFilterSupplier, setTempFilterSupplier] = useState("all");
+  const [tempFilterProductRef, setTempFilterProductRef] = useState("");
 
   // --- ESTADOS DE FILTRO ATIVOS (aplicados) ---
   const [activeFilterDateType, setActiveFilterDateType] = useState<
@@ -212,13 +218,19 @@ export default function ProductFlowKanban() {
   const [activeFilterUpcoming, setActiveFilterUpcoming] = useState(false);
   const [activeFilterAssignedTo, setActiveFilterAssignedTo] = useState("all");
   const [activeFilterSupplier, setActiveFilterSupplier] = useState("all");
-
-  const [isFiltering, setIsFiltering] = useState(false);
-  const [tempFilterProductRef, setTempFilterProductRef] = useState("");
   const [activeFilterProductRef, setActiveFilterProductRef] = useState("");
 
   // ===========================================================================
-  // 🎯 ESTADOS DE FILTRO POR COLUNA
+  // 🎯 NOVOS ESTADOS PARA FILTRO POR NOME DA COLUNA
+  // ===========================================================================
+  const [columnNameFilter, setColumnNameFilter] = useState<string>("");
+  const [activeColumnNameFilter, setActiveColumnNameFilter] =
+    useState<string>("");
+
+  const [isFiltering, setIsFiltering] = useState(false);
+
+  // ===========================================================================
+  // 🎯 ESTADOS DE FILTRO POR COLUNA (overdue/upcoming)
   // ===========================================================================
   const [activeColumnFilter, setActiveColumnFilter] = useState<{
     columnId: string | null;
@@ -267,7 +279,7 @@ export default function ProductFlowKanban() {
   const [isModalLoading, setIsModalLoading] = useState(false);
 
   // ===========================================================================
-  // 🎯 FUNÇÃO DE EDIÇÃO DE ITEM - CORRIGIDA
+  // 🎯 FUNÇÃO DE EDIÇÃO DE ITEM
   // ===========================================================================
   const handleEditItem = async (item: FlowItem) => {
     console.log("📝 Abrindo modal de edição para item:", item.id);
@@ -276,45 +288,23 @@ export default function ProductFlowKanban() {
     setEditingItem(item);
 
     try {
-      // Encontra o board (fluxo) ao qual este item pertence
       let itemBoard = boards.find((b) => b.id === item.flowId);
 
-      // Se não encontrou nos boards carregados, busca da API
       if (!itemBoard) {
         console.log("🔄 Board não encontrado localmente, buscando da API...");
         const response = await api.get(`/flow/${item.flowId}/board`);
         itemBoard = response.data;
-        console.log("✅ Board carregado da API:", itemBoard);
       }
 
       if (!itemBoard) {
         throw new Error("Board não encontrado");
       }
 
-      console.log("✅ Board encontrado:", itemBoard.name);
-      console.log(
-        "📊 Stages do board:",
-        itemBoard.stages.map((s) => ({ id: s.id, name: s.name })),
-      );
-
-      // Verifica se o stage do item existe
-      const stageExists = itemBoard.stages.some((s) => s.id === item.stageId);
-      console.log("📍 Stage do item existe?", stageExists);
-
-      if (!stageExists) {
-        console.error("❌ Stage do item não encontrado!");
-        toast.error("Erro: etapa do item não encontrada");
-        return;
-      }
-
-      // ATUALIZA O ESTADO ANTES DE ABRIR O MODAL
       setCurrentItemStages(itemBoard.stages);
 
-      // Só abre o modal DEPOIS de atualizar os stages
       const stage = itemBoard.stages.find((s) => s.id === item.stageId);
       setIsModalReadOnly(stage ? !canUserEditStage(stage) : true);
 
-      // Pequeno delay para garantir que o estado foi atualizado
       setTimeout(() => {
         setIsEditItemModal(true);
         setIsModalLoading(false);
@@ -327,33 +317,21 @@ export default function ProductFlowKanban() {
   };
 
   // ===========================================================================
-  // 🎯 FUNÇÃO DE CRIAÇÃO DE ITEM - CORRIGIDA
+  // 🎯 FUNÇÃO DE CRIAÇÃO DE ITEM
   // ===========================================================================
   const handleCreateItem = (stageId: string) => {
-    console.log("➕ Criando novo item na stage:", stageId);
-
-    // Encontra o board que contém esta stage
     const itemBoard = boards.find((b) =>
       b.stages.some((s) => s.id === stageId),
     );
 
     if (!itemBoard) {
-      console.error("❌ Board não encontrado para a stage:", stageId);
       toast.error("Erro ao carregar dados do fluxo");
       return;
     }
 
-    console.log("✅ Board encontrado para criação:", itemBoard.name);
-    console.log(
-      "📊 Stages do board:",
-      itemBoard.stages.map((s) => ({ id: s.id, name: s.name })),
-    );
-
-    // ATUALIZA O ESTADO ANTES DE ABRIR O MODAL
     setActiveStageId(stageId);
     setCurrentItemStages(itemBoard.stages);
 
-    // Só abre o modal DEPOIS de atualizar os stages
     setTimeout(() => {
       setIsModalReadOnly(false);
       setIsItemModal(true);
@@ -426,7 +404,8 @@ export default function ProductFlowKanban() {
         activeFilterStartDate ||
         activeFilterEndDate ||
         activeFilterOverdue ||
-        activeFilterUpcoming;
+        activeFilterUpcoming ||
+        activeColumnNameFilter;
 
       if (hasFilters) {
         await fetchFilteredBoards();
@@ -465,7 +444,7 @@ export default function ProductFlowKanban() {
   );
 
   // ===========================================================================
-  // 🔄 FUNÇÕES DE FILTRO POR COLUNA
+  // 🔄 FUNÇÕES DE FILTRO POR COLUNA (overdue/upcoming)
   // ===========================================================================
   const handleColumnFilterOverdue = (columnId: string) => {
     if (
@@ -541,6 +520,7 @@ export default function ProductFlowKanban() {
     const assignedParam = searchParams.get("assignedToId");
     const supplierParam = searchParams.get("supplierId");
     const productRefParam = searchParams.get("productRef");
+    const stageNameParam = searchParams.get("stageName");
 
     if (filterParam === "overdue") {
       setTempFilterOverdue(true);
@@ -574,6 +554,10 @@ export default function ProductFlowKanban() {
       setTempFilterProductRef(productRefParam);
     }
 
+    if (stageNameParam) {
+      setColumnNameFilter(stageNameParam);
+    }
+
     setActiveFilterDateType(
       typeParam === "productionStartedAt" || typeParam === "dueDate"
         ? typeParam
@@ -588,12 +572,224 @@ export default function ProductFlowKanban() {
     setActiveFilterAssignedTo(assignedParam || "all");
     setActiveFilterSupplier(supplierParam || "all");
     setActiveFilterProductRef(productRefParam || "");
+    setActiveColumnNameFilter(stageNameParam || "");
   }, [searchParams]);
 
+  // ===========================================================================
+  // 🔥 FUNÇÃO fetchFilteredBoards
+  // ===========================================================================
+  const fetchFilteredBoards = useCallback(
+    async (paramsFromUrl?: URLSearchParams) => {
+      if (selectedFlowIds.length === 0) {
+        setBoards([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setIsFiltering(true);
+
+      try {
+        const params =
+          paramsFromUrl || new URLSearchParams(window.location.search);
+
+        const startDate = params.get("startDate");
+        const endDate = params.get("endDate");
+        const dateType = params.get("dateType");
+        const filter = params.get("filter");
+        const assignedToId = params.get("assignedToId");
+        const supplierId = params.get("supplierId");
+        const productRef = params.get("productRef");
+        const stageName = params.get("stageName");
+
+        console.log("🔍 fetchFilteredBoards - Parâmetros:", {
+          startDate,
+          endDate,
+          dateType,
+          filter,
+          assignedToId,
+          supplierId,
+          productRef,
+          stageName,
+          selectedFlowIds,
+        });
+
+        setActiveFilterStartDate(startDate?.split("T")[0] || "");
+        setActiveFilterEndDate(endDate?.split("T")[0] || "");
+        setActiveFilterDateType(
+          (dateType as "productionStartedAt" | "dueDate") ||
+            "productionStartedAt",
+        );
+        setActiveFilterOverdue(filter === "overdue");
+        setActiveFilterUpcoming(filter === "upcoming");
+        setActiveFilterAssignedTo(assignedToId || "all");
+        setActiveFilterSupplier(supplierId || "all");
+        setActiveFilterProductRef(productRef || "");
+        setActiveColumnNameFilter(stageName || "");
+        setColumnNameFilter(stageName || "");
+
+        const baseQueryParams = new URLSearchParams();
+
+        if (startDate) {
+          const startDateTime = new Date(startDate);
+          startDateTime.setUTCHours(0, 0, 0, 0);
+          baseQueryParams.set("startDate", startDateTime.toISOString());
+        }
+
+        if (endDate) {
+          const endDateTime = new Date(endDate);
+          endDateTime.setUTCHours(23, 59, 59, 999);
+          baseQueryParams.set("endDate", endDateTime.toISOString());
+        }
+
+        if (dateType) {
+          baseQueryParams.set("dateType", dateType);
+        }
+
+        if (filter === "overdue") {
+          baseQueryParams.set("isOverdue", "true");
+        }
+        if (filter === "upcoming") {
+          baseQueryParams.set("isUpcoming", "true");
+        }
+
+        if (assignedToId && assignedToId !== "all") {
+          baseQueryParams.set("assignedToId", assignedToId);
+        }
+
+        if (supplierId && supplierId !== "all") {
+          baseQueryParams.set("supplierId", supplierId);
+        }
+
+        if (productRef && productRef.trim() !== "") {
+          baseQueryParams.set("productRef", productRef.trim());
+        }
+
+        if (stageName && stageName.trim() !== "") {
+          console.log(`🎯 Filtrando por nome da coluna: "${stageName}"`);
+          baseQueryParams.set("stageName", stageName.trim());
+
+          const boardsPromises = selectedFlowIds.map(async (flowId) => {
+            try {
+              const response = await api.get(
+                `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`,
+              );
+
+              console.log(`✅ Board ${flowId} filtrado com sucesso:`, {
+                flowName: response.data.name,
+                stagesCount: response.data.stages?.length || 0,
+              });
+
+              console.log(`🎯 Filtrando por nome da coluna: "${stageName}"`);
+              baseQueryParams.set("stageName", stageName.trim());
+
+              const url = `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`;
+              console.log("📡 URL completa:", url); // 👈 ADICIONE ISSO
+
+              return response.data;
+            } catch (error) {
+              console.error(`❌ Erro ao filtrar board ${flowId}:`, error);
+              const emptyBoard = await api.get(`/flow/${flowId}/board`);
+              return {
+                ...emptyBoard.data,
+                stages: [],
+              };
+            }
+          });
+
+          const filteredBoards = await Promise.all(boardsPromises);
+          setBoards(filteredBoards);
+
+          toast.success(`Filtrando apenas itens da coluna: "${stageName}"`);
+        } else {
+          console.log("🌐 Filtrando itens globalmente");
+
+          const itemsResponse = await api.get(
+            `/flow/filter/items?${baseQueryParams.toString()}`,
+          );
+
+          const filteredItems = itemsResponse.data;
+
+          const boardsPromises = selectedFlowIds.map(async (flowId) => {
+            try {
+              const boardRes = await api.get(`/flow/${flowId}/board`);
+              const board = boardRes.data;
+
+              const filteredBoard = {
+                ...board,
+                stages: board.stages.map((stage: FlowStage) => ({
+                  ...stage,
+                  items: stage.items.filter((item: FlowItem) =>
+                    filteredItems.some(
+                      (filteredItem: FlowItem) => filteredItem.id === item.id,
+                    ),
+                  ),
+                })),
+              };
+
+              return filteredBoard;
+            } catch (error) {
+              console.error(`❌ Erro ao carregar board ${flowId}:`, error);
+              return null;
+            }
+          });
+
+          const filteredBoards = (await Promise.all(boardsPromises)).filter(
+            (board) => board !== null,
+          );
+
+          setBoards(filteredBoards);
+        }
+      } catch (error: any) {
+        console.error("❌ Erro ao aplicar filtros:", error);
+        const errorMessage =
+          error.response?.data?.message ||
+          error.message ||
+          "Erro ao aplicar filtros";
+        toast.error(errorMessage);
+        await fetchSelectedBoards();
+      } finally {
+        setLoading(false);
+        setIsFiltering(false);
+      }
+    },
+    [selectedFlowIds],
+  );
+
+  // ===========================================================================
+  // 🔥 FUNÇÃO fetchSelectedBoards
+  // ===========================================================================
+  const fetchSelectedBoards = useCallback(async () => {
+    if (selectedFlowIds.length === 0) {
+      setBoards([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const promises = selectedFlowIds.map((id) =>
+        api.get(`/flow/${id}/board`),
+      );
+      const results = await Promise.all(promises);
+      setBoards(results.map((r) => r.data));
+    } catch {
+      toast.error("Erro ao carregar quadros");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedFlowIds]);
+
+  // ===========================================================================
+  // 🔥 FUNÇÃO handleFilterClick
+  // ===========================================================================
   const handleFilterClick = async () => {
     setIsFiltering(true);
 
     const params = new URLSearchParams();
+
+    if (columnNameFilter && columnNameFilter.trim() !== "") {
+      params.set("stageName", columnNameFilter.trim());
+    }
 
     if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
     if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
@@ -611,6 +807,9 @@ export default function ProductFlowKanban() {
     router.push(`?${params.toString()}`);
   };
 
+  // ===========================================================================
+  // 🔥 FUNÇÃO handleClearFilters
+  // ===========================================================================
   const handleClearFilters = async () => {
     setTempFilterStartDate("");
     setTempFilterEndDate("");
@@ -620,6 +819,8 @@ export default function ProductFlowKanban() {
     setTempFilterSupplier("all");
     setTempFilterDateType("productionStartedAt");
     setTempFilterProductRef("");
+    setColumnNameFilter("");
+    setActiveColumnNameFilter("");
 
     router.push("/kanban-flow");
 
@@ -638,80 +839,8 @@ export default function ProductFlowKanban() {
     }
   };
 
-  const fetchFilteredBoards = useCallback(
-    async (paramsFromUrl?: URLSearchParams) => {
-      if (selectedFlowIds.length === 0) {
-        setBoards([]);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-
-      try {
-        const params =
-          paramsFromUrl || new URLSearchParams(window.location.search);
-
-        const startDate = params.get("startDate");
-        const endDate = params.get("endDate");
-        const dateType = params.get("dateType");
-        const filter = params.get("filter");
-        const assignedToId = params.get("assignedToId");
-        const supplierId = params.get("supplierId");
-        const productRef = params.get("productRef");
-
-        const apiParams = new URLSearchParams();
-
-        if (startDate)
-          apiParams.set("startDate", new Date(startDate).toISOString());
-        if (endDate) apiParams.set("endDate", new Date(endDate).toISOString());
-        if (dateType) apiParams.set("dateType", dateType);
-        if (filter === "overdue") apiParams.set("isOverdue", "true");
-        if (filter === "upcoming") apiParams.set("isUpcoming", "true");
-        if (assignedToId && assignedToId !== "all")
-          apiParams.set("assignedToId", assignedToId);
-        if (supplierId && supplierId !== "all")
-          apiParams.set("supplierId", supplierId);
-        if (productRef && productRef.trim() !== "") {
-          apiParams.set("productRef", productRef.trim());
-        }
-
-        const response = await api.get(
-          `/flow/filter/items?${apiParams.toString()}`,
-        );
-        const filteredItems = response.data;
-
-        const boardsPromises = selectedFlowIds.map(async (flowId) => {
-          const boardRes = await api.get(`/flow/${flowId}/board`);
-          const board = boardRes.data;
-
-          board.stages = board.stages.map((stage: FlowStage) => ({
-            ...stage,
-            items: stage.items.filter((item: FlowItem) =>
-              filteredItems.some(
-                (filteredItem: FlowItem) => filteredItem.id === item.id,
-              ),
-            ),
-          }));
-
-          return board;
-        });
-
-        const filteredBoards = await Promise.all(boardsPromises);
-        setBoards(filteredBoards);
-      } catch (error) {
-        toast.error("Erro ao aplicar filtros");
-        console.error(error);
-      } finally {
-        setLoading(false);
-        setIsFiltering(false);
-      }
-    },
-    [selectedFlowIds],
-  );
-
   // ===========================================================================
-  // 🔄 FUNÇÕES DE DADOS
+  // 🔄 FUNÇÕES DE DADOS INICIAIS
   // ===========================================================================
   const fetchInitialData = useCallback(async () => {
     if (!user?.company?.id) return;
@@ -733,51 +862,16 @@ export default function ProductFlowKanban() {
     }
   }, [user?.company?.id, selectedFlowIds.length]);
 
-  const fetchSelectedBoards = useCallback(async () => {
+  // ===========================================================================
+  // 🎯 EFEITO PRINCIPAL - COM isFirstRender PARA EVITAR LOOP
+  // ===========================================================================
+  useEffect(() => {
     if (selectedFlowIds.length === 0) {
       setBoards([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
-    try {
-      const promises = selectedFlowIds.map((id) =>
-        api.get(`/flow/${id}/board`),
-      );
-      const results = await Promise.all(promises);
-      setBoards(results.map((r) => r.data));
-    } catch {
-      toast.error("Erro ao carregar quadros");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedFlowIds]);
 
-  // Sincronizar estados ativos com a URL
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-
-    setActiveFilterStartDate(urlParams.get("startDate")?.split("T")[0] || "");
-    setActiveFilterEndDate(urlParams.get("endDate")?.split("T")[0] || "");
-    setActiveFilterDateType(
-      (urlParams.get("dateType") as "productionStartedAt" | "dueDate") ||
-        "productionStartedAt",
-    );
-    setActiveFilterOverdue(urlParams.get("filter") === "overdue");
-    setActiveFilterUpcoming(urlParams.get("filter") === "upcoming");
-    setActiveFilterAssignedTo(urlParams.get("assignedToId") || "all");
-    setActiveFilterSupplier(urlParams.get("supplierId") || "all");
-    setActiveFilterProductRef(urlParams.get("productRef") || "");
-  }, [searchParams]);
-
-  // ===========================================================================
-  // 🎯 EFEITOS
-  // ===========================================================================
-  useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
-
-  useEffect(() => {
     const hasFilters =
       activeFilterStartDate ||
       activeFilterEndDate ||
@@ -785,14 +879,36 @@ export default function ProductFlowKanban() {
       activeFilterUpcoming ||
       activeFilterAssignedTo !== "all" ||
       activeFilterSupplier !== "all" ||
-      activeFilterProductRef;
+      activeFilterProductRef ||
+      activeColumnNameFilter;
 
-    if (hasFilters && selectedFlowIds.length > 0) {
+    console.log("🔄 useEffect executado", {
+      isFirstRender: isFirstRender.current,
+      hasFilters,
+      selectedFlowIds,
+    });
+
+    // 🔥 PULA A PRIMEIRA EXECUÇÃO PARA EVITAR LOOP
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      console.log("🚀 Primeira renderização - ignorando");
+
+      // Carrega dados iniciais
+      if (hasFilters) {
+        const params = new URLSearchParams(window.location.search);
+        fetchFilteredBoards(params);
+      } else {
+        fetchSelectedBoards();
+      }
+      return;
+    }
+
+    // Execuções subsequentes
+    if (hasFilters) {
       const params = new URLSearchParams(window.location.search);
       fetchFilteredBoards(params);
-    } else if (selectedFlowIds.length > 0 && !hasFilters) {
+    } else {
       fetchSelectedBoards();
-      setIsFiltering(false);
     }
   }, [
     activeFilterStartDate,
@@ -802,10 +918,18 @@ export default function ProductFlowKanban() {
     activeFilterAssignedTo,
     activeFilterSupplier,
     activeFilterProductRef,
+    activeColumnNameFilter,
     selectedFlowIds,
     fetchFilteredBoards,
     fetchSelectedBoards,
   ]);
+
+  // ===========================================================================
+  // 🎯 EFEITO INICIAL
+  // ===========================================================================
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
 
   // ===========================================================================
   // 🎯 FUNÇÃO ORIGINAL DE AVANÇAR
@@ -827,7 +951,8 @@ export default function ProductFlowKanban() {
         activeFilterStartDate ||
         activeFilterEndDate ||
         activeFilterOverdue ||
-        activeFilterUpcoming;
+        activeFilterUpcoming ||
+        activeColumnNameFilter;
 
       if (hasFilters) {
         await fetchFilteredBoards();
@@ -868,9 +993,6 @@ export default function ProductFlowKanban() {
     }
   };
 
-  // ===========================================================================
-  // 🔥 FUNÇÕES DE EDIÇÃO DE FLUXO
-  // ===========================================================================
   const openEditModal = (flow: ProductFlow) => {
     setEditFlowId(flow.id);
     setEditFlowName(flow.name);
@@ -990,7 +1112,8 @@ export default function ProductFlowKanban() {
         activeFilterStartDate ||
         activeFilterEndDate ||
         activeFilterOverdue ||
-        activeFilterUpcoming;
+        activeFilterUpcoming ||
+        activeColumnNameFilter;
       if (hasFilters) {
         await fetchFilteredBoards();
       } else {
@@ -1092,7 +1215,8 @@ export default function ProductFlowKanban() {
         activeFilterStartDate ||
         activeFilterEndDate ||
         activeFilterOverdue ||
-        activeFilterUpcoming;
+        activeFilterUpcoming ||
+        activeColumnNameFilter;
       if (hasFilters) {
         await fetchFilteredBoards();
       } else {
@@ -1134,13 +1258,6 @@ export default function ProductFlowKanban() {
     setItems: () => {},
     idField: "stageId",
     moveCallback: async (itemId, newStageId, responsibleId, type) => {
-      console.log("[moveCallback] Chamado", {
-        itemId,
-        newStageId,
-        responsibleId,
-        type,
-      });
-
       const payload: any = { newStageId };
 
       if (type === "supplier") {
@@ -1150,25 +1267,13 @@ export default function ProductFlowKanban() {
       }
 
       try {
-        // Tenta fazer a requisição com tratamento especial para erro 500
         const response = await api.put(`/flow/items/${itemId}/move`, payload);
-
-        console.log("[moveCallback] Resposta do servidor:", response.data);
-
-        // Retorna a resposta para o hook
         return response.data;
       } catch (error: any) {
-        console.error("[moveCallback] Erro detalhado:", error);
-
-        // Se for erro 500, ainda assim considera sucesso se tivermos logs do backend
+        console.error("[moveCallback] Erro:", error);
         if (error.response?.status === 500) {
-          console.log(
-            "[moveCallback] Erro 500 ignorado - pode ter sido sucesso",
-          );
-          // Retorna um objeto vazio para não quebrar o fluxo
           return { success: true, warning: "Erro 500 ignorado" };
         }
-
         throw error;
       }
     },
@@ -1177,13 +1282,7 @@ export default function ProductFlowKanban() {
         (s) => s.name.toLowerCase() === targetStageName.toLowerCase(),
       );
 
-      if (!targetStage) {
-        console.error(
-          "Coluna destino não encontrada pelo nome:",
-          targetStageName,
-        );
-        return;
-      }
+      if (!targetStage) return;
 
       const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
 
@@ -1216,12 +1315,12 @@ export default function ProductFlowKanban() {
       }
     },
     onMoveSuccess: async () => {
-      // Recarrega os boards após movimento bem-sucedido
       const hasFilters =
         activeFilterStartDate ||
         activeFilterEndDate ||
         activeFilterOverdue ||
-        activeFilterUpcoming;
+        activeFilterUpcoming ||
+        activeColumnNameFilter;
 
       if (hasFilters) {
         await fetchFilteredBoards();
@@ -1231,45 +1330,23 @@ export default function ProductFlowKanban() {
     },
   });
 
-  // ===========================================================================
-  // 🎯 FUNÇÃO PARA ARRASTAR COM RESPONSÁVEL
-  // ===========================================================================
   const handleDragWithResponsible = async (
     responsibleId: string,
     type: "user" | "supplier",
   ) => {
-    if (!dragItemId || !dragTargetStage) {
-      console.error(
-        "handleDragWithResponsible: dragItemId ou dragTargetStage é null",
-        {
-          dragItemId,
-          dragTargetStage,
-        },
-      );
-      return;
-    }
-
-    console.log("[handleDragWithResponsible] Chamado", {
-      dragItemId,
-      dragTargetStage,
-      responsibleId,
-      type,
-    });
+    if (!dragItemId || !dragTargetStage) return;
 
     toast.loading("Movendo item...", { id: "drag-move" });
 
     try {
       await executeMove(dragItemId, dragTargetStage.id, responsibleId, type);
-
       toast.success(`Item movido para "${dragTargetStage.name}"!`, {
         id: "drag-move",
       });
-
       setIsDragModalOpen(false);
       setDragItemId(null);
       setDragTargetStage(null);
     } catch (error: any) {
-      console.error("[handleDragWithResponsible] Erro:", error);
       const errorMsg = error.response?.data?.message || "Erro ao mover item.";
       toast.error(errorMsg, { id: "drag-move" });
     }
@@ -1295,7 +1372,8 @@ export default function ProductFlowKanban() {
     activeFilterUpcoming ||
     activeFilterAssignedTo !== "all" ||
     activeFilterSupplier !== "all" ||
-    activeFilterProductRef;
+    activeFilterProductRef ||
+    activeColumnNameFilter;
 
   const hasTempChanges =
     tempFilterStartDate !== activeFilterStartDate ||
@@ -1305,7 +1383,8 @@ export default function ProductFlowKanban() {
     tempFilterAssignedTo !== activeFilterAssignedTo ||
     tempFilterSupplier !== activeFilterSupplier ||
     tempFilterDateType !== activeFilterDateType ||
-    tempFilterProductRef !== activeFilterProductRef;
+    tempFilterProductRef !== activeFilterProductRef ||
+    columnNameFilter !== activeColumnNameFilter;
 
   const calculateDaysRemaining = (deadlineDate: string): number => {
     const today = new Date();
@@ -1475,6 +1554,27 @@ export default function ProductFlowKanban() {
       />
 
       <KanbanFilter>
+        <div className="grid gap-1 min-w-[180px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Filtrar por Coluna
+          </label>
+          <div className="relative">
+            <Input
+              type="text"
+              placeholder="Nome da coluna (ex: Corte)"
+              className="h-8 text-xs pl-8"
+              value={columnNameFilter}
+              onChange={(e) => setColumnNameFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleFilterClick();
+                }
+              }}
+            />
+            <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
+          </div>
+        </div>
+
         <div className="grid gap-1 min-w-[140px]">
           <label className="text-[10px] uppercase font-bold text-slate-400">
             Filtrar Por
@@ -1636,6 +1736,30 @@ export default function ProductFlowKanban() {
         )}
       </KanbanFilter>
 
+      {activeColumnNameFilter && (
+        <div className="px-4 py-2 mb-4 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <Layers size={16} className="text-orange-600" />
+            <span className="font-medium text-orange-800">
+              Filtrando apenas a coluna:{" "}
+              <strong>&quot;{activeColumnNameFilter}&quot;</strong>
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-orange-600 hover:text-orange-800 hover:bg-orange-100"
+            onClick={() => {
+              setColumnNameFilter("");
+              handleClearFilters();
+            }}
+          >
+            <X size={14} className="mr-1" />
+            Limpar
+          </Button>
+        </div>
+      )}
+
       <KanbanBoard>
         {unifiedStages.map((stage) => {
           const hasPermission = canUserEditStage(stage);
@@ -1743,10 +1867,6 @@ export default function ProductFlowKanban() {
                   onDragStart={
                     hasPermission
                       ? (e) => {
-                          console.log(
-                            "[KanbanCard] onDragStart chamado para item:",
-                            item.id,
-                          );
                           onDragStart(e, item.id);
                         }
                       : undefined
@@ -1799,49 +1919,47 @@ export default function ProductFlowKanban() {
         })}
       </KanbanBoard>
 
-      {/* Modal de Criação de Item */}
-<FlowItemModal
-  isOpen={isItemModal}
-  onClose={() => {
-    setIsItemModal(false);
-    setCurrentItemStages([]);
-  }}
-  onSubmit={handleItemSubmit}
-  isLoading={isSubmitting || isModalLoading}
-  users={users}
-  suppliers={suppliers}
-  stages={currentItemStages}
-  initialStageId={activeStageId}
-  currentUserRole={user?.professionalRole}
-  currentUserSystemRole={user?.role} // 👈 ADICIONADO - CRÍTICO!
-  isReadOnly={false}
-/>
+      <FlowItemModal
+        isOpen={isItemModal}
+        onClose={() => {
+          setIsItemModal(false);
+          setCurrentItemStages([]);
+        }}
+        onSubmit={handleItemSubmit}
+        isLoading={isSubmitting || isModalLoading}
+        users={users}
+        suppliers={suppliers}
+        stages={currentItemStages}
+        initialStageId={activeStageId}
+        currentUserRole={user?.professionalRole}
+        currentUserSystemRole={user?.role}
+        isReadOnly={false}
+      />
 
-{/* Modal de Edição de Item */}
-<FlowItemModal
-  isOpen={isEditItemModal}
-  onClose={() => {
-    setIsEditItemModal(false);
-    setEditingItem(null);
-    setCurrentItemStages([]);
-  }}
-  initialData={editingItem}
-  onSubmit={handleItemSubmit}
-  isLoading={isSubmitting || isModalLoading}
-  users={users}
-  suppliers={suppliers}
-  stages={currentItemStages}
-  initialStageId={activeStageId}
-  onAdvance={handleAdvanceItem}
-  onDelete={(id) => {
-    setIsEditItemModal(false);
-    setItemToDelete({ type: "item", id });
-    setDeleteModalOpen(true);
-  }}
-  currentUserRole={user?.professionalRole}
-  currentUserSystemRole={user?.role} // 👈 ADICIONADO - CRÍTICO!
-  isReadOnly={isModalReadOnly}
-/>
+      <FlowItemModal
+        isOpen={isEditItemModal}
+        onClose={() => {
+          setIsEditItemModal(false);
+          setEditingItem(null);
+          setCurrentItemStages([]);
+        }}
+        initialData={editingItem}
+        onSubmit={handleItemSubmit}
+        isLoading={isSubmitting || isModalLoading}
+        users={users}
+        suppliers={suppliers}
+        stages={currentItemStages}
+        initialStageId={activeStageId}
+        onAdvance={handleAdvanceItem}
+        onDelete={(id) => {
+          setIsEditItemModal(false);
+          setItemToDelete({ type: "item", id });
+          setDeleteModalOpen(true);
+        }}
+        currentUserRole={user?.professionalRole}
+        currentUserSystemRole={user?.role}
+        isReadOnly={isModalReadOnly}
+      />
 
       <ConfirmDeleteModal
         isOpen={deleteModalOpen}
@@ -2082,7 +2200,6 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Edição de Fluxo */}
       <Dialog open={isEditFlowModalOpen} onOpenChange={setIsEditFlowModalOpen}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -2172,7 +2289,6 @@ export default function ProductFlowKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal para Concluir Etapa (botão) */}
       <CompleteStageModal
         isOpen={isCompleteStageModalOpen}
         onClose={() => {
@@ -2190,7 +2306,6 @@ export default function ProductFlowKanban() {
         isLoading={isSubmitting}
       />
 
-      {/* Modal para Arrastar */}
       <CompleteStageModal
         isOpen={isDragModalOpen}
         onClose={() => {
