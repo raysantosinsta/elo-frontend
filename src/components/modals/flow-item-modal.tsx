@@ -12,7 +12,7 @@ import {
   Lock,
   Plus,
   Trash2,
-  User,
+  User
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -47,6 +47,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { api } from "@/services/api";
+
+// Import do componente de histórico
+import { AuditLogEntry, FlowHistoryModal } from "./flow-history-modal";
 
 // --- INTERFACES ---
 
@@ -178,6 +182,12 @@ export function FlowItemModal({
   const [hasPassedCorte, setHasPassedCorte] = useState(false);
   const [isInCorte, setIsInCorte] = useState(false);
 
+  // ===========================================================================
+  // 🔥 NOVOS ESTADOS PARA HISTÓRICO
+  // ===========================================================================
+  const [historyLogs, setHistoryLogs] = useState<AuditLogEntry[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
   // --- Hook Form ---
   const form = useForm({
     resolver: zodResolver(itemSchema),
@@ -196,6 +206,23 @@ export function FlowItemModal({
     },
   });
 
+  // ===========================================================================
+  // 🔥 FUNÇÃO PARA BUSCAR HISTÓRICO DO ITEM
+  // ===========================================================================
+  const fetchItemHistory = useCallback(async (itemId: string) => {
+    setIsLoadingHistory(true);
+    try {
+      // 🔥 AJUSTE A URL CONFORME SUA API
+      const response = await api.get(`/audit/item/${itemId}`);
+      setHistoryLogs(response.data);
+    } catch (error) {
+      console.error("Erro ao buscar histórico:", error);
+      toast.error("Erro ao carregar histórico");
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, []);
+
   // --- Efeito: Popular Dados ao Abrir ---
   useEffect(() => {
     if (isOpen) {
@@ -211,6 +238,13 @@ export function FlowItemModal({
       // Resetar estados de validação
       setHasPassedCorte(false);
       setIsInCorte(false);
+
+      // 🔥 Se for edição, busca o histórico
+      if (initialData?.id) {
+        fetchItemHistory(initialData.id);
+      } else {
+        setHistoryLogs([]); // Limpa histórico para novo item
+      }
 
       if (initialData) {
         form.reset({
@@ -248,7 +282,7 @@ export function FlowItemModal({
         });
       }
     }
-  }, [isOpen, initialData, stages, form, initialStageId]);
+  }, [isOpen, initialData, stages, form, initialStageId, fetchItemHistory]);
 
   // --- Funções de Gravação de Áudio ---
   const startRecording = async () => {
@@ -293,6 +327,19 @@ export function FlowItemModal({
       setAudios((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleRemoveExistingMedia = (
+    mediaId: string,
+    type: "image" | "video" | "audio",
+  ) => {
+    if (type === "image") {
+      setRemovedImageIds((prev) => [...prev, mediaId]);
+    } else if (type === "video") {
+      setRemovedVideoIds((prev) => [...prev, mediaId]);
+    } else if (type === "audio") {
+      setRemovedAudioIds((prev) => [...prev, mediaId]);
+    }
+  };
+
   // 🔥 Verifica se uma etapa é de Corte
   const isCorteStage = useCallback((stageName: string): boolean => {
     const name = stageName?.toLowerCase().trim() || "";
@@ -315,7 +362,7 @@ export function FlowItemModal({
   // 🔥 VERIFICA SE O USUÁRIO PODE EDITAR A QUANTIDADE
   const canEditQuantity = useMemo(() => {
     const isAdmin = isUserAdmin();
-    
+
     // 👑 ADMIN PODE TUDO! (independente da coluna)
     if (isAdmin) {
       return true; // ADMIN SEMPRE PODE EDITAR
@@ -404,7 +451,7 @@ export function FlowItemModal({
     }
 
     return false;
-  }, [isReadOnly, hasPassedCorte, canEditQuantity]);
+  }, [isReadOnly, canEditQuantity]);
 
   // 🔥 Verifica se a quantidade é obrigatória
   const isQuantityRequired = useMemo(() => {
@@ -419,7 +466,7 @@ export function FlowItemModal({
     }
 
     return false;
-  }, [hasPassedCorte, isInCorte, isUserAdmin]);
+  }, [isInCorte, isUserAdmin]);
 
   // --- Submit do formulário com validação extra ---
   const handleSubmit = async (values: ItemFormValues) => {
@@ -483,7 +530,7 @@ export function FlowItemModal({
   const quantityContextMessage = useMemo(() => {
     if (isReadOnly) return null;
 
-    // 👑 ADMIN - Mensagem especial (APENAS ISSO)
+    // 👑 ADMIN - Mensagem especial
     if (isUserAdmin()) {
       return {
         type: "admin",
@@ -579,11 +626,12 @@ export function FlowItemModal({
                   className="space-y-6"
                 >
                   <Tabs defaultValue="details" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-6 bg-slate-100 p-1">
+                    <TabsList className="grid w-full grid-cols-3 mb-6 bg-slate-100 p-1">
                       <TabsTrigger value="details">
                         Detalhes & Datas
                       </TabsTrigger>
                       <TabsTrigger value="media">Mídias & Anexos</TabsTrigger>
+                      <TabsTrigger value="history">Histórico</TabsTrigger>
                     </TabsList>
 
                     {/* --- TAB DETALHES --- */}
@@ -820,7 +868,333 @@ export function FlowItemModal({
 
                     {/* --- TAB MEDIA --- */}
                     <TabsContent value="media" className="space-y-6">
-                      {/* ... código existente da aba de mídia ... */}
+                      {/* IMAGENS */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-bold">Imagens</h3>
+                          <div className="flex gap-2">
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              id="image-upload"
+                              onChange={(e) => {
+                                if (e.target.files) {
+                                  setImages((prev) => [
+                                    ...prev,
+                                    ...Array.from(e.target.files!),
+                                  ]);
+                                }
+                              }}
+                              disabled={isReadOnly}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                document.getElementById("image-upload")?.click()
+                              }
+                              disabled={isReadOnly}
+                            >
+                              <Plus size={14} className="mr-1" /> Adicionar
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Imagens existentes */}
+                        {initialData?.images &&
+                          initialData.images.length > 0 && (
+                            <div className="grid grid-cols-4 gap-2">
+                              {initialData.images
+                                .filter(
+                                  (img) => !removedImageIds.includes(img.id),
+                                )
+                                .map((img) => (
+                                  <div
+                                    key={img.id}
+                                    className="relative group aspect-square rounded-lg overflow-hidden border"
+                                  >
+                                    <img
+                                      src={img.url}
+                                      alt=""
+                                      className="w-full h-full object-cover"
+                                    />
+                                    {!isReadOnly && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleRemoveExistingMedia(
+                                            img.id,
+                                            "image",
+                                          )
+                                        }
+                                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+
+                        {/* Novas imagens */}
+                        {images.length > 0 && (
+                          <div className="grid grid-cols-4 gap-2">
+                            {images.map((file, index) => (
+                              <div
+                                key={index}
+                                className="relative group aspect-square rounded-lg overflow-hidden border bg-slate-50"
+                              >
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <span className="text-xs text-center p-1">
+                                    {truncateFileName(file.name, 15)}
+                                  </span>
+                                </div>
+                                {!isReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleRemoveNewFile(index, "image")
+                                    }
+                                    className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* VÍDEOS */}
+                      <div className="space-y-3 pt-4 border-t">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-bold">Vídeos</h3>
+                          <Input
+                            type="file"
+                            accept="video/*"
+                            multiple
+                            className="hidden"
+                            id="video-upload"
+                            onChange={(e) => {
+                              if (e.target.files) {
+                                setVideos((prev) => [
+                                  ...prev,
+                                  ...Array.from(e.target.files!),
+                                ]);
+                              }
+                            }}
+                            disabled={isReadOnly}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              document.getElementById("video-upload")?.click()
+                            }
+                            disabled={isReadOnly}
+                          >
+                            <Plus size={14} className="mr-1" /> Adicionar
+                          </Button>
+                        </div>
+
+                        {/* Vídeos existentes */}
+                        {initialData?.videos &&
+                          initialData.videos.length > 0 && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {initialData.videos
+                                .filter(
+                                  (vid) => !removedVideoIds.includes(vid.id),
+                                )
+                                .map((vid) => (
+                                  <div
+                                    key={vid.id}
+                                    className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                  >
+                                    <span className="text-xs truncate">
+                                      {truncateFileName(vid.filename, 25)}
+                                    </span>
+                                    {!isReadOnly && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleRemoveExistingMedia(
+                                            vid.id,
+                                            "video",
+                                          )
+                                        }
+                                        className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+
+                        {/* Novos vídeos */}
+                        {videos.length > 0 && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {videos.map((file, index) => (
+                              <div
+                                key={index}
+                                className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                              >
+                                <span className="text-xs truncate">
+                                  {truncateFileName(file.name, 25)}
+                                </span>
+                                {!isReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleRemoveNewFile(index, "video")
+                                    }
+                                    className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ÁUDIOS */}
+                      <div className="space-y-3 pt-4 border-t">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-bold">Áudios</h3>
+                          <div className="flex gap-2">
+                            {!isRecording ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={startRecording}
+                                disabled={isReadOnly}
+                              >
+                                <span className="text-red-500 mr-1">●</span>{" "}
+                                Gravar
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                onClick={stopRecording}
+                              >
+                                Parar
+                              </Button>
+                            )}
+                            <Input
+                              type="file"
+                              accept="audio/*"
+                              multiple
+                              className="hidden"
+                              id="audio-upload"
+                              onChange={(e) => {
+                                if (e.target.files) {
+                                  setAudios((prev) => [
+                                    ...prev,
+                                    ...Array.from(e.target.files!),
+                                  ]);
+                                }
+                              }}
+                              disabled={isReadOnly}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                document.getElementById("audio-upload")?.click()
+                              }
+                              disabled={isReadOnly}
+                            >
+                              <Plus size={14} className="mr-1" /> Upload
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Áudios existentes */}
+                        {initialData?.audios &&
+                          initialData.audios.length > 0 && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {initialData.audios
+                                .filter(
+                                  (aud) => !removedAudioIds.includes(aud.id),
+                                )
+                                .map((aud) => (
+                                  <div
+                                    key={aud.id}
+                                    className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                  >
+                                    <span className="text-xs truncate">
+                                      {truncateFileName(aud.filename, 25)}
+                                    </span>
+                                    {!isReadOnly && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleRemoveExistingMedia(
+                                            aud.id,
+                                            "audio",
+                                          )
+                                        }
+                                        className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+
+                        {/* Novos áudios */}
+                        {audios.length > 0 && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {audios.map((file, index) => (
+                              <div
+                                key={index}
+                                className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                              >
+                                <span className="text-xs truncate">
+                                  {truncateFileName(file.name, 25)}
+                                </span>
+                                {!isReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleRemoveNewFile(index, "audio")
+                                    }
+                                    className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+
+                    {/* --- TAB HISTÓRICO --- */}
+                    <TabsContent value="history" className="space-y-4">
+                      <FlowHistoryModal
+                        logs={historyLogs}
+                        isLoading={isLoadingHistory}
+                        users={users} // Lista de usuários com id e name
+                        suppliers={suppliers} // Lista de fornecedores com id e name
+                        stages={stages} // ✅ CORRIGIDO: usa 'stages' em vez de 'currentItemStages'
+                      />
                     </TabsContent>
                   </Tabs>
                 </form>
