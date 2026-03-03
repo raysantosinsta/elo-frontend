@@ -1206,19 +1206,7 @@ export function FlowItemModal({
                         // Caso 2: Único fluxo - mostra texto informativo com a etapa
                         !isEditing &&
                         initialStageId &&
-                        currentStageInfo && (
-                          <div className="grid grid-cols-1 gap-4">
-                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                              <p className="text-sm text-slate-700">
-                                <span className="font-medium">Etapa:</span>{" "}
-                                {currentStageInfo.name}
-                              </p>
-                              <p className="text-xs text-slate-500 mt-1">
-                                Item será criado na etapa selecionada no kanban
-                              </p>
-                            </div>
-                          </div>
-                        )
+                        currentStageInfo && null
                       )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
