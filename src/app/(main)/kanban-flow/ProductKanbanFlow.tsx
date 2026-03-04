@@ -64,6 +64,16 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { CompleteStageModal } from "@/components/modals/complete-stage-modal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // --- CONSTANTES ---
 const PROFESSIONAL_ROLES = [
@@ -277,6 +287,11 @@ export default function ProductFlowKanban() {
   // ===========================================================================
   const [currentItemStages, setCurrentItemStages] = useState<FlowStage[]>([]);
   const [isModalLoading, setIsModalLoading] = useState(false);
+
+  // 🔥 ESTADOS PARA MODAL DE SALVETEMPLATE
+  const [isTemplateAlertOpen, setIsTemplateAlertOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
   // ===========================================================================
   // 🎯 FUNÇÃO DE EDIÇÃO DE ITEM
@@ -1063,17 +1078,39 @@ export default function ProductFlowKanban() {
   };
 
   const handleSaveTemplate = async () => {
-    if (selectedFlowIds.length === 0)
+    if (selectedFlowIds.length === 0) {
       return toast.error("Selecione um fluxo base");
-    const name = prompt("Nome do template:");
-    if (!name) return;
+    }
+    setIsTemplateAlertOpen(true);
+  };
+
+  const executeSaveTemplate = async () => {
+    if (!templateName.trim()) {
+      toast.error("Nome do template é obrigatório");
+      return;
+    }
+
+    setIsSavingTemplate(true);
+    const toastId = toast.loading("Salvando template...");
+
     try {
-      await api.post(`/flow/${selectedFlowIds[0]}/save-template`, { name });
-      toast.success("Template salvo!");
+      await api.post(`/flow/${selectedFlowIds[0]}/save-template`, {
+        name: templateName.trim(),
+      });
+
+      toast.success("Template salvo com sucesso!", { id: toastId });
+
       const { data } = await api.get(`/flow/templates`);
       setTemplates(data);
+
+      setIsTemplateAlertOpen(false);
+      setTemplateName("");
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "Erro ao salvar template");
+      toast.error(error.response?.data?.message || "Erro ao salvar template", {
+        id: toastId,
+      });
+    } finally {
+      setIsSavingTemplate(false);
     }
   };
 
@@ -2663,6 +2700,49 @@ export default function ProductFlowKanban() {
         nextStage={dragTargetStage}
         isLoading={isSubmitting}
       />
+      {/* 🔥 ALERT DIALOG SIMPLES */}
+      <AlertDialog
+        open={isTemplateAlertOpen}
+        onOpenChange={setIsTemplateAlertOpen}
+      >
+        <AlertDialogContent className="bg-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-bold">
+              Nome do Template
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-[#718096]">
+              Dê um nome para identificar esta estrutura de etapas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="py-2">
+            <Input
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="Ex: Estrutura Padrão"
+              className="w-full"
+              autoFocus
+              disabled={isSavingTemplate}
+            />
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setTemplateName("")}
+              disabled={isSavingTemplate}
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={executeSaveTemplate}
+              disabled={isSavingTemplate || !templateName.trim()}
+              className="bg-[#D35400] hover:bg-[#A04000] text-white"
+            >
+              {isSavingTemplate ? "Salvando..." : "Salvar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </KanbanLayout>
   );
 }
