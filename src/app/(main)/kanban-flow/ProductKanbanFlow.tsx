@@ -295,6 +295,33 @@ export default function ProductFlowKanban() {
 
   const [allStages, setAllStages] = useState<FlowStage[]>([]);
 
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    console.log("📊 Boards atualizados:", {
+      quantidade: boards.length,
+      flows: boards.map((b) => ({
+        id: b.id,
+        name: b.name,
+        stages: b.stages.length,
+        items: b.stages.reduce((acc, s) => acc + s.items.length, 0),
+      })),
+    });
+
+    // Log dos itens para verificar cores
+    boards.forEach((board) => {
+      board.stages.forEach((stage) => {
+        stage.items.forEach((item) => {
+          console.log(`🎨 Item ${item.id} - ${item.title}:`, {
+            flowColor: item.flowColor,
+            flowName: item.flowName,
+            stage: stage.name,
+          });
+        });
+      });
+    });
+  }, [boards]);
+
   // Carregue todas as stages quando os fluxos forem selecionados
   useEffect(() => {
     const loadAllStages = async () => {
@@ -1266,382 +1293,426 @@ export default function ProductFlowKanban() {
   // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
   // ===========================================================================
   // ===========================================================================
-// 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
-// ===========================================================================
-const handleItemSubmit = async (
-  values: any,
-  files: any,
-  removedMedia: any,
-): Promise<void> => {
+  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
   // ===========================================================================
-  // 🔥 LOG 1: INÍCIO DO PROCESSO
-  // ===========================================================================
-  console.log("\n");
-  console.log("=".repeat(80));
-  console.log("🎯 [handleItemSubmit] INICIANDO SUBMIT DO ITEM");
-  console.log("=".repeat(80));
-  console.log("📦 Modo:", editingItem ? "EDIÇÃO" : "CRIAÇÃO");
-  console.log("📦 Values recebidos:", {
-    title: values.title,
-    description: values.description,
-    productRef: values.productRef,
-    quantity: values.quantity,
-    status: values.status,
-    flowId: values.flowId,
-    stageId: values.stageId,
-    assignedToId: values.assignedToId,
-    supplierId: values.supplierId,
-    dueDate: values.dueDate,
-    productionStartedAt: values.productionStartedAt,
-    deliveryAt: values.deliveryAt,
-    orderNumber: values.orderNumber,
-    priority: values.priority,
-  });
-  console.log("📦 Files:", {
-    images: files.images?.length || 0,
-    audios: files.audios?.length || 0,
-    videos: files.videos?.length || 0,
-  });
-  console.log("📦 Removed Media:", removedMedia);
-  console.log("📌 activeStageId:", activeStageId);
-
-  if (selectedFlowIds.length === 0) {
-    console.error("❌ Nenhum fluxo selecionado");
-    toast.error("Selecione um fluxo");
-    return;
-  }
-
-  setIsSubmitting(true);
-
-  try {
+  const handleItemSubmit = async (
+    values: any,
+    files: any,
+    removedMedia: any,
+  ): Promise<void> => {
     // ===========================================================================
-    // 🔥 FUNÇÃO DE UPLOAD DE MÍDIA
+    // 🔥 LOG 1: INÍCIO DO PROCESSO
     // ===========================================================================
-    const uploadMedia = async (itemId: string, files: any) => {
-      console.log("\n📤 Iniciando upload de mídias para item:", itemId);
-
-      const upload = async (file: File, type: string) => {
-        console.log(`📤 Fazendo upload de ${type}:`, {
-          nome: file.name,
-          tamanho: file.size,
-          tipo: file.type,
-        });
-
-        const fd = new FormData();
-        fd.append("file", file);
-
-        try {
-          const response = await api.post(
-            `/flow/items/${itemId}/media/${type}`,
-            fd,
-            {
-              headers: { "Content-Type": "multipart/form-data" },
-            },
-          );
-          console.log(`✅ Upload de ${type} concluído:`, response.data);
-          return response.data;
-        } catch (error) {
-          console.error(`❌ Erro no upload de ${type}:`, error);
-          throw error;
-        }
-      };
-
-      const promises = [];
-
-      if (files.images?.length > 0) {
-        console.log(`📸 ${files.images.length} imagem(ns) para upload`);
-        for (const f of files.images) {
-          promises.push(upload(f, "image"));
-        }
-      }
-
-      if (files.audios?.length > 0) {
-        console.log(`🎵 ${files.audios.length} áudio(s) para upload`);
-        for (const f of files.audios) {
-          promises.push(upload(f, "audio"));
-        }
-      }
-
-      if (files.videos?.length > 0) {
-        console.log(`🎬 ${files.videos.length} vídeo(s) para upload`);
-        for (const f of files.videos) {
-          promises.push(upload(f, "video"));
-        }
-      }
-
-      if (promises.length > 0) {
-        console.log(`⏳ Aguardando ${promises.length} upload(s)...`);
-        const results = await Promise.all(promises);
-        console.log("✅ Todos os uploads concluídos:", results.length);
-        return results;
-      }
-
-      console.log("📭 Nenhuma mídia para upload");
-      return [];
-    };
-
-    // ===========================================================================
-    // 🔥 MODO EDIÇÃO
-    // ===========================================================================
-    if (editingItem) {
-      console.log("\n✏️ Modo EDIÇÃO - Item:", editingItem.id);
-
-      // Prepara payload para edição
-      const updatePayload = {
-        ...values,
-        removeImageIds: removedMedia.images,
-        removeVideoIds: removedMedia.videos,
-        removeAudioIds: removedMedia.audios,
-      };
-
-      console.log("📦 Payload de edição:", {
-        ...updatePayload,
-        removeImageIds: updatePayload.removeImageIds?.length || 0,
-        removeVideoIds: updatePayload.removeVideoIds?.length || 0,
-        removeAudioIds: updatePayload.removeAudioIds?.length || 0,
-      });
-
-      console.log("📡 Enviando PUT para:", `/flow/items/${editingItem.id}`);
-
-      const startTime = Date.now();
-      await api.put(`/flow/items/${editingItem.id}`, updatePayload);
-      const endTime = Date.now();
-
-      console.log(`✅ Item atualizado em ${endTime - startTime}ms`);
-
-      if (
-        files &&
-        (files.images?.length > 0 ||
-          files.audios?.length > 0 ||
-          files.videos?.length > 0)
-      ) {
-        console.log("\n📤 Fazendo upload de novas mídias para o item editado...");
-        await uploadMedia(editingItem.id, files);
-      }
-
-      toast.success("Item atualizado com sucesso!");
-    }
-
-    // ===========================================================================
-    // 🔥 MODO CRIAÇÃO - CORRIGIDO (SEM VALIDAÇÃO COM currentItemStages)
-    // ===========================================================================
-    else {
-      console.log("\n🆕 Modo CRIAÇÃO - Novo Item");
-
-      // 🔥 VALIDAÇÕES MÍNIMAS
-      if (!values.flowId) {
-        console.error("❌ flowId não informado");
-        toast.error("Selecione uma coleção");
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!values.stageId) {
-        console.error("❌ stageId não informado nos values");
-        toast.error("Selecione uma etapa");
-        setIsSubmitting(false);
-        return;
-      }
-
-      // 🔥 IMPORTANTE: REMOVIDA a validação com currentItemStages
-      // O modal já validou que a stage existe no flow selecionado
-      // e buscou o ID correto
-
-      console.log("🔍 VERIFICAÇÃO DE STAGE (validação pelo modal):");
-      console.log("   flowId enviado:", values.flowId);
-      console.log("   stageId enviado:", values.stageId);
-      console.log("   activeStageId (ignorado):", activeStageId);
-      console.log("   ⚠️ Validação com currentItemStages foi REMOVIDA - confiamos no modal");
-
-      // 🔥 Prepara payload para criação
-      const createPayload = {
-        title: values.title,
-        description: values.description || null,
-        productRef: values.productRef || null,
-        quantity: Number(values.quantity) || 0,
-        status: values.status || "PENDENTE",
-        flowId: values.flowId,
-        stageId: values.stageId,
-        assignedToId:
-          values.assignedToId === "unassigned" ? null : values.assignedToId,
-        supplierId:
-          values.supplierId === "internal" ? null : values.supplierId,
-        dueDate: values.dueDate || null,
-        productionStartedAt: values.productionStartedAt || null,
-        deliveryAt: values.deliveryAt || null,
-        orderNumber: values.orderNumber || "",
-        priority: values.priority || 3,
-      };
-
-      console.log("\n📡 Enviando POST para /flow/items");
-      console.log("📦 Payload completo:", createPayload);
-
-      const startTime = Date.now();
-
-      let response;
-      try {
-        response = await api.post(`/flow/items`, createPayload);
-        console.log("✅ Resposta da API:", response.data);
-      } catch (apiError: any) {
-        console.error("❌ Erro na requisição:", {
-          status: apiError.response?.status,
-          statusText: apiError.response?.statusText,
-          data: apiError.response?.data,
-          message: apiError.message,
-        });
-        throw apiError;
-      }
-
-      const endTime = Date.now();
-      const newItem = response.data;
-
-      console.log(`✅ Item criado em ${endTime - startTime}ms:`, {
-        id: newItem.id,
-        title: newItem.title,
-        stageId: newItem.stageId,
-        flowId: newItem.flowId,
-      });
-
-      // Upload de mídias se houver
-      if (
-        newItem?.id &&
-        files &&
-        (files.images?.length > 0 ||
-          files.audios?.length > 0 ||
-          files.videos?.length > 0)
-      ) {
-        console.log("\n📤 Fazendo upload de mídias para o novo item...");
-        await uploadMedia(newItem.id, files);
-      }
-
-      toast.success("Item criado com sucesso!");
-    }
-
-    // ===========================================================================
-    // 🔥 LIMPEZA DE ESTADOS
-    // ===========================================================================
-    console.log("\n🧹 Limpando estados e fechando modais...");
-
-    setIsItemModal(false);
-    setIsEditItemModal(false);
-    setEditingItem(null);
-    setCurrentItemStages([]);
-    setActiveStageId(null);
-
-    // ===========================================================================
-    // 🔥 ATUALIZAÇÃO DO BOARD
-    // ===========================================================================
-    const hasFilters =
-      activeFilterStartDate ||
-      activeFilterEndDate ||
-      activeFilterOverdue ||
-      activeFilterUpcoming ||
-      activeColumnNameFilter;
-
-    console.log("🔍 Verificando filtros ativos:", {
-      activeFilterStartDate,
-      activeFilterEndDate,
-      activeFilterOverdue,
-      activeFilterUpcoming,
-      activeColumnNameFilter,
-      hasFilters,
-    });
-
-    console.log("🔄 Atualizando board...");
-
-    const boardStartTime = Date.now();
-
-    if (hasFilters) {
-      console.log("📊 Aplicando filtros antes de atualizar...");
-      await fetchFilteredBoards();
-    } else {
-      console.log("📊 Buscando boards selecionados...");
-      await fetchSelectedBoards();
-    }
-
-    const boardEndTime = Date.now();
-    console.log(`✅ Board atualizado em ${boardEndTime - boardStartTime}ms`);
-
-    console.log("\n🎯 [handleItemSubmit] FINALIZADO COM SUCESSO");
-    console.log("=".repeat(80));
     console.log("\n");
-  } catch (error: any) {
-    // ===========================================================================
-    // 🔥 TRATAMENTO DE ERROS
-    // ===========================================================================
-    console.error("\n");
-    console.error("=".repeat(80));
-    console.error("❌ [handleItemSubmit] ERRO");
-    console.error("=".repeat(80));
-    console.error("Detalhes do erro:", {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      config: {
-        url: error.config?.url,
-        method: error.config?.method,
-        data: error.config?.data ? JSON.parse(error.config.data) : null,
-      },
+    console.log("=".repeat(80));
+    console.log("🎯 [handleItemSubmit] INICIANDO SUBMIT DO ITEM");
+    console.log("=".repeat(80));
+    console.log("📦 Modo:", editingItem ? "EDIÇÃO" : "CRIAÇÃO");
+    console.log("📦 Values recebidos:", {
+      title: values.title,
+      description: values.description,
+      productRef: values.productRef,
+      quantity: values.quantity,
+      status: values.status,
+      flowId: values.flowId,
+      stageId: values.stageId,
+      assignedToId: values.assignedToId,
+      supplierId: values.supplierId,
+      dueDate: values.dueDate,
+      productionStartedAt: values.productionStartedAt,
+      deliveryAt: values.deliveryAt,
+      orderNumber: values.orderNumber,
+      priority: values.priority,
     });
+    console.log("📦 Files:", {
+      images: files.images?.length || 0,
+      audios: files.audios?.length || 0,
+      videos: files.videos?.length || 0,
+    });
+    console.log("📦 Removed Media:", removedMedia);
+    console.log("📌 activeStageId:", activeStageId);
 
-    // Mensagens de erro amigáveis
-    let errorMessage = "Erro ao salvar item";
-
-    if (error.response?.data?.message) {
-      errorMessage = error.response.data.message;
-    } else if (error.response?.status === 400) {
-      errorMessage =
-        "Dados inválidos. Verifique as informações e tente novamente.";
-    } else if (error.response?.status === 401) {
-      errorMessage = "Sessão expirada. Faça login novamente.";
-    } else if (error.response?.status === 403) {
-      errorMessage = "Você não tem permissão para realizar esta ação.";
-    } else if (error.response?.status === 404) {
-      errorMessage = "Recurso não encontrado.";
-    } else if (error.response?.status === 500) {
-      errorMessage = "Erro interno do servidor. Tente novamente mais tarde.";
+    if (selectedFlowIds.length === 0) {
+      console.error("❌ Nenhum fluxo selecionado");
+      toast.error("Selecione um fluxo");
+      return;
     }
 
-    // 🔥 LOG DO ERRO MAS NÃO BLOQUEIA COM MENSAGEM ESPECÍFICA
-    if (error.response?.data?.message?.includes("Etapa inválida")) {
-      console.error("🔍 ERRO DO BACKEND: Etapa inválida");
-      console.error("   - flowId enviado:", values?.flowId);
-      console.error("   - stageId enviado:", values?.stageId);
-      console.error("   - activeStageId:", activeStageId);
-      console.error("   ⚠️ Isso indica que o modal não encontrou o ID correto");
+    setIsSubmitting(true);
+
+    try {
+      // ===========================================================================
+      // 🔥 FUNÇÃO DE UPLOAD DE MÍDIA
+      // ===========================================================================
+      const uploadMedia = async (itemId: string, files: any) => {
+        console.log("\n📤 Iniciando upload de mídias para item:", itemId);
+
+        const upload = async (file: File, type: string) => {
+          console.log(`📤 Fazendo upload de ${type}:`, {
+            nome: file.name,
+            tamanho: file.size,
+            tipo: file.type,
+          });
+
+          const fd = new FormData();
+          fd.append("file", file);
+
+          try {
+            const response = await api.post(
+              `/flow/items/${itemId}/media/${type}`,
+              fd,
+              {
+                headers: { "Content-Type": "multipart/form-data" },
+              },
+            );
+            console.log(`✅ Upload de ${type} concluído:`, response.data);
+            return response.data;
+          } catch (error) {
+            console.error(`❌ Erro no upload de ${type}:`, error);
+            throw error;
+          }
+        };
+
+        const promises = [];
+
+        if (files.images?.length > 0) {
+          console.log(`📸 ${files.images.length} imagem(ns) para upload`);
+          for (const f of files.images) {
+            promises.push(upload(f, "image"));
+          }
+        }
+
+        if (files.audios?.length > 0) {
+          console.log(`🎵 ${files.audios.length} áudio(s) para upload`);
+          for (const f of files.audios) {
+            promises.push(upload(f, "audio"));
+          }
+        }
+
+        if (files.videos?.length > 0) {
+          console.log(`🎬 ${files.videos.length} vídeo(s) para upload`);
+          for (const f of files.videos) {
+            promises.push(upload(f, "video"));
+          }
+        }
+
+        if (promises.length > 0) {
+          console.log(`⏳ Aguardando ${promises.length} upload(s)...`);
+          const results = await Promise.all(promises);
+          console.log("✅ Todos os uploads concluídos:", results.length);
+          return results;
+        }
+
+        console.log("📭 Nenhuma mídia para upload");
+        return [];
+      };
+
+      // ===========================================================================
+      // 🔥 MODO EDIÇÃO
+      // ===========================================================================
+      if (editingItem) {
+        console.log("\n✏️ Modo EDIÇÃO - Item:", editingItem.id);
+
+        // Prepara payload para edição
+        const updatePayload = {
+          ...values,
+          removeImageIds: removedMedia.images,
+          removeVideoIds: removedMedia.videos,
+          removeAudioIds: removedMedia.audios,
+        };
+
+        console.log("📦 Payload de edição:", {
+          ...updatePayload,
+          removeImageIds: updatePayload.removeImageIds?.length || 0,
+          removeVideoIds: updatePayload.removeVideoIds?.length || 0,
+          removeAudioIds: updatePayload.removeAudioIds?.length || 0,
+        });
+
+        console.log("📡 Enviando PUT para:", `/flow/items/${editingItem.id}`);
+
+        const startTime = Date.now();
+        await api.put(`/flow/items/${editingItem.id}`, updatePayload);
+        const endTime = Date.now();
+
+        console.log(`✅ Item atualizado em ${endTime - startTime}ms`);
+
+        if (
+          files &&
+          (files.images?.length > 0 ||
+            files.audios?.length > 0 ||
+            files.videos?.length > 0)
+        ) {
+          console.log(
+            "\n📤 Fazendo upload de novas mídias para o item editado...",
+          );
+          await uploadMedia(editingItem.id, files);
+        }
+
+        toast.success("Item atualizado com sucesso!");
+      }
+
+      // ===========================================================================
+      // 🔥 MODO CRIAÇÃO - CORRIGIDO (SEM VALIDAÇÃO COM currentItemStages)
+      // ===========================================================================
+      else {
+        console.log("\n🆕 Modo CRIAÇÃO - Novo Item");
+
+        // 🔥 VALIDAÇÕES MÍNIMAS
+        if (!values.flowId) {
+          console.error("❌ flowId não informado");
+          toast.error("Selecione uma coleção");
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (!values.stageId) {
+          console.error("❌ stageId não informado nos values");
+          toast.error("Selecione uma etapa");
+          setIsSubmitting(false);
+          return;
+        }
+
+        // 🔥 IMPORTANTE: REMOVIDA a validação com currentItemStages
+        // O modal já validou que a stage existe no flow selecionado
+        // e buscou o ID correto
+
+        console.log("🔍 VERIFICAÇÃO DE STAGE (validação pelo modal):");
+        console.log("   flowId enviado:", values.flowId);
+        console.log("   stageId enviado:", values.stageId);
+        console.log("   activeStageId (ignorado):", activeStageId);
+        console.log(
+          "   ⚠️ Validação com currentItemStages foi REMOVIDA - confiamos no modal",
+        );
+
+        // 🔥 Prepara payload para criação
+        const createPayload = {
+          title: values.title,
+          description: values.description || null,
+          productRef: values.productRef || null,
+          quantity: Number(values.quantity) || 0,
+          status: values.status || "PENDENTE",
+          flowId: values.flowId,
+          stageId: values.stageId,
+          assignedToId:
+            values.assignedToId === "unassigned" ? null : values.assignedToId,
+          supplierId:
+            values.supplierId === "internal" ? null : values.supplierId,
+          dueDate: values.dueDate || null,
+          productionStartedAt: values.productionStartedAt || null,
+          deliveryAt: values.deliveryAt || null,
+          orderNumber: values.orderNumber || "",
+          priority: values.priority || 3,
+        };
+
+        console.log("\n📡 Enviando POST para /flow/items");
+        console.log("📦 Payload completo:", createPayload);
+
+        const startTime = Date.now();
+
+        let response;
+        try {
+          response = await api.post(`/flow/items`, createPayload);
+          console.log("✅ Resposta da API:", response.data);
+        } catch (apiError: any) {
+          console.error("❌ Erro na requisição:", {
+            status: apiError.response?.status,
+            statusText: apiError.response?.statusText,
+            data: apiError.response?.data,
+            message: apiError.message,
+          });
+          throw apiError;
+        }
+
+        const endTime = Date.now();
+        const newItem = response.data;
+
+        console.log(`✅ Item criado em ${endTime - startTime}ms:`, {
+          id: newItem.id,
+          title: newItem.title,
+          stageId: newItem.stageId,
+          flowId: newItem.flowId,
+        });
+
+        // Upload de mídias se houver
+        if (
+          newItem?.id &&
+          files &&
+          (files.images?.length > 0 ||
+            files.audios?.length > 0 ||
+            files.videos?.length > 0)
+        ) {
+          console.log("\n📤 Fazendo upload de mídias para o novo item...");
+          await uploadMedia(newItem.id, files);
+        }
+
+        toast.success("Item criado com sucesso!");
+      }
+
+      // ===========================================================================
+      // 🔥 LIMPEZA DE ESTADOS
+      // ===========================================================================
+      console.log("\n🧹 Limpando estados e fechando modais...");
+
+      setIsItemModal(false);
+      setIsEditItemModal(false);
+      setEditingItem(null);
+      setCurrentItemStages([]);
+      setActiveStageId(null);
+
+      // ===========================================================================
+      // 🔥 ATUALIZAÇÃO DO BOARD
+      // ===========================================================================
+      const hasFilters =
+        activeFilterStartDate ||
+        activeFilterEndDate ||
+        activeFilterOverdue ||
+        activeFilterUpcoming ||
+        activeColumnNameFilter;
+
+      console.log("🔍 Verificando filtros ativos:", {
+        activeFilterStartDate,
+        activeFilterEndDate,
+        activeFilterOverdue,
+        activeFilterUpcoming,
+        activeColumnNameFilter,
+        hasFilters,
+      });
+
+      console.log("🔄 Atualizando board...");
+
+      const boardStartTime = Date.now();
+
+      if (hasFilters) {
+        console.log("📊 Aplicando filtros antes de atualizar...");
+        await fetchFilteredBoards();
+      } else {
+        console.log("📊 Buscando boards selecionados...");
+        await fetchSelectedBoards();
+      }
+
+      const boardEndTime = Date.now();
+      console.log(`✅ Board atualizado em ${boardEndTime - boardStartTime}ms`);
+
+      console.log("\n🎯 [handleItemSubmit] FINALIZADO COM SUCESSO");
+      console.log("=".repeat(80));
+      console.log("\n");
+    } catch (error: any) {
+      // ===========================================================================
+      // 🔥 TRATAMENTO DE ERROS
+      // ===========================================================================
+      console.error("\n");
+      console.error("=".repeat(80));
+      console.error("❌ [handleItemSubmit] ERRO");
+      console.error("=".repeat(80));
+      console.error("Detalhes do erro:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          data: error.config?.data ? JSON.parse(error.config.data) : null,
+        },
+      });
+
+      // Mensagens de erro amigáveis
+      let errorMessage = "Erro ao salvar item";
+
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.status === 400) {
+        errorMessage =
+          "Dados inválidos. Verifique as informações e tente novamente.";
+      } else if (error.response?.status === 401) {
+        errorMessage = "Sessão expirada. Faça login novamente.";
+      } else if (error.response?.status === 403) {
+        errorMessage = "Você não tem permissão para realizar esta ação.";
+      } else if (error.response?.status === 404) {
+        errorMessage = "Recurso não encontrado.";
+      } else if (error.response?.status === 500) {
+        errorMessage = "Erro interno do servidor. Tente novamente mais tarde.";
+      }
+
+      // 🔥 LOG DO ERRO MAS NÃO BLOQUEIA COM MENSAGEM ESPECÍFICA
+      if (error.response?.data?.message?.includes("Etapa inválida")) {
+        console.error("🔍 ERRO DO BACKEND: Etapa inválida");
+        console.error("   - flowId enviado:", values?.flowId);
+        console.error("   - stageId enviado:", values?.stageId);
+        console.error("   - activeStageId:", activeStageId);
+        console.error(
+          "   ⚠️ Isso indica que o modal não encontrou o ID correto",
+        );
+      }
+
+      toast.error(errorMessage);
+
+      console.error("=".repeat(80));
+      console.error("\n");
+    } finally {
+      setIsSubmitting(false);
+      console.log("🏁 isSubmitting set to false");
     }
+  };
 
-    toast.error(errorMessage);
-
-    console.error("=".repeat(80));
-    console.error("\n");
-  } finally {
-    setIsSubmitting(false);
-    console.log("🏁 isSubmitting set to false");
-  }
-};
-
+  // E modifique o useMemo do unifiedStages para incluir refreshKey
   const unifiedStages = useMemo(() => {
+    console.log("🔄 Recalculando unifiedStages com refreshKey:", refreshKey);
+
+    // 🔥 Agrupa por nome da coluna, mas preserva os items com suas cores originais
     const stageGroups: Record<string, FlowStage> = {};
+
     boards.forEach((board) => {
       const flowColor = board.color || "#D35400";
+      const flowName = board.name;
+
       board.stages.forEach((stage) => {
-        const key = stage.name.toUpperCase();
+        const key = stage.name.toUpperCase(); // Agrupa por nome maiúsculo
+
+        // Se o grupo ainda não existe, cria com os dados da primeira stage
         if (!stageGroups[key]) {
-          stageGroups[key] = { ...stage, items: [], flowId: board.id };
+          stageGroups[key] = {
+            id: stage.id, // Usa o ID da primeira stage (pode ser qualquer um)
+            name: stage.name,
+            order: stage.order,
+            color: stage.color,
+            allowedRole: stage.allowedRole,
+            flowId: board.id,
+            items: [], // Começa vazio
+          };
         }
+
+        // 🔥 Adiciona os itens deste flow ao grupo, com a cor do flow preservada
         const itemsWithMetadata = stage.items.map((item) => ({
           ...item,
-          flowColor,
-          flowName: board.name,
+          flowColor, // 🔥 COR DA COLEÇÃO ORIGINAL
+          flowName, // 🔥 NOME DA COLEÇÃO ORIGINAL
           _originalStageId: item.stageId,
+          _originalFlowId: board.id,
         }));
+
         stageGroups[key].items.push(...itemsWithMetadata);
       });
     });
-    return Object.values(stageGroups).sort((a, b) => a.order - b.order);
-  }, [boards]);
+
+    // Ordena as stages por ordem
+    const result = Object.values(stageGroups).sort((a, b) => a.order - b.order);
+
+    console.log("✅ unifiedStages calculado:", result.length, "colunas");
+
+    // Log para verificar as cores dos itens
+    result.forEach((stage) => {
+      stage.items.forEach((item) => {
+        console.log(`📦 Item ${item.id} - ${item.title}:`, {
+          flowColor: item.flowColor,
+          flowName: item.flowName,
+          stage: stage.name,
+        });
+      });
+    });
+
+    return result;
+  }, [boards, refreshKey]);
 
   // ===========================================================================
   // 🔥 HOOK DE DRAG
@@ -1650,7 +1721,16 @@ const handleItemSubmit = async (
     items: unifiedStages.flatMap((s) => s.items),
     setItems: () => {},
     idField: "stageId",
+
+    // 🔥 Callback de movimento simplificado
     moveCallback: async (itemId, newStageId, responsibleId, type) => {
+      console.log("🎯 [moveCallback] Iniciando movimento:", {
+        itemId,
+        newStageId,
+        responsibleId,
+        type,
+      });
+
       const payload: any = { newStageId };
 
       if (type === "supplier") {
@@ -1661,25 +1741,53 @@ const handleItemSubmit = async (
 
       try {
         const response = await api.put(`/flow/items/${itemId}/move`, payload);
+        console.log("✅ [moveCallback] Resposta do servidor:", response.data);
         return response.data;
       } catch (error: any) {
-        console.error("[moveCallback] Erro:", error);
+        console.error("❌ [moveCallback] Erro:", error);
+
+        console.error("Detalhes do erro:", {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          message: error.message,
+        });
+
         if (error.response?.status === 500) {
+          console.warn(
+            "⚠️ [moveCallback] Erro 500 detectado - pode ter sido sucesso no backend",
+          );
           return { success: true, warning: "Erro 500 ignorado" };
         }
         throw error;
       }
     },
+
     onRequireResponsible: (itemId, targetStageId, targetStageName) => {
+      console.log("👤 [onRequireResponsible] Requer responsável:", {
+        itemId,
+        targetStageId,
+        targetStageName,
+      });
+
       const targetStage = unifiedStages.find(
         (s) => s.name.toLowerCase() === targetStageName.toLowerCase(),
       );
 
-      if (!targetStage) return;
+      if (!targetStage) {
+        console.error(
+          "❌ [onRequireResponsible] Stage não encontrada:",
+          targetStageName,
+        );
+        return;
+      }
 
       const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
 
       if (isOficina) {
+        console.log(
+          "🏭 [onRequireResponsible] É coluna OFICINA, requer fornecedor",
+        );
         setDragItemId(itemId);
         setDragTargetStage({
           id: targetStageId,
@@ -1696,6 +1804,9 @@ const handleItemSubmit = async (
         targetStage.allowedRole !== "null" &&
         targetStage.allowedRole.trim() !== ""
       ) {
+        console.log(
+          `👤 [onRequireResponsible] Requer cargo: ${targetStage.allowedRole}`,
+        );
         setDragItemId(itemId);
         setDragTargetStage({
           id: targetStageId,
@@ -1704,10 +1815,16 @@ const handleItemSubmit = async (
         });
         setIsDragModalOpen(true);
       } else {
+        console.log(
+          "✅ [onRequireResponsible] Sem restrição, movendo diretamente",
+        );
         executeMove(itemId, targetStageId);
       }
     },
+
     onMoveSuccess: async () => {
+      console.log("🔄 [onMoveSuccess] Movimento concluído com sucesso!");
+
       const hasFilters =
         activeFilterStartDate ||
         activeFilterEndDate ||
@@ -1715,11 +1832,40 @@ const handleItemSubmit = async (
         activeFilterUpcoming ||
         activeColumnNameFilter;
 
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
+      console.log("📊 [onMoveSuccess] Verificando filtros:", { hasFilters });
+
+      try {
+        if (hasFilters) {
+          console.log(
+            "📊 [onMoveSuccess] Aplicando filtros antes de atualizar...",
+          );
+          await fetchFilteredBoards();
+        } else {
+          console.log("📊 [onMoveSuccess] Buscando boards selecionados...");
+          await fetchSelectedBoards();
+        }
+
+        setRefreshKey((prev) => prev + 1);
+        console.log("✅ [onMoveSuccess] Boards recarregados com sucesso!");
+      } catch (error) {
+        console.error("❌ [onMoveSuccess] Erro ao recarregar boards:", error);
       }
+    },
+
+    onMoveError: (error) => {
+      console.error("❌ [onMoveError] Erro no movimento:", error);
+
+      let errorMessage = "Erro ao mover item";
+
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      toast.error(errorMessage, {
+        description: "Tente novamente ou atualize a página",
+      });
     },
   });
 
@@ -2163,14 +2309,55 @@ const handleItemSubmit = async (
                 const allItems = unifiedStages.flatMap((s) => s.items);
                 const draggingItem = allItems.find((i) => i.id === itemId);
 
+                if (!draggingItem) {
+                  console.error("❌ Item não encontrado:", itemId);
+                  return;
+                }
+
+                console.log("🎯 Drop - Item sendo movido:", {
+                  itemId: draggingItem.id,
+                  title: draggingItem.title,
+                  flowName: draggingItem.flowName,
+                  flowColor: draggingItem.flowColor,
+                  currentStage: draggingItem.stageId,
+                  targetStageName: stage.name,
+                });
+
+                // 🔥 Busca o board do flow ORIGINAL do item
                 const itemBoard = boards.find(
-                  (b) => b.id === draggingItem?.flowId,
+                  (b) => b.id === draggingItem.flowId,
                 );
-                const correctStage = itemBoard?.stages.find(
+
+                if (!itemBoard) {
+                  console.error(
+                    "❌ Board do item não encontrado:",
+                    draggingItem.flowId,
+                  );
+                  return;
+                }
+
+                // Encontra a stage com o mesmo nome no flow original
+                const correctStage = itemBoard.stages.find(
                   (s) => s.name.toUpperCase() === stage.name.toUpperCase(),
                 );
 
-                const targetStageId = correctStage?.id ?? stage.id;
+                if (!correctStage) {
+                  console.error("❌ Stage não encontrada no flow original:", {
+                    stageName: stage.name,
+                    flowName: itemBoard.name,
+                    availableStages: itemBoard.stages.map((s) => s.name),
+                  });
+                  return;
+                }
+
+                const targetStageId = correctStage.id;
+
+                console.log("✅ Drop - Stage encontrada:", {
+                  targetStageId,
+                  targetStageName: correctStage.name,
+                  flowName: itemBoard.name,
+                });
+
                 moveItem(itemId, targetStageId, stage.name);
               }}
               onAddItem={
@@ -2235,64 +2422,75 @@ const handleItemSubmit = async (
                 </div>
               )}
 
-              {filteredItems.map((item) => (
-                <KanbanCard
-                  key={item.id}
-                  id={item.id}
-                  title={item.title}
-                  subtitle={item.productRef}
-                  priorityColor={item.flowColor}
-                  coverImage={item.images[0]?.url}
-                  onDragStart={
-                    hasPermission
-                      ? (e) => {
-                          onDragStart(e, item.id);
-                        }
-                      : undefined
-                  }
-                  onDoubleClick={() => {
-                    setEditingItem(item);
-                    setIsModalReadOnly(!hasPermission);
-                    handleEditItem(item);
-                  }}
-                  onEdit={
-                    hasPermission
-                      ? () => {
-                          setEditingItem(item);
-                          setIsModalReadOnly(false);
-                          handleEditItem(item);
-                        }
-                      : undefined
-                  }
-                  onDelete={
-                    hasPermission
-                      ? () => {
-                          setItemToDelete({ type: "item", id: item.id });
-                          setDeleteModalOpen(true);
-                        }
-                      : undefined
-                  }
-                  onComplete={
-                    hasPermission
-                      ? () => handleOpenCompleteModal(item)
-                      : undefined
-                  }
-                  footer={
-                    <div className="flex justify-between items-center w-full">
-                      <span className="text-[10px] text-slate-400 font-bold">
-                        <Package size={10} className="inline mr-1" />
-                        {item.quantity}
-                      </span>
-                      <div
-                        className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
-                        style={{ backgroundColor: item.flowColor }}
-                      >
-                        {item.flowName}
+              {filteredItems.map((item) => {
+                console.log("Renderizando card:", {
+                  id: item.id,
+                  title: item.title,
+                  flowColor: item.flowColor,
+                  flowName: item.flowName,
+                  stageId: item.stageId,
+                });
+                return (
+                  <KanbanCard
+                    key={item.id}
+                    id={item.id}
+                    title={item.title}
+                    subtitle={item.productRef}
+                    // 🔥 CORRIGIDO: Usar a cor da coleção do item, não da coluna
+                    priorityColor={item.flowColor}
+                    coverImage={item.images[0]?.url}
+                    onDragStart={
+                      hasPermission
+                        ? (e) => {
+                            onDragStart(e, item.id);
+                          }
+                        : undefined
+                    }
+                    onDoubleClick={() => {
+                      setEditingItem(item);
+                      setIsModalReadOnly(!hasPermission);
+                      handleEditItem(item);
+                    }}
+                    onEdit={
+                      hasPermission
+                        ? () => {
+                            setEditingItem(item);
+                            setIsModalReadOnly(false);
+                            handleEditItem(item);
+                          }
+                        : undefined
+                    }
+                    onDelete={
+                      hasPermission
+                        ? () => {
+                            setItemToDelete({ type: "item", id: item.id });
+                            setDeleteModalOpen(true);
+                          }
+                        : undefined
+                    }
+                    onComplete={
+                      hasPermission
+                        ? () => handleOpenCompleteModal(item)
+                        : undefined
+                    }
+                    footer={
+                      <div className="flex justify-between items-center w-full">
+                        <span className="text-[10px] text-slate-400 font-bold">
+                          <Package size={10} className="inline mr-1" />
+                          {item.quantity}
+                        </span>
+                        {/* 🔥 AQUI TAMBÉM ESTÁ CORRETO - usa item.flowColor */}
+                        <div
+                          className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
+                          style={{ backgroundColor: item.flowColor }}
+                        >
+                          {item.flowName}
+                        </div>
                       </div>
-                    </div>
-                  }
-                />
-              ))}
+                    }
+                  />
+                );
+              })}
             </KanbanColumn>
           );
         })}
