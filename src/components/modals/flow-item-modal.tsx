@@ -877,7 +877,7 @@ export function FlowItemModal({
                           )}
 
                           {/* 🔥 CAMPO ETAPA */}
-                          <FormField
+                          {/* <FormField
                             control={form.control}
                             name="stageId"
                             render={({ field }) => (
@@ -921,7 +921,7 @@ export function FlowItemModal({
                                 <FormMessage />
                               </FormItem>
                             )}
-                          />
+                          /> */}
                         </>
                       )}
 
