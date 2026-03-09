@@ -66,7 +66,7 @@ export function ColumnFilterIcons({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            <p>Filtrar itens próximos a vencer (hoje)</p>
+            <p>Filtrar itens a vencer em 7 dias</p> {/* Alterado aqui */}
           </TooltipContent>
         </Tooltip>
       </div>
