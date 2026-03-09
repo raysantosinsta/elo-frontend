@@ -293,6 +293,55 @@ export default function ProductFlowKanban() {
   const [templateName, setTemplateName] = useState("");
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
+  const [allStages, setAllStages] = useState<FlowStage[]>([]);
+
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    console.log("📊 Boards atualizados:", {
+      quantidade: boards.length,
+      flows: boards.map((b) => ({
+        id: b.id,
+        name: b.name,
+        stages: b.stages.length,
+        items: b.stages.reduce((acc, s) => acc + s.items.length, 0),
+      })),
+    });
+
+    // Log dos itens para verificar cores
+    boards.forEach((board) => {
+      board.stages.forEach((stage) => {
+        stage.items.forEach((item) => {
+          console.log(`🎨 Item ${item.id} - ${item.title}:`, {
+            flowColor: item.flowColor,
+            flowName: item.flowName,
+            stage: stage.name,
+          });
+        });
+      });
+    });
+  }, [boards]);
+
+  // Carregue todas as stages quando os fluxos forem selecionados
+  useEffect(() => {
+    const loadAllStages = async () => {
+      if (selectedFlowIds.length === 0) return;
+
+      try {
+        const stagesPromises = selectedFlowIds.map((flowId) =>
+          api.get(`/flow/${flowId}/stages`).then((res) => res.data),
+        );
+        const results = await Promise.all(stagesPromises);
+        const flattenedStages = results.flat();
+        setAllStages(flattenedStages);
+      } catch (error) {
+        console.error("Erro ao carregar todas as stages:", error);
+      }
+    };
+
+    loadAllStages();
+  }, [selectedFlowIds]);
+
   // ===========================================================================
   // 🎯 FUNÇÃO DE EDIÇÃO DE ITEM
   // ===========================================================================
@@ -335,7 +384,17 @@ export default function ProductFlowKanban() {
   // 🎯 FUNÇÃO DE CRIAÇÃO DE ITEM - CORRIGIDA
   // ===========================================================================
   const handleCreateItem = (stageId: string) => {
-    console.log("➕ [handleCreateItem] stageId recebido:", stageId);
+    console.log("\n");
+    console.log("=".repeat(80));
+    console.log("🎯 [handleCreateItem] INÍCIO - Stage clicada:", stageId);
+    console.log("=".repeat(80));
+
+    // 🔥 LOG IMPORTANTE 1: Verificar fluxos selecionados
+    console.log("📊 Fluxos selecionados:", {
+      quantidade: selectedFlowIds.length,
+      ids: selectedFlowIds,
+      hasMultipleFlows: selectedFlowIds.length > 1,
+    });
 
     const itemBoard = boards.find((b) =>
       b.stages.some((s) => s.id === stageId),
@@ -343,26 +402,58 @@ export default function ProductFlowKanban() {
 
     if (!itemBoard) {
       console.error("❌ Board não encontrado para stage:", stageId);
+      console.log(
+        "📋 Boards disponíveis:",
+        boards.map((b) => ({
+          id: b.id,
+          name: b.name,
+          stages: b.stages.map((s) => ({ id: s.id, name: s.name })),
+        })),
+      );
       toast.error("Erro ao carregar dados do fluxo");
       return;
     }
 
-    console.log("✅ Board encontrado:", itemBoard.name);
+    console.log("✅ Board encontrado:", {
+      boardId: itemBoard.id,
+      boardName: itemBoard.name,
+      flowId: itemBoard.id,
+      flowName: itemBoard.name,
+    });
+
     console.log(
-      "📋 Stages disponíveis:",
-      itemBoard.stages.map((s) => ({ id: s.id, name: s.name })),
+      "📋 Stages disponíveis no board:",
+      itemBoard.stages.map((s) => ({
+        id: s.id,
+        name: s.name,
+        flowId: s.flowId,
+      })),
     );
-    console.log("🎯 Stage clicada:", stageId);
+
+    console.log("🎯 Stage clicada:", {
+      stageId: stageId,
+      stageInfo: itemBoard.stages.find((s) => s.id === stageId),
+    });
 
     // 🔥 Guarda o stageId que veio do clique
     setActiveStageId(stageId);
+    console.log("💾 activeStageId setado para:", stageId);
 
     // Guarda as stages do board para referência
     setCurrentItemStages(itemBoard.stages);
+    console.log(
+      "💾 currentItemStages setado com",
+      itemBoard.stages.length,
+      "stages",
+    );
+
+    console.log("🔄 Abrindo modal em 50ms...");
 
     setTimeout(() => {
+      console.log("⏰ Timeout executado - abrindo modal");
       setIsModalReadOnly(false);
       setIsItemModal(true);
+      console.log("✅ Modal aberto");
     }, 50);
   };
 
@@ -1201,6 +1292,9 @@ export default function ProductFlowKanban() {
   // ===========================================================================
   // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
   // ===========================================================================
+  // ===========================================================================
+  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
+  // ===========================================================================
   const handleItemSubmit = async (
     values: any,
     files: any,
@@ -1236,7 +1330,7 @@ export default function ProductFlowKanban() {
       videos: files.videos?.length || 0,
     });
     console.log("📦 Removed Media:", removedMedia);
-    console.log("📌 activeStageId:", activeStageId); // Log para debug
+    console.log("📌 activeStageId:", activeStageId);
 
     if (selectedFlowIds.length === 0) {
       console.error("❌ Nenhum fluxo selecionado");
@@ -1334,7 +1428,6 @@ export default function ProductFlowKanban() {
           removeAudioIds: updatePayload.removeAudioIds?.length || 0,
         });
 
-        // Faz a requisição de update
         console.log("📡 Enviando PUT para:", `/flow/items/${editingItem.id}`);
 
         const startTime = Date.now();
@@ -1343,7 +1436,6 @@ export default function ProductFlowKanban() {
 
         console.log(`✅ Item atualizado em ${endTime - startTime}ms`);
 
-        // Upload de novas mídias se houver
         if (
           files &&
           (files.images?.length > 0 ||
@@ -1360,12 +1452,12 @@ export default function ProductFlowKanban() {
       }
 
       // ===========================================================================
-      // 🔥 MODO CRIAÇÃO - CORRIGIDO
+      // 🔥 MODO CRIAÇÃO - CORRIGIDO (SEM VALIDAÇÃO COM currentItemStages)
       // ===========================================================================
       else {
         console.log("\n🆕 Modo CRIAÇÃO - Novo Item");
 
-        // 🔥 VALIDAÇÕES IMPORTANTES
+        // 🔥 VALIDAÇÕES MÍNIMAS
         if (!values.flowId) {
           console.error("❌ flowId não informado");
           toast.error("Selecione uma coleção");
@@ -1373,7 +1465,6 @@ export default function ProductFlowKanban() {
           return;
         }
 
-        // 🔥 CORREÇÃO: NÃO USAR activeStageId, usar APENAS values.stageId
         if (!values.stageId) {
           console.error("❌ stageId não informado nos values");
           toast.error("Selecione uma etapa");
@@ -1381,33 +1472,27 @@ export default function ProductFlowKanban() {
           return;
         }
 
-        // 🔥 VERIFICA SE A STAGE PERTENCE AO FLOW (validação extra)
-        const stageDoFlowCorreto = currentItemStages.some(
-          (s) => s.id === values.stageId,
-        );
-        if (!stageDoFlowCorreto) {
-          console.error("❌ Stage não pertence ao flow selecionado:", {
-            flowId: values.flowId,
-            stageId: values.stageId,
-            stagesDisponiveis: currentItemStages.map((s) => ({
-              id: s.id,
-              name: s.name,
-            })),
-          });
-          toast.error("Etapa inválida para o fluxo selecionado");
-          setIsSubmitting(false);
-          return;
-        }
+        // 🔥 IMPORTANTE: REMOVIDA a validação com currentItemStages
+        // O modal já validou que a stage existe no flow selecionado
+        // e buscou o ID correto
 
-        // 🔥 Prepara payload para criação - USA DIRETO values.stageId
+        console.log("🔍 VERIFICAÇÃO DE STAGE (validação pelo modal):");
+        console.log("   flowId enviado:", values.flowId);
+        console.log("   stageId enviado:", values.stageId);
+        console.log("   activeStageId (ignorado):", activeStageId);
+        console.log(
+          "   ⚠️ Validação com currentItemStages foi REMOVIDA - confiamos no modal",
+        );
+
+        // 🔥 Prepara payload para criação
         const createPayload = {
           title: values.title,
-          description: values.description,
-          productRef: values.productRef,
+          description: values.description || null,
+          productRef: values.productRef || null,
           quantity: Number(values.quantity) || 0,
           status: values.status || "PENDENTE",
           flowId: values.flowId,
-          stageId: values.stageId, // ✅ USA O VALOR DO SELECT, NÃO activeStageId
+          stageId: values.stageId,
           assignedToId:
             values.assignedToId === "unassigned" ? null : values.assignedToId,
           supplierId:
@@ -1418,12 +1503,6 @@ export default function ProductFlowKanban() {
           orderNumber: values.orderNumber || "",
           priority: values.priority || 3,
         };
-
-        console.log("🔍 VERIFICAÇÃO DE STAGE:");
-        console.log("   flowId enviado:", createPayload.flowId);
-        console.log("   stageId enviado:", createPayload.stageId);
-        console.log("   activeStageId (ignorado):", activeStageId);
-        console.log("   stage pertence ao flow?", stageDoFlowCorreto);
 
         console.log("\n📡 Enviando POST para /flow/items");
         console.log("📦 Payload completo:", createPayload);
@@ -1478,7 +1557,7 @@ export default function ProductFlowKanban() {
       setIsEditItemModal(false);
       setEditingItem(null);
       setCurrentItemStages([]);
-      setActiveStageId(null); // 🔥 Reseta activeStageId
+      setActiveStageId(null);
 
       // ===========================================================================
       // 🔥 ATUALIZAÇÃO DO BOARD
@@ -1555,20 +1634,14 @@ export default function ProductFlowKanban() {
         errorMessage = "Erro interno do servidor. Tente novamente mais tarde.";
       }
 
-      // Verifica erros específicos
+      // 🔥 LOG DO ERRO MAS NÃO BLOQUEIA COM MENSAGEM ESPECÍFICA
       if (error.response?.data?.message?.includes("Etapa inválida")) {
-        console.error("🔍 ERRO ESPECÍFICO: Etapa inválida");
-        console.error("   Possíveis causas:");
-        console.error("   1. A stage não pertence ao flow selecionado");
-        console.error("   2. O flowId não existe no banco");
-        console.error("   3. A stageId não existe");
-        console.error("\n   Verifique:");
-        console.error(`   - flowId enviado: ${values?.flowId}`);
-        console.error(`   - stageId enviado: ${values?.stageId}`);
-        console.error(`   - activeStageId (ignorado): ${activeStageId}`);
+        console.error("🔍 ERRO DO BACKEND: Etapa inválida");
+        console.error("   - flowId enviado:", values?.flowId);
+        console.error("   - stageId enviado:", values?.stageId);
+        console.error("   - activeStageId:", activeStageId);
         console.error(
-          `   - Stages disponíveis:`,
-          currentItemStages.map((s) => ({ id: s.id, name: s.name })),
+          "   ⚠️ Isso indica que o modal não encontrou o ID correto",
         );
       }
 
@@ -1582,26 +1655,64 @@ export default function ProductFlowKanban() {
     }
   };
 
+  // E modifique o useMemo do unifiedStages para incluir refreshKey
   const unifiedStages = useMemo(() => {
+    console.log("🔄 Recalculando unifiedStages com refreshKey:", refreshKey);
+
+    // 🔥 Agrupa por nome da coluna, mas preserva os items com suas cores originais
     const stageGroups: Record<string, FlowStage> = {};
+
     boards.forEach((board) => {
       const flowColor = board.color || "#D35400";
+      const flowName = board.name;
+
       board.stages.forEach((stage) => {
-        const key = stage.name.toUpperCase();
+        const key = stage.name.toUpperCase(); // Agrupa por nome maiúsculo
+
+        // Se o grupo ainda não existe, cria com os dados da primeira stage
         if (!stageGroups[key]) {
-          stageGroups[key] = { ...stage, items: [], flowId: board.id };
+          stageGroups[key] = {
+            id: stage.id, // Usa o ID da primeira stage (pode ser qualquer um)
+            name: stage.name,
+            order: stage.order,
+            color: stage.color,
+            allowedRole: stage.allowedRole,
+            flowId: board.id,
+            items: [], // Começa vazio
+          };
         }
+
+        // 🔥 Adiciona os itens deste flow ao grupo, com a cor do flow preservada
         const itemsWithMetadata = stage.items.map((item) => ({
           ...item,
-          flowColor,
-          flowName: board.name,
+          flowColor, // 🔥 COR DA COLEÇÃO ORIGINAL
+          flowName, // 🔥 NOME DA COLEÇÃO ORIGINAL
           _originalStageId: item.stageId,
+          _originalFlowId: board.id,
         }));
+
         stageGroups[key].items.push(...itemsWithMetadata);
       });
     });
-    return Object.values(stageGroups).sort((a, b) => a.order - b.order);
-  }, [boards]);
+
+    // Ordena as stages por ordem
+    const result = Object.values(stageGroups).sort((a, b) => a.order - b.order);
+
+    console.log("✅ unifiedStages calculado:", result.length, "colunas");
+
+    // Log para verificar as cores dos itens
+    result.forEach((stage) => {
+      stage.items.forEach((item) => {
+        console.log(`📦 Item ${item.id} - ${item.title}:`, {
+          flowColor: item.flowColor,
+          flowName: item.flowName,
+          stage: stage.name,
+        });
+      });
+    });
+
+    return result;
+  }, [boards, refreshKey]);
 
   // ===========================================================================
   // 🔥 HOOK DE DRAG
@@ -1610,7 +1721,16 @@ export default function ProductFlowKanban() {
     items: unifiedStages.flatMap((s) => s.items),
     setItems: () => {},
     idField: "stageId",
+
+    // 🔥 Callback de movimento simplificado
     moveCallback: async (itemId, newStageId, responsibleId, type) => {
+      console.log("🎯 [moveCallback] Iniciando movimento:", {
+        itemId,
+        newStageId,
+        responsibleId,
+        type,
+      });
+
       const payload: any = { newStageId };
 
       if (type === "supplier") {
@@ -1621,25 +1741,53 @@ export default function ProductFlowKanban() {
 
       try {
         const response = await api.put(`/flow/items/${itemId}/move`, payload);
+        console.log("✅ [moveCallback] Resposta do servidor:", response.data);
         return response.data;
       } catch (error: any) {
-        console.error("[moveCallback] Erro:", error);
+        console.error("❌ [moveCallback] Erro:", error);
+
+        console.error("Detalhes do erro:", {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          message: error.message,
+        });
+
         if (error.response?.status === 500) {
+          console.warn(
+            "⚠️ [moveCallback] Erro 500 detectado - pode ter sido sucesso no backend",
+          );
           return { success: true, warning: "Erro 500 ignorado" };
         }
         throw error;
       }
     },
+
     onRequireResponsible: (itemId, targetStageId, targetStageName) => {
+      console.log("👤 [onRequireResponsible] Requer responsável:", {
+        itemId,
+        targetStageId,
+        targetStageName,
+      });
+
       const targetStage = unifiedStages.find(
         (s) => s.name.toLowerCase() === targetStageName.toLowerCase(),
       );
 
-      if (!targetStage) return;
+      if (!targetStage) {
+        console.error(
+          "❌ [onRequireResponsible] Stage não encontrada:",
+          targetStageName,
+        );
+        return;
+      }
 
       const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
 
       if (isOficina) {
+        console.log(
+          "🏭 [onRequireResponsible] É coluna OFICINA, requer fornecedor",
+        );
         setDragItemId(itemId);
         setDragTargetStage({
           id: targetStageId,
@@ -1656,6 +1804,9 @@ export default function ProductFlowKanban() {
         targetStage.allowedRole !== "null" &&
         targetStage.allowedRole.trim() !== ""
       ) {
+        console.log(
+          `👤 [onRequireResponsible] Requer cargo: ${targetStage.allowedRole}`,
+        );
         setDragItemId(itemId);
         setDragTargetStage({
           id: targetStageId,
@@ -1664,10 +1815,16 @@ export default function ProductFlowKanban() {
         });
         setIsDragModalOpen(true);
       } else {
+        console.log(
+          "✅ [onRequireResponsible] Sem restrição, movendo diretamente",
+        );
         executeMove(itemId, targetStageId);
       }
     },
+
     onMoveSuccess: async () => {
+      console.log("🔄 [onMoveSuccess] Movimento concluído com sucesso!");
+
       const hasFilters =
         activeFilterStartDate ||
         activeFilterEndDate ||
@@ -1675,11 +1832,40 @@ export default function ProductFlowKanban() {
         activeFilterUpcoming ||
         activeColumnNameFilter;
 
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
+      console.log("📊 [onMoveSuccess] Verificando filtros:", { hasFilters });
+
+      try {
+        if (hasFilters) {
+          console.log(
+            "📊 [onMoveSuccess] Aplicando filtros antes de atualizar...",
+          );
+          await fetchFilteredBoards();
+        } else {
+          console.log("📊 [onMoveSuccess] Buscando boards selecionados...");
+          await fetchSelectedBoards();
+        }
+
+        setRefreshKey((prev) => prev + 1);
+        console.log("✅ [onMoveSuccess] Boards recarregados com sucesso!");
+      } catch (error) {
+        console.error("❌ [onMoveSuccess] Erro ao recarregar boards:", error);
       }
+    },
+
+    onMoveError: (error) => {
+      console.error("❌ [onMoveError] Erro no movimento:", error);
+
+      let errorMessage = "Erro ao mover item";
+
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      toast.error(errorMessage, {
+        description: "Tente novamente ou atualize a página",
+      });
     },
   });
 
@@ -2123,14 +2309,55 @@ export default function ProductFlowKanban() {
                 const allItems = unifiedStages.flatMap((s) => s.items);
                 const draggingItem = allItems.find((i) => i.id === itemId);
 
+                if (!draggingItem) {
+                  console.error("❌ Item não encontrado:", itemId);
+                  return;
+                }
+
+                console.log("🎯 Drop - Item sendo movido:", {
+                  itemId: draggingItem.id,
+                  title: draggingItem.title,
+                  flowName: draggingItem.flowName,
+                  flowColor: draggingItem.flowColor,
+                  currentStage: draggingItem.stageId,
+                  targetStageName: stage.name,
+                });
+
+                // 🔥 Busca o board do flow ORIGINAL do item
                 const itemBoard = boards.find(
-                  (b) => b.id === draggingItem?.flowId,
+                  (b) => b.id === draggingItem.flowId,
                 );
-                const correctStage = itemBoard?.stages.find(
+
+                if (!itemBoard) {
+                  console.error(
+                    "❌ Board do item não encontrado:",
+                    draggingItem.flowId,
+                  );
+                  return;
+                }
+
+                // Encontra a stage com o mesmo nome no flow original
+                const correctStage = itemBoard.stages.find(
                   (s) => s.name.toUpperCase() === stage.name.toUpperCase(),
                 );
 
-                const targetStageId = correctStage?.id ?? stage.id;
+                if (!correctStage) {
+                  console.error("❌ Stage não encontrada no flow original:", {
+                    stageName: stage.name,
+                    flowName: itemBoard.name,
+                    availableStages: itemBoard.stages.map((s) => s.name),
+                  });
+                  return;
+                }
+
+                const targetStageId = correctStage.id;
+
+                console.log("✅ Drop - Stage encontrada:", {
+                  targetStageId,
+                  targetStageName: correctStage.name,
+                  flowName: itemBoard.name,
+                });
+
                 moveItem(itemId, targetStageId, stage.name);
               }}
               onAddItem={
@@ -2195,64 +2422,75 @@ export default function ProductFlowKanban() {
                 </div>
               )}
 
-              {filteredItems.map((item) => (
-                <KanbanCard
-                  key={item.id}
-                  id={item.id}
-                  title={item.title}
-                  subtitle={item.productRef}
-                  priorityColor={item.flowColor}
-                  coverImage={item.images[0]?.url}
-                  onDragStart={
-                    hasPermission
-                      ? (e) => {
-                          onDragStart(e, item.id);
-                        }
-                      : undefined
-                  }
-                  onDoubleClick={() => {
-                    setEditingItem(item);
-                    setIsModalReadOnly(!hasPermission);
-                    handleEditItem(item);
-                  }}
-                  onEdit={
-                    hasPermission
-                      ? () => {
-                          setEditingItem(item);
-                          setIsModalReadOnly(false);
-                          handleEditItem(item);
-                        }
-                      : undefined
-                  }
-                  onDelete={
-                    hasPermission
-                      ? () => {
-                          setItemToDelete({ type: "item", id: item.id });
-                          setDeleteModalOpen(true);
-                        }
-                      : undefined
-                  }
-                  onComplete={
-                    hasPermission
-                      ? () => handleOpenCompleteModal(item)
-                      : undefined
-                  }
-                  footer={
-                    <div className="flex justify-between items-center w-full">
-                      <span className="text-[10px] text-slate-400 font-bold">
-                        <Package size={10} className="inline mr-1" />
-                        {item.quantity}
-                      </span>
-                      <div
-                        className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
-                        style={{ backgroundColor: item.flowColor }}
-                      >
-                        {item.flowName}
+              {filteredItems.map((item) => {
+                console.log("Renderizando card:", {
+                  id: item.id,
+                  title: item.title,
+                  flowColor: item.flowColor,
+                  flowName: item.flowName,
+                  stageId: item.stageId,
+                });
+                return (
+                  <KanbanCard
+                    key={item.id}
+                    id={item.id}
+                    title={item.title}
+                    subtitle={item.productRef}
+                    // 🔥 CORRIGIDO: Usar a cor da coleção do item, não da coluna
+                    priorityColor={item.flowColor}
+                    coverImage={item.images[0]?.url}
+                    onDragStart={
+                      hasPermission
+                        ? (e) => {
+                            onDragStart(e, item.id);
+                          }
+                        : undefined
+                    }
+                    onDoubleClick={() => {
+                      setEditingItem(item);
+                      setIsModalReadOnly(!hasPermission);
+                      handleEditItem(item);
+                    }}
+                    onEdit={
+                      hasPermission
+                        ? () => {
+                            setEditingItem(item);
+                            setIsModalReadOnly(false);
+                            handleEditItem(item);
+                          }
+                        : undefined
+                    }
+                    onDelete={
+                      hasPermission
+                        ? () => {
+                            setItemToDelete({ type: "item", id: item.id });
+                            setDeleteModalOpen(true);
+                          }
+                        : undefined
+                    }
+                    onComplete={
+                      hasPermission
+                        ? () => handleOpenCompleteModal(item)
+                        : undefined
+                    }
+                    footer={
+                      <div className="flex justify-between items-center w-full">
+                        <span className="text-[10px] text-slate-400 font-bold">
+                          <Package size={10} className="inline mr-1" />
+                          {item.quantity}
+                        </span>
+                        {/* 🔥 AQUI TAMBÉM ESTÁ CORRETO - usa item.flowColor */}
+                        <div
+                          className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
+                          style={{ backgroundColor: item.flowColor }}
+                        >
+                          {item.flowName}
+                        </div>
                       </div>
-                    </div>
-                  }
-                />
-              ))}
+                    }
+                  />
+                );
+              })}
             </KanbanColumn>
           );
         })}
@@ -2274,23 +2512,14 @@ export default function ProductFlowKanban() {
         currentUserRole={user?.professionalRole}
         currentUserSystemRole={user?.role}
         isReadOnly={false}
-        // 🔥 NOVA PROP: indica se tem múltiplos fluxos selecionados
         hasMultipleFlows={selectedFlowIds.length > 1}
-        onFlowChange={async (flowId) => {
+        // 🔥 Passa a função de busca
+        fetchStagesForFlow={async (flowId) => {
           try {
-            console.log("🔄 Buscando stages para flow:", flowId);
-
-            setActiveStageId(null);
-
             const response = await api.get(`/flow/${flowId}/stages`);
-            console.log("✅ Stages carregadas:", response.data.length);
-
-            setCurrentItemStages(response.data);
-
             return response.data;
           } catch (error) {
             console.error("Erro ao buscar stages:", error);
-            toast.error("Erro ao carregar etapas");
             return [];
           }
         }}

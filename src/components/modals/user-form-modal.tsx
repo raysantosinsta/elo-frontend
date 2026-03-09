@@ -50,7 +50,7 @@ const PRODUCTION_ROLES = [
   "Costureira",     // Antes era "Oficina" ou "Costura"
   "Revisor",        // Antes era "Revisão"
   "Acabamento",     // Acabamento pode ser setor ou cargo, mas mantenha igua{ value: "gerente", label: "Gerente" },l na coluna
-  "Expedição",      // Antes era "Distribuição" ou "DPA"
+  "expedicao",      // Antes era "Distribuição" ou "DPA"
   "Gerente",
   "Auxiliar de Produção",
 ];
