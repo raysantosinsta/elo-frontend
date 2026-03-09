@@ -605,22 +605,22 @@ export default function ProductFlowKanban() {
     const day = String(todayUTC.getUTCDate()).padStart(2, "0");
     const todayStr = `${year}-${month}-${day}`;
 
+    // Calcula a data daqui a 7 dias
+    const sevenDaysFromNow = new Date(todayUTC);
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    const sevenDaysFromNowStr = sevenDaysFromNow.toISOString().split("T")[0];
+
     const filtered = stage.items.filter((item) => {
       if (activeColumnFilter.filterType === "overdue") {
         const dueDate = item.dueDate?.split("T")[0];
         if (!dueDate) return false;
         return dueDate < todayStr;
       } else if (activeColumnFilter.filterType === "upcoming") {
-        const startDate = item.productionStartedAt?.split("T")[0];
-        if (!startDate) return false;
-
-        const isStartingToday = startDate === todayStr;
-        if (!isStartingToday) return false;
-
         const dueDate = item.dueDate?.split("T")[0];
-        if (!dueDate) return true;
+        if (!dueDate) return false;
 
-        return dueDate >= todayStr;
+         // Item vence em até 7 dias (incluindo hoje)
+      return dueDate >= todayStr && dueDate <= sevenDaysFromNowStr;
       }
       return true;
     });

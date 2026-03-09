@@ -190,6 +190,16 @@ export default function RealTimeFlowDashboard() {
     return `${year}-${month}-${day}`;
   }, []);
 
+  // 🔥 Calcular data daqui a 7 dias
+  const sevenDaysFromNowStr = useMemo(() => {
+    const sevenDays = new Date();
+    sevenDays.setDate(sevenDays.getDate() + 7);
+    const year = sevenDays.getFullYear();
+    const month = String(sevenDays.getMonth() + 1).padStart(2, "0");
+    const day = String(sevenDays.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }, []);
+
   // Filtrar itens atrasados (no frontend)
   const overdueItems = useMemo(() => {
     if (!allItems.length) return [];
@@ -203,43 +213,47 @@ export default function RealTimeFlowDashboard() {
     });
   }, [allItems, todayStr]);
 
-  // Filtrar itens que vencem hoje (no frontend)
+  // 🔥 Filtrar itens que vencem em até 7 dias (baseado no prazo final)
   const upcomingItems = useMemo(() => {
     if (!allItems.length) return [];
     
-    console.log(`🔍 Filtrando itens para hoje (${todayStr})...`);
+    console.log(`🔍 Filtrando itens que vencem em até 7 dias (${todayStr} até ${sevenDaysFromNowStr})...`);
     
     const filtered = allItems.filter(item => {
-      if (!item.productionStartedAt) return false;
+      // 🔥 AGORA USA dueDate em vez de productionStartedAt
+      if (!item.dueDate) return false;
       if (item.status === "CONCLUIDO") return false;
       
-      const itemDateStr = item.productionStartedAt.split("T")[0];
-      const isToday = itemDateStr === todayStr;
+      const itemDateStr = item.dueDate.split("T")[0];
       
-      if (isToday) {
-        console.log(`✅ Item encontrado: ${item.title} - data: ${itemDateStr}`);
+      // Verifica se a data está entre hoje e 7 dias no futuro
+      const isWithin7Days = itemDateStr >= todayStr && itemDateStr <= sevenDaysFromNowStr;
+      
+      if (isWithin7Days) {
+        console.log(`✅ Item encontrado: ${item.title} - vence em: ${itemDateStr}`);
       }
       
-      return isToday;
+      return isWithin7Days;
     });
     
-    console.log(`📊 Total para hoje: ${filtered.length}`);
+    console.log(`📊 Total para os próximos 7 dias: ${filtered.length}`);
     return filtered;
-  }, [allItems, todayStr]);
+  }, [allItems, todayStr, sevenDaysFromNowStr]);
 
   // Debug
   useEffect(() => {
     console.log("📅 todayStr:", todayStr);
+    console.log("📅 sevenDaysFromNowStr:", sevenDaysFromNowStr);
     console.log("📦 allItems:", allItems.length);
     console.log("🔴 overdueItems:", overdueItems.length);
-    console.log("🟡 upcomingItems:", upcomingItems.length);
+    console.log("🟡 upcomingItems (7 dias):", upcomingItems.length);
     
     if (upcomingItems.length > 0) {
       upcomingItems.forEach(item => {
-        console.log(`   - ${item.title}: ${item.productionStartedAt}`);
+        console.log(`   - ${item.title}: vence em ${item.dueDate}`);
       });
     }
-  }, [allItems, overdueItems, upcomingItems, todayStr]);
+  }, [allItems, overdueItems, upcomingItems, todayStr, sevenDaysFromNowStr]);
 
   // --- PROCESSAR DADOS PARA O GRÁFICO ---
   const chartData = useMemo(() => {
@@ -352,17 +366,30 @@ export default function RealTimeFlowDashboard() {
   }, [allFlows]);
 
   // --- FORMATAR DATA ---
-  // --- FORMATAR DATA (CORRIGIDO) ---
-const formatDate = (dateString?: string) => {
-  if (!dateString) return "";
-  
-  // Extrair apenas a parte da data (YYYY-MM-DD)
-  const datePart = dateString.split("T")[0];
-  
-  // Converter para formato brasileiro
-  const [year, month, day] = datePart.split("-");
-  return `${day}/${month}/${year}`;
-};
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "";
+    
+    // Extrair apenas a parte da data (YYYY-MM-DD)
+    const datePart = dateString.split("T")[0];
+    
+    // Converter para formato brasileiro
+    const [year, month, day] = datePart.split("-");
+    return `${day}/${month}/${year}`;
+  };
+
+  // Calcular dias restantes
+  const calculateDaysRemaining = (dueDate?: string): number | null => {
+    if (!dueDate) return null;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+    
+    const diffTime = due.getTime() - today.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
 
   // --- LOADING ---
   if (loadingFlows || loadingItems) {
@@ -473,11 +500,11 @@ const formatDate = (dateString?: string) => {
           </CardContent>
         </Card>
 
-        {/* Card de Itens a Vencer Hoje */}
+        {/* 🔥 Card de Itens a Vencer em 7 Dias (MODIFICADO) */}
         <Card className="border-l-4 border-l-yellow-500 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Vencem Hoje
+              Vencem em 7 dias
             </CardTitle>
             <CalendarClock className="h-5 w-5 text-yellow-500" />
           </CardHeader>
@@ -486,7 +513,7 @@ const formatDate = (dateString?: string) => {
               {upcomingItems.length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Produção programada para hoje
+              Prazo final nos próximos 7 dias
             </p>
           </CardContent>
         </Card>
@@ -636,41 +663,44 @@ const formatDate = (dateString?: string) => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {overdueItems.slice(0, 5).map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200 hover:bg-red-100 transition-colors"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{item.title}</p>
-                      {item.productRef && (
-                        <span className="text-xs bg-red-200 px-2 py-0.5 rounded-full text-red-800">
-                          {item.productRef}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 mt-1">
-                      <p className="text-sm text-muted-foreground">
-                        Etapa: {item.stage?.name || "N/A"}
-                      </p>
-                      {item.flow && selectedFlowId === "all" && (
+              {overdueItems.slice(0, 5).map((item) => {
+                const daysRemaining = calculateDaysRemaining(item.dueDate);
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200 hover:bg-red-100 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{item.title}</p>
+                        {item.productRef && (
+                          <span className="text-xs bg-red-200 px-2 py-0.5 rounded-full text-red-800">
+                            {item.productRef}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
                         <p className="text-sm text-muted-foreground">
-                          Fluxo: {item.flow.name}
+                          Etapa: {item.stage?.name || "N/A"}
                         </p>
-                      )}
-                      {item.dueDate && (
-                        <p className="text-xs text-red-600">
-                          Venceu em: {formatDate(item.dueDate)}
-                        </p>
-                      )}
+                        {item.flow && selectedFlowId === "all" && (
+                          <p className="text-sm text-muted-foreground">
+                            Fluxo: {item.flow.name}
+                          </p>
+                        )}
+                        {item.dueDate && (
+                          <p className="text-xs text-red-600">
+                            Venceu em: {formatDate(item.dueDate)} ({Math.abs(daysRemaining || 0)} dias atrás)
+                          </p>
+                        )}
+                      </div>
                     </div>
+                    <span className="text-xs font-medium bg-red-200 text-red-800 px-2 py-1 rounded-full">
+                      Atrasado
+                    </span>
                   </div>
-                  <span className="text-xs font-medium bg-red-200 text-red-800 px-2 py-1 rounded-full">
-                    Atrasado
-                  </span>
-                </div>
-              ))}
+                );
+              })}
               {overdueItems.length > 5 && (
                 <p className="text-sm text-muted-foreground text-center pt-2">
                   E mais {overdueItems.length - 5} itens atrasados...
@@ -681,70 +711,75 @@ const formatDate = (dateString?: string) => {
         </Card>
       )}
 
-{upcomingItems.length > 0 && (
-  <Card className="shadow-md border-yellow-200">
-    <CardHeader>
-      <CardTitle className="text-lg flex items-center gap-2">
-        <CalendarClock className="h-5 w-5 text-yellow-500" />
-        Itens proximos a vencer hoje
-      </CardTitle>
-      <CardDescription>
-        Produtos com produção proximos a vencer hoje ({todayStr.split('-').reverse().join('/')})
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
-      <div className="space-y-2">
-        {upcomingItems.slice(0, 5).map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200 hover:bg-yellow-100 transition-colors"
-          >
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <p className="font-medium">{item.title}</p>
-                {item.productRef && (
-                  <span className="text-xs bg-yellow-200 px-2 py-0.5 rounded-full text-yellow-800">
-                    {item.productRef}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3 mt-1">
-                <p className="text-sm text-muted-foreground">
-                  Etapa: {item.stage?.name || "N/A"}
+      {/* 🔥 LISTA DE ITENS QUE VENCEM EM 7 DIAS (MODIFICADO) */}
+      {upcomingItems.length > 0 && (
+        <Card className="shadow-md border-yellow-200">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-yellow-500" />
+              Itens a Vencer em 7 Dias
+            </CardTitle>
+            <CardDescription>
+              Produtos com prazo final nos próximos 7 dias ({formatDate(todayStr)} até {formatDate(sevenDaysFromNowStr)})
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {upcomingItems.slice(0, 5).map((item) => {
+                const daysRemaining = calculateDaysRemaining(item.dueDate);
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200 hover:bg-yellow-100 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{item.title}</p>
+                        {item.productRef && (
+                          <span className="text-xs bg-yellow-200 px-2 py-0.5 rounded-full text-yellow-800">
+                            {item.productRef}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
+                        <p className="text-sm text-muted-foreground">
+                          Etapa: {item.stage?.name || "N/A"}
+                        </p>
+                        {item.flow && selectedFlowId === "all" && (
+                          <p className="text-sm text-muted-foreground">
+                            Fluxo: {item.flow.name}
+                          </p>
+                        )}
+                        {item.assignedTo && (
+                          <p className="text-sm text-muted-foreground">
+                            Resp: {item.assignedTo.name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {item.dueDate && (
+                        <span className="text-xs text-yellow-600 font-medium">
+                          {formatDate(item.dueDate)}
+                        </span>
+                      )}
+                      <span className="text-xs font-bold bg-yellow-200 text-yellow-800 px-2 py-1 rounded-full">
+                        {daysRemaining === 0 ? "Hoje!" : `${daysRemaining} dias`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              {upcomingItems.length > 5 && (
+                <p className="text-sm text-muted-foreground text-center pt-2">
+                  E mais {upcomingItems.length - 5} itens para vencer nos próximos dias...
                 </p>
-                {item.flow && selectedFlowId === "all" && (
-                  <p className="text-sm text-muted-foreground">
-                    Fluxo: {item.flow.name}
-                  </p>
-                )}
-                {item.assignedTo && (
-                  <p className="text-sm text-muted-foreground">
-                    Responsável: {item.assignedTo.name}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {item.productionStartedAt && (
-                <span className="text-xs text-yellow-600 font-medium">
-                  {formatDate(item.productionStartedAt)}
-                </span>
               )}
-              <span className="text-xs font-bold bg-yellow-200 text-yellow-800 px-2 py-1 rounded-full">
-                HOJE
-              </span>
             </div>
-          </div>
-        ))}
-        {upcomingItems.length > 5 && (
-          <p className="text-sm text-muted-foreground text-center pt-2">
-            E mais {upcomingItems.length - 5} itens para hoje...
-          </p>
-        )}
-      </div>
-    </CardContent>
-  </Card>
-)}
+          </CardContent>
+        </Card>
+      )}
+
       {/* MENSAGEM QUANDO NÃO HÁ DADOS */}
       {!loadingSelected && 
        overdueItems.length === 0 && 
