@@ -2286,7 +2286,7 @@ export default function ProductFlowKanban() {
         </div>
       )}
       <KanbanBoard>
-        {unifiedStages.map((stage) => {
+        {unifiedStages.map((stage, index) => {
           const hasPermission = canUserEditStage(stage);
           const filteredItems = filterColumnItems(stage);
 
@@ -2305,6 +2305,7 @@ export default function ProductFlowKanban() {
               title={stage.name}
               count={filteredItems.length}
               color={stage.color}
+              isFirstColumn={index === 0}
               onDropItem={(itemId) => {
                 const allItems = unifiedStages.flatMap((s) => s.items);
                 const draggingItem = allItems.find((i) => i.id === itemId);
