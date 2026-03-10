@@ -1986,6 +1986,16 @@ export default function ProductFlowKanban() {
           setStageAllowedRole("");
           setIsStageModal(true);
         }}
+        // Novas props para o seletor de fluxos
+        flows={flows}
+        selectedFlowIds={selectedFlowIds}
+        onToggleFlow={toggleFlow}
+        onEditFlow={openEditModal}
+        onDeleteFlow={(id) => {
+          setItemToDelete({ type: "stage", id });
+          setDeleteModalOpen(true);
+        }}
+        calculateDaysRemaining={calculateDaysRemaining}
         templates={templates}
         selectedTemplateId={selectedTemplateId}
         onSelectTemplate={setSelectedTemplateId}
@@ -1995,138 +2005,6 @@ export default function ProductFlowKanban() {
           setItemToDelete({ type: "template", id });
           setDeleteModalOpen(true);
         }}
-        rightContent={
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-3">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="bg-white/10 text-white border-white/20 h-9 text-xs max-w-[250px]"
-                  >
-                    <Layers size={16} className="mr-2 flex-shrink-0" />
-                    <span className="truncate">
-                      {selectedFlowIds.length === 0
-                        ? "Nenhum fluxo selecionado"
-                        : selectedFlowIds.length === 1
-                          ? flows.find((f) => f.id === selectedFlowIds[0])
-                              ?.name || "Fluxo"
-                          : `${selectedFlowIds.length} fluxos adicionados`}
-                    </span>
-                    <ChevronDown
-                      size={14}
-                      className="ml-2 opacity-50 flex-shrink-0"
-                    />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-80 p-2 bg-[#2C3E50] border-white/10 text-white"
-                  align="end"
-                >
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 py-2">
-                    Selecione os Fluxos
-                  </div>
-                  <div className="space-y-1 max-h-[300px] overflow-y-auto custom-scrollbar">
-                    {flows.map((f) => {
-                      const daysRemaining = f.deadline
-                        ? calculateDaysRemaining(f.deadline)
-                        : null;
-
-                      return (
-                        <div
-                          key={f.id}
-                          className={cn(
-                            "group flex items-center justify-between p-2 rounded-md transition-all",
-                            selectedFlowIds.includes(f.id)
-                              ? "bg-white/10 text-white"
-                              : "text-slate-400 hover:bg-white/5",
-                          )}
-                        >
-                          <div
-                            className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
-                            onClick={() => toggleFlow(f.id)}
-                          >
-                            <div
-                              className="w-3 h-3 rounded-full border border-white/20 flex-shrink-0"
-                              style={{ backgroundColor: f.color || "#D35400" }}
-                            />
-                            <span className="text-sm font-medium truncate">
-                              {f.name}
-                            </span>
-                            {selectedFlowIds.includes(f.id) && (
-                              <Check
-                                size={14}
-                                className="text-orange-500 ml-1 flex-shrink-0"
-                              />
-                            )}
-                          </div>
-
-                          {f.deadline && daysRemaining !== null && (
-                            <div className="flex-shrink-0 ml-2">
-                              {daysRemaining < 0 ? (
-                                <span className="text-[9px] font-bold bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full border border-red-500/30 whitespace-nowrap">
-                                  {Math.abs(daysRemaining)}d atrasado
-                                </span>
-                              ) : daysRemaining === 0 ? (
-                                <span className="text-[9px] font-bold bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full border border-orange-500/30 whitespace-nowrap">
-                                  Hoje!
-                                </span>
-                              ) : daysRemaining <= 3 ? (
-                                <span className="text-[9px] font-bold bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-500/30 whitespace-nowrap">
-                                  {daysRemaining}d
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-bold bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full border border-green-500/30 whitespace-nowrap">
-                                  {daysRemaining}d
-                                </span>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex items-center gap-1 ml-1">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openEditModal(f);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-blue-400 hover:bg-blue-500/10 rounded"
-                            >
-                              <Edit size={14} />
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setItemToDelete({ type: "stage", id: f.id });
-                                setDeleteModalOpen(true);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:bg-red-500/10 rounded"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {flows.some((f) => f.deadline) && (
-                    <div className="mt-2 pt-2 border-t border-white/10">
-                      <div className="flex items-center gap-2 text-[9px] text-slate-400">
-                        <Calendar size={10} />
-                        <span>Prazos:</span>
-                        <span className="text-green-400">● OK</span>
-                        <span className="text-yellow-400">● ≤3d</span>
-                        <span className="text-orange-400">● Hoje</span>
-                        <span className="text-red-400">● Atrasado</span>
-                      </div>
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-        }
       />
       <KanbanFilter>
         <div className="grid gap-1 min-w-[180px]">
