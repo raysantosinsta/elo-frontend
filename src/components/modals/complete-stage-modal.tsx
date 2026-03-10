@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -15,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, User, Building2 } from "lucide-react";
+import { Loader2, User, Building2, Package } from "lucide-react";
 import { useState, useEffect } from "react";
 import { api } from "@/services/api";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ import { toast } from "sonner";
 interface CompleteStageModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (responsibleId: string, type: 'user' | 'supplier') => Promise<void>;
+  onConfirm: (responsibleId: string, type: 'user' | 'supplier', quantity?: number) => Promise<void>;
   itemTitle: string;
   currentStage: string;
   nextStage: {
@@ -32,6 +33,7 @@ interface CompleteStageModalProps {
     allowedRole?: string | null;
   } | null;
   isLoading?: boolean;
+  currentQuantity?: number;
 }
 
 interface UserProfile {
@@ -57,6 +59,7 @@ export function CompleteStageModal({
   currentStage,
   nextStage,
   isLoading = false,
+  currentQuantity = 1,
 }: CompleteStageModalProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
@@ -66,14 +69,25 @@ export function CompleteStageModal({
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  // 🔥 Verifica se a coluna destino é OFICINA (case insensitive)
-  const isOficina = nextStage?.name?.trim().toLowerCase() === 'oficina';
+  // ===========================================================================
+  // 🔥 ESTADO DA QUANTIDADE
+  // ===========================================================================
+  const [quantity, setQuantity] = useState<number>(currentQuantity);
+  const [quantityError, setQuantityError] = useState<string>("");
+
+  // 🔥 ÚNICA VERIFICAÇÃO: a coluna ATUAL é CORTE?
+  const isCorteColumn = currentStage?.trim().toLowerCase() === 'corte';
 
   // Reset estado quando o modal abre
   useEffect(() => {
     if (isOpen && nextStage) {
       setSelectedUserId("");
       setSelectedSupplierId("");
+      setQuantity(currentQuantity);
+      setQuantityError("");
+      
+      // 🔥 Verifica APENAS para decidir se busca usuários ou fornecedores
+      const isOficina = nextStage?.name?.trim().toLowerCase() === 'oficina';
       
       if (isOficina) {
         fetchSuppliers();
@@ -81,10 +95,43 @@ export function CompleteStageModal({
         fetchUsersByRole();
       }
     }
-  }, [isOpen, nextStage, isOficina]);
+  }, [isOpen, nextStage, currentQuantity]);
+
+  // ===========================================================================
+  // 🔥 VALIDAÇÃO DA QUANTIDADE - AGORA PERMITE 0 PARA TESTES
+  // ===========================================================================
+  const validateQuantity = (value: number): boolean => {
+    // 🔥 REMOVIDA a validação de > 0 para permitir 0 em testes
+    if (value < 0) {
+      setQuantityError("A quantidade não pode ser negativa");
+      return false;
+    }
+    if (value > 999999) {
+      setQuantityError("Quantidade muito alta (máximo: 999.999)");
+      return false;
+    }
+    setQuantityError("");
+    return true;
+  };
+
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    if (value === "") {
+      setQuantity(0);
+      setQuantityError("");
+      return;
+    }
+
+    const numValue = Number(value);
+    
+    if (!isNaN(numValue)) {
+      setQuantity(numValue);
+      validateQuantity(numValue);
+    }
+  };
 
   const fetchUsersByRole = async () => {
-    // Se não tem cargo específico ou é "all", busca todos os usuários ativos da empresa
     if (!nextStage?.allowedRole || 
         nextStage.allowedRole === "all" || 
         nextStage.allowedRole === "null" ||
@@ -103,7 +150,6 @@ export function CompleteStageModal({
       return;
     }
 
-    // Tem cargo específico
     setLoadingUsers(true);
     try {
       const response = await api.get(`/users/by-role?role=${encodeURIComponent(nextStage.allowedRole)}`);
@@ -120,12 +166,10 @@ export function CompleteStageModal({
     }
   };
 
-  // 🔥 NOVO: Buscar fornecedores/oficinas
   const fetchSuppliers = async () => {
     setLoadingSuppliers(true);
     try {
       const response = await api.get("/suppliers");
-      // Filtra apenas fornecedores ativos, se houver campo status
       const suppliers = response.data.data || response.data;
       setAvailableSuppliers(suppliers);
     } catch (error) {
@@ -137,6 +181,19 @@ export function CompleteStageModal({
   };
 
   const handleConfirm = async () => {
+    // ===========================================================================
+    // 🔥 VALIDAÇÃO DA QUANTIDADE - AGORA PERMITE 0 PARA TESTES
+    // ===========================================================================
+    if (isCorteColumn) {
+      if (!validateQuantity(quantity)) {
+        toast.error(quantityError);
+        return;
+      }
+      // 🔥 REMOVIDA a verificação de quantity < 1
+    }
+
+    const isOficina = nextStage?.name?.trim().toLowerCase() === 'oficina';
+
     if (isOficina) {
       if (!selectedSupplierId) {
         toast.error("Selecione uma oficina responsável");
@@ -151,10 +208,18 @@ export function CompleteStageModal({
 
     setConfirming(true);
     try {
-      if (isOficina) {
-        await onConfirm(selectedSupplierId, 'supplier');
+      // 🔥 Só passa a quantidade se estiver saindo do Corte
+      if (isCorteColumn) {
+        await onConfirm(
+          isOficina ? selectedSupplierId : selectedUserId,
+          isOficina ? 'supplier' : 'user',
+          quantity
+        );
       } else {
-        await onConfirm(selectedUserId, 'user');
+        await onConfirm(
+          isOficina ? selectedSupplierId : selectedUserId,
+          isOficina ? 'supplier' : 'user'
+        );
       }
       onClose();
     } catch (error) {
@@ -163,6 +228,8 @@ export function CompleteStageModal({
       setConfirming(false);
     }
   };
+
+  const isOficina = nextStage?.name?.trim().toLowerCase() === 'oficina';
 
   if (!nextStage) {
     return (
@@ -220,7 +287,42 @@ export function CompleteStageModal({
             </div>
           </div>
 
-          {/* Campo dinâmico baseado no destino */}
+          {/* =========================================================================== */}
+          {/* 🔥 CAMPO DE QUANTIDADE - Aparece SOMENTE quando a COLUNA ATUAL é CORTE */}
+          {/* NÃO depende da coluna destino - pode ser QUALQUER UMA! */}
+          {/* AGORA PERMITE 0 PARA TESTES */}
+          {/* =========================================================================== */}
+          {isCorteColumn && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <Package size={16} className="text-slate-400" />
+                Quantidade do Item (testes)
+              </Label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  min="0" // 🔥 AGORA PERMITE 0
+                  step="1"
+                  value={quantity === 0 ? "0" : quantity} // 🔥 Mostra 0 explicitamente
+                  onChange={handleQuantityChange}
+                  placeholder="Digite a quantidade..."
+                  className={`pr-12 ${quantityError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                  disabled={confirming || isLoading}
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                  <span className="text-xs text-slate-400">un.</span>
+                </div>
+              </div>
+              {quantityError && (
+                <p className="text-xs text-red-500 mt-1">{quantityError}</p>
+              )}
+              <p className="text-xs text-slate-400">
+                ⚠️ Modo teste: 0 é permitido para validação
+              </p>
+            </div>
+          )}
+
+          {/* Campo do responsável baseado no destino */}
           {isOficina ? (
             // 🏭 CAMPO DE OFICINA
             <div className="space-y-2">
@@ -349,7 +451,9 @@ export function CompleteStageModal({
               loadingUsers || 
               loadingSuppliers || 
               confirming || 
-              isLoading
+              isLoading ||
+              // 🔥 AGORA SÓ BLOQUEIA SE FOR NEGATIVO, NÃO MAIS POR SER 0
+              (isCorteColumn && quantity < 0)
             }
             className="bg-orange-600 hover:bg-orange-700 text-white"
           >
