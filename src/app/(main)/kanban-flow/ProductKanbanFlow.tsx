@@ -3,24 +3,20 @@
 "use client";
 
 import {
-  Calendar,
-  Check,
-  ChevronDown,
-  Factory,
-  Layers,
-  Package,
-  Trash2,
-  X,
-  Lock,
-  Filter as FilterIcon,
   AlertTriangle,
+  Calendar,
   Clock,
+  Factory,
+  Filter as FilterIcon,
+  Layers,
   Loader2,
-  Edit,
+  Lock,
+  Package,
+  X,
 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useSearchParams, useRouter } from "next/navigation";
 
 // --- Infraestrutura ---
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,9 +27,9 @@ import { api } from "@/services/api";
 import { KanbanBoard } from "@/components/kanban/kanban-board";
 import { KanbanCard } from "@/components/kanban/kanban-card";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
+import { KanbanFilter } from "@/components/kanban/kanban-filter";
 import { KanbanHeader } from "@/components/kanban/kanban-header";
 import { KanbanLayout } from "@/components/kanban/kanban-layout";
-import { KanbanFilter } from "@/components/kanban/kanban-filter";
 
 // --- UI Components ---
 import { Button } from "@/components/ui/button";
@@ -53,17 +49,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 
 // --- Modais ---
+import { CompleteStageModal } from "@/components/modals/complete-stage-modal";
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
 import { FlowItemModal } from "@/components/modals/flow-item-modal";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { CompleteStageModal } from "@/components/modals/complete-stage-modal";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -296,6 +286,9 @@ export default function ProductFlowKanban() {
   const [allStages, setAllStages] = useState<FlowStage[]>([]);
 
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Verifica se a condição para mostrar o toast já foi disparada
+  const [hasShownEmptyRefToast, setHasShownEmptyRefToast] = useState(false);
 
   useEffect(() => {
     console.log("📊 Boards atualizados:", {
@@ -655,14 +648,13 @@ export default function ProductFlowKanban() {
       setTempFilterUpcoming(true);
       setTempFilterOverdue(false);
     }
-    
 
     // 🔥 Se for filtro upcoming, sempre usa dueDate
-  if (filterParam === "upcoming") {
-    setTempFilterDateType("dueDate");
-  } else if (typeParam === "productionStartedAt" || typeParam === "dueDate") {
-    setTempFilterDateType(typeParam);
-  }
+    if (filterParam === "upcoming") {
+      setTempFilterDateType("dueDate");
+    } else if (typeParam === "productionStartedAt" || typeParam === "dueDate") {
+      setTempFilterDateType(typeParam);
+    }
 
     if (startDateParam) {
       setTempFilterStartDate(startDateParam.split("T")[0]);
@@ -688,13 +680,14 @@ export default function ProductFlowKanban() {
       setColumnNameFilter(stageNameParam);
     }
 
-     // 🔥 Atualiza os filtros ativos
-  setActiveFilterDateType(
-    filterParam === "upcoming" ? "dueDate" : 
-    (typeParam === "productionStartedAt" || typeParam === "dueDate")
-      ? typeParam
-      : "dueDate" // 🔥 Muda o padrão para dueDate
-  );
+    // 🔥 Atualiza os filtros ativos
+    setActiveFilterDateType(
+      filterParam === "upcoming"
+        ? "dueDate"
+        : typeParam === "productionStartedAt" || typeParam === "dueDate"
+          ? typeParam
+          : "dueDate", // 🔥 Muda o padrão para dueDate
+    );
     setActiveFilterStartDate(
       startDateParam ? startDateParam.split("T")[0] : "",
     );
@@ -918,19 +911,19 @@ export default function ProductFlowKanban() {
     }
 
     // Se o filtro de próximos 7 dias estiver ativo, sempre usa dueDate
-  if (tempFilterUpcoming) {
-    params.set("dateType", "dueDate");
-    setTempFilterDateType("dueDate");
-  } else if (tempFilterDateType) {
-    params.set("dateType", tempFilterDateType);
-  }
+    if (tempFilterUpcoming) {
+      params.set("dateType", "dueDate");
+      setTempFilterDateType("dueDate");
+    } else if (tempFilterDateType) {
+      params.set("dateType", tempFilterDateType);
+    }
 
-     if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
-  if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
-  
-  if (tempFilterOverdue) params.set("filter", "overdue");
-  if (tempFilterUpcoming) params.set("filter", "upcoming");
-    
+    if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
+    if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
+
+    if (tempFilterOverdue) params.set("filter", "overdue");
+    if (tempFilterUpcoming) params.set("filter", "upcoming");
+
     if (tempFilterAssignedTo !== "all")
       params.set("assignedToId", tempFilterAssignedTo);
     if (tempFilterSupplier !== "all")
@@ -938,7 +931,7 @@ export default function ProductFlowKanban() {
     if (tempFilterProductRef && tempFilterProductRef.trim() !== "") {
       params.set("productRef", tempFilterProductRef.trim());
     }
- console.log("🔍 Parâmetros do filtro:", params.toString());
+    console.log("🔍 Parâmetros do filtro:", params.toString());
     router.push(`?${params.toString()}`);
   };
 
@@ -977,14 +970,14 @@ export default function ProductFlowKanban() {
   const toggleUpcomingFilter = () => {
     if (tempFilterUpcoming) {
       setTempFilterUpcoming(false);
-    setTempFilterStartDate("");
-    setTempFilterEndDate("");
+      setTempFilterStartDate("");
+      setTempFilterEndDate("");
     } else {
       setTempFilterUpcoming(true);
       setTempFilterOverdue(false);
 
-       // 🔥 FORÇA O TIPO DE DATA PARA dueDate
-    setTempFilterDateType("dueDate");
+      // 🔥 FORÇA O TIPO DE DATA PARA dueDate
+      setTempFilterDateType("dueDate");
 
       // Calcula as datas para os próximos 7 dias
       const today = new Date();
@@ -995,11 +988,11 @@ export default function ProductFlowKanban() {
       const todayStr = today.toISOString().split("T")[0];
       const sevenDaysStr = sevenDaysFromNow.toISOString().split("T")[0];
 
-       console.log("📅 Filtro Próximos 7 dias:", {
-      hoje: todayStr,
-      daqui7dias: sevenDaysStr,
-      dateType: "dueDate"
-    });
+      console.log("📅 Filtro Próximos 7 dias:", {
+        hoje: todayStr,
+        daqui7dias: sevenDaysStr,
+        dateType: "dueDate",
+      });
 
       setTempFilterStartDate(todayStr);
       setTempFilterEndDate(sevenDaysStr);
@@ -1991,6 +1984,39 @@ export default function ProductFlowKanban() {
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
     );
 
+  // Verifica se há filtro de referência ativo
+  const hasActiveProductRefFilter =
+    activeFilterProductRef && activeFilterProductRef.trim() !== "";
+
+  // Verifica se não há itens no board filtrado
+  const hasNoItemsAfterFilter = boards.every((board) =>
+    board.stages.every((stage) => stage.items.length === 0),
+  );
+
+  // Efeito para mostrar o toast quando a condição for atendida
+  useEffect(() => {
+    if (
+      hasActiveProductRefFilter &&
+      hasNoItemsAfterFilter &&
+      !loading &&
+      !hasShownEmptyRefToast
+    ) {
+      toast.info(
+        "Nenhum item encontrado. A referência pode ainda não ter sido criada ou já foi finalizada.",
+        {
+          duration: 5000, // 5 segundos
+          icon: <Package className="h-4 w-4" />,
+        },
+      );
+      setHasShownEmptyRefToast(true);
+    }
+
+    // Reseta o estado quando o filtro muda ou quando há itens
+    if (!hasActiveProductRefFilter || !hasNoItemsAfterFilter) {
+      setHasShownEmptyRefToast(false);
+    }
+  }, [hasActiveProductRefFilter, hasNoItemsAfterFilter, loading]);
+
   if (loading && boards.length === 0) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
@@ -2054,159 +2080,159 @@ export default function ProductFlowKanban() {
         }}
       />
       <KanbanFilter>
-  <div className="grid gap-1 min-w-[180px]">
-    <label className="text-[10px] uppercase font-bold text-slate-400">
-      Filtrar por Coluna
-    </label>
-    <div className="relative">
-      <Input
-        type="text"
-        placeholder="Nome da coluna (ex: Corte)"
-        className="h-8 text-xs pl-8"
-        value={columnNameFilter}
-        onChange={(e) => setColumnNameFilter(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            handleFilterClick();
-          }
-        }}
-      />
-      <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
-    </div>
-  </div>
+        <div className="grid gap-1 min-w-[180px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Filtrar por Coluna
+          </label>
+          <div className="relative">
+            <Input
+              type="text"
+              placeholder="Nome da coluna (ex: Corte)"
+              className="h-8 text-xs pl-8"
+              value={columnNameFilter}
+              onChange={(e) => setColumnNameFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleFilterClick();
+                }
+              }}
+            />
+            <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
+          </div>
+        </div>
 
-  <div className="grid gap-1 min-w-[140px]">
-    <label className="text-[10px] uppercase font-bold text-slate-400">
-      Responsável
-    </label>
-    <select
-      className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
-      value={tempFilterAssignedTo}
-      onChange={(e) => setTempFilterAssignedTo(e.target.value)}
-    >
-      <option value="all">Todos</option>
-      {users.map((u) => (
-        <option key={u.id} value={u.id}>
-          {u.name}
-        </option>
-      ))}
-    </select>
-  </div>
+        <div className="grid gap-1 min-w-[140px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Responsável
+          </label>
+          <select
+            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
+            value={tempFilterAssignedTo}
+            onChange={(e) => setTempFilterAssignedTo(e.target.value)}
+          >
+            <option value="all">Todos</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
-  <div className="grid gap-1 min-w-[140px]">
-    <label className="text-[10px] uppercase font-bold text-slate-400">
-      Oficina
-    </label>
-    <select
-      className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
-      value={tempFilterSupplier}
-      onChange={(e) => setTempFilterSupplier(e.target.value)}
-    >
-      <option value="all">Todas</option>
-      <option value="internal">Produção Interna</option>
-      {suppliers.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.name}
-        </option>
-      ))}
-    </select>
-  </div>
+        <div className="grid gap-1 min-w-[140px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Oficina
+          </label>
+          <select
+            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
+            value={tempFilterSupplier}
+            onChange={(e) => setTempFilterSupplier(e.target.value)}
+          >
+            <option value="all">Todas</option>
+            <option value="internal">Produção Interna</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
-  <div className="grid gap-1 min-w-[180px]">
-    <label className="text-[10px] uppercase font-bold text-slate-400">
-      Referência do Produto
-    </label>
-    <div className="relative">
-      <Input
-        type="text"
-        placeholder="Buscar por ref..."
-        className="h-8 text-xs pl-8"
-        value={tempFilterProductRef}
-        onChange={(e) => setTempFilterProductRef(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            handleFilterClick();
-          }
-        }}
-      />
-      <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
-    </div>
-  </div>
+        <div className="grid gap-1 min-w-[180px]">
+          <label className="text-[10px] uppercase font-bold text-slate-400">
+            Referência do Produto
+          </label>
+          <div className="relative">
+            <Input
+              type="text"
+              placeholder="Buscar por ref..."
+              className="h-8 text-xs pl-8"
+              value={tempFilterProductRef}
+              onChange={(e) => setTempFilterProductRef(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleFilterClick();
+                }
+              }}
+            />
+            <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
+          </div>
+        </div>
 
-  <div className="flex items-end gap-2">
-    <Button
-      size="sm"
-      variant={tempFilterOverdue ? "destructive" : "outline"}
-      className={`h-8 text-xs ${
-        tempFilterOverdue ? "bg-red-500 text-white hover:bg-red-600" : ""
-      }`}
-      onClick={toggleOverdueFilter}
-    >
-      <AlertTriangle className="w-3 h-3 mr-2" />
-      Atrasados
-    </Button>
+        <div className="flex items-end gap-2">
+          <Button
+            size="sm"
+            variant={tempFilterOverdue ? "destructive" : "outline"}
+            className={`h-8 text-xs ${
+              tempFilterOverdue ? "bg-red-500 text-white hover:bg-red-600" : ""
+            }`}
+            onClick={toggleOverdueFilter}
+          >
+            <AlertTriangle className="w-3 h-3 mr-2" />
+            Atrasados
+          </Button>
 
-    <Button
-      size="sm"
-      variant={tempFilterUpcoming ? "default" : "outline"}
-      className={`h-8 text-xs ${
-        tempFilterUpcoming 
-          ? "bg-orange-600 text-white hover:bg-orange-700" 
-          : ""
-      }`}
-      onClick={toggleUpcomingFilter}
-    >
-      <Clock className="w-3 h-3 mr-2" />
-      Próximos a vencer ( 7 dias )
-    </Button>
-  </div>
+          <Button
+            size="sm"
+            variant={tempFilterUpcoming ? "default" : "outline"}
+            className={`h-8 text-xs ${
+              tempFilterUpcoming
+                ? "bg-orange-600 text-white hover:bg-orange-700"
+                : ""
+            }`}
+            onClick={toggleUpcomingFilter}
+          >
+            <Clock className="w-3 h-3 mr-2" />
+            Próximos a vencer ( 7 dias )
+          </Button>
+        </div>
 
-  <div className="flex items-center gap-2">
-    <Button
-      size="sm"
-      variant="default"
-      className="h-8 text-xs min-w-[100px] bg-orange-600 hover:bg-orange-700"
-      onClick={handleFilterClick}
-      disabled={isFiltering}
-    >
-      {isFiltering ? (
-        <>
-          <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Filtrando...
-        </>
-      ) : (
-        <>
-          <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
-        </>
-      )}
-    </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="default"
+            className="h-8 text-xs min-w-[100px] bg-orange-600 hover:bg-orange-700"
+            onClick={handleFilterClick}
+            disabled={isFiltering}
+          >
+            {isFiltering ? (
+              <>
+                <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Filtrando...
+              </>
+            ) : (
+              <>
+                <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
+              </>
+            )}
+          </Button>
 
-    {hasActiveFilters && (
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
-        onClick={handleClearFilters}
-        title="Limpar Filtros"
-      >
-        <X className="w-4 h-4" />
-      </Button>
-    )}
-  </div>
+          {hasActiveFilters && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+              onClick={handleClearFilters}
+              title="Limpar Filtros"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
 
-  {activeColumnFilter.columnId && (
-    <Button
-      size="sm"
-      variant="ghost"
-      className="h-8 text-xs text-slate-400 hover:text-red-500"
-      onClick={() =>
-        setActiveColumnFilter({ columnId: null, filterType: null })
-      }
-    >
-      <X className="w-3 h-3 mr-1" />
-      Limpar Filtro da Coluna
-    </Button>
-  )}
-</KanbanFilter>
+        {activeColumnFilter.columnId && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs text-slate-400 hover:text-red-500"
+            onClick={() =>
+              setActiveColumnFilter({ columnId: null, filterType: null })
+            }
+          >
+            <X className="w-3 h-3 mr-1" />
+            Limpar Filtro da Coluna
+          </Button>
+        )}
+      </KanbanFilter>
       {activeColumnNameFilter && (
         <div className="px-4 py-2 mb-4 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm">
@@ -2231,215 +2257,242 @@ export default function ProductFlowKanban() {
         </div>
       )}
       <KanbanBoard>
-        {unifiedStages.map((stage, index) => {
-          const hasPermission = canUserEditStage(stage);
-          const filteredItems = filterColumnItems(stage);
+        {hasActiveProductRefFilter && hasNoItemsAfterFilter ? (
+          <div className="flex flex-col items-center justify-center w-full py-16 px-4">
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-8 max-w-md text-center">
+              <Package className="h-12 w-12 text-orange-300 mx-auto mb-4" />
 
-          const isOverdueActive =
-            activeColumnFilter.columnId === stage.id &&
-            activeColumnFilter.filterType === "overdue";
+              <p className="text-sm text-gray-600 mb-4">
+                A referência{" "}
+                <span className="font-bold text-orange-600">
+                  &ldquo;{activeFilterProductRef}&rdquo;
+                </span>{" "}
+                não foi criada ou já foi finalizada.
+              </p>
 
-          const isUpcomingActive =
-            activeColumnFilter.columnId === stage.id &&
-            activeColumnFilter.filterType === "upcoming";
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-6 text-orange-600 border-orange-200 hover:bg-orange-50"
+                onClick={handleClearFilters}
+              >
+                <X className="h-3 w-3 mr-2" />
+                Limpar Filtro
+              </Button>
+            </div>
+          </div>
+        ) : (
+          // Seu código existente do KanbanBoard
+          unifiedStages.map((stage, index) => {
+            const hasPermission = canUserEditStage(stage);
+            const filteredItems = filterColumnItems(stage);
 
-          return (
-            <KanbanColumn
-              key={stage.id}
-              id={stage.id}
-              title={stage.name}
-              count={filteredItems.length}
-              color={stage.color}
-              isFirstColumn={index === 0}
-              onDropItem={(itemId) => {
-                const allItems = unifiedStages.flatMap((s) => s.items);
-                const draggingItem = allItems.find((i) => i.id === itemId);
+            const isOverdueActive =
+              activeColumnFilter.columnId === stage.id &&
+              activeColumnFilter.filterType === "overdue";
 
-                if (!draggingItem) {
-                  console.error("❌ Item não encontrado:", itemId);
-                  return;
-                }
+            const isUpcomingActive =
+              activeColumnFilter.columnId === stage.id &&
+              activeColumnFilter.filterType === "upcoming";
 
-                console.log("🎯 Drop - Item sendo movido:", {
-                  itemId: draggingItem.id,
-                  title: draggingItem.title,
-                  flowName: draggingItem.flowName,
-                  flowColor: draggingItem.flowColor,
-                  currentStage: draggingItem.stageId,
-                  targetStageName: stage.name,
-                });
+            return (
+              <KanbanColumn
+                key={stage.id}
+                id={stage.id}
+                title={stage.name}
+                count={filteredItems.length}
+                color={stage.color}
+                isFirstColumn={index === 0}
+                onDropItem={(itemId) => {
+                  const allItems = unifiedStages.flatMap((s) => s.items);
+                  const draggingItem = allItems.find((i) => i.id === itemId);
 
-                // 🔥 Busca o board do flow ORIGINAL do item
-                const itemBoard = boards.find(
-                  (b) => b.id === draggingItem.flowId,
-                );
+                  if (!draggingItem) {
+                    console.error("❌ Item não encontrado:", itemId);
+                    return;
+                  }
 
-                if (!itemBoard) {
-                  console.error(
-                    "❌ Board do item não encontrado:",
-                    draggingItem.flowId,
-                  );
-                  return;
-                }
-
-                // Encontra a stage com o mesmo nome no flow original
-                const correctStage = itemBoard.stages.find(
-                  (s) => s.name.toUpperCase() === stage.name.toUpperCase(),
-                );
-
-                if (!correctStage) {
-                  console.error("❌ Stage não encontrada no flow original:", {
-                    stageName: stage.name,
-                    flowName: itemBoard.name,
-                    availableStages: itemBoard.stages.map((s) => s.name),
+                  console.log("🎯 Drop - Item sendo movido:", {
+                    itemId: draggingItem.id,
+                    title: draggingItem.title,
+                    flowName: draggingItem.flowName,
+                    flowColor: draggingItem.flowColor,
+                    currentStage: draggingItem.stageId,
+                    targetStageName: stage.name,
                   });
-                  return;
+
+                  // 🔥 Busca o board do flow ORIGINAL do item
+                  const itemBoard = boards.find(
+                    (b) => b.id === draggingItem.flowId,
+                  );
+
+                  if (!itemBoard) {
+                    console.error(
+                      "❌ Board do item não encontrado:",
+                      draggingItem.flowId,
+                    );
+                    return;
+                  }
+
+                  // Encontra a stage com o mesmo nome no flow original
+                  const correctStage = itemBoard.stages.find(
+                    (s) => s.name.toUpperCase() === stage.name.toUpperCase(),
+                  );
+
+                  if (!correctStage) {
+                    console.error("❌ Stage não encontrada no flow original:", {
+                      stageName: stage.name,
+                      flowName: itemBoard.name,
+                      availableStages: itemBoard.stages.map((s) => s.name),
+                    });
+                    return;
+                  }
+
+                  const targetStageId = correctStage.id;
+
+                  console.log("✅ Drop - Stage encontrada:", {
+                    targetStageId,
+                    targetStageName: correctStage.name,
+                    flowName: itemBoard.name,
+                  });
+
+                  moveItem(itemId, targetStageId, stage.name);
+                }}
+                onAddItem={
+                  hasPermission ? () => handleCreateItem(stage.id) : undefined
                 }
+                onEditClick={() => {
+                  setEditingStage(stage);
+                  setStageName(stage.name);
+                  setStageColor(stage.color || "#2D3436");
+                  setStageAllowedRole(stage.allowedRole || "");
+                  setIsStageModal(true);
+                }}
+                onDeleteClick={() => {
+                  setItemToDelete({ type: "stage", id: stage.id });
+                  setDeleteModalOpen(true);
+                }}
+                onFilterOverdue={() => handleColumnFilterOverdue(stage.id)}
+                onFilterUpcoming={() => handleColumnFilterUpcoming(stage.id)}
+                isOverdueFilterActive={isOverdueActive}
+                isUpcomingFilterActive={isUpcomingActive}
+                filterDisabled={false}
+              >
+                {!hasPermission && (
+                  <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
+                    <Lock size={10} /> Somente Leitura
+                  </div>
+                )}
 
-                const targetStageId = correctStage.id;
-
-                console.log("✅ Drop - Stage encontrada:", {
-                  targetStageId,
-                  targetStageName: correctStage.name,
-                  flowName: itemBoard.name,
-                });
-
-                moveItem(itemId, targetStageId, stage.name);
-              }}
-              onAddItem={
-                hasPermission ? () => handleCreateItem(stage.id) : undefined
-              }
-              onEditClick={() => {
-                setEditingStage(stage);
-                setStageName(stage.name);
-                setStageColor(stage.color || "#2D3436");
-                setStageAllowedRole(stage.allowedRole || "");
-                setIsStageModal(true);
-              }}
-              onDeleteClick={() => {
-                setItemToDelete({ type: "stage", id: stage.id });
-                setDeleteModalOpen(true);
-              }}
-              onFilterOverdue={() => handleColumnFilterOverdue(stage.id)}
-              onFilterUpcoming={() => handleColumnFilterUpcoming(stage.id)}
-              isOverdueFilterActive={isOverdueActive}
-              isUpcomingFilterActive={isUpcomingActive}
-              filterDisabled={false}
-            >
-              {!hasPermission && (
-                <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
-                  <Lock size={10} /> Somente Leitura
-                </div>
-              )}
-
-              {(isOverdueActive || isUpcomingActive) && (
-                <div
-                  className="mb-2 p-1 text-[8px] font-bold uppercase text-center rounded bg-opacity-20 flex items-center justify-center gap-1"
-                  style={{
-                    backgroundColor: isOverdueActive
-                      ? "#ef444420"
-                      : "#f59e0b20",
-                    color: isOverdueActive ? "#ef4444" : "#f59e0b",
-                    border: `1px solid ${isOverdueActive ? "#ef4444" : "#f59e0b"}30`,
-                  }}
-                >
-                  {isOverdueActive ? (
-                    <>
-                      <AlertTriangle size={10} />
-                      Filtrando: Atrasados (dueDate &lt; hoje)
-                    </>
-                  ) : (
-                    <>
-                      <Clock size={10} />
-                      Filtrando: Iniciam hoje (productionStartedAt = hoje)
-                    </>
-                  )}
-                  <button
-                    className="ml-1 hover:opacity-70"
-                    onClick={() =>
-                      setActiveColumnFilter({
-                        columnId: null,
-                        filterType: null,
-                      })
-                    }
-                  >
-                    <X size={10} />
-                  </button>
-                </div>
-              )}
-
-              {filteredItems.map((item) => {
-                console.log("Renderizando card:", {
-                  id: item.id,
-                  title: item.title,
-                  flowColor: item.flowColor,
-                  flowName: item.flowName,
-                  stageId: item.stageId,
-                });
-                return (
-                  <KanbanCard
-                    key={item.id}
-                    id={item.id}
-                    title={item.title}
-                    subtitle={item.productRef}
-                    // 🔥 CORRIGIDO: Usar a cor da coleção do item, não da coluna
-                    priorityColor={item.flowColor}
-                    coverImage={item.images[0]?.url}
-                    onDragStart={
-                      hasPermission
-                        ? (e) => {
-                            onDragStart(e, item.id);
-                          }
-                        : undefined
-                    }
-                    onDoubleClick={() => {
-                      setEditingItem(item);
-                      setIsModalReadOnly(!hasPermission);
-                      handleEditItem(item);
+                {(isOverdueActive || isUpcomingActive) && (
+                  <div
+                    className="mb-2 p-1 text-[8px] font-bold uppercase text-center rounded bg-opacity-20 flex items-center justify-center gap-1"
+                    style={{
+                      backgroundColor: isOverdueActive
+                        ? "#ef444420"
+                        : "#f59e0b20",
+                      color: isOverdueActive ? "#ef4444" : "#f59e0b",
+                      border: `1px solid ${isOverdueActive ? "#ef4444" : "#f59e0b"}30`,
                     }}
-                    onEdit={
-                      hasPermission
-                        ? () => {
-                            setEditingItem(item);
-                            setIsModalReadOnly(false);
-                            handleEditItem(item);
-                          }
-                        : undefined
-                    }
-                    onDelete={
-                      hasPermission
-                        ? () => {
-                            setItemToDelete({ type: "item", id: item.id });
-                            setDeleteModalOpen(true);
-                          }
-                        : undefined
-                    }
-                    onComplete={
-                      hasPermission
-                        ? () => handleOpenCompleteModal(item)
-                        : undefined
-                    }
-                    footer={
-                      <div className="flex justify-between items-center w-full">
-                        <span className="text-[10px] text-slate-400 font-bold">
-                          <Package size={10} className="inline mr-1" />
-                          {item.quantity}
-                        </span>
-                        {/* 🔥 AQUI TAMBÉM ESTÁ CORRETO - usa item.flowColor */}
-                        <div
-                          className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
-                          style={{ backgroundColor: item.flowColor }}
-                        >
-                          {item.flowName}
+                  >
+                    {isOverdueActive ? (
+                      <>
+                        <AlertTriangle size={10} />
+                        Filtrando: Atrasados (dueDate &lt; hoje)
+                      </>
+                    ) : (
+                      <>
+                        <Clock size={10} />
+                        Filtrando: Iniciam hoje (productionStartedAt = hoje)
+                      </>
+                    )}
+                    <button
+                      className="ml-1 hover:opacity-70"
+                      onClick={() =>
+                        setActiveColumnFilter({
+                          columnId: null,
+                          filterType: null,
+                        })
+                      }
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                )}
+
+                {filteredItems.map((item) => {
+                  console.log("Renderizando card:", {
+                    id: item.id,
+                    title: item.title,
+                    flowColor: item.flowColor,
+                    flowName: item.flowName,
+                    stageId: item.stageId,
+                  });
+                  return (
+                    <KanbanCard
+                      key={item.id}
+                      id={item.id}
+                      title={item.title}
+                      subtitle={item.productRef}
+                      // 🔥 CORRIGIDO: Usar a cor da coleção do item, não da coluna
+                      priorityColor={item.flowColor}
+                      coverImage={item.images[0]?.url}
+                      onDragStart={
+                        hasPermission
+                          ? (e) => {
+                              onDragStart(e, item.id);
+                            }
+                          : undefined
+                      }
+                      onDoubleClick={() => {
+                        setEditingItem(item);
+                        setIsModalReadOnly(!hasPermission);
+                        handleEditItem(item);
+                      }}
+                      onEdit={
+                        hasPermission
+                          ? () => {
+                              setEditingItem(item);
+                              setIsModalReadOnly(false);
+                              handleEditItem(item);
+                            }
+                          : undefined
+                      }
+                      onDelete={
+                        hasPermission
+                          ? () => {
+                              setItemToDelete({ type: "item", id: item.id });
+                              setDeleteModalOpen(true);
+                            }
+                          : undefined
+                      }
+                      onComplete={
+                        hasPermission
+                          ? () => handleOpenCompleteModal(item)
+                          : undefined
+                      }
+                      footer={
+                        <div className="flex justify-between items-center w-full">
+                          <span className="text-[10px] text-slate-400 font-bold">
+                            <Package size={10} className="inline mr-1" />
+                            {item.quantity}
+                          </span>
+                          {/* 🔥 AQUI TAMBÉM ESTÁ CORRETO - usa item.flowColor */}
+                          <div
+                            className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
+                            style={{ backgroundColor: item.flowColor }}
+                          >
+                            {item.flowName}
+                          </div>
                         </div>
-                      </div>
-                    }
-                  />
-                );
-              })}
-            </KanbanColumn>
-          );
-        })}
+                      }
+                    />
+                  );
+                })}
+              </KanbanColumn>
+            );
+          })
+        )}
       </KanbanBoard>
       <FlowItemModal
         isOpen={isItemModal}
