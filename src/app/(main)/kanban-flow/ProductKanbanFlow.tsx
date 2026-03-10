@@ -515,9 +515,9 @@ export default function ProductFlowKanban() {
 
       await api.put(`/flow/items/${completingItem.id}/move`, payload);
 
-      toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
-        id: "complete-stage",
-      });
+      // toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
+      //   id: "complete-stage",
+      // });
 
       const hasFilters =
         activeFilterStartDate ||
@@ -538,7 +538,8 @@ export default function ProductFlowKanban() {
     } catch (error: any) {
       const errorMsg =
         error.response?.data?.message || "Erro ao concluir etapa.";
-      toast.error(errorMsg, { id: "complete-stage" });
+      console.log(errorMsg);
+      // toast.error(errorMsg, { id: "complete-stage" });
     }
   };
 
@@ -556,6 +557,12 @@ export default function ProductFlowKanban() {
 
       const userRole = user.professionalRole?.toLowerCase() || "";
       const requiredRole = stage.allowedRole.toLowerCase();
+
+      console.log("🔍 [FRONTEND] Comparação de cargo:", {
+        userProfessionalRole: user.professionalRole,
+        stageAllowedRole: stage.allowedRole,
+        match: user.professionalRole === stage.allowedRole,
+      });
 
       return userRole.includes(requiredRole);
     },
@@ -619,8 +626,8 @@ export default function ProductFlowKanban() {
         const dueDate = item.dueDate?.split("T")[0];
         if (!dueDate) return false;
 
-         // Item vence em até 7 dias (incluindo hoje)
-      return dueDate >= todayStr && dueDate <= sevenDaysFromNowStr;
+        // Item vence em até 7 dias (incluindo hoje)
+        return dueDate >= todayStr && dueDate <= sevenDaysFromNowStr;
       }
       return true;
     });
@@ -1045,14 +1052,14 @@ export default function ProductFlowKanban() {
   // 🎯 FUNÇÃO DE AVANÇAR ITEM
   // ===========================================================================
   const handleAdvanceItem = async (item: FlowItem) => {
-    toast.loading("Avançando item...", { id: "advance-toast" });
+    // toast.loading("Avançando item...", { id: "advance-toast" });
 
     try {
       await api.post(`/flow/items/${item.id}/advance`);
 
-      toast.success(`Item "${item.title}" movido para próxima etapa!`, {
-        id: "advance-toast",
-      });
+      // toast.success(`Item "${item.title}" movido para próxima etapa!`, {
+      //   id: "advance-toast",
+      // });
 
       setIsPreviewModal(false);
       setIsEditItemModal(false);
@@ -1071,7 +1078,8 @@ export default function ProductFlowKanban() {
       }
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || "Erro ao mover item.";
-      toast.error(errorMsg, { id: "advance-toast" });
+      // toast.error(errorMsg, { id: "advance-toast" });
+      console.log(errorMsg);
     }
   };
 
@@ -1645,7 +1653,7 @@ export default function ProductFlowKanban() {
         );
       }
 
-      toast.error(errorMessage);
+      // toast.error(errorMessage);
 
       console.error("=".repeat(80));
       console.error("\n");
@@ -1863,31 +1871,71 @@ export default function ProductFlowKanban() {
         errorMessage = error.message;
       }
 
-      toast.error(errorMessage, {
-        description: "Tente novamente ou atualize a página",
-      });
+      // toast.error(errorMessage, {
+      //   description: "Tente novamente ou atualize a página",
+      // });
     },
   });
 
   const handleDragWithResponsible = async (
     responsibleId: string,
     type: "user" | "supplier",
+    quantity?: number, // 🔥 RECEBE QUANTIDADE DO MODAL
   ) => {
     if (!dragItemId || !dragTargetStage) return;
 
-    toast.loading("Movendo item...", { id: "drag-move" });
+    // toast.loading("Movendo item...", { id: "drag-move" });
 
     try {
-      await executeMove(dragItemId, dragTargetStage.id, responsibleId, type);
-      toast.success(`Item movido para "${dragTargetStage.name}"!`, {
-        id: "drag-move",
+      // 🔥 PASSO 1: Se tiver quantidade, atualizar o item primeiro
+      if (quantity !== undefined) {
+        console.log(`📝 [DRAG] Atualizando quantidade para: ${quantity}`);
+        await api.put(`/flow/items/${dragItemId}`, {
+          quantity: quantity,
+        });
+      }
+
+      // 🔥 PASSO 2: Mover o item com os parâmetros
+      console.log(`🎯 [DRAG] Movendo item para: ${dragTargetStage.name}`, {
+        responsibleId,
+        type,
       });
+
+      await executeMove(dragItemId, dragTargetStage.id, responsibleId, type);
+
+      // toast.success(`Item movido para "${dragTargetStage.name}"!`, {
+      //   id: "drag-move",
+      // });
+
       setIsDragModalOpen(false);
       setDragItemId(null);
       setDragTargetStage(null);
+
+      // 🔥 PASSO 3: Recarregar boards
+      const hasFilters =
+        activeFilterStartDate ||
+        activeFilterEndDate ||
+        activeFilterOverdue ||
+        activeFilterUpcoming ||
+        activeColumnNameFilter;
+
+      if (hasFilters) {
+        await fetchFilteredBoards();
+      } else {
+        await fetchSelectedBoards();
+      }
     } catch (error: any) {
-      const errorMsg = error.response?.data?.message || "Erro ao mover item.";
-      toast.error(errorMsg, { id: "drag-move" });
+      console.error("❌ [DRAG] Erro ao mover item:", error);
+
+      let errorMsg = "Erro ao mover item.";
+
+      if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+
+      // toast.error(errorMsg, { id: "drag-move" });
     }
   };
 
@@ -2918,7 +2966,7 @@ export default function ProductFlowKanban() {
           setDragItemId(null);
           setDragTargetStage(null);
         }}
-        onConfirm={handleDragWithResponsible}
+        onConfirm={handleDragWithResponsible} // 🔥 Agora passa quantity
         itemTitle={
           unifiedStages.flatMap((s) => s.items).find((i) => i.id === dragItemId)
             ?.title || ""
@@ -2929,6 +2977,11 @@ export default function ProductFlowKanban() {
         }
         nextStage={dragTargetStage}
         isLoading={isSubmitting}
+        currentQuantity={
+          // 🔥 Passa a quantidade atual do item
+          unifiedStages.flatMap((s) => s.items).find((i) => i.id === dragItemId)
+            ?.quantity
+        }
       />
       {/* 🔥 ALERT DIALOG SIMPLES */}
       <AlertDialog
