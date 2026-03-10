@@ -655,10 +655,14 @@ export default function ProductFlowKanban() {
       setTempFilterUpcoming(true);
       setTempFilterOverdue(false);
     }
+    
 
-    if (typeParam === "productionStartedAt" || typeParam === "dueDate") {
-      setTempFilterDateType(typeParam);
-    }
+    // 🔥 Se for filtro upcoming, sempre usa dueDate
+  if (filterParam === "upcoming") {
+    setTempFilterDateType("dueDate");
+  } else if (typeParam === "productionStartedAt" || typeParam === "dueDate") {
+    setTempFilterDateType(typeParam);
+  }
 
     if (startDateParam) {
       setTempFilterStartDate(startDateParam.split("T")[0]);
@@ -684,11 +688,13 @@ export default function ProductFlowKanban() {
       setColumnNameFilter(stageNameParam);
     }
 
-    setActiveFilterDateType(
-      typeParam === "productionStartedAt" || typeParam === "dueDate"
-        ? typeParam
-        : "productionStartedAt",
-    );
+     // 🔥 Atualiza os filtros ativos
+  setActiveFilterDateType(
+    filterParam === "upcoming" ? "dueDate" : 
+    (typeParam === "productionStartedAt" || typeParam === "dueDate")
+      ? typeParam
+      : "dueDate" // 🔥 Muda o padrão para dueDate
+  );
     setActiveFilterStartDate(
       startDateParam ? startDateParam.split("T")[0] : "",
     );
@@ -911,11 +917,20 @@ export default function ProductFlowKanban() {
       params.set("stageName", columnNameFilter.trim());
     }
 
-    if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
-    if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
-    if (tempFilterDateType) params.set("dateType", tempFilterDateType);
-    if (tempFilterOverdue) params.set("filter", "overdue");
-    if (tempFilterUpcoming) params.set("filter", "upcoming");
+    // Se o filtro de próximos 7 dias estiver ativo, sempre usa dueDate
+  if (tempFilterUpcoming) {
+    params.set("dateType", "dueDate");
+    setTempFilterDateType("dueDate");
+  } else if (tempFilterDateType) {
+    params.set("dateType", tempFilterDateType);
+  }
+
+     if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
+  if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
+  
+  if (tempFilterOverdue) params.set("filter", "overdue");
+  if (tempFilterUpcoming) params.set("filter", "upcoming");
+    
     if (tempFilterAssignedTo !== "all")
       params.set("assignedToId", tempFilterAssignedTo);
     if (tempFilterSupplier !== "all")
@@ -923,7 +938,7 @@ export default function ProductFlowKanban() {
     if (tempFilterProductRef && tempFilterProductRef.trim() !== "") {
       params.set("productRef", tempFilterProductRef.trim());
     }
-
+ console.log("🔍 Parâmetros do filtro:", params.toString());
     router.push(`?${params.toString()}`);
   };
 
@@ -937,7 +952,7 @@ export default function ProductFlowKanban() {
     setTempFilterUpcoming(false);
     setTempFilterAssignedTo("all");
     setTempFilterSupplier("all");
-    setTempFilterDateType("productionStartedAt");
+    setTempFilterDateType("dueDate");
     setTempFilterProductRef("");
     setColumnNameFilter("");
     setActiveColumnNameFilter("");
@@ -956,6 +971,38 @@ export default function ProductFlowKanban() {
       setTempFilterUpcoming(false);
       setTempFilterStartDate("");
       setTempFilterEndDate("");
+    }
+  };
+
+  const toggleUpcomingFilter = () => {
+    if (tempFilterUpcoming) {
+      setTempFilterUpcoming(false);
+    setTempFilterStartDate("");
+    setTempFilterEndDate("");
+    } else {
+      setTempFilterUpcoming(true);
+      setTempFilterOverdue(false);
+
+       // 🔥 FORÇA O TIPO DE DATA PARA dueDate
+    setTempFilterDateType("dueDate");
+
+      // Calcula as datas para os próximos 7 dias
+      const today = new Date();
+      const sevenDaysFromNow = new Date(today);
+      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+      // Formata as datas no formato ISO (YYYY-MM-DD)
+      const todayStr = today.toISOString().split("T")[0];
+      const sevenDaysStr = sevenDaysFromNow.toISOString().split("T")[0];
+
+       console.log("📅 Filtro Próximos 7 dias:", {
+      hoje: todayStr,
+      daqui7dias: sevenDaysStr,
+      dateType: "dueDate"
+    });
+
+      setTempFilterStartDate(todayStr);
+      setTempFilterEndDate(sevenDaysStr);
     }
   };
 
@@ -2007,187 +2054,159 @@ export default function ProductFlowKanban() {
         }}
       />
       <KanbanFilter>
-        <div className="grid gap-1 min-w-[180px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            Filtrar por Coluna
-          </label>
-          <div className="relative">
-            <Input
-              type="text"
-              placeholder="Nome da coluna (ex: Corte)"
-              className="h-8 text-xs pl-8"
-              value={columnNameFilter}
-              onChange={(e) => setColumnNameFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleFilterClick();
-                }
-              }}
-            />
-            <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
-          </div>
-        </div>
+  <div className="grid gap-1 min-w-[180px]">
+    <label className="text-[10px] uppercase font-bold text-slate-400">
+      Filtrar por Coluna
+    </label>
+    <div className="relative">
+      <Input
+        type="text"
+        placeholder="Nome da coluna (ex: Corte)"
+        className="h-8 text-xs pl-8"
+        value={columnNameFilter}
+        onChange={(e) => setColumnNameFilter(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            handleFilterClick();
+          }
+        }}
+      />
+      <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
+    </div>
+  </div>
 
-        <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            Filtrar Por
-          </label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
-            value={tempFilterDateType}
-            onChange={(e) =>
-              setTempFilterDateType(
-                e.target.value as "productionStartedAt" | "dueDate",
-              )
-            }
-          >
-            <option value="productionStartedAt">Próximos a vencer</option>
-            <option value="dueDate">Prazo Final</option>
-          </select>
-        </div>
+  <div className="grid gap-1 min-w-[140px]">
+    <label className="text-[10px] uppercase font-bold text-slate-400">
+      Responsável
+    </label>
+    <select
+      className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
+      value={tempFilterAssignedTo}
+      onChange={(e) => setTempFilterAssignedTo(e.target.value)}
+    >
+      <option value="all">Todos</option>
+      {users.map((u) => (
+        <option key={u.id} value={u.id}>
+          {u.name}
+        </option>
+      ))}
+    </select>
+  </div>
 
-        <div className="grid gap-1">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            De
-          </label>
-          <Input
-            type="date"
-            className="h-8 text-xs w-32"
-            value={tempFilterStartDate}
-            onChange={(e) => setTempFilterStartDate(e.target.value)}
-          />
-        </div>
+  <div className="grid gap-1 min-w-[140px]">
+    <label className="text-[10px] uppercase font-bold text-slate-400">
+      Oficina
+    </label>
+    <select
+      className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
+      value={tempFilterSupplier}
+      onChange={(e) => setTempFilterSupplier(e.target.value)}
+    >
+      <option value="all">Todas</option>
+      <option value="internal">Produção Interna</option>
+      {suppliers.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.name}
+        </option>
+      ))}
+    </select>
+  </div>
 
-        <div className="grid gap-1">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            Até
-          </label>
-          <Input
-            type="date"
-            className="h-8 text-xs w-32"
-            value={tempFilterEndDate}
-            onChange={(e) => setTempFilterEndDate(e.target.value)}
-          />
-        </div>
+  <div className="grid gap-1 min-w-[180px]">
+    <label className="text-[10px] uppercase font-bold text-slate-400">
+      Referência do Produto
+    </label>
+    <div className="relative">
+      <Input
+        type="text"
+        placeholder="Buscar por ref..."
+        className="h-8 text-xs pl-8"
+        value={tempFilterProductRef}
+        onChange={(e) => setTempFilterProductRef(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            handleFilterClick();
+          }
+        }}
+      />
+      <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
+    </div>
+  </div>
 
-        <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            Responsável
-          </label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
-            value={tempFilterAssignedTo}
-            onChange={(e) => setTempFilterAssignedTo(e.target.value)}
-          >
-            <option value="all">Todos</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-        </div>
+  <div className="flex items-end gap-2">
+    <Button
+      size="sm"
+      variant={tempFilterOverdue ? "destructive" : "outline"}
+      className={`h-8 text-xs ${
+        tempFilterOverdue ? "bg-red-500 text-white hover:bg-red-600" : ""
+      }`}
+      onClick={toggleOverdueFilter}
+    >
+      <AlertTriangle className="w-3 h-3 mr-2" />
+      Atrasados
+    </Button>
 
-        <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            Oficina
-          </label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
-            value={tempFilterSupplier}
-            onChange={(e) => setTempFilterSupplier(e.target.value)}
-          >
-            <option value="all">Todas</option>
-            <option value="internal">Produção Interna</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
+    <Button
+      size="sm"
+      variant={tempFilterUpcoming ? "default" : "outline"}
+      className={`h-8 text-xs ${
+        tempFilterUpcoming 
+          ? "bg-orange-600 text-white hover:bg-orange-700" 
+          : ""
+      }`}
+      onClick={toggleUpcomingFilter}
+    >
+      <Clock className="w-3 h-3 mr-2" />
+      Próximos a vencer ( 7 dias )
+    </Button>
+  </div>
 
-        <div className="grid gap-1 min-w-[180px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
-            Referência do Produto
-          </label>
-          <div className="relative">
-            <Input
-              type="text"
-              placeholder="Buscar por ref..."
-              className="h-8 text-xs pl-8"
-              value={tempFilterProductRef}
-              onChange={(e) => setTempFilterProductRef(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleFilterClick();
-                }
-              }}
-            />
-            <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
-          </div>
-        </div>
+  <div className="flex items-center gap-2">
+    <Button
+      size="sm"
+      variant="default"
+      className="h-8 text-xs min-w-[100px] bg-orange-600 hover:bg-orange-700"
+      onClick={handleFilterClick}
+      disabled={isFiltering}
+    >
+      {isFiltering ? (
+        <>
+          <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Filtrando...
+        </>
+      ) : (
+        <>
+          <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
+        </>
+      )}
+    </Button>
 
-        <div className="flex items-end gap-2">
-          <Button
-            size="sm"
-            variant={tempFilterOverdue ? "destructive" : "outline"}
-            className={`h-8 text-xs ${
-              tempFilterOverdue ? "bg-red-500 text-white hover:bg-red-600" : ""
-            }`}
-            onClick={toggleOverdueFilter}
-          >
-            <AlertTriangle className="w-3 h-3 mr-2" />
-            Atrasados
-          </Button>
-        </div>
+    {hasActiveFilters && (
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+        onClick={handleClearFilters}
+        title="Limpar Filtros"
+      >
+        <X className="w-4 h-4" />
+      </Button>
+    )}
+  </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="default"
-            className="h-8 text-xs min-w-[100px] bg-orange-600 hover:bg-orange-700"
-            onClick={handleFilterClick}
-            disabled={isFiltering}
-          >
-            {isFiltering ? (
-              <>
-                <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Filtrando...
-              </>
-            ) : (
-              <>
-                <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
-              </>
-            )}
-          </Button>
-
-          {hasActiveFilters && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
-              onClick={handleClearFilters}
-              title="Limpar Filtros"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          )}
-        </div>
-
-        {activeColumnFilter.columnId && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 text-xs text-slate-400 hover:text-red-500"
-            onClick={() =>
-              setActiveColumnFilter({ columnId: null, filterType: null })
-            }
-          >
-            <X className="w-3 h-3 mr-1" />
-            Limpar Filtro da Coluna
-          </Button>
-        )}
-      </KanbanFilter>
+  {activeColumnFilter.columnId && (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-8 text-xs text-slate-400 hover:text-red-500"
+      onClick={() =>
+        setActiveColumnFilter({ columnId: null, filterType: null })
+      }
+    >
+      <X className="w-3 h-3 mr-1" />
+      Limpar Filtro da Coluna
+    </Button>
+  )}
+</KanbanFilter>
       {activeColumnNameFilter && (
         <div className="px-4 py-2 mb-4 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm">
