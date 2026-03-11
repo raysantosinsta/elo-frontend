@@ -115,10 +115,10 @@ export default function RealTimeFlowDashboard() {
   };
 
   // --- BUSCAR TODOS OS FLUXOS (para o seletor) ---
-  const { 
-    data: allFlows = [], 
+  const {
+    data: allFlows = [],
     isLoading: loadingFlows,
-    error: flowsError 
+    error: flowsError,
   } = useQuery<Flow[]>({
     queryKey: ["all-flows"],
     queryFn: async () => {
@@ -180,7 +180,7 @@ export default function RealTimeFlowDashboard() {
   // ===========================================================================
   // 🔥 FILTROS NO FRONTEND (igual ao Kanban)
   // ===========================================================================
-  
+
   // Obter data atual no formato YYYY-MM-DD (ignora timezone)
   const todayStr = useMemo(() => {
     const today = new Date();
@@ -203,11 +203,11 @@ export default function RealTimeFlowDashboard() {
   // Filtrar itens atrasados (no frontend)
   const overdueItems = useMemo(() => {
     if (!allItems.length) return [];
-    
-    return allItems.filter(item => {
+
+    return allItems.filter((item) => {
       if (!item.dueDate) return false;
       if (item.status === "CONCLUIDO") return false;
-      
+
       const itemDateStr = item.dueDate.split("T")[0];
       return itemDateStr < todayStr;
     });
@@ -216,26 +216,31 @@ export default function RealTimeFlowDashboard() {
   // 🔥 Filtrar itens que vencem em até 7 dias (baseado no prazo final)
   const upcomingItems = useMemo(() => {
     if (!allItems.length) return [];
-    
-    console.log(`🔍 Filtrando itens que vencem em até 7 dias (${todayStr} até ${sevenDaysFromNowStr})...`);
-    
-    const filtered = allItems.filter(item => {
+
+    console.log(
+      `🔍 Filtrando itens que vencem em até 7 dias (${todayStr} até ${sevenDaysFromNowStr})...`,
+    );
+
+    const filtered = allItems.filter((item) => {
       // 🔥 AGORA USA dueDate em vez de productionStartedAt
       if (!item.dueDate) return false;
       if (item.status === "CONCLUIDO") return false;
-      
+
       const itemDateStr = item.dueDate.split("T")[0];
-      
+
       // Verifica se a data está entre hoje e 7 dias no futuro
-      const isWithin7Days = itemDateStr >= todayStr && itemDateStr <= sevenDaysFromNowStr;
-      
+      const isWithin7Days =
+        itemDateStr >= todayStr && itemDateStr <= sevenDaysFromNowStr;
+
       if (isWithin7Days) {
-        console.log(`✅ Item encontrado: ${item.title} - vence em: ${itemDateStr}`);
+        console.log(
+          `✅ Item encontrado: ${item.title} - vence em: ${itemDateStr}`,
+        );
       }
-      
+
       return isWithin7Days;
     });
-    
+
     console.log(`📊 Total para os próximos 7 dias: ${filtered.length}`);
     return filtered;
   }, [allItems, todayStr, sevenDaysFromNowStr]);
@@ -247,9 +252,9 @@ export default function RealTimeFlowDashboard() {
     console.log("📦 allItems:", allItems.length);
     console.log("🔴 overdueItems:", overdueItems.length);
     console.log("🟡 upcomingItems (7 dias):", upcomingItems.length);
-    
+
     if (upcomingItems.length > 0) {
-      upcomingItems.forEach(item => {
+      upcomingItems.forEach((item) => {
         console.log(`   - ${item.title}: vence em ${item.dueDate}`);
       });
     }
@@ -281,8 +286,18 @@ export default function RealTimeFlowDashboard() {
         bottleneck: { name: "N/A", count: 0 },
       };
 
-    const totalItems =
+    // 🔥 IDENTIFICAR A ÚLTIMA COLUNA (maior order)
+    const lastStage = selectedFlow.stages?.reduce((prev, current) => {
+      return prev.order > current.order ? prev : current;
+    }, selectedFlow.stages[0]);
+
+    // 🔥 CALCULAR TOTAL DE ITENS EXCLUINDO A ÚLTIMA COLUNA
+    const totalItemsInProgress =
       selectedFlow.stages?.reduce((acc, stage) => {
+        // Pula a última coluna (não conta itens que já chegaram lá)
+        if (lastStage && stage.id === lastStage.id) {
+          return acc;
+        }
         return acc + (stage.items?.length || stage._count?.items || 0);
       }, 0) || 0;
 
@@ -301,7 +316,11 @@ export default function RealTimeFlowDashboard() {
       });
     }
 
-    return { totalItems, totalStages, bottleneck };
+    return {
+      totalItems: totalItemsInProgress,
+      totalStages,
+      bottleneck,
+    };
   }, [selectedFlow]);
 
   // --- AGREGAR TODOS OS FLUXOS ---
@@ -368,10 +387,10 @@ export default function RealTimeFlowDashboard() {
   // --- FORMATAR DATA ---
   const formatDate = (dateString?: string) => {
     if (!dateString) return "";
-    
+
     // Extrair apenas a parte da data (YYYY-MM-DD)
     const datePart = dateString.split("T")[0];
-    
+
     // Converter para formato brasileiro
     const [year, month, day] = datePart.split("-");
     return `${day}/${month}/${year}`;
@@ -380,13 +399,13 @@ export default function RealTimeFlowDashboard() {
   // Calcular dias restantes
   const calculateDaysRemaining = (dueDate?: string): number | null => {
     if (!dueDate) return null;
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const due = new Date(dueDate);
     due.setHours(0, 0, 0, 0);
-    
+
     const diffTime = due.getTime() - today.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
@@ -413,8 +432,8 @@ export default function RealTimeFlowDashboard() {
             Não foi possível carregar os fluxos de produção
           </p>
         </div>
-        <button 
-          onClick={() => window.location.reload()} 
+        <button
+          onClick={() => window.location.reload()}
           className="px-4 py-2 bg-primary text-white rounded-md text-sm"
         >
           Tentar novamente
@@ -690,7 +709,8 @@ export default function RealTimeFlowDashboard() {
                         )}
                         {item.dueDate && (
                           <p className="text-xs text-red-600">
-                            Venceu em: {formatDate(item.dueDate)} ({Math.abs(daysRemaining || 0)} dias atrás)
+                            Venceu em: {formatDate(item.dueDate)} (
+                            {Math.abs(daysRemaining || 0)} dias atrás)
                           </p>
                         )}
                       </div>
@@ -720,7 +740,8 @@ export default function RealTimeFlowDashboard() {
               Itens a Vencer em 7 Dias
             </CardTitle>
             <CardDescription>
-              Produtos com prazo final nos próximos 7 dias ({formatDate(todayStr)} até {formatDate(sevenDaysFromNowStr)})
+              Produtos com prazo final nos próximos 7 dias (
+              {formatDate(todayStr)} até {formatDate(sevenDaysFromNowStr)})
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -764,7 +785,9 @@ export default function RealTimeFlowDashboard() {
                         </span>
                       )}
                       <span className="text-xs font-bold bg-yellow-200 text-yellow-800 px-2 py-1 rounded-full">
-                        {daysRemaining === 0 ? "Hoje!" : `${daysRemaining} dias`}
+                        {daysRemaining === 0
+                          ? "Hoje!"
+                          : `${daysRemaining} dias`}
                       </span>
                     </div>
                   </div>
@@ -772,7 +795,8 @@ export default function RealTimeFlowDashboard() {
               })}
               {upcomingItems.length > 5 && (
                 <p className="text-sm text-muted-foreground text-center pt-2">
-                  E mais {upcomingItems.length - 5} itens para vencer nos próximos dias...
+                  E mais {upcomingItems.length - 5} itens para vencer nos
+                  próximos dias...
                 </p>
               )}
             </div>
@@ -781,24 +805,24 @@ export default function RealTimeFlowDashboard() {
       )}
 
       {/* MENSAGEM QUANDO NÃO HÁ DADOS */}
-      {!loadingSelected && 
-       overdueItems.length === 0 && 
-       upcomingItems.length === 0 && 
-       chartData.length === 0 && (
-        <Card className="shadow-md">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Package className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-lg font-medium text-muted-foreground">
-              Nenhum dado disponível
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {selectedFlowId === "all"
-                ? "Não há itens em produção no momento"
-                : "Este fluxo não possui itens cadastrados"}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {!loadingSelected &&
+        overdueItems.length === 0 &&
+        upcomingItems.length === 0 &&
+        chartData.length === 0 && (
+          <Card className="shadow-md">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Package className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-lg font-medium text-muted-foreground">
+                Nenhum dado disponível
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {selectedFlowId === "all"
+                  ? "Não há itens em produção no momento"
+                  : "Este fluxo não possui itens cadastrados"}
+              </p>
+            </CardContent>
+          </Card>
+        )}
     </div>
   );
 }
