@@ -101,7 +101,7 @@ export function KanbanCard({
           {hasActions && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="text-slate-300 hover:text-slate-500 transition-colors p-0.5 hover:bg-slate-100 rounded-sm -mt-0.5 -mr-1">
+                <button className="text-slate-400 hover:text-slate-600 transition-colors p-0.5 hover:bg-slate-100 rounded-sm -mt-0.5 -mr-1">
                   <MoreHorizontal size={14} />
                 </button>
               </DropdownMenuTrigger>
@@ -149,11 +149,11 @@ export function KanbanCard({
 
         {/* Título e Subtítulo - MAIS COMPACTOS */}
         <div className="mb-1">
-            <h4 className="font-semibold text-xs text-slate-800 line-clamp-2 leading-snug group-hover:text-[#D35400] transition-colors">
+            <h4 className="font-semibold text-xs text-slate-700 line-clamp-2 leading-snug group-hover:text-[#D35400] transition-colors">
               {title}
             </h4>
             {subtitle && (
-              <p className="text-[9px] text-slate-400 font-mono mt-0.5 uppercase truncate leading-tight">
+              <p className="text-[9px] text-slate-500 font-mono mt-0.5 uppercase truncate leading-tight">
                 {subtitle}
               </p>
             )}
@@ -161,7 +161,7 @@ export function KanbanCard({
 
         {/* Conteúdo/Descrição - COM MENOS ESPAÇO */}
         {children && (
-          <div className="text-[10px] text-slate-500 line-clamp-2 mb-1.5 leading-relaxed">
+          <div className="text-[10px] text-slate-600 line-clamp-2 mb-1.5 leading-relaxed">
             {children}
           </div>
         )}
