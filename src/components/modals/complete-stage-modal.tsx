@@ -296,7 +296,7 @@ export function CompleteStageModal({
             <div className="space-y-2">
               <Label className="flex items-center gap-1">
                 <Package size={16} className="text-slate-400" />
-                Quantidade do Item (testes)
+                Quantidade do Item 
               </Label>
               <div className="relative">
                 <Input
@@ -316,9 +316,7 @@ export function CompleteStageModal({
               {quantityError && (
                 <p className="text-xs text-red-500 mt-1">{quantityError}</p>
               )}
-              <p className="text-xs text-slate-400">
-                ⚠️ Modo teste: 0 é permitido para validação
-              </p>
+              
             </div>
           )}
 
@@ -380,14 +378,14 @@ export function CompleteStageModal({
               <Label className="flex items-center gap-1">
                 <User size={16} className="text-slate-400" />
                 Responsável da Próxima Etapa
-                {nextStage.allowedRole && 
+                {/* {nextStage.allowedRole && 
                  nextStage.allowedRole !== "all" && 
                  nextStage.allowedRole !== "null" && 
                  nextStage.allowedRole.trim() !== "" && (
                   <span className="text-xs font-normal text-slate-400 ml-1">
                     (Cargo necessário: {nextStage.allowedRole})
                   </span>
-                )}
+                )} */}
               </Label>
 
               {loadingUsers ? (

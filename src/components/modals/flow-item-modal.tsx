@@ -244,7 +244,7 @@ export function FlowItemModal({
       if (!hasMultipleFlows || !flowId) return;
 
       setIsLoadingStages(true);
-      
+
       try {
         if (onFlowChange) {
           const stagesFromParent = await onFlowChange(flowId);
@@ -307,14 +307,15 @@ export function FlowItemModal({
         assignedToId: initialData.assignedToId || "unassigned",
         supplierId: initialData.supplierId || "internal",
         dueDate: initialData.dueDate?.substring(0, 10) || "",
-        productionStartedAt: initialData.productionStartedAt?.substring(0, 10) || "",
+        productionStartedAt:
+          initialData.productionStartedAt?.substring(0, 10) || "",
         deliveryAt: initialData.deliveryAt?.substring(0, 10) || "",
       });
 
       if (initialData.flowId && !veioDoClique) {
         setTimeout(() => handleFlowChange(initialData.flowId), 100);
       }
-    } 
+    }
     // =========================================================================
     // MODO CRIAÇÃO
     // =========================================================================
@@ -322,14 +323,19 @@ export function FlowItemModal({
       // 🔥 CASO 1: VEIO DO CLIQUE NO + (TEM INITIALSTAGEID)
       if (initialStageId) {
         console.log("✅ VEIO DO CLIQUE - stageId:", initialStageId);
-        
+
         const stage = stages.find((s) => s.id === initialStageId);
-        
+
         if (stage) {
-          console.log("✅ Stage encontrada:", stage.name, "flowId:", stage.flowId);
-          
+          console.log(
+            "✅ Stage encontrada:",
+            stage.name,
+            "flowId:",
+            stage.flowId,
+          );
+
           const initialFlowId = hasMultipleFlows ? "" : stage.flowId;
-          
+
           form.reset({
             title: "",
             description: "",
@@ -351,9 +357,9 @@ export function FlowItemModal({
       // 🔥 CASO 2: NÃO VEIO DO CLIQUE - MÚLTIPLOS FLUXOS
       else if (hasMultipleFlows) {
         console.log("📌 Múltiplos fluxos SEM clique");
-        
+
         const defaultFlowId = flows.length > 0 ? flows[0].id : "";
-        
+
         form.reset({
           title: "",
           description: "",
@@ -376,9 +382,9 @@ export function FlowItemModal({
       // 🔥 CASO 3: ÚNICO FLUXO
       else {
         console.log("📌 Único fluxo");
-        
+
         const singleFlowId = flows.length > 0 ? flows[0].id : "";
-        
+
         form.reset({
           title: "",
           description: "",
@@ -434,78 +440,269 @@ export function FlowItemModal({
   // ===========================================================================
   // 🔥 MANIPULAÇÃO DE ARQUIVOS
   // ===========================================================================
-  const handleRemoveNewFile = (index: number, type: "image" | "video" | "audio") => {
-    if (type === "image") setImages((prev) => prev.filter((_, i) => i !== index));
-    if (type === "video") setVideos((prev) => prev.filter((_, i) => i !== index));
-    if (type === "audio") setAudios((prev) => prev.filter((_, i) => i !== index));
+  const handleRemoveNewFile = (
+    index: number,
+    type: "image" | "video" | "audio",
+  ) => {
+    if (type === "image")
+      setImages((prev) => prev.filter((_, i) => i !== index));
+    if (type === "video")
+      setVideos((prev) => prev.filter((_, i) => i !== index));
+    if (type === "audio")
+      setAudios((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleRemoveExistingMedia = (mediaId: string, type: "image" | "video" | "audio") => {
+  const handleRemoveExistingMedia = (
+    mediaId: string,
+    type: "image" | "video" | "audio",
+  ) => {
     if (type === "image") setRemovedImageIds((prev) => [...prev, mediaId]);
     else if (type === "video") setRemovedVideoIds((prev) => [...prev, mediaId]);
     else if (type === "audio") setRemovedAudioIds((prev) => [...prev, mediaId]);
   };
 
   // ===========================================================================
-  // 🔥 VALIDAÇÕES DE CORTE
+  // 🔥 VALIDAÇÕES DE CORTE - CORREÇÃO FINAL
   // ===========================================================================
   const isCorteStage = useCallback((stageName: string): boolean => {
     const name = stageName?.toLowerCase().trim() || "";
-    return CORTE_KEYWORDS.some((keyword) => name.includes(keyword));
+    const result = CORTE_KEYWORDS.some((keyword) => name.includes(keyword));
+    console.log(
+      `📌 [isCorteStage] "${stageName}" -> ${result ? "É CORTE" : "NÃO É CORTE"}`,
+    );
+    return result;
   }, []);
 
   const isUserAdmin = useCallback((): boolean => {
     const systemRole = currentUserSystemRole;
-    return systemRole ? ADMIN_ROLES.includes(systemRole) : false;
+    const isAdmin = systemRole ? ADMIN_ROLES.includes(systemRole) : false;
+    console.log(`👑 [isUserAdmin] role: ${systemRole}, isAdmin: ${isAdmin}`);
+    return isAdmin;
   }, [currentUserSystemRole]);
 
   const userHasCortePermission = useCallback((): boolean => {
     const role = currentUserRole?.toLowerCase() || "";
-    return CORTE_KEYWORDS.some((keyword) => role.includes(keyword));
+    const hasPermission = CORTE_KEYWORDS.some((keyword) =>
+      role.includes(keyword),
+    );
+    console.log(
+      `✂️ [userHasCortePermission] role: ${currentUserRole}, hasPermission: ${hasPermission}`,
+    );
+    return hasPermission;
   }, [currentUserRole]);
 
-  const canEditQuantity = useMemo(() => {
-    return isUserAdmin() || (isInCorte && userHasCortePermission());
-  }, [isInCorte, isUserAdmin, userHasCortePermission]);
+  // Watch da stage selecionada
+  const selectedStageId = form.watch("stageId");
+
+  // ===========================================================================
+  // 🔥 CORREÇÃO 1: Popula availableStages quando recebe stages via prop
+  // ===========================================================================
+  useEffect(() => {
+    if (stages.length > 0) {
+      console.log(
+        "📥 [CORREÇÃO] Populando availableStages com",
+        stages.length,
+        "stages",
+      );
+      setAvailableStages(stages);
+    }
+  }, [stages]);
+
+  // ===========================================================================
+  // 🔥 CORREÇÃO 2: Para modo edição, busca stages do flow específico
+  // ===========================================================================
+  useEffect(() => {
+    if (isEditing && initialData?.flowId && fetchStagesForFlow) {
+      const loadStages = async () => {
+        console.log("🔄 Buscando stages para flow:", initialData.flowId);
+        try {
+          const stagesFromFlow = await fetchStagesForFlow(initialData.flowId);
+          console.log("✅ Stages carregadas:", stagesFromFlow.length);
+          setAvailableStages(stagesFromFlow);
+        } catch (error) {
+          console.error("❌ Erro ao carregar stages do flow:", error);
+          // Fallback para stages recebidas via prop
+          if (stages.length > 0) {
+            console.log("📥 Usando stages do fallback");
+            setAvailableStages(stages);
+          }
+        }
+      };
+      loadStages();
+    }
+  }, [isEditing, initialData?.flowId, fetchStagesForFlow, stages]);
+
+  // ===========================================================================
+  // 🔥 LOG PARA DEBUG - Mostra quando availableStages muda
+  // ===========================================================================
+  useEffect(() => {
+    console.log("📊 availableStages atualizado:", {
+      quantidade: availableStages.length,
+      stages: availableStages.map((s) => ({ id: s.id, name: s.name })),
+    });
+  }, [availableStages]);
 
   // 🔥 Só calcula posição no corte se NÃO veio do clique
   useEffect(() => {
-    if (veioDoClique) return; // 🔥 Ignora se veio do clique
-    
-    if (!availableStages.length || !isOpen) return;
+    console.log("\n🔄 [useEffect CORTE] INICIANDO CÁLCULO");
+    console.log("📊 Condições:", {
+      veioDoClique,
+      availableStagesLength: availableStages.length,
+      isOpen,
+      selectedStageId,
+      isEditing,
+    });
+
+    if (veioDoClique) {
+      console.log("⏭️ [useEffect CORTE] Ignorando porque veio do clique");
+      return;
+    }
+
+    if (!availableStages.length || !isOpen) {
+      console.log(
+        "⏭️ [useEffect CORTE] Ignorando: sem stages ou modal fechado",
+      );
+      return;
+    }
+
+    console.log(
+      "📋 Stages disponíveis:",
+      availableStages.map((s) => ({
+        id: s.id,
+        name: s.name,
+        order: s.order,
+      })),
+    );
 
     const sortedStages = [...availableStages].sort((a, b) => a.order - b.order);
     const corteIndex = sortedStages.findIndex((s) => isCorteStage(s.name));
 
+    console.log("📍 Índices:", {
+      corteIndex,
+      totalStages: sortedStages.length,
+      stagesOrdenadas: sortedStages.map((s) => s.name),
+    });
+
     if (corteIndex === -1) {
+      console.log("❌ Nenhuma coluna Corte encontrada");
       setHasPassedCorte(false);
       setIsInCorte(false);
       return;
     }
 
     if (!isEditing) {
-      const currentStage = availableStages.find((s) => s.id === form.getValues("stageId"));
+      // Modo criação
+      console.log("🆕 Modo CRIAÇÃO");
+      const currentStage = availableStages.find(
+        (s) => s.id === selectedStageId,
+      );
+
+      console.log("🎯 Stage selecionada:", {
+        id: selectedStageId,
+        encontrada: currentStage
+          ? {
+              name: currentStage.name,
+              isCorte: currentStage ? isCorteStage(currentStage.name) : false,
+            }
+          : "NÃO ENCONTRADA",
+      });
+
       setIsInCorte(currentStage ? isCorteStage(currentStage.name) : false);
       setHasPassedCorte(false);
       return;
     }
 
     if (initialData) {
+      // Modo edição
+      console.log("📝 Modo EDIÇÃO");
       const currentItemStageIndex = sortedStages.findIndex(
         (s) => s.id === initialData.stageId,
       );
 
+      console.log("📍 Posição do item:", {
+        stageId: initialData.stageId,
+        stageName: sortedStages[currentItemStageIndex]?.name,
+        index: currentItemStageIndex,
+        corteIndex,
+        isInCorte: currentItemStageIndex === corteIndex,
+        hasPassedCorte: currentItemStageIndex > corteIndex,
+      });
+
       setIsInCorte(currentItemStageIndex === corteIndex);
       setHasPassedCorte(currentItemStageIndex > corteIndex);
     }
-  }, [availableStages, initialData, isEditing, form, isCorteStage, isOpen, veioDoClique]);
+  }, [
+    availableStages,
+    initialData,
+    isEditing,
+    isCorteStage,
+    isOpen,
+    veioDoClique,
+    selectedStageId, // 🔥 ESSENCIAL
+  ]);
+
+  // ===========================================================================
+  // 🔥 Cálculo das permissões
+  // ===========================================================================
+  const canEditQuantity = useMemo(() => {
+    console.log("\n🧮 [canEditQuantity] CALCULANDO PERMISSÃO");
+    console.log("📊 Valores atuais:", {
+      isUserAdmin: isUserAdmin(),
+      isInCorte,
+      userHasCortePermission: userHasCortePermission(),
+      currentUserRole,
+      currentUserSystemRole,
+      selectedStageId,
+    });
+
+    if (isUserAdmin()) {
+      console.log("✅ [canEditQuantity] ADMIN - Pode editar");
+      return true;
+    }
+
+    if (!isInCorte) {
+      console.log("❌ [canEditQuantity] Não está na coluna Corte - BLOQUEADO");
+      return false;
+    }
+
+    const hasCorteRole = userHasCortePermission();
+    const canEdit = hasCorteRole;
+
+    console.log(`🔍 [canEditQuantity] Na coluna Corte:`, {
+      hasCorteRole,
+      canEdit,
+      userRole: currentUserRole,
+    });
+
+    return canEdit;
+  }, [
+    isInCorte,
+    isUserAdmin,
+    userHasCortePermission,
+    currentUserRole,
+    currentUserSystemRole,
+    selectedStageId,
+  ]);
 
   const isQuantityDisabled = useMemo(() => {
-    return isReadOnly || !canEditQuantity;
+    const disabled = isReadOnly || !canEditQuantity;
+    console.log("🔒 [isQuantityDisabled]", {
+      isReadOnly,
+      canEditQuantity,
+      disabled,
+      final: disabled ? "BLOQUEADO" : "LIBERADO",
+    });
+    return disabled;
   }, [isReadOnly, canEditQuantity]);
 
   const isQuantityRequired = useMemo(() => {
-    return !isUserAdmin() && isInCorte;
+    const required = !isUserAdmin() && isInCorte;
+    console.log("⚠️ [isQuantityRequired]", {
+      isUserAdmin: isUserAdmin(),
+      isInCorte,
+      required: required ? "OBRIGATÓRIO" : "OPCIONAL",
+    });
+    return required;
   }, [isInCorte, isUserAdmin]);
 
   // ===========================================================================
@@ -513,34 +710,39 @@ export function FlowItemModal({
   // ===========================================================================
   const stageClicada = useMemo(() => {
     if (!initialStageId) return null;
-    return stages.find(s => s.id === initialStageId);
+    return stages.find((s) => s.id === initialStageId);
   }, [initialStageId, stages]);
 
   // ===========================================================================
   // 🔥 Cache para stages de cada flow
   // ===========================================================================
-  const [stagesCache, setStagesCache] = useState<Record<string, FlowStage[]>>({});
+  const [stagesCache, setStagesCache] = useState<Record<string, FlowStage[]>>(
+    {},
+  );
 
   // ===========================================================================
   // 🔥 Função para buscar stages de um flow (com cache)
   // ===========================================================================
-  const getStagesForFlow = useCallback(async (flowId: string): Promise<FlowStage[]> => {
-    if (stagesCache[flowId]) {
-      return stagesCache[flowId];
-    }
-
-    if (fetchStagesForFlow) {
-      try {
-        const stagesData = await fetchStagesForFlow(flowId);
-        setStagesCache(prev => ({ ...prev, [flowId]: stagesData }));
-        return stagesData;
-      } catch (error) {
-        console.error("Erro ao buscar stages:", error);
-        return [];
+  const getStagesForFlow = useCallback(
+    async (flowId: string): Promise<FlowStage[]> => {
+      if (stagesCache[flowId]) {
+        return stagesCache[flowId];
       }
-    }
-    return [];
-  }, [fetchStagesForFlow, stagesCache]);
+
+      if (fetchStagesForFlow) {
+        try {
+          const stagesData = await fetchStagesForFlow(flowId);
+          setStagesCache((prev) => ({ ...prev, [flowId]: stagesData }));
+          return stagesData;
+        } catch (error) {
+          console.error("Erro ao buscar stages:", error);
+          return [];
+        }
+      }
+      return [];
+    },
+    [fetchStagesForFlow, stagesCache],
+  );
 
   // ===========================================================================
   // 🔥 HANDLE SUBMIT - VERSÃO QUE ESTAVA FUNCIONANDO
@@ -565,7 +767,9 @@ export function FlowItemModal({
       }
 
       // 🔥 Se tem múltiplos fluxos, USA O FLOWID SELECIONADO NO FORM
-      const finalFlowId = hasMultipleFlows ? values.flowId : stageClicada.flowId;
+      const finalFlowId = hasMultipleFlows
+        ? values.flowId
+        : stageClicada.flowId;
 
       if (!finalFlowId) {
         if (hasMultipleFlows) {
@@ -576,23 +780,31 @@ export function FlowItemModal({
 
       // 🔥 Busca as stages do flow selecionado
       const stagesOfSelectedFlow = await getStagesForFlow(finalFlowId);
-      
-      console.log(`Stages do flow ${finalFlowId}:`, stagesOfSelectedFlow.map(s => s.name));
+
+      console.log(
+        `Stages do flow ${finalFlowId}:`,
+        stagesOfSelectedFlow.map((s) => s.name),
+      );
 
       // 🔥 Verifica se existe uma stage com o mesmo NOME no flow selecionado
       const targetStage = stagesOfSelectedFlow.find(
-        s => s.name.toLowerCase().trim() === stageClicada.name.toLowerCase().trim()
+        (s) =>
+          s.name.toLowerCase().trim() ===
+          stageClicada.name.toLowerCase().trim(),
       );
 
       if (!targetStage) {
         console.error("❌ Stage não encontrada no flow selecionado");
         console.log("Nome da etapa procurada:", stageClicada.name);
-        console.log("Stages disponíveis:", stagesOfSelectedFlow.map(s => s.name));
-        
-        const selectedFlow = flows.find(f => f.id === finalFlowId);
-        
+        console.log(
+          "Stages disponíveis:",
+          stagesOfSelectedFlow.map((s) => s.name),
+        );
+
+        const selectedFlow = flows.find((f) => f.id === finalFlowId);
+
         toast.error("Esta etapa não existe na coleção escolhida", {
-          description: `A etapa "${stageClicada.name}" não está presente na coleção "${selectedFlow?.name || finalFlowId}".`
+          description: `A etapa "${stageClicada.name}" não está presente na coleção "${selectedFlow?.name || finalFlowId}".`,
         });
         return;
       }
@@ -605,7 +817,8 @@ export function FlowItemModal({
         status: values.status || "PENDENTE",
         flowId: finalFlowId,
         stageId: targetStage.id, // 🔥 Usa o ID da stage do fluxo selecionado
-        assignedToId: values.assignedToId === "unassigned" ? null : values.assignedToId,
+        assignedToId:
+          values.assignedToId === "unassigned" ? null : values.assignedToId,
         supplierId: values.supplierId === "internal" ? null : values.supplierId,
         dueDate: values.dueDate || null,
         productionStartedAt: values.productionStartedAt || null,
@@ -620,7 +833,11 @@ export function FlowItemModal({
         await onSubmit(
           finalPayload,
           { images, audios, videos },
-          { images: removedImageIds, audios: removedAudioIds, videos: removedVideoIds }
+          {
+            images: removedImageIds,
+            audios: removedAudioIds,
+            videos: removedVideoIds,
+          },
         );
       } catch (error) {
         console.error("Erro no submit:", error);
@@ -658,7 +875,8 @@ export function FlowItemModal({
       status: values.status || "PENDENTE",
       flowId: values.flowId || (flows.length > 0 ? flows[0].id : ""),
       stageId: values.stageId,
-      assignedToId: values.assignedToId === "unassigned" ? null : values.assignedToId,
+      assignedToId:
+        values.assignedToId === "unassigned" ? null : values.assignedToId,
       supplierId: values.supplierId === "internal" ? null : values.supplierId,
       dueDate: values.dueDate || null,
       productionStartedAt: values.productionStartedAt || null,
@@ -671,7 +889,11 @@ export function FlowItemModal({
       await onSubmit(
         finalPayload,
         { images, audios, videos },
-        { images: removedImageIds, audios: removedAudioIds, videos: removedVideoIds }
+        {
+          images: removedImageIds,
+          audios: removedAudioIds,
+          videos: removedVideoIds,
+        },
       );
     } catch (error) {
       console.error("Erro no submit:", error);
@@ -681,7 +903,9 @@ export function FlowItemModal({
   // ===========================================================================
   // 🔥 Verifica se o flow selecionado tem a stage (para o select)
   // ===========================================================================
-  const [flowStagesMap, setFlowStagesMap] = useState<Record<string, boolean>>({});
+  const [flowStagesMap, setFlowStagesMap] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // Carrega informações de todos os flows quando necessário
   useEffect(() => {
@@ -689,15 +913,17 @@ export function FlowItemModal({
 
     const loadAllFlowsInfo = async () => {
       const newMap: Record<string, boolean> = {};
-      
+
       for (const flow of flows) {
         const stagesOfFlow = await getStagesForFlow(flow.id);
         const hasStage = stagesOfFlow.some(
-          s => s.name.toLowerCase().trim() === stageClicada.name.toLowerCase().trim()
+          (s) =>
+            s.name.toLowerCase().trim() ===
+            stageClicada.name.toLowerCase().trim(),
         );
         newMap[flow.id] = hasStage;
       }
-      
+
       setFlowStagesMap(newMap);
     };
 
@@ -722,15 +948,27 @@ export function FlowItemModal({
         {/* HEADER */}
         <DialogHeader className="px-6 py-4 border-b bg-slate-50 shrink-0">
           <div className="flex items-center gap-2">
-            <div className={cn(
-              "p-2 rounded",
-              isReadOnly ? "bg-slate-200 text-slate-500" : "bg-orange-100 text-orange-600"
-            )}>
-              {isReadOnly ? <Lock size={20} /> : isEditing ? <Edit size={20} /> : <Plus size={20} />}
+            <div
+              className={cn(
+                "p-2 rounded",
+                isReadOnly
+                  ? "bg-slate-200 text-slate-500"
+                  : "bg-orange-100 text-orange-600",
+              )}
+            >
+              {isReadOnly ? (
+                <Lock size={20} />
+              ) : isEditing ? (
+                <Edit size={20} />
+              ) : (
+                <Plus size={20} />
+              )}
             </div>
             <div>
               <DialogTitle className="text-xl text-[#2D3436]">
-                {isEditing ? "Editar Item de Produção" : "Novo Item de Produção"}
+                {isEditing
+                  ? "Editar Item de Produção"
+                  : "Novo Item de Produção"}
               </DialogTitle>
               {veioDoClique && stageClicada && (
                 <p className="text-xs text-green-600 font-medium mt-1">
@@ -746,17 +984,22 @@ export function FlowItemModal({
           <ScrollArea className="h-full">
             <div className="px-6 py-6">
               <Form {...form}>
-                <form id="flow-item-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+                <form
+                  id="flow-item-form"
+                  onSubmit={form.handleSubmit(handleSubmit)}
+                  className="space-y-6"
+                >
                   <Tabs defaultValue="details" className="w-full">
                     <TabsList className="grid w-full grid-cols-3 mb-6 bg-slate-100 p-1">
-                      <TabsTrigger value="details">Detalhes & Datas</TabsTrigger>
+                      <TabsTrigger value="details">
+                        Detalhes & Datas
+                      </TabsTrigger>
                       <TabsTrigger value="media">Mídias & Anexos</TabsTrigger>
                       <TabsTrigger value="history">Histórico</TabsTrigger>
                     </TabsList>
 
                     {/* TAB DETALHES */}
                     <TabsContent value="details" className="space-y-4">
-                      
                       {/* ====================================================== */}
                       {/* 🔥 SEÇÃO 1: QUANDO VEIO DO CLIQUE */}
                       {/* ====================================================== */}
@@ -768,8 +1011,10 @@ export function FlowItemModal({
                               control={form.control}
                               name="flowId"
                               render={({ field }) => {
-                                const selectedFlowHasStage = field.value ? flowStagesMap[field.value] : false;
-                                
+                                const selectedFlowHasStage = field.value
+                                  ? flowStagesMap[field.value]
+                                  : false;
+
                                 return (
                                   <FormItem>
                                     <FormLabel className="flex items-center gap-2">
@@ -778,28 +1023,42 @@ export function FlowItemModal({
                                     <Select
                                       onValueChange={(value) => {
                                         field.onChange(value);
-                                        console.log("🎯 Coleção selecionada:", value);
+                                        console.log(
+                                          "🎯 Coleção selecionada:",
+                                          value,
+                                        );
                                       }}
                                       value={field.value}
                                       disabled={isReadOnly}
                                     >
                                       <FormControl>
-                                        <SelectTrigger className={cn(
-                                          field.value && !selectedFlowHasStage && "border-amber-500 bg-amber-50"
-                                        )}>
+                                        <SelectTrigger
+                                          className={cn(
+                                            field.value &&
+                                              !selectedFlowHasStage &&
+                                              "border-amber-500 bg-amber-50",
+                                          )}
+                                        >
                                           <SelectValue placeholder="Selecione uma coleção..." />
                                         </SelectTrigger>
                                       </FormControl>
                                       <SelectContent>
                                         {flows.map((flow) => {
-                                          const hasStage = flowStagesMap[flow.id];
-                                          
+                                          const hasStage =
+                                            flowStagesMap[flow.id];
+
                                           return (
-                                            <SelectItem key={flow.id} value={flow.id}>
+                                            <SelectItem
+                                              key={flow.id}
+                                              value={flow.id}
+                                            >
                                               <div className="flex items-center gap-2">
-                                                <div 
-                                                  className="w-3 h-3 rounded-full" 
-                                                  style={{ backgroundColor: flow.color || "#D35400" }} 
+                                                <div
+                                                  className="w-3 h-3 rounded-full"
+                                                  style={{
+                                                    backgroundColor:
+                                                      flow.color || "#D35400",
+                                                  }}
                                                 />
                                                 {flow.name}
                                                 {!hasStage && (
@@ -815,8 +1074,9 @@ export function FlowItemModal({
                                     </Select>
                                     {field.value && !selectedFlowHasStage && (
                                       <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-                                        <AlertTriangle size={12} />
-                                        A etapa &ldquo;{stageClicada.name}&ldquo; não existe nesta coleção
+                                        <AlertTriangle size={12} />A etapa
+                                        &ldquo;{stageClicada.name}&ldquo; não
+                                        existe nesta coleção
                                       </p>
                                     )}
                                     <FormMessage />
@@ -858,11 +1118,17 @@ export function FlowItemModal({
                                     </FormControl>
                                     <SelectContent>
                                       {flows.map((flow) => (
-                                        <SelectItem key={flow.id} value={flow.id}>
+                                        <SelectItem
+                                          key={flow.id}
+                                          value={flow.id}
+                                        >
                                           <div className="flex items-center gap-2">
-                                            <div 
-                                              className="w-3 h-3 rounded-full" 
-                                              style={{ backgroundColor: flow.color || "#D35400" }} 
+                                            <div
+                                              className="w-3 h-3 rounded-full"
+                                              style={{
+                                                backgroundColor:
+                                                  flow.color || "#D35400",
+                                              }}
                                             />
                                             {flow.name}
                                           </div>
@@ -928,7 +1194,7 @@ export function FlowItemModal({
                       {/* ====================================================== */}
                       {/* 🔥 CAMPOS COMUNS - SEMPRE APARECEM */}
                       {/* ====================================================== */}
-                      
+
                       {/* Título e Referência */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
@@ -938,7 +1204,11 @@ export function FlowItemModal({
                             <FormItem className="col-span-2">
                               <FormLabel>Título do Produto *</FormLabel>
                               <FormControl>
-                                <Input placeholder="Ex: Camisa Linho M" {...field} disabled={isReadOnly} />
+                                <Input
+                                  placeholder="Ex: Camisa Linho M"
+                                  {...field}
+                                  disabled={isReadOnly}
+                                />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -952,7 +1222,11 @@ export function FlowItemModal({
                             <FormItem>
                               <FormLabel>Referência</FormLabel>
                               <FormControl>
-                                <Input placeholder="REF-001" {...field} disabled={isReadOnly} />
+                                <Input
+                                  placeholder="REF-001"
+                                  {...field}
+                                  disabled={isReadOnly}
+                                />
                               </FormControl>
                             </FormItem>
                           )}
@@ -988,7 +1262,9 @@ export function FlowItemModal({
                                 <FormLabel className="text-base font-bold">
                                   Quantidade
                                   {isQuantityRequired && (
-                                    <span className="ml-2 text-xs font-normal text-red-500">*</span>
+                                    <span className="ml-2 text-xs font-normal text-red-500">
+                                      *
+                                    </span>
                                   )}
                                 </FormLabel>
                               </div>
@@ -1001,20 +1277,28 @@ export function FlowItemModal({
                                   disabled={isQuantityDisabled}
                                   className={cn(
                                     "text-lg font-bold",
-                                    isQuantityDisabled && "bg-slate-100 text-slate-500 cursor-not-allowed opacity-50",
-                                    showQuantityWarning && isQuantityRequired && "border-red-500 ring-red-500",
+                                    isQuantityDisabled &&
+                                      "bg-slate-100 text-slate-500 cursor-not-allowed opacity-50",
+                                    showQuantityWarning &&
+                                      isQuantityRequired &&
+                                      "border-red-500 ring-red-500",
                                   )}
                                   value={field.value?.toString() ?? "0"}
                                   onChange={(e) => {
                                     field.onChange(e.target.value);
                                     setShowQuantityWarning(false);
                                   }}
-                                  placeholder={isQuantityRequired ? "Obrigatório" : "Opcional"}
+                                  placeholder={
+                                    isQuantityRequired
+                                      ? "Obrigatório"
+                                      : "Opcional"
+                                  }
                                 />
                               </FormControl>
                               {showQuantityWarning && isQuantityRequired && (
                                 <p className="text-xs text-red-500 font-medium flex items-center gap-1 mt-1">
-                                  <AlertCircle size={12} /> Quantidade obrigatória na coluna Corte
+                                  <AlertCircle size={12} /> Quantidade
+                                  obrigatória na coluna Corte
                                 </p>
                               )}
                               <FormMessage />
@@ -1033,16 +1317,24 @@ export function FlowItemModal({
                               <FormLabel className="flex items-center gap-2">
                                 <User size={14} /> Responsável Interno
                               </FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value} disabled={isReadOnly}>
+                              <Select
+                                onValueChange={field.onChange}
+                                value={field.value}
+                                disabled={isReadOnly}
+                              >
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue placeholder="Selecione..." />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="unassigned">Nenhum</SelectItem>
+                                  <SelectItem value="unassigned">
+                                    Nenhum
+                                  </SelectItem>
                                   {users.map((u) => (
-                                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                                    <SelectItem key={u.id} value={u.id}>
+                                      {u.name}
+                                    </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -1058,16 +1350,24 @@ export function FlowItemModal({
                               <FormLabel className="flex items-center gap-2">
                                 <Factory size={14} /> Oficina / Terceirizado
                               </FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value} disabled={isReadOnly}>
+                              <Select
+                                onValueChange={field.onChange}
+                                value={field.value}
+                                disabled={isReadOnly}
+                              >
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue placeholder="Produção Interna" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="internal">Produção Interna</SelectItem>
+                                  <SelectItem value="internal">
+                                    Produção Interna
+                                  </SelectItem>
                                   {suppliers.map((s) => (
-                                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                    <SelectItem key={s.id} value={s.id}>
+                                      {s.name}
+                                    </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -1083,9 +1383,16 @@ export function FlowItemModal({
                           name="productionStartedAt"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-xs font-bold uppercase">Próximos a vencer</FormLabel>
+                              <FormLabel className="text-xs font-bold uppercase">
+                                Próximos a vencer
+                              </FormLabel>
                               <FormControl>
-                                <Input type="date" {...field} value={field.value || ""} disabled={isReadOnly} />
+                                <Input
+                                  type="date"
+                                  {...field}
+                                  value={field.value || ""}
+                                  disabled={isReadOnly}
+                                />
                               </FormControl>
                             </FormItem>
                           )}
@@ -1096,9 +1403,16 @@ export function FlowItemModal({
                           name="dueDate"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-xs font-bold uppercase">Prazo Final</FormLabel>
+                              <FormLabel className="text-xs font-bold uppercase">
+                                Prazo Final
+                              </FormLabel>
                               <FormControl>
-                                <Input type="date" {...field} value={field.value || ""} disabled={isReadOnly} />
+                                <Input
+                                  type="date"
+                                  {...field}
+                                  value={field.value || ""}
+                                  disabled={isReadOnly}
+                                />
                               </FormControl>
                             </FormItem>
                           )}
@@ -1121,7 +1435,10 @@ export function FlowItemModal({
                               id="image-upload"
                               onChange={(e) => {
                                 if (e.target.files) {
-                                  setImages((prev) => [...prev, ...Array.from(e.target.files!)]);
+                                  setImages((prev) => [
+                                    ...prev,
+                                    ...Array.from(e.target.files!),
+                                  ]);
                                 }
                               }}
                               disabled={isReadOnly}
@@ -1130,7 +1447,9 @@ export function FlowItemModal({
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => document.getElementById("image-upload")?.click()}
+                              onClick={() =>
+                                document.getElementById("image-upload")?.click()
+                              }
                               disabled={isReadOnly}
                             >
                               <Plus size={14} className="mr-1" /> Adicionar
@@ -1139,39 +1458,61 @@ export function FlowItemModal({
                         </div>
 
                         {/* Imagens existentes */}
-                        {initialData?.images && initialData.images.length > 0 && (
-                          <div className="grid grid-cols-4 gap-2">
-                            {initialData.images
-                              .filter((img) => !removedImageIds.includes(img.id))
-                              .map((img) => (
-                                <div key={img.id} className="relative group aspect-square rounded-lg overflow-hidden border">
-                                  <img src={img.url} alt="" className="w-full h-full object-cover" />
-                                  {!isReadOnly && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveExistingMedia(img.id, "image")}
-                                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                          </div>
-                        )}
+                        {initialData?.images &&
+                          initialData.images.length > 0 && (
+                            <div className="grid grid-cols-4 gap-2">
+                              {initialData.images
+                                .filter(
+                                  (img) => !removedImageIds.includes(img.id),
+                                )
+                                .map((img) => (
+                                  <div
+                                    key={img.id}
+                                    className="relative group aspect-square rounded-lg overflow-hidden border"
+                                  >
+                                    <img
+                                      src={img.url}
+                                      alt=""
+                                      className="w-full h-full object-cover"
+                                    />
+                                    {!isReadOnly && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleRemoveExistingMedia(
+                                            img.id,
+                                            "image",
+                                          )
+                                        }
+                                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
 
                         {/* Novas imagens */}
                         {images.length > 0 && (
                           <div className="grid grid-cols-4 gap-2">
                             {images.map((file, index) => (
-                              <div key={index} className="relative group aspect-square rounded-lg overflow-hidden border bg-slate-50">
+                              <div
+                                key={index}
+                                className="relative group aspect-square rounded-lg overflow-hidden border bg-slate-50"
+                              >
                                 <div className="w-full h-full flex items-center justify-center">
-                                  <span className="text-xs text-center p-1">{truncateFileName(file.name, 15)}</span>
+                                  <span className="text-xs text-center p-1">
+                                    {truncateFileName(file.name, 15)}
+                                  </span>
                                 </div>
                                 {!isReadOnly && (
                                   <button
                                     type="button"
-                                    onClick={() => handleRemoveNewFile(index, "image")}
+                                    onClick={() =>
+                                      handleRemoveNewFile(index, "image")
+                                    }
                                     className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full"
                                   >
                                     <Trash2 size={12} />
@@ -1195,7 +1536,10 @@ export function FlowItemModal({
                             id="video-upload"
                             onChange={(e) => {
                               if (e.target.files) {
-                                setVideos((prev) => [...prev, ...Array.from(e.target.files!)]);
+                                setVideos((prev) => [
+                                  ...prev,
+                                  ...Array.from(e.target.files!),
+                                ]);
                               }
                             }}
                             disabled={isReadOnly}
@@ -1204,7 +1548,9 @@ export function FlowItemModal({
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => document.getElementById("video-upload")?.click()}
+                            onClick={() =>
+                              document.getElementById("video-upload")?.click()
+                            }
                             disabled={isReadOnly}
                           >
                             <Plus size={14} className="mr-1" /> Adicionar
@@ -1212,37 +1558,57 @@ export function FlowItemModal({
                         </div>
 
                         {/* Vídeos existentes */}
-                        {initialData?.videos && initialData.videos.length > 0 && (
-                          <div className="grid grid-cols-2 gap-2">
-                            {initialData.videos
-                              .filter((vid) => !removedVideoIds.includes(vid.id))
-                              .map((vid) => (
-                                <div key={vid.id} className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between">
-                                  <span className="text-xs truncate">{truncateFileName(vid.filename, 25)}</span>
-                                  {!isReadOnly && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveExistingMedia(vid.id, "video")}
-                                      className="p-1 text-red-500 hover:bg-red-50 rounded"
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                          </div>
-                        )}
+                        {initialData?.videos &&
+                          initialData.videos.length > 0 && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {initialData.videos
+                                .filter(
+                                  (vid) => !removedVideoIds.includes(vid.id),
+                                )
+                                .map((vid) => (
+                                  <div
+                                    key={vid.id}
+                                    className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                  >
+                                    <span className="text-xs truncate">
+                                      {truncateFileName(vid.filename, 25)}
+                                    </span>
+                                    {!isReadOnly && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleRemoveExistingMedia(
+                                            vid.id,
+                                            "video",
+                                          )
+                                        }
+                                        className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
 
                         {/* Novos vídeos */}
                         {videos.length > 0 && (
                           <div className="grid grid-cols-2 gap-2">
                             {videos.map((file, index) => (
-                              <div key={index} className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between">
-                                <span className="text-xs truncate">{truncateFileName(file.name, 25)}</span>
+                              <div
+                                key={index}
+                                className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                              >
+                                <span className="text-xs truncate">
+                                  {truncateFileName(file.name, 25)}
+                                </span>
                                 {!isReadOnly && (
                                   <button
                                     type="button"
-                                    onClick={() => handleRemoveNewFile(index, "video")}
+                                    onClick={() =>
+                                      handleRemoveNewFile(index, "video")
+                                    }
                                     className="p-1 text-red-500 hover:bg-red-50 rounded"
                                   >
                                     <Trash2 size={12} />
@@ -1267,7 +1633,8 @@ export function FlowItemModal({
                                 onClick={startRecording}
                                 disabled={isReadOnly}
                               >
-                                <span className="text-red-500 mr-1">●</span> Gravar
+                                <span className="text-red-500 mr-1">●</span>{" "}
+                                Gravar
                               </Button>
                             ) : (
                               <Button
@@ -1287,7 +1654,10 @@ export function FlowItemModal({
                               id="audio-upload"
                               onChange={(e) => {
                                 if (e.target.files) {
-                                  setAudios((prev) => [...prev, ...Array.from(e.target.files!)]);
+                                  setAudios((prev) => [
+                                    ...prev,
+                                    ...Array.from(e.target.files!),
+                                  ]);
                                 }
                               }}
                               disabled={isReadOnly}
@@ -1296,7 +1666,9 @@ export function FlowItemModal({
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => document.getElementById("audio-upload")?.click()}
+                              onClick={() =>
+                                document.getElementById("audio-upload")?.click()
+                              }
                               disabled={isReadOnly}
                             >
                               <Plus size={14} className="mr-1" /> Upload
@@ -1305,37 +1677,57 @@ export function FlowItemModal({
                         </div>
 
                         {/* Áudios existentes */}
-                        {initialData?.audios && initialData.audios.length > 0 && (
-                          <div className="grid grid-cols-2 gap-2">
-                            {initialData.audios
-                              .filter((aud) => !removedAudioIds.includes(aud.id))
-                              .map((aud) => (
-                                <div key={aud.id} className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between">
-                                  <span className="text-xs truncate">{truncateFileName(aud.filename, 25)}</span>
-                                  {!isReadOnly && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveExistingMedia(aud.id, "audio")}
-                                      className="p-1 text-red-500 hover:bg-red-50 rounded"
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                          </div>
-                        )}
+                        {initialData?.audios &&
+                          initialData.audios.length > 0 && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {initialData.audios
+                                .filter(
+                                  (aud) => !removedAudioIds.includes(aud.id),
+                                )
+                                .map((aud) => (
+                                  <div
+                                    key={aud.id}
+                                    className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                  >
+                                    <span className="text-xs truncate">
+                                      {truncateFileName(aud.filename, 25)}
+                                    </span>
+                                    {!isReadOnly && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleRemoveExistingMedia(
+                                            aud.id,
+                                            "audio",
+                                          )
+                                        }
+                                        className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
 
                         {/* Novos áudios */}
                         {audios.length > 0 && (
                           <div className="grid grid-cols-2 gap-2">
                             {audios.map((file, index) => (
-                              <div key={index} className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between">
-                                <span className="text-xs truncate">{truncateFileName(file.name, 25)}</span>
+                              <div
+                                key={index}
+                                className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                              >
+                                <span className="text-xs truncate">
+                                  {truncateFileName(file.name, 25)}
+                                </span>
                                 {!isReadOnly && (
                                   <button
                                     type="button"
-                                    onClick={() => handleRemoveNewFile(index, "audio")}
+                                    onClick={() =>
+                                      handleRemoveNewFile(index, "audio")
+                                    }
                                     className="p-1 text-red-500 hover:bg-red-50 rounded"
                                   >
                                     <Trash2 size={12} />
@@ -1382,7 +1774,12 @@ export function FlowItemModal({
           </div>
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isLoading}
+            >
               {isReadOnly ? "Fechar" : "Cancelar"}
             </Button>
 
@@ -1393,7 +1790,14 @@ export function FlowItemModal({
                 className="bg-slate-800 hover:bg-slate-900 text-white"
                 disabled={isLoading || isLoadingStages}
               >
-                {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</> : "Salvar"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
+                    Salvando...
+                  </>
+                ) : (
+                  "Salvar"
+                )}
               </Button>
             )}
           </div>
