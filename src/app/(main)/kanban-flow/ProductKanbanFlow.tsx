@@ -289,6 +289,10 @@ export default function ProductFlowKanban() {
 
   // Verifica se a condição para mostrar o toast já foi disparada
   const [hasShownEmptyRefToast, setHasShownEmptyRefToast] = useState(false);
+  // Adicione este useState no início do seu componente (antes do handleCreateFlow)
+  const [isCreatingFlow, setIsCreatingFlow] = useState(false);
+
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     console.log("📊 Boards atualizados:", {
@@ -886,17 +890,28 @@ export default function ProductFlowKanban() {
     }
     setLoading(true);
     try {
-      const promises = selectedFlowIds.map((id) =>
-        api.get(`/flow/${id}/board`),
+      // Filtra IDs válidos antes de fazer as requisições
+      const validFlowIds = selectedFlowIds.filter((id) =>
+        flows.some((flow) => flow.id === id),
       );
+
+      if (validFlowIds.length === 0) {
+        setBoards([]);
+        setLoading(false);
+        return;
+      }
+
+      const promises = validFlowIds.map((id) => api.get(`/flow/${id}/board`));
+
       const results = await Promise.all(promises);
       setBoards(results.map((r) => r.data));
-    } catch {
+    } catch (error) {
+      console.error("Erro ao carregar quadros:", error);
       toast.error("Erro ao carregar quadros");
     } finally {
       setLoading(false);
     }
-  }, [selectedFlowIds]);
+  }, [selectedFlowIds, flows]);
 
   // ===========================================================================
   // 🔥 FUNÇÃO handleFilterClick
@@ -1127,6 +1142,8 @@ export default function ProductFlowKanban() {
     if (!flowName.trim()) return toast.error("Nome obrigatório");
 
     try {
+      setIsCreatingFlow(true);
+
       const payload: any = {
         name: flowName,
         color: newFlowColor,
@@ -1146,8 +1163,11 @@ export default function ProductFlowKanban() {
       setNewFlowColor("#D35400");
       setDeadline("");
       toast.success("Fluxo criado!");
-    } catch {
+    } catch (error) {
       toast.error("Erro ao criar fluxo");
+      console.error("Erro ao criar fluxo:", error);
+    } finally {
+      setIsCreatingFlow(false);
     }
   };
 
@@ -1267,18 +1287,49 @@ export default function ProductFlowKanban() {
     }
   };
 
+  const handleDeleteFlow = async (flowId: string) => {
+    try {
+      await api.delete(`/flow/${flowId}`);
+
+      // 1. Remove da lista de fluxos
+      setFlows((prev) => prev.filter((f) => f.id !== flowId));
+
+      // 2. Remove dos selecionados
+      setSelectedFlowIds((prev) => {
+        const newSelectedIds = prev.filter((id) => id !== flowId);
+
+        // 3. Se não houver mais fluxos, limpa os boards
+        if (newSelectedIds.length === 0) {
+          setBoards([]);
+          setLoading(false);
+        }
+
+        return newSelectedIds;
+      });
+
+      toast.success("Fluxo removido");
+    } catch (error) {
+      toast.error("Erro ao excluir fluxo");
+      console.error(error);
+      throw error;
+    }
+  };
+
+  // E no handleDeleteExecute:
   const handleDeleteExecute = async () => {
     if (!itemToDelete) return;
+
+    setIsDeleting(true);
+
     try {
       const { type, id } = itemToDelete;
+
       if (type === "stage" && flows.some((f) => f.id === id)) {
-        await api.delete(`/flow/${id}`);
-        setFlows((p) => p.filter((f) => f.id !== id));
-        setSelectedFlowIds((p) => p.filter((fid) => fid !== id));
-        toast.success("Fluxo removido");
+        // É um fluxo
+        await handleDeleteFlow(id);
       } else if (type === "template") {
         await api.delete(`/flow/templates/${id}`);
-        setTemplates((p) => p.filter((t) => t.id !== id));
+        setTemplates((prev) => prev.filter((t) => t.id !== id));
         if (selectedTemplateId === id) setSelectedTemplateId("");
         toast.success("Template excluído");
       } else {
@@ -1286,22 +1337,28 @@ export default function ProductFlowKanban() {
           type === "item" ? `/flow/items/${id}` : `/flow/stages/${id}`,
         );
         toast.success("Excluído!");
-      }
 
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
+        // Recarrega os boards após excluir item/stage
+        const hasFilters =
+          activeFilterStartDate ||
+          activeFilterEndDate ||
+          activeFilterOverdue ||
+          activeFilterUpcoming ||
+          activeColumnNameFilter;
+
+        if (selectedFlowIds.length > 0) {
+          if (hasFilters) {
+            await fetchFilteredBoards();
+          } else {
+            await fetchSelectedBoards();
+          }
+        }
       }
-    } catch {
+    } catch (error) {
       toast.error("Erro ao excluir");
+      console.error(error);
     } finally {
+      setIsDeleting(false);
       setDeleteModalOpen(false);
       setItemToDelete(null);
     }
@@ -2081,14 +2138,14 @@ export default function ProductFlowKanban() {
       />
       <KanbanFilter>
         <div className="grid gap-1 min-w-[180px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
+          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
             Filtrar por Coluna
           </label>
           <div className="relative">
             <Input
               type="text"
               placeholder="Nome da coluna (ex: Corte)"
-              className="h-8 text-xs pl-8"
+              className="h-8 text-xs pl-8 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               value={columnNameFilter}
               onChange={(e) => setColumnNameFilter(e.target.value)}
               onKeyDown={(e) => {
@@ -2097,16 +2154,16 @@ export default function ProductFlowKanban() {
                 }
               }}
             />
-            <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
+            <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400" />
           </div>
         </div>
 
         <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
+          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
             Responsável
           </label>
           <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
+            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
             value={tempFilterAssignedTo}
             onChange={(e) => setTempFilterAssignedTo(e.target.value)}
           >
@@ -2120,11 +2177,11 @@ export default function ProductFlowKanban() {
         </div>
 
         <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
+          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
             Oficina
           </label>
           <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
+            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
             value={tempFilterSupplier}
             onChange={(e) => setTempFilterSupplier(e.target.value)}
           >
@@ -2139,14 +2196,14 @@ export default function ProductFlowKanban() {
         </div>
 
         <div className="grid gap-1 min-w-[180px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
+          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
             Referência do Produto
           </label>
           <div className="relative">
             <Input
               type="text"
               placeholder="Buscar por ref..."
-              className="h-8 text-xs pl-8"
+              className="h-8 text-xs pl-8 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               value={tempFilterProductRef}
               onChange={(e) => setTempFilterProductRef(e.target.value)}
               onKeyDown={(e) => {
@@ -2155,7 +2212,7 @@ export default function ProductFlowKanban() {
                 }
               }}
             />
-            <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400" />
+            <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400" />
           </div>
         </div>
 
@@ -2163,8 +2220,8 @@ export default function ProductFlowKanban() {
           <Button
             size="sm"
             variant={tempFilterOverdue ? "destructive" : "outline"}
-            className={`h-8 text-xs ${
-              tempFilterOverdue ? "bg-red-500 text-white hover:bg-red-600" : ""
+            className={`h-8 text-xs font-medium ${
+              tempFilterOverdue ? "bg-red-500 text-white hover:bg-red-600" : "text-foreground"
             }`}
             onClick={toggleOverdueFilter}
           >
@@ -2175,15 +2232,15 @@ export default function ProductFlowKanban() {
           <Button
             size="sm"
             variant={tempFilterUpcoming ? "default" : "outline"}
-            className={`h-8 text-xs ${
+            className={`h-8 text-xs font-medium ${
               tempFilterUpcoming
                 ? "bg-orange-600 text-white hover:bg-orange-700"
-                : ""
+                : "text-foreground"
             }`}
             onClick={toggleUpcomingFilter}
           >
             <Clock className="w-3 h-3 mr-2" />
-            Próximos a vencer ( 7 dias )
+            Próximos a vencer (7 dias)
           </Button>
         </div>
 
@@ -2191,7 +2248,7 @@ export default function ProductFlowKanban() {
           <Button
             size="sm"
             variant="default"
-            className="h-8 text-xs min-w-[100px] bg-orange-600 hover:bg-orange-700"
+            className="h-8 text-xs font-medium min-w-[100px] bg-orange-600 hover:bg-orange-700 text-white"
             onClick={handleFilterClick}
             disabled={isFiltering}
           >
@@ -2210,7 +2267,7 @@ export default function ProductFlowKanban() {
             <Button
               size="sm"
               variant="ghost"
-              className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+              className="h-8 w-8 p-0 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
               onClick={handleClearFilters}
               title="Limpar Filtros"
             >
@@ -2223,7 +2280,7 @@ export default function ProductFlowKanban() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 text-xs text-slate-400 hover:text-red-500"
+            className="h-8 text-xs text-slate-500 hover:text-red-600"
             onClick={() =>
               setActiveColumnFilter({ columnId: null, filterType: null })
             }
@@ -2574,6 +2631,7 @@ export default function ProductFlowKanban() {
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={handleDeleteExecute}
+        loading={isDeleting} // 🔥 AGORA PASSA O ESTADO DE LOADING
         title={`Excluir ${itemToDelete?.type === "item" ? "produto" : itemToDelete?.type === "template" ? "template" : "etapa/fluxo"}?`}
       />
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
@@ -2799,8 +2857,16 @@ export default function ProductFlowKanban() {
             <Button
               onClick={handleCreateFlow}
               className="bg-orange-600 text-white"
+              disabled={isCreatingFlow}
             >
-              Criar
+              {isCreatingFlow ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Criando...
+                </>
+              ) : (
+                "Criar"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

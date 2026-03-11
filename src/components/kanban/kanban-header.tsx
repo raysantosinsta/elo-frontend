@@ -255,7 +255,7 @@ export function KanbanHeader<
                               )}
 
                               {/* Botões de ação */}
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="flex items-center gap-1 opacity-100">
                                 {onEditFlow && (
                                   <button
                                     onClick={(e) => {
@@ -367,7 +367,7 @@ export function KanbanHeader<
                               e.stopPropagation();
                               onDeleteTemplate?.(t.id);
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:bg-red-500/20 rounded transition-opacity"
+                            className="opacity-100 p-1 text-red-400 hover:bg-red-500/20 rounded transition-opacity"
                           >
                             <Trash2 size={14} />
                           </button>
