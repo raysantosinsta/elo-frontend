@@ -294,6 +294,28 @@ export default function ProductFlowKanban() {
 
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Adicione este useState para armazenar as opções de colunas
+  const [columnOptions, setColumnOptions] = useState<string[]>([]);
+
+  // useEffect para atualizar as opções de coluna quando os boards mudarem
+  useEffect(() => {
+    // Extrai nomes únicos de colunas de todos os boards
+    const uniqueColumnNames = new Set<string>();
+
+    boards.forEach((board) => {
+      board.stages.forEach((stage) => {
+        uniqueColumnNames.add(stage.name);
+      });
+    });
+
+    // Converte para array e ordena
+    const sortedColumns = Array.from(uniqueColumnNames).sort((a, b) =>
+      a.localeCompare(b, "pt-BR"),
+    );
+
+    setColumnOptions(sortedColumns);
+  }, [boards]);
+
   useEffect(() => {
     console.log("📊 Boards atualizados:", {
       quantidade: boards.length,
@@ -494,52 +516,53 @@ export default function ProductFlowKanban() {
   // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL
   // ===========================================================================
   const handleCompleteWithResponsible = async (
-  responsibleId: string,
-  type: "user" | "supplier",
-) => {
-  if (!completingItem || !nextStageForCompletion) return;
+    responsibleId: string,
+    type: "user" | "supplier",
+  ) => {
+    if (!completingItem || !nextStageForCompletion) return;
 
-  const toastId = toast.loading("Concluindo etapa..."); // SEM ID
+    const toastId = toast.loading("Concluindo etapa..."); // SEM ID
 
-  try {
-    const payload: any = { newStageId: nextStageForCompletion.id };
+    try {
+      const payload: any = { newStageId: nextStageForCompletion.id };
 
-    if (type === "user") {
-      payload.assignedToId = responsibleId;
-    } else {
-      payload.supplierId = responsibleId;
+      if (type === "user") {
+        payload.assignedToId = responsibleId;
+      } else {
+        payload.supplierId = responsibleId;
+      }
+
+      await api.put(`/flow/items/${completingItem.id}/move`, payload);
+
+      toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
+        id: toastId, // USA O MESMO ID PARA SUBSTITUIR
+      });
+
+      const hasFilters =
+        activeFilterStartDate ||
+        activeFilterEndDate ||
+        activeFilterOverdue ||
+        activeFilterUpcoming ||
+        activeColumnNameFilter;
+
+      if (hasFilters) {
+        await fetchFilteredBoards();
+      } else {
+        await fetchSelectedBoards();
+      }
+
+      setIsCompleteStageModalOpen(false);
+      setCompletingItem(null);
+      setNextStageForCompletion(null);
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.message || "Erro ao concluir etapa.";
+      toast.error(errorMsg, {
+        id: toastId, // USA O MESMO ID PARA SUBSTITUIR
+        duration: 4000,
+      });
     }
-
-    await api.put(`/flow/items/${completingItem.id}/move`, payload);
-
-    toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
-      id: toastId, // USA O MESMO ID PARA SUBSTITUIR
-    });
-
-    const hasFilters =
-      activeFilterStartDate ||
-      activeFilterEndDate ||
-      activeFilterOverdue ||
-      activeFilterUpcoming ||
-      activeColumnNameFilter;
-
-    if (hasFilters) {
-      await fetchFilteredBoards();
-    } else {
-      await fetchSelectedBoards();
-    }
-
-    setIsCompleteStageModalOpen(false);
-    setCompletingItem(null);
-    setNextStageForCompletion(null);
-  } catch (error: any) {
-    const errorMsg = error.response?.data?.message || "Erro ao concluir etapa.";
-    toast.error(errorMsg, {
-      id: toastId, // USA O MESMO ID PARA SUBSTITUIR
-      duration: 4000,
-    });
-  }
-};
+  };
 
   // ===========================================================================
   // 🛡️ LÓGICA DE PERMISSÃO
@@ -705,8 +728,6 @@ export default function ProductFlowKanban() {
     setActiveColumnNameFilter(stageNameParam || "");
   }, [searchParams]);
 
-  
-
   // ===========================================================================
   // 🔥 FUNÇÃO fetchSelectedBoards
   // ===========================================================================
@@ -742,289 +763,322 @@ export default function ProductFlowKanban() {
   }, [selectedFlowIds, flows]);
 
   const fetchFilteredBoards = useCallback(
-  async (paramsFromUrl?: URLSearchParams) => {
-    console.log('\n' + '='.repeat(80));
-    console.log('🚀 [fetchFilteredBoards] INICIANDO');
-    console.log('='.repeat(80));
-    
-    if (selectedFlowIds.length === 0) {
-      console.log('⚠️ Nenhum fluxo selecionado');
-      setBoards([]);
-      setLoading(false);
-      return;
-    }
+    async (paramsFromUrl?: URLSearchParams) => {
+      console.log("\n" + "=".repeat(80));
+      console.log("🚀 [fetchFilteredBoards] INICIANDO");
+      console.log("=".repeat(80));
 
-    setLoading(true);
-    setIsFiltering(true);
-
-    // 🔥 Cria um controller para timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.error('❌ Timeout após 15 segundos');
-      controller.abort();
-    }, 15000);
-
-    try {
-      const params = paramsFromUrl || new URLSearchParams(window.location.search);
-
-      const startDate = params.get("startDate");
-      const endDate = params.get("endDate");
-      const dateType = params.get("dateType");
-      const filter = params.get("filter");
-      const assignedToId = params.get("assignedToId");
-      const supplierId = params.get("supplierId");
-      const productRef = params.get("productRef");
-      const stageName = params.get("stageName");
-
-      console.log("🔍 Parâmetros da URL:", {
-        startDate,
-        endDate,
-        dateType,
-        filter,
-        assignedToId,
-        supplierId,
-        productRef,
-        stageName,
-        selectedFlowIds,
-      });
-
-      setActiveFilterStartDate(startDate?.split("T")[0] || "");
-      setActiveFilterEndDate(endDate?.split("T")[0] || "");
-      setActiveFilterDateType(
-        (dateType as "productionStartedAt" | "dueDate") || "productionStartedAt",
-      );
-      setActiveFilterOverdue(filter === "overdue");
-      setActiveFilterUpcoming(filter === "upcoming");
-      setActiveFilterAssignedTo(assignedToId || "all");
-      setActiveFilterSupplier(supplierId || "all");
-      setActiveFilterProductRef(productRef || "");
-      setActiveColumnNameFilter(stageName || "");
-      setColumnNameFilter(stageName || "");
-
-      const baseQueryParams = new URLSearchParams();
-
-      if (startDate) {
-        const startDateTime = new Date(startDate);
-        startDateTime.setUTCHours(0, 0, 0, 0);
-        baseQueryParams.set("startDate", startDateTime.toISOString());
-        console.log("📅 startDate convertido:", startDateTime.toISOString());
+      if (selectedFlowIds.length === 0) {
+        console.log("⚠️ Nenhum fluxo selecionado");
+        setBoards([]);
+        setLoading(false);
+        return;
       }
 
-      if (endDate) {
-        const endDateTime = new Date(endDate);
-        endDateTime.setUTCHours(23, 59, 59, 999);
-        baseQueryParams.set("endDate", endDateTime.toISOString());
-        console.log("📅 endDate convertido:", endDateTime.toISOString());
-      }
+      setLoading(true);
+      setIsFiltering(true);
 
-      if (dateType) {
-        baseQueryParams.set("dateType", dateType);
-      }
+      // 🔥 Cria um controller para timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.error("❌ Timeout após 15 segundos");
+        controller.abort();
+      }, 15000);
 
-      if (filter === "overdue") {
-        baseQueryParams.set("isOverdue", "true");
-        console.log("⚠️ Filtro: Atrasados");
-      }
-      if (filter === "upcoming") {
-        baseQueryParams.set("isUpcoming", "true");
-        console.log("⏰ Filtro: Próximos 7 dias");
-      }
+      try {
+        const params =
+          paramsFromUrl || new URLSearchParams(window.location.search);
 
-      if (assignedToId && assignedToId !== "all") {
-        baseQueryParams.set("assignedToId", assignedToId);
-        console.log("👤 Filtro por responsável:", assignedToId);
-      }
+        const startDate = params.get("startDate");
+        const endDate = params.get("endDate");
+        const dateType = params.get("dateType");
+        const filter = params.get("filter");
+        const assignedToId = params.get("assignedToId");
+        const supplierId = params.get("supplierId");
+        const productRef = params.get("productRef");
+        const stageName = params.get("stageName");
 
-      if (supplierId && supplierId !== "all") {
-        baseQueryParams.set("supplierId", supplierId);
-        console.log("🏭 Filtro por oficina:", supplierId);
-      }
-
-      if (productRef && productRef.trim() !== "") {
-        baseQueryParams.set("productRef", productRef.trim());
-        console.log("📦 Filtro por referência:", productRef.trim());
-      }
-
-      console.log("\n📡 Query params finais:", baseQueryParams.toString());
-
-      if (stageName && stageName.trim() !== "") {
-        console.log(`\n🎯 Filtrando por nome da coluna: "${stageName}"`);
-        baseQueryParams.set("stageName", stageName.trim());
-
-        const boardsPromises = selectedFlowIds.map(async (flowId) => {
-          const url = `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`;
-          console.log(`📡 Requisição para: ${url}`);
-          
-          try {
-            const response = await api.get(url, { signal: controller.signal });
-            
-            console.log(`✅ Board ${flowId} filtrado:`, {
-              flowName: response.data.name,
-              stagesCount: response.data.stages?.length || 0,
-              itemsCount: response.data.stages?.reduce((acc: number, s: any) => acc + s.items.length, 0) || 0
-            });
-
-            return response.data;
-          } catch (error: any) {
-            console.error(`❌ Erro ao filtrar board ${flowId}:`, {
-              status: error.response?.status,
-              data: error.response?.data,
-              message: error.message
-            });
-            
-            console.log(`📡 Buscando board vazio como fallback para ${flowId}`);
-            const emptyBoard = await api.get(`/flow/${flowId}/board`);
-            return {
-              ...emptyBoard.data,
-              stages: [],
-            };
-          }
+        console.log("🔍 Parâmetros da URL:", {
+          startDate,
+          endDate,
+          dateType,
+          filter,
+          assignedToId,
+          supplierId,
+          productRef,
+          stageName,
+          selectedFlowIds,
         });
 
-        const filteredBoards = await Promise.all(boardsPromises);
-        console.log(`\n✅ Total de boards processados: ${filteredBoards.length}`);
-        setBoards(filteredBoards);
-        
-        toast.success(`Filtrando apenas itens da coluna: "${stageName}"`);
-      } else {
-        console.log("\n🌐 Filtrando itens globalmente");
-        
-        const itemsUrl = `/flow/filter/items?${baseQueryParams.toString()}`;
-        console.log(`📡 Buscando itens filtrados: ${itemsUrl}`);
-        
-        const itemsResponse = await api.get(itemsUrl, { signal: controller.signal });
-        const filteredItems = itemsResponse.data;
-        
-        console.log(`✅ Itens filtrados recebidos: ${filteredItems?.length || 0}`);
-        
-        if (filteredItems?.length > 0) {
-          console.log('📋 Primeiros 3 itens:', filteredItems.slice(0, 3).map((i: any) => ({
-            id: i.id,
-            title: i.title,
-            dueDate: i.dueDate,
-            flowName: i.flow?.name
-          })));
-        } else {
-          console.log('⚠️ Nenhum item encontrado com os filtros aplicados');
+        setActiveFilterStartDate(startDate?.split("T")[0] || "");
+        setActiveFilterEndDate(endDate?.split("T")[0] || "");
+        setActiveFilterDateType(
+          (dateType as "productionStartedAt" | "dueDate") ||
+            "productionStartedAt",
+        );
+        setActiveFilterOverdue(filter === "overdue");
+        setActiveFilterUpcoming(filter === "upcoming");
+        setActiveFilterAssignedTo(assignedToId || "all");
+        setActiveFilterSupplier(supplierId || "all");
+        setActiveFilterProductRef(productRef || "");
+        setActiveColumnNameFilter(stageName || "");
+        setColumnNameFilter(stageName || "");
+
+        const baseQueryParams = new URLSearchParams();
+
+        if (startDate) {
+          const startDateTime = new Date(startDate);
+          startDateTime.setUTCHours(0, 0, 0, 0);
+          baseQueryParams.set("startDate", startDateTime.toISOString());
+          console.log("📅 startDate convertido:", startDateTime.toISOString());
         }
 
-        const boardsPromises = selectedFlowIds.map(async (flowId) => {
-          try {
-            console.log(`📡 Buscando board ${flowId} para combinar com itens filtrados`);
-            const boardRes = await api.get(`/flow/${flowId}/board`);
-            const board = boardRes.data;
-            
-            console.log(`✅ Board ${flowId} carregado:`, {
-              name: board.name,
-              stages: board.stages.length,
-              totalItems: board.stages.reduce((acc: number, s: any) => acc + s.items.length, 0)
-            });
+        if (endDate) {
+          const endDateTime = new Date(endDate);
+          endDateTime.setUTCHours(23, 59, 59, 999);
+          baseQueryParams.set("endDate", endDateTime.toISOString());
+          console.log("📅 endDate convertido:", endDateTime.toISOString());
+        }
 
-            const filteredBoard = {
-              ...board,
-              stages: board.stages.map((stage: FlowStage) => {
-                const originalCount = stage.items.length;
-                const filteredStageItems = stage.items
-                  .filter((item: FlowItem) =>
-                    filteredItems.some(
-                      (filteredItem: FlowItem) => filteredItem.id === item.id,
-                    ),
-                  )
-                  .map((item: FlowItem) => {
-                    const filteredItem = filteredItems.find(
-                      (fi: FlowItem) => fi.id === item.id,
-                    );
-                    
-                    // 🔥 Pega as informações do flow do filteredItem se disponível
-                    const flowInfo = filteredItem?.flow || board;
-                    
-                    return {
-                      ...item,
-                      flowColor: flowInfo.color || board.color || "#D35400",
-                      flowName: flowInfo.name || board.name,
-                      ...(filteredItem && {
-                        dueDate: filteredItem.dueDate,
-                        assignedTo: filteredItem.assignedTo,
-                        supplier: filteredItem.supplier,
-                        status: filteredItem.status,
-                      }),
-                    };
-                  });
+        if (dateType) {
+          baseQueryParams.set("dateType", dateType);
+        }
 
-                console.log(`   Stage "${stage.name}": ${originalCount} -> ${filteredStageItems.length} itens`);
-                
-                return {
-                  ...stage,
-                  items: filteredStageItems,
-                };
-              }),
-            };
+        if (filter === "overdue") {
+          baseQueryParams.set("isOverdue", "true");
+          console.log("⚠️ Filtro: Atrasados");
+        }
+        if (filter === "upcoming") {
+          baseQueryParams.set("isUpcoming", "true");
+          console.log("⏰ Filtro: Próximos 7 dias");
+        }
 
-            return filteredBoard;
-          } catch (error: any) {
-            console.error(`❌ Erro ao carregar board ${flowId}:`, {
-              status: error.response?.status,
-              message: error.message
-            });
-            return null;
+        if (assignedToId && assignedToId !== "all") {
+          baseQueryParams.set("assignedToId", assignedToId);
+          console.log("👤 Filtro por responsável:", assignedToId);
+        }
+
+        if (supplierId && supplierId !== "all") {
+          baseQueryParams.set("supplierId", supplierId);
+          console.log("🏭 Filtro por oficina:", supplierId);
+        }
+
+        if (productRef && productRef.trim() !== "") {
+          baseQueryParams.set("productRef", productRef.trim());
+          console.log("📦 Filtro por referência:", productRef.trim());
+        }
+
+        console.log("\n📡 Query params finais:", baseQueryParams.toString());
+
+        if (stageName && stageName.trim() !== "") {
+          console.log(`\n🎯 Filtrando por nome da coluna: "${stageName}"`);
+          baseQueryParams.set("stageName", stageName.trim());
+
+          const boardsPromises = selectedFlowIds.map(async (flowId) => {
+            const url = `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`;
+            console.log(`📡 Requisição para: ${url}`);
+
+            try {
+              const response = await api.get(url, {
+                signal: controller.signal,
+              });
+
+              console.log(`✅ Board ${flowId} filtrado:`, {
+                flowName: response.data.name,
+                stagesCount: response.data.stages?.length || 0,
+                itemsCount:
+                  response.data.stages?.reduce(
+                    (acc: number, s: any) => acc + s.items.length,
+                    0,
+                  ) || 0,
+              });
+
+              return response.data;
+            } catch (error: any) {
+              console.error(`❌ Erro ao filtrar board ${flowId}:`, {
+                status: error.response?.status,
+                data: error.response?.data,
+                message: error.message,
+              });
+
+              console.log(
+                `📡 Buscando board vazio como fallback para ${flowId}`,
+              );
+              const emptyBoard = await api.get(`/flow/${flowId}/board`);
+              return {
+                ...emptyBoard.data,
+                stages: [],
+              };
+            }
+          });
+
+          const filteredBoards = await Promise.all(boardsPromises);
+          console.log(
+            `\n✅ Total de boards processados: ${filteredBoards.length}`,
+          );
+          setBoards(filteredBoards);
+
+          toast.success(`Filtrando apenas itens da coluna: "${stageName}"`);
+        } else {
+          console.log("\n🌐 Filtrando itens globalmente");
+
+          const itemsUrl = `/flow/filter/items?${baseQueryParams.toString()}`;
+          console.log(`📡 Buscando itens filtrados: ${itemsUrl}`);
+
+          const itemsResponse = await api.get(itemsUrl, {
+            signal: controller.signal,
+          });
+          const filteredItems = itemsResponse.data;
+
+          console.log(
+            `✅ Itens filtrados recebidos: ${filteredItems?.length || 0}`,
+          );
+
+          if (filteredItems?.length > 0) {
+            console.log(
+              "📋 Primeiros 3 itens:",
+              filteredItems.slice(0, 3).map((i: any) => ({
+                id: i.id,
+                title: i.title,
+                dueDate: i.dueDate,
+                flowName: i.flow?.name,
+              })),
+            );
+          } else {
+            console.log("⚠️ Nenhum item encontrado com os filtros aplicados");
           }
-        });
 
-        console.log('\n⏳ Aguardando todas as promises...');
-        const results = await Promise.all(boardsPromises);
-        const filteredBoards = results.filter((board) => board !== null);
-        
-        console.log(`\n✅ Boards processados: ${filteredBoards.length} de ${selectedFlowIds.length}`);
-        
-        // Log do resultado final
-        filteredBoards.forEach(board => {
-          const totalItems = board.stages.reduce((acc: number, s: any) => acc + s.items.length, 0);
-          console.log(`📊 Board "${board.name}": ${totalItems} itens no total`);
-        });
+          const boardsPromises = selectedFlowIds.map(async (flowId) => {
+            try {
+              console.log(
+                `📡 Buscando board ${flowId} para combinar com itens filtrados`,
+              );
+              const boardRes = await api.get(`/flow/${flowId}/board`);
+              const board = boardRes.data;
 
-        setBoards(filteredBoards);
+              console.log(`✅ Board ${flowId} carregado:`, {
+                name: board.name,
+                stages: board.stages.length,
+                totalItems: board.stages.reduce(
+                  (acc: number, s: any) => acc + s.items.length,
+                  0,
+                ),
+              });
+
+              const filteredBoard = {
+                ...board,
+                stages: board.stages.map((stage: FlowStage) => {
+                  const originalCount = stage.items.length;
+                  const filteredStageItems = stage.items
+                    .filter((item: FlowItem) =>
+                      filteredItems.some(
+                        (filteredItem: FlowItem) => filteredItem.id === item.id,
+                      ),
+                    )
+                    .map((item: FlowItem) => {
+                      const filteredItem = filteredItems.find(
+                        (fi: FlowItem) => fi.id === item.id,
+                      );
+
+                      // 🔥 Pega as informações do flow do filteredItem se disponível
+                      const flowInfo = filteredItem?.flow || board;
+
+                      return {
+                        ...item,
+                        flowColor: flowInfo.color || board.color || "#D35400",
+                        flowName: flowInfo.name || board.name,
+                        ...(filteredItem && {
+                          dueDate: filteredItem.dueDate,
+                          assignedTo: filteredItem.assignedTo,
+                          supplier: filteredItem.supplier,
+                          status: filteredItem.status,
+                        }),
+                      };
+                    });
+
+                  console.log(
+                    `   Stage "${stage.name}": ${originalCount} -> ${filteredStageItems.length} itens`,
+                  );
+
+                  return {
+                    ...stage,
+                    items: filteredStageItems,
+                  };
+                }),
+              };
+
+              return filteredBoard;
+            } catch (error: any) {
+              console.error(`❌ Erro ao carregar board ${flowId}:`, {
+                status: error.response?.status,
+                message: error.message,
+              });
+              return null;
+            }
+          });
+
+          console.log("\n⏳ Aguardando todas as promises...");
+          const results = await Promise.all(boardsPromises);
+          const filteredBoards = results.filter((board) => board !== null);
+
+          console.log(
+            `\n✅ Boards processados: ${filteredBoards.length} de ${selectedFlowIds.length}`,
+          );
+
+          // Log do resultado final
+          filteredBoards.forEach((board) => {
+            const totalItems = board.stages.reduce(
+              (acc: number, s: any) => acc + s.items.length,
+              0,
+            );
+            console.log(
+              `📊 Board "${board.name}": ${totalItems} itens no total`,
+            );
+          });
+
+          setBoards(filteredBoards);
+        }
+
+        clearTimeout(timeoutId);
+        console.log("\n✅ [fetchFilteredBoards] FINALIZADO COM SUCESSO");
+        console.log("=".repeat(80) + "\n");
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+
+        console.error("\n❌ [fetchFilteredBoards] ERRO:");
+        console.error("=".repeat(40));
+
+        if (error.name === "AbortError" || error.code === "ECONNABORTED") {
+          console.error(
+            "⏰ Timeout: A requisição demorou muito para responder",
+          );
+          toast.error("O filtro está demorando muito. Tente novamente.");
+        } else {
+          console.error("Mensagem:", error.message);
+          console.error("Status:", error.response?.status);
+          console.error("Data:", error.response?.data);
+          console.error("Stack:", error.stack);
+
+          const errorMessage =
+            error.response?.data?.message ||
+            error.message ||
+            "Erro ao aplicar filtros";
+
+          toast.error(errorMessage);
+        }
+
+        console.error("=".repeat(40) + "\n");
+
+        // Tenta carregar os boards sem filtro como fallback
+        await fetchSelectedBoards();
+      } finally {
+        setLoading(false);
+        setIsFiltering(false);
+        console.log("🏁 Estado de loading resetado");
       }
-      
-      clearTimeout(timeoutId);
-      console.log('\n✅ [fetchFilteredBoards] FINALIZADO COM SUCESSO');
-      console.log('='.repeat(80) + '\n');
-      
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-      
-      console.error('\n❌ [fetchFilteredBoards] ERRO:');
-      console.error('='.repeat(40));
-      
-      if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
-        console.error('⏰ Timeout: A requisição demorou muito para responder');
-        toast.error('O filtro está demorando muito. Tente novamente.');
-      } else {
-        console.error('Mensagem:', error.message);
-        console.error('Status:', error.response?.status);
-        console.error('Data:', error.response?.data);
-        console.error('Stack:', error.stack);
-        
-        const errorMessage =
-          error.response?.data?.message ||
-          error.message ||
-          "Erro ao aplicar filtros";
-        
-        toast.error(errorMessage);
-      }
-      
-      console.error('='.repeat(40) + '\n');
-      
-      // Tenta carregar os boards sem filtro como fallback
-      await fetchSelectedBoards();
-      
-    } finally {
-      setLoading(false);
-      setIsFiltering(false);
-      console.log('🏁 Estado de loading resetado');
-    }
-  },
-  [selectedFlowIds, fetchSelectedBoards],
-);
+    },
+    [selectedFlowIds, fetchSelectedBoards],
+  );
 
   // ===========================================================================
   // 🔥 FUNÇÃO handleFilterClick
@@ -2255,19 +2309,35 @@ export default function ProductFlowKanban() {
             Filtrar por Coluna
           </label>
           <div className="relative">
-            <Input
-              type="text"
-              placeholder="Nome da coluna (ex: Corte)"
-              className="h-8 text-xs pl-8 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+            <select
+              className="flex h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 py-1 text-xs text-foreground appearance-none"
               value={columnNameFilter}
               onChange={(e) => setColumnNameFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleFilterClick();
-                }
-              }}
-            />
-            <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400" />
+            >
+              <option value="">Todas as colunas</option>
+              {columnOptions.map((columnName) => (
+                <option key={columnName} value={columnName}>
+                  {columnName}
+                </option>
+              ))}
+            </select>
+            <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400 pointer-events-none" />
+            {/* Seta do select */}
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+              <svg
+                className="w-3 h-3 text-slate-500 dark:text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -2570,12 +2640,12 @@ export default function ProductFlowKanban() {
                     {isOverdueActive ? (
                       <>
                         <AlertTriangle size={10} />
-                        Filtrando: Atrasados (dueDate &lt; hoje)
+                        Filtrando: Atrasados
                       </>
                     ) : (
                       <>
                         <Clock size={10} />
-                        Filtrando: Iniciam hoje (productionStartedAt = hoje)
+                        Filtrando: Proximos a vencer (7 dias)
                       </>
                     )}
                     <button

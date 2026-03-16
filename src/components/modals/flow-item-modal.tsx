@@ -1378,7 +1378,7 @@ export function FlowItemModal({
 
                       {/* Datas */}
                       <div className="grid grid-cols-3 gap-4 pt-4 border-t border-dashed">
-                        <FormField
+                        {/* <FormField
                           control={form.control}
                           name="productionStartedAt"
                           render={({ field }) => (
@@ -1396,7 +1396,7 @@ export function FlowItemModal({
                               </FormControl>
                             </FormItem>
                           )}
-                        />
+                        /> */}
 
                         <FormField
                           control={form.control}
