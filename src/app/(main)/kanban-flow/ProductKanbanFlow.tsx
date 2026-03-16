@@ -255,10 +255,14 @@ export default function ProductFlowKanban() {
   const [isCompleteStageModalOpen, setIsCompleteStageModalOpen] =
     useState(false);
   const [completingItem, setCompletingItem] = useState<FlowItem | null>(null);
+  // ===========================================================================
+  // 🎯 ESTADOS PARA MODAL DE CONCLUSÃO DE ETAPA
+  // ===========================================================================
   const [nextStageForCompletion, setNextStageForCompletion] = useState<{
     id: string;
     name: string;
     allowedRole?: string | null;
+    isAfterCorte: boolean; // 🔥 TORNA OBRIGATÓRIO, NÃO OPCIONAL
   } | null>(null);
 
   // ===========================================================================
@@ -296,6 +300,100 @@ export default function ProductFlowKanban() {
 
   // Adicione este useState para armazenar as opções de colunas
   const [columnOptions, setColumnOptions] = useState<string[]>([]);
+
+  // ===========================================================================
+  // 🎯 ESTADO PARA ITENS AGUARDANDO REMOÇÃO (3 segundos)
+  // ===========================================================================
+  const [itemsPendingRemoval, setItemsPendingRemoval] = useState<Set<string>>(
+    new Set(),
+  );
+
+  // ===========================================================================
+  // 🔥 REF PARA GUARDAR O ÚLTIMO ITEM MOVIDO
+  // ===========================================================================
+  const lastMovedItemRef = useRef<{
+    id: string;
+    targetStageId: string;
+    targetStageName: string;
+  } | null>(null);
+
+  // ===========================================================================
+  // 🔥 EFEITO PARA FORÇAR RE-RENDER QUANDO ITEMS PENDING MUDAM
+  // ===========================================================================
+  useEffect(() => {
+    console.log(
+      "🔄 itemsPendingRemoval mudou:",
+      Array.from(itemsPendingRemoval),
+    );
+
+    // 🔥 Não precisa mais forçar refresh aqui
+    // O unifiedStages já depende de itemsPendingRemoval
+  }, [itemsPendingRemoval]); // Apenas log, sem setRefreshKey
+
+  const startItemRemovalTimer = (itemId: string) => {
+    console.log(
+      `⏰ [${new Date().toISOString()}] Iniciando contagem de 3 segundos para remover item ${itemId}`,
+    );
+
+    // 🔥 Salva o status atual do item para debug
+    const currentItem = unifiedStages
+      .flatMap((s) => s.items)
+      .find((i) => i.id === itemId);
+    console.log(`📊 Status atual do item:`, {
+      id: currentItem?.id,
+      title: currentItem?.title,
+      status: currentItem?.status,
+      stageId: currentItem?.stageId,
+    });
+
+    // 🔥 Adiciona item ao set de pendentes
+    setItemsPendingRemoval((prev) => {
+      console.log(
+        `📋 [${new Date().toISOString()}] itemsPendingRemoval ANTES:`,
+        Array.from(prev),
+      );
+      const newSet = new Set(prev);
+      newSet.add(itemId);
+      console.log(
+        `📋 [${new Date().toISOString()}] itemsPendingRemoval DEPOIS:`,
+        Array.from(newSet),
+      );
+      return newSet;
+    });
+
+    // Timer para remover após 3 segundos
+    setTimeout(() => {
+      console.log(
+        `✅ [${new Date().toISOString()}] Removendo item ${itemId} da tela após 3 segundos`,
+      );
+
+      // 🔥 Verifica o status do item novamente
+      const itemAfterDelay = unifiedStages
+        .flatMap((s) => s.items)
+        .find((i) => i.id === itemId);
+      console.log(`📊 Status do item após 3s:`, {
+        id: itemAfterDelay?.id,
+        title: itemAfterDelay?.title,
+        status: itemAfterDelay?.status,
+        stageId: itemAfterDelay?.stageId,
+      });
+
+      // 🔥 Remove do set
+      setItemsPendingRemoval((prev) => {
+        console.log(
+          `📋 [${new Date().toISOString()}] itemsPendingRemoval ANTES da remoção:`,
+          Array.from(prev),
+        );
+        const newSet = new Set(prev);
+        newSet.delete(itemId);
+        console.log(
+          `📋 [${new Date().toISOString()}] itemsPendingRemoval DEPOIS da remoção:`,
+          Array.from(newSet),
+        );
+        return newSet;
+      });
+    }, 3000);
+  };
 
   // useEffect para atualizar as opções de coluna quando os boards mudarem
   useEffect(() => {
@@ -483,9 +581,11 @@ export default function ProductFlowKanban() {
     const currentBoard = boards.find((b) => b.id === item.flowId);
     if (!currentBoard) return;
 
+    // Ordena todas as etapas do fluxo
     const allStages = [...currentBoard.stages].sort(
       (a, b) => a.order - b.order,
     );
+
     const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
     const nextStage = allStages[currentIndex + 1];
 
@@ -494,22 +594,59 @@ export default function ProductFlowKanban() {
       return;
     }
 
-    if (
-      nextStage.allowedRole &&
-      nextStage.allowedRole !== "all" &&
-      nextStage.allowedRole !== "null" &&
-      nextStage.allowedRole.trim() !== ""
-    ) {
-      setCompletingItem(item);
-      setNextStageForCompletion({
-        id: nextStage.id,
-        name: nextStage.name,
-        allowedRole: nextStage.allowedRole,
-      });
-      setIsCompleteStageModalOpen(true);
-    } else {
-      handleAdvanceItem(item);
-    }
+    // 🔥 PALAVRAS-CHAVE PARA IDENTIFICAR ETAPA DE CORTE
+    const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
+
+    // 🔥 Encontra o índice da etapa de Corte (case insensitive)
+    const corteIndex = allStages.findIndex((s) =>
+      CORTE_KEYWORDS.some((keyword) =>
+        s.name.toLowerCase().includes(keyword.toLowerCase()),
+      ),
+    );
+
+    // 🔥 LOG DETALHADO
+    console.log("🔍 ===== DEBUG DO MODAL DE CONCLUSÃO =====");
+    console.log("📦 Item:", item.title);
+    console.log(
+      "📊 Todas as etapas:",
+      allStages.map((s) => ({ name: s.name, order: s.order })),
+    );
+    console.log(
+      "📍 Etapa atual:",
+      allStages[currentIndex].name,
+      "(índice:",
+      currentIndex + ")",
+    );
+    console.log("🎯 Próxima etapa:", nextStage.name);
+    console.log(
+      "🔪 Etapa de Corte encontrada:",
+      corteIndex !== -1 ? allStages[corteIndex].name : "NÃO ENCONTRADA",
+    );
+    console.log("📐 Corte index:", corteIndex);
+    console.log("📐 Current index + 1:", currentIndex + 1);
+    console.log(
+      "📐 isAfterCorte:",
+      corteIndex !== -1 && currentIndex + 1 > corteIndex,
+    );
+
+    const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
+
+    setCompletingItem(item);
+    setNextStageForCompletion({
+      id: nextStage.id,
+      name: nextStage.name,
+      allowedRole: nextStage.allowedRole,
+      isAfterCorte: isAfterCorte,
+    });
+
+    console.log("✅ nextStageForCompletion setado:", {
+      id: nextStage.id,
+      name: nextStage.name,
+      allowedRole: nextStage.allowedRole,
+      isAfterCorte,
+    });
+
+    setIsCompleteStageModalOpen(true);
   };
 
   // ===========================================================================
@@ -619,41 +756,43 @@ export default function ProductFlowKanban() {
     }
   };
 
+  // ===========================================================================
+  // 🔄 FUNÇÕES DE FILTRO POR COLUNA
+  // ===========================================================================
   const filterColumnItems = (stage: FlowStage) => {
+    // 🔥 O stage já vem filtrado do unifiedStages!
+    let items = stage.items;
+
+    // 🔥 FILTRO 2: Se tiver filtro ativo na coluna (overdue/upcoming)
     if (
-      activeColumnFilter.columnId !== stage.id ||
-      !activeColumnFilter.filterType
+      activeColumnFilter.columnId === stage.id &&
+      activeColumnFilter.filterType
     ) {
-      return stage.items;
+      const todayUTC = new Date();
+      const year = todayUTC.getUTCFullYear();
+      const month = String(todayUTC.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(todayUTC.getUTCDate()).padStart(2, "0");
+      const todayStr = `${year}-${month}-${day}`;
+
+      const sevenDaysFromNow = new Date(todayUTC);
+      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+      const sevenDaysFromNowStr = sevenDaysFromNow.toISOString().split("T")[0];
+
+      items = items.filter((item) => {
+        if (activeColumnFilter.filterType === "overdue") {
+          const dueDate = item.dueDate?.split("T")[0];
+          if (!dueDate) return false;
+          return dueDate < todayStr;
+        } else if (activeColumnFilter.filterType === "upcoming") {
+          const dueDate = item.dueDate?.split("T")[0];
+          if (!dueDate) return false;
+          return dueDate >= todayStr && dueDate <= sevenDaysFromNowStr;
+        }
+        return true;
+      });
     }
 
-    const todayUTC = new Date();
-    const year = todayUTC.getUTCFullYear();
-    const month = String(todayUTC.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(todayUTC.getUTCDate()).padStart(2, "0");
-    const todayStr = `${year}-${month}-${day}`;
-
-    // Calcula a data daqui a 7 dias
-    const sevenDaysFromNow = new Date(todayUTC);
-    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-    const sevenDaysFromNowStr = sevenDaysFromNow.toISOString().split("T")[0];
-
-    const filtered = stage.items.filter((item) => {
-      if (activeColumnFilter.filterType === "overdue") {
-        const dueDate = item.dueDate?.split("T")[0];
-        if (!dueDate) return false;
-        return dueDate < todayStr;
-      } else if (activeColumnFilter.filterType === "upcoming") {
-        const dueDate = item.dueDate?.split("T")[0];
-        if (!dueDate) return false;
-
-        // Item vence em até 7 dias (incluindo hoje)
-        return dueDate >= todayStr && dueDate <= sevenDaysFromNowStr;
-      }
-      return true;
-    });
-
-    return filtered;
+    return items;
   };
 
   // ===========================================================================
@@ -728,34 +867,56 @@ export default function ProductFlowKanban() {
     setActiveColumnNameFilter(stageNameParam || "");
   }, [searchParams]);
 
-  // ===========================================================================
-  // 🔥 FUNÇÃO fetchSelectedBoards
-  // ===========================================================================
   const fetchSelectedBoards = useCallback(async () => {
+    console.log(
+      `📡 [${new Date().toISOString()}] fetchSelectedBoards INICIADO`,
+    );
+
     if (selectedFlowIds.length === 0) {
+      console.log("⚠️ Nenhum fluxo selecionado");
       setBoards([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      // Filtra IDs válidos antes de fazer as requisições
       const validFlowIds = selectedFlowIds.filter((id) =>
         flows.some((flow) => flow.id === id),
       );
 
       if (validFlowIds.length === 0) {
+        console.log("⚠️ Nenhum fluxo válido");
         setBoards([]);
         setLoading(false);
         return;
       }
 
+      console.log("📡 Buscando boards:", validFlowIds);
       const promises = validFlowIds.map((id) => api.get(`/flow/${id}/board`));
 
       const results = await Promise.all(promises);
-      setBoards(results.map((r) => r.data));
-    } catch (error) {
-      console.error("Erro ao carregar quadros:", error);
+      const newBoards = results.map((r) => r.data);
+
+      // 🔥 Log detalhado dos itens
+      console.log(`📊 [${new Date().toISOString()}] NOVOS BOARDS CARREGADOS:`);
+      newBoards.forEach((board) => {
+        console.log(`  Board: ${board.name}`);
+        board.stages.forEach((stage: any) => {
+          console.log(`    Stage: ${stage.name} (${stage.items.length} itens)`);
+          stage.items.forEach((item: any) => {
+            console.log(
+              `      - Item ${item.id}: ${item.title} | status: ${item.status}`,
+            );
+          });
+        });
+      });
+
+      setBoards(newBoards);
+      console.log(
+        `✅ [${new Date().toISOString()}] fetchSelectedBoards CONCLUÍDO`,
+      );
+    } catch (error: any) {
+      console.error("❌ Erro ao carregar quadros:", error);
       toast.error("Erro ao carregar quadros");
     } finally {
       setLoading(false);
@@ -1053,6 +1214,18 @@ export default function ProductFlowKanban() {
             "⏰ Timeout: A requisição demorou muito para responder",
           );
           toast.error("O filtro está demorando muito. Tente novamente.");
+        } else if (error.response?.status === 401) {
+          console.error("🔐 Erro de autenticação, tentando novamente em 1s...");
+          setTimeout(async () => {
+            try {
+              const params =
+                paramsFromUrl || new URLSearchParams(window.location.search);
+              await fetchFilteredBoards(params);
+            } catch (retryError) {
+              console.error("❌ Falha na segunda tentativa:", retryError);
+              toast.error("Erro de autenticação. Faça login novamente.");
+            }
+          }, 1000);
         } else {
           console.error("Mensagem:", error.message);
           console.error("Status:", error.response?.status);
@@ -1066,8 +1239,6 @@ export default function ProductFlowKanban() {
 
           toast.error(errorMessage);
         }
-
-        console.error("=".repeat(40) + "\n");
 
         // Tenta carregar os boards sem filtro como fallback
         await fetchSelectedBoards();
@@ -1927,11 +2098,34 @@ export default function ProductFlowKanban() {
     }
   };
 
-  // E modifique o useMemo do unifiedStages para incluir refreshKey
+  const shouldShowItem = useCallback(
+    (item: FlowItem): boolean => {
+      if (item.status === "CONCLUIDO") {
+        const show = itemsPendingRemoval.has(item.id);
+        if (show) {
+          console.log(
+            `⏰ [${new Date().toISOString()}] Item ${item.id} (${item.title}) concluído MAS em contagem - MOSTRANDO`,
+          );
+        } else {
+          console.log(
+            `✅ [${new Date().toISOString()}] Item ${item.id} (${item.title}) concluído - OCULTANDO - itemsPendingRemoval:`,
+            Array.from(itemsPendingRemoval),
+          );
+        }
+        return show;
+      }
+      return true;
+    },
+    [itemsPendingRemoval],
+  );
+
+  // ===========================================================================
+  // 🎯 UNIFIED STAGES - Agrupa stages por nome
+  // ===========================================================================
   const unifiedStages = useMemo(() => {
     console.log("🔄 Recalculando unifiedStages com refreshKey:", refreshKey);
+    console.log("📋 itemsPendingRemoval:", Array.from(itemsPendingRemoval));
 
-    // 🔥 Agrupa por nome da coluna, mas preserva os items com suas cores originais
     const stageGroups: Record<string, FlowStage> = {};
 
     boards.forEach((board) => {
@@ -1939,52 +2133,54 @@ export default function ProductFlowKanban() {
       const flowName = board.name;
 
       board.stages.forEach((stage) => {
-        const key = stage.name.toUpperCase(); // Agrupa por nome maiúsculo
+        const key = stage.name.toUpperCase();
 
-        // Se o grupo ainda não existe, cria com os dados da primeira stage
         if (!stageGroups[key]) {
           stageGroups[key] = {
-            id: stage.id, // Usa o ID da primeira stage (pode ser qualquer um)
+            id: stage.id,
             name: stage.name,
             order: stage.order,
             color: stage.color,
             allowedRole: stage.allowedRole,
             flowId: board.id,
-            items: [], // Começa vazio
+            items: [],
           };
         }
 
-        // 🔥 Adiciona os itens deste flow ao grupo, com a cor do flow preservada
-        const itemsWithMetadata = stage.items.map((item) => ({
-          ...item,
-          flowColor, // 🔥 COR DA COLEÇÃO ORIGINAL
-          flowName, // 🔥 NOME DA COLEÇÃO ORIGINAL
-          _originalStageId: item.stageId,
-          _originalFlowId: board.id,
-        }));
+        // 🔥 Log de quantos itens tinha antes
+        console.log(`Stage ${stage.name} tinha ${stage.items.length} itens`);
+
+        // 🔥 USA A MESMA FUNÇÃO shouldShowItem
+        const itemsWithMetadata = stage.items
+          .filter((item) => {
+            const show = shouldShowItem(item);
+            if (!show && item.status === "CONCLUIDO") {
+              console.log(
+                `❌ Filtrando item ${item.id} (${item.title}) - CONCLUIDO e não está no pending`,
+              );
+            }
+            return show;
+          })
+          .map((item) => ({
+            ...item,
+            flowColor,
+            flowName,
+            _originalStageId: item.stageId,
+            _originalFlowId: board.id,
+          }));
+
+        console.log(
+          `Stage ${stage.name} ficou com ${itemsWithMetadata.length} itens`,
+        );
 
         stageGroups[key].items.push(...itemsWithMetadata);
       });
     });
 
-    // Ordena as stages por ordem
     const result = Object.values(stageGroups).sort((a, b) => a.order - b.order);
 
-    console.log("✅ unifiedStages calculado:", result.length, "colunas");
-
-    // Log para verificar as cores dos itens
-    result.forEach((stage) => {
-      stage.items.forEach((item) => {
-        console.log(`📦 Item ${item.id} - ${item.title}:`, {
-          flowColor: item.flowColor,
-          flowName: item.flowName,
-          stage: stage.name,
-        });
-      });
-    });
-
     return result;
-  }, [boards, refreshKey]);
+  }, [boards, refreshKey, itemsPendingRemoval, shouldShowItem]);
 
   // ===========================================================================
   // 🔥 HOOK DE DRAG
@@ -1994,7 +2190,6 @@ export default function ProductFlowKanban() {
     setItems: () => {},
     idField: "stageId",
 
-    // 🔥 Callback de movimento simplificado
     moveCallback: async (itemId, newStageId, responsibleId, type) => {
       console.log("🎯 [moveCallback] Iniciando movimento:", {
         itemId,
@@ -2014,23 +2209,51 @@ export default function ProductFlowKanban() {
       try {
         const response = await api.put(`/flow/items/${itemId}/move`, payload);
         console.log("✅ [moveCallback] Resposta do servidor:", response.data);
+
+        // 🔥 IMPORTANTE: Buscar o nome da stage destino no board original
+        const movedItem = response.data;
+
+        // Buscar o board do item
+        const itemBoard = boards.find((b) => b.id === movedItem.flowId);
+
+        if (itemBoard) {
+          // Buscar a stage pelo ID no board original
+          const targetStage = itemBoard.stages.find((s) => s.id === newStageId);
+
+          if (targetStage) {
+            lastMovedItemRef.current = {
+              id: itemId,
+              targetStageId: newStageId,
+              targetStageName: targetStage.name, // 🔥 Guarda o NOME, não o ID
+            };
+            console.log(
+              "📦 Informações salvas no ref:",
+              lastMovedItemRef.current,
+            );
+          } else {
+            console.error(
+              "❌ Stage destino não encontrada no board original:",
+              {
+                boardId: itemBoard.id,
+                boardName: itemBoard.name,
+                newStageId,
+                availableStages: itemBoard.stages.map((s) => ({
+                  id: s.id,
+                  name: s.name,
+                })),
+              },
+            );
+          }
+        } else {
+          console.error(
+            "❌ Board não encontrado para o fluxo:",
+            movedItem.flowId,
+          );
+        }
+
         return response.data;
       } catch (error: any) {
         console.error("❌ [moveCallback] Erro:", error);
-
-        console.error("Detalhes do erro:", {
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          data: error.response?.data,
-          message: error.message,
-        });
-
-        if (error.response?.status === 500) {
-          console.warn(
-            "⚠️ [moveCallback] Erro 500 detectado - pode ter sido sucesso no backend",
-          );
-          return { success: true, warning: "Erro 500 ignorado" };
-        }
         throw error;
       }
     },
@@ -2095,8 +2318,132 @@ export default function ProductFlowKanban() {
     },
 
     onMoveSuccess: async () => {
+      console.log(
+        "🔄 [onMoveSuccess] ========================================",
+      );
       console.log("🔄 [onMoveSuccess] Movimento concluído com sucesso!");
+      console.log("📌 Timestamp:", new Date().toISOString());
+      console.log(
+        "🔄 [onMoveSuccess] ========================================",
+      );
 
+      // ===========================================================================
+      // 🔥 PASSO 1: PEGAR O ÚLTIMO ITEM MOVIDO DO REF
+      // ===========================================================================
+      const lastMoved = lastMovedItemRef.current;
+      console.log("📦 lastMovedItemRef.current:", lastMoved);
+
+      // ===========================================================================
+      // 🔥 PASSO 2: SE TIVER ITEM MOVIDO, VERIFICAR SE É ÚLTIMA ETAPA
+      // ===========================================================================
+      if (lastMoved) {
+        console.log("📦 Último item movido:", {
+          id: lastMoved.id,
+          targetStageName: lastMoved.targetStageName,
+          targetStageId: lastMoved.targetStageId,
+        });
+
+        // 🔥 Buscar a última etapa no unifiedStages (comparação por NOME)
+        const lastStage = unifiedStages[unifiedStages.length - 1];
+
+        console.log("🎯 Última etapa no unifiedStages:", {
+          name: lastStage?.name,
+          id: lastStage?.id,
+        });
+
+        console.log("🎯 Target stage name:", lastMoved.targetStageName);
+
+        const isLastStage =
+          lastStage && lastMoved.targetStageName === lastStage.name;
+        console.log("🎯 É última etapa?", isLastStage);
+
+        // ===========================================================================
+        // 🔥 PASSO 3: SE FOR ÚLTIMA ETAPA, INICIAR CONTAGEM REGRESSIVA
+        // ===========================================================================
+        if (isLastStage) {
+          console.log(
+            "⏰ É a última etapa! Iniciando contagem de 3 segundos...",
+          );
+
+          // Inicia contagem de 3 segundos (item fica visível na tela)
+          console.log("⏰ Chamando startItemRemovalTimer para:", lastMoved.id);
+          startItemRemovalTimer(lastMoved.id);
+
+          // ===========================================================================
+          // 🔥 PASSO 4: AGENDAR BUSCA DOS BOARDS APÓS 10 SEGUNDOS
+          // ===========================================================================
+          const buscaAgendada = Date.now() + 10000;
+          console.log(
+            `⏰ Agendando busca para daqui 10s (${new Date(buscaAgendada).toISOString()})`,
+          );
+
+          setTimeout(async () => {
+            console.log("\n" + "=".repeat(50));
+            console.log(
+              `🔄 EXECUTANDO BUSCA AGENDADA para item ${lastMoved.id} em ${new Date().toISOString()}`,
+            );
+            console.log("=".repeat(50));
+
+            try {
+              // Verificar se existem filtros ativos
+              const hasFilters =
+                activeFilterStartDate ||
+                activeFilterEndDate ||
+                activeFilterOverdue ||
+                activeFilterUpcoming ||
+                activeColumnNameFilter;
+
+              console.log("📊 hasFilters:", hasFilters);
+              console.log("📊 activeFilterStartDate:", activeFilterStartDate);
+              console.log("📊 activeFilterEndDate:", activeFilterEndDate);
+              console.log("📊 activeFilterOverdue:", activeFilterOverdue);
+              console.log("📊 activeFilterUpcoming:", activeFilterUpcoming);
+              console.log("📊 activeColumnNameFilter:", activeColumnNameFilter);
+
+              // Buscar boards com ou sem filtros
+              if (hasFilters) {
+                console.log("📊 Aplicando filtros na busca pós-conclusão...");
+                await fetchFilteredBoards();
+              } else {
+                console.log(
+                  "📊 Buscando boards selecionados na pós-conclusão...",
+                );
+                await fetchSelectedBoards();
+              }
+
+              // Forçar recálculo do unifiedStages
+              console.log("✅ fetch concluído, chamando setRefreshKey");
+              setRefreshKey((prev) => {
+                console.log(`🔄 RefreshKey: ${prev} -> ${prev + 1}`);
+                return prev + 1;
+              });
+
+              console.log(
+                `✅ Boards atualizados após conclusão do item ${lastMoved.id}!`,
+              );
+            } catch (error: any) {
+              console.error("❌ Erro ao buscar boards após conclusão:", error);
+              console.error("❌ Status:", error.response?.status);
+              console.error("❌ Data:", error.response?.data);
+              console.error("❌ Message:", error.message);
+            }
+          }, 10000); // 10 segundos
+        } else {
+          console.log("⏭️ Não é a última etapa, ignorando contagem");
+        }
+
+        // ===========================================================================
+        // 🔥 PASSO 5: LIMPAR O REF (DEPOIS DE USAR)
+        // ===========================================================================
+        console.log("🧹 Limpando lastMovedItemRef");
+        lastMovedItemRef.current = null;
+      } else {
+        console.log("⚠️ Nenhum item encontrado no ref");
+      }
+
+      // ===========================================================================
+      // 🔥 PASSO 6: PRIMEIRA BUSCA IMEDIATA (já existente)
+      // ===========================================================================
       const hasFilters =
         activeFilterStartDate ||
         activeFilterEndDate ||
@@ -2104,7 +2451,8 @@ export default function ProductFlowKanban() {
         activeFilterUpcoming ||
         activeColumnNameFilter;
 
-      console.log("📊 [onMoveSuccess] Verificando filtros:", { hasFilters });
+      console.log("\n📊 Primeira busca imediata:");
+      console.log("📊 hasFilters:", hasFilters);
 
       try {
         if (hasFilters) {
@@ -2117,27 +2465,24 @@ export default function ProductFlowKanban() {
           await fetchSelectedBoards();
         }
 
-        setRefreshKey((prev) => prev + 1);
+        console.log("✅ Primeira busca concluída, chamando setRefreshKey");
+        setRefreshKey((prev) => {
+          console.log(`🔄 RefreshKey: ${prev} -> ${prev + 1}`);
+          return prev + 1;
+        });
+
         console.log("✅ [onMoveSuccess] Boards recarregados com sucesso!");
       } catch (error) {
         console.error("❌ [onMoveSuccess] Erro ao recarregar boards:", error);
       }
+
+      console.log(
+        "🔄 [onMoveSuccess] ========================================\n",
+      );
     },
 
     onMoveError: (error) => {
       console.error("❌ [onMoveError] Erro no movimento:", error);
-
-      let errorMessage = "Erro ao mover item";
-
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
-      // toast.error(errorMessage, {
-      //   description: "Tente novamente ou atualize a página",
-      // });
     },
   });
 
@@ -2527,7 +2872,9 @@ export default function ProductFlowKanban() {
           // Seu código existente do KanbanBoard
           unifiedStages.map((stage, index) => {
             const hasPermission = canUserEditStage(stage);
-            const filteredItems = filterColumnItems(stage);
+            // const filteredItems = filterColumnItems(stage);
+
+             const filteredItems = filterColumnItems(stage); // ✅ USA O FILTRO
 
             const isOverdueActive =
               activeColumnFilter.columnId === stage.id &&
@@ -2539,10 +2886,10 @@ export default function ProductFlowKanban() {
 
             return (
               <KanbanColumn
-                key={stage.id}
+                key={`${stage.id}-${refreshKey}-${itemsPendingRemoval.size}`} // 🔥 CHAVE DINÂMICA
                 id={stage.id}
                 title={stage.name}
-                count={filteredItems.length}
+      count={filteredItems.length} // ✅ USA filteredItems (já inclui todos os filtros)
                 color={stage.color}
                 isFirstColumn={index === 0}
                 onDropItem={(itemId) => {
@@ -2663,20 +3010,21 @@ export default function ProductFlowKanban() {
                 )}
 
                 {filteredItems.map((item) => {
+                  // ✅ USA stage.items (já filtrado)
                   console.log("Renderizando card:", {
                     id: item.id,
                     title: item.title,
-                    flowColor: item.flowColor,
-                    flowName: item.flowName,
-                    stageId: item.stageId,
+                    status: item.status,
+                    shouldShow: shouldShowItem(item),
+                    itemsPendingRemoval: Array.from(itemsPendingRemoval),
                   });
+
                   return (
                     <KanbanCard
                       key={item.id}
                       id={item.id}
                       title={item.title}
                       subtitle={item.productRef}
-                      // 🔥 CORRIGIDO: Usar a cor da coleção do item, não da coluna
                       priorityColor={item.flowColor}
                       coverImage={item.images[0]?.url}
                       onDragStart={
@@ -2719,7 +3067,6 @@ export default function ProductFlowKanban() {
                             <Package size={10} className="inline mr-1" />
                             {item.quantity}
                           </span>
-                          {/* 🔥 AQUI TAMBÉM ESTÁ CORRETO - usa item.flowColor */}
                           <div
                             className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
                             style={{ backgroundColor: item.flowColor }}
@@ -3159,6 +3506,10 @@ export default function ProductFlowKanban() {
         }
         nextStage={nextStageForCompletion}
         isLoading={isSubmitting}
+        currentQuantity={completingItem?.quantity}
+        hasQuantity={
+          completingItem?.quantity ? completingItem.quantity > 0 : false
+        }
       />
       <CompleteStageModal
         isOpen={isDragModalOpen}
@@ -3182,6 +3533,13 @@ export default function ProductFlowKanban() {
           // 🔥 Passa a quantidade atual do item
           unifiedStages.flatMap((s) => s.items).find((i) => i.id === dragItemId)
             ?.quantity
+        }
+        hasQuantity={
+          dragItemId
+            ? (unifiedStages
+                .flatMap((s) => s.items)
+                .find((i) => i.id === dragItemId)?.quantity ?? 0) > 0
+            : false
         }
       />
       {/* 🔥 ALERT DIALOG SIMPLES */}

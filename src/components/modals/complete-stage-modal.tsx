@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2, User, Building2, Package } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "@/services/api";
 import { toast } from "sonner";
 
@@ -35,9 +35,12 @@ interface CompleteStageModalProps {
     id: string;
     name: string;
     allowedRole?: string | null;
+    isAfterCorte?: boolean;
   } | null;
   isLoading?: boolean;
   currentQuantity?: number;
+  // 🔥 NOVA PROP: indica se o item JÁ TEM quantidade definida
+  hasQuantity?: boolean;
 }
 
 interface UserProfile {
@@ -55,27 +58,6 @@ interface Supplier {
   state?: string;
 }
 
-// 🔥 CONSTANTES PARA IDENTIFICAR ETAPAS
-const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
-const MODELAGEM_KEYWORDS = ["modelagem", "modelista", "modelo", "pilotagem"];
-
-// 🔥 FUNÇÃO PARA VERIFICAR SE UMA ETAPA É DEPOIS DO CORTE
-const isAfterCorte = (stageName: string): boolean => {
-  const name = stageName?.toLowerCase().trim() || "";
-
-  // Se for Modelagem ou Corte, está antes
-  if (MODELAGEM_KEYWORDS.some((keyword) => name.includes(keyword))) {
-    return false;
-  }
-
-  if (CORTE_KEYWORDS.some((keyword) => name.includes(keyword))) {
-    return false;
-  }
-
-  // Qualquer outra etapa é considerada depois do Corte
-  return true;
-};
-
 export function CompleteStageModal({
   isOpen,
   onClose,
@@ -85,6 +67,7 @@ export function CompleteStageModal({
   nextStage,
   isLoading = false,
   currentQuantity = 1,
+  hasQuantity = false, // 🔥 PADRÃO: false (não tem quantidade)
 }: CompleteStageModalProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
@@ -95,15 +78,68 @@ export function CompleteStageModal({
   const [confirming, setConfirming] = useState(false);
 
   // ===========================================================================
+  // 🔥 CONSTANTES PARA IDENTIFICAR ETAPAS
+  // ===========================================================================
+  const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
+  const MODELAGEM_KEYWORDS = ["modelagem", "modelista", "modelo", "pilotagem"];
+
+  // ===========================================================================
+  // 🔥 FUNÇÃO DE FALLBACK PARA CALCULAR SE A ETAPA É DEPOIS DO CORTE
+  // ===========================================================================
+  const isAfterCorteFallback = (stageName: string): boolean => {
+    const name = stageName?.toLowerCase().trim() || "";
+    
+    if (MODELAGEM_KEYWORDS.some((keyword) => name.includes(keyword))) {
+      return false;
+    }
+
+    if (CORTE_KEYWORDS.some((keyword) => name.includes(keyword))) {
+      return false;
+    }
+
+    return true;
+  };
+
+  // ===========================================================================
   // 🔥 ESTADO DA QUANTIDADE
   // ===========================================================================
   const [quantity, setQuantity] = useState<number>(currentQuantity);
   const [quantityError, setQuantityError] = useState<string>("");
 
-  // 🔥 REGRA CORRETA: verificar se a PRÓXIMA ETAPA é depois do Corte
-  const isNextStageAfterCorte = nextStage
-    ? isAfterCorte(nextStage.name)
-    : false;
+  // ===========================================================================
+  // 🔥 DETERMINA SE A PRÓXIMA ETAPA É DEPOIS DO CORTE
+  // ===========================================================================
+  const isNextStageAfterCorte = useMemo(() => {
+    if (!nextStage) return false;
+    
+    if (nextStage.isAfterCorte !== undefined) {
+      return nextStage.isAfterCorte;
+    }
+    
+    return isAfterCorteFallback(nextStage.name);
+  }, [nextStage]);
+
+  // ===========================================================================
+  // 🔥 REGRA DE NEGÓCIO: QUANDO MOSTRAR O CAMPO DE QUANTIDADE?
+  // Só mostra se:
+  // 1. A próxima etapa é depois do Corte E
+  // 2. O item AINDA NÃO TEM quantidade definida
+  // ===========================================================================
+  const shouldShowQuantity = isNextStageAfterCorte && !hasQuantity;
+
+  // Log para debug
+  useEffect(() => {
+    if (nextStage) {
+      console.log("📦 CompleteStageModal - nextStage:", {
+        name: nextStage.name,
+        isAfterCorteFromProps: nextStage.isAfterCorte,
+        isAfterCorteCalculated: isAfterCorteFallback(nextStage.name),
+        isNextStageAfterCorte,
+        hasQuantity,
+        shouldShowQuantity,
+      });
+    }
+  }, [nextStage, isNextStageAfterCorte, hasQuantity, shouldShowQuantity]);
 
   // Reset estado quando o modal abre
   useEffect(() => {
@@ -113,7 +149,6 @@ export function CompleteStageModal({
       setQuantity(currentQuantity);
       setQuantityError("");
 
-      // 🔥 Verifica APENAS para decidir se busca usuários ou fornecedores
       const isOficina = nextStage?.name?.trim().toLowerCase() === "oficina";
 
       if (isOficina) {
@@ -125,42 +160,38 @@ export function CompleteStageModal({
   }, [isOpen, nextStage, currentQuantity]);
 
   // ===========================================================================
-  // 🔥 VALIDAÇÃO DA QUANTIDADE - PERMITE DIGITAR 0 MAS BLOQUEIA NO CONFIRM
+  // 🔥 VALIDAÇÃO DA QUANTIDADE
   // ===========================================================================
- // ===========================================================================
-// 🔥 VALIDAÇÃO DA QUANTIDADE - PERMITE ZERO SEM MENSAGEM DE ERRO
-// ===========================================================================
-const validateQuantity = (value: number): boolean => {
-  if (value < 0) {
-    setQuantityError("A quantidade não pode ser negativa");
-    return false;
-  }
-  if (value > 999999) {
-    setQuantityError("Quantidade muito alta (máximo: 999.999)");
-    return false;
-  }
-  
-  // ✅ NÃO MOSTRA MAIS MENSAGEM PARA ZERO
-  setQuantityError("");
-  return true;
-};
+  const validateQuantity = (value: number): boolean => {
+    if (value < 0) {
+      setQuantityError("A quantidade não pode ser negativa");
+      return false;
+    }
+    if (value > 999999) {
+      setQuantityError("Quantidade muito alta (máximo: 999.999)");
+      return false;
+    }
+
+    setQuantityError("");
+    return true;
+  };
 
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const value = e.target.value;
-  
-  if (value === "") {
-    setQuantity(0);
-    setQuantityError(""); // ✅ SEM MENSAGEM
-    return;
-  }
+    const value = e.target.value;
 
-  const numValue = Number(value);
-  
-  if (!isNaN(numValue)) {
-    setQuantity(numValue);
-    validateQuantity(numValue);
-  }
-};
+    if (value === "") {
+      setQuantity(0);
+      setQuantityError("");
+      return;
+    }
+
+    const numValue = Number(value);
+
+    if (!isNaN(numValue)) {
+      setQuantity(numValue);
+      validateQuantity(numValue);
+    }
+  };
 
   const fetchUsersByRole = async () => {
     if (
@@ -219,16 +250,6 @@ const validateQuantity = (value: number): boolean => {
   };
 
   const handleConfirm = async () => {
-    // ===========================================================================
-    // 🔥 VALIDAÇÃO DA QUANTIDADE - REMOVIDA! Agora só no backend
-    // ===========================================================================
-    // if (isNextStageAfterCorte) {
-    //   if (quantity < 1) {
-    //     toast.error("Quantidade deve ser maior que zero");
-    //     return;
-    //   }
-    // }
-
     const isOficina = nextStage?.name?.trim().toLowerCase() === "oficina";
 
     if (isOficina) {
@@ -245,8 +266,9 @@ const validateQuantity = (value: number): boolean => {
 
     setConfirming(true);
     try {
-      // 🔥 Só passa a quantidade se a próxima etapa for depois do Corte
-      if (isNextStageAfterCorte) {
+      // 🔥 Só passa a quantidade se o campo for mostrado (primeira etapa após corte)
+      // Caso contrário, não passa (usa a quantidade já existente)
+      if (shouldShowQuantity) {
         await onConfirm(
           isOficina ? selectedSupplierId : selectedUserId,
           isOficina ? "supplier" : "user",
@@ -260,7 +282,6 @@ const validateQuantity = (value: number): boolean => {
       }
       onClose();
     } catch (error: any) {
-      // 🔥 Aqui você pode capturar o erro do backend e exibir
       const errorMsg =
         error.response?.data?.message || "Erro ao concluir etapa";
       toast.error(errorMsg);
@@ -326,12 +347,18 @@ const validateQuantity = (value: number): boolean => {
                 {nextStage.name}
               </span>
             </div>
+            {hasQuantity && (
+              <div className="mt-2 text-xs text-slate-500 flex items-center gap-1">
+                <Package size={12} className="text-orange-500" />
+                Quantidade já definida: {currentQuantity} un
+              </div>
+            )}
           </div>
 
           {/* =========================================================================== */}
-          {/* 🔥 CAMPO DE QUANTIDADE - PERMITE DIGITAR 0 MAS MOSTRA AVISO */}
+          {/* 🔥 CAMPO DE QUANTIDADE - SÓ APARECE NA PRIMEIRA ETAPA APÓS O CORTE */}
           {/* =========================================================================== */}
-          {isNextStageAfterCorte && (
+          {shouldShowQuantity && (
             <div className="space-y-2">
               <Label className="flex items-center gap-1">
                 <Package size={16} className="text-slate-400" />
@@ -353,9 +380,7 @@ const validateQuantity = (value: number): boolean => {
                 </div>
               </div>
               {quantityError && (
-                <p
-                  className={`text-xs ${quantity === 0 ? "text-amber-600" : "text-red-500"} mt-1`}
-                >
+                <p className="text-xs text-red-500 mt-1">
                   {quantityError}
                 </p>
               )}
@@ -487,7 +512,6 @@ const validateQuantity = (value: number): boolean => {
               loadingSuppliers ||
               confirming ||
               isLoading
-              // 🔥 REMOVIDO: qualquer referência a quantity
             }
             className="bg-orange-600 hover:bg-orange-700 text-white"
           >
