@@ -24,7 +24,11 @@ import { toast } from "sonner";
 interface CompleteStageModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (responsibleId: string, type: 'user' | 'supplier', quantity?: number) => Promise<void>;
+  onConfirm: (
+    responsibleId: string,
+    type: "user" | "supplier",
+    quantity?: number,
+  ) => Promise<void>;
   itemTitle: string;
   currentStage: string;
   nextStage: {
@@ -51,6 +55,27 @@ interface Supplier {
   state?: string;
 }
 
+// 🔥 CONSTANTES PARA IDENTIFICAR ETAPAS
+const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
+const MODELAGEM_KEYWORDS = ["modelagem", "modelista", "modelo", "pilotagem"];
+
+// 🔥 FUNÇÃO PARA VERIFICAR SE UMA ETAPA É DEPOIS DO CORTE
+const isAfterCorte = (stageName: string): boolean => {
+  const name = stageName?.toLowerCase().trim() || "";
+
+  // Se for Modelagem ou Corte, está antes
+  if (MODELAGEM_KEYWORDS.some((keyword) => name.includes(keyword))) {
+    return false;
+  }
+
+  if (CORTE_KEYWORDS.some((keyword) => name.includes(keyword))) {
+    return false;
+  }
+
+  // Qualquer outra etapa é considerada depois do Corte
+  return true;
+};
+
 export function CompleteStageModal({
   isOpen,
   onClose,
@@ -75,8 +100,10 @@ export function CompleteStageModal({
   const [quantity, setQuantity] = useState<number>(currentQuantity);
   const [quantityError, setQuantityError] = useState<string>("");
 
-  // 🔥 ÚNICA VERIFICAÇÃO: a coluna ATUAL é CORTE?
-  const isCorteColumn = currentStage?.trim().toLowerCase() === 'corte';
+  // 🔥 REGRA CORRETA: verificar se a PRÓXIMA ETAPA é depois do Corte
+  const isNextStageAfterCorte = nextStage
+    ? isAfterCorte(nextStage.name)
+    : false;
 
   // Reset estado quando o modal abre
   useEffect(() => {
@@ -85,10 +112,10 @@ export function CompleteStageModal({
       setSelectedSupplierId("");
       setQuantity(currentQuantity);
       setQuantityError("");
-      
+
       // 🔥 Verifica APENAS para decidir se busca usuários ou fornecedores
-      const isOficina = nextStage?.name?.trim().toLowerCase() === 'oficina';
-      
+      const isOficina = nextStage?.name?.trim().toLowerCase() === "oficina";
+
       if (isOficina) {
         fetchSuppliers();
       } else {
@@ -98,49 +125,56 @@ export function CompleteStageModal({
   }, [isOpen, nextStage, currentQuantity]);
 
   // ===========================================================================
-  // 🔥 VALIDAÇÃO DA QUANTIDADE - AGORA PERMITE 0 PARA TESTES
+  // 🔥 VALIDAÇÃO DA QUANTIDADE - PERMITE DIGITAR 0 MAS BLOQUEIA NO CONFIRM
   // ===========================================================================
-  const validateQuantity = (value: number): boolean => {
-    // 🔥 REMOVIDA a validação de > 0 para permitir 0 em testes
-    if (value < 0) {
-      setQuantityError("A quantidade não pode ser negativa");
-      return false;
-    }
-    if (value > 999999) {
-      setQuantityError("Quantidade muito alta (máximo: 999.999)");
-      return false;
-    }
-    setQuantityError("");
-    return true;
-  };
+ // ===========================================================================
+// 🔥 VALIDAÇÃO DA QUANTIDADE - PERMITE ZERO SEM MENSAGEM DE ERRO
+// ===========================================================================
+const validateQuantity = (value: number): boolean => {
+  if (value < 0) {
+    setQuantityError("A quantidade não pode ser negativa");
+    return false;
+  }
+  if (value > 999999) {
+    setQuantityError("Quantidade muito alta (máximo: 999.999)");
+    return false;
+  }
+  
+  // ✅ NÃO MOSTRA MAIS MENSAGEM PARA ZERO
+  setQuantityError("");
+  return true;
+};
 
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    
-    if (value === "") {
-      setQuantity(0);
-      setQuantityError("");
-      return;
-    }
+  const value = e.target.value;
+  
+  if (value === "") {
+    setQuantity(0);
+    setQuantityError(""); // ✅ SEM MENSAGEM
+    return;
+  }
 
-    const numValue = Number(value);
-    
-    if (!isNaN(numValue)) {
-      setQuantity(numValue);
-      validateQuantity(numValue);
-    }
-  };
+  const numValue = Number(value);
+  
+  if (!isNaN(numValue)) {
+    setQuantity(numValue);
+    validateQuantity(numValue);
+  }
+};
 
   const fetchUsersByRole = async () => {
-    if (!nextStage?.allowedRole || 
-        nextStage.allowedRole === "all" || 
-        nextStage.allowedRole === "null" ||
-        nextStage.allowedRole.trim() === "") {
-      
+    if (
+      !nextStage?.allowedRole ||
+      nextStage.allowedRole === "all" ||
+      nextStage.allowedRole === "null" ||
+      nextStage.allowedRole.trim() === ""
+    ) {
       setLoadingUsers(true);
       try {
         const response = await api.get("/users/company");
-        setAvailableUsers(response.data.filter((u: any) => u.status === "ACTIVE"));
+        setAvailableUsers(
+          response.data.filter((u: any) => u.status === "ACTIVE"),
+        );
       } catch (error) {
         toast.error("Erro ao carregar usuários");
         console.error(error);
@@ -152,11 +186,15 @@ export function CompleteStageModal({
 
     setLoadingUsers(true);
     try {
-      const response = await api.get(`/users/by-role?role=${encodeURIComponent(nextStage.allowedRole)}`);
+      const response = await api.get(
+        `/users/by-role?role=${encodeURIComponent(nextStage.allowedRole)}`,
+      );
       setAvailableUsers(response.data);
-      
+
       if (response.data.length === 0) {
-        toast.warning(`Nenhum usuário encontrado com o cargo "${nextStage.allowedRole}"`);
+        toast.warning(
+          `Nenhum usuário encontrado com o cargo "${nextStage.allowedRole}"`,
+        );
       }
     } catch (error) {
       toast.error("Erro ao carregar usuários disponíveis");
@@ -182,17 +220,16 @@ export function CompleteStageModal({
 
   const handleConfirm = async () => {
     // ===========================================================================
-    // 🔥 VALIDAÇÃO DA QUANTIDADE - AGORA PERMITE 0 PARA TESTES
+    // 🔥 VALIDAÇÃO DA QUANTIDADE - REMOVIDA! Agora só no backend
     // ===========================================================================
-    if (isCorteColumn) {
-      if (!validateQuantity(quantity)) {
-        toast.error(quantityError);
-        return;
-      }
-      // 🔥 REMOVIDA a verificação de quantity < 1
-    }
+    // if (isNextStageAfterCorte) {
+    //   if (quantity < 1) {
+    //     toast.error("Quantidade deve ser maior que zero");
+    //     return;
+    //   }
+    // }
 
-    const isOficina = nextStage?.name?.trim().toLowerCase() === 'oficina';
+    const isOficina = nextStage?.name?.trim().toLowerCase() === "oficina";
 
     if (isOficina) {
       if (!selectedSupplierId) {
@@ -208,28 +245,32 @@ export function CompleteStageModal({
 
     setConfirming(true);
     try {
-      // 🔥 Só passa a quantidade se estiver saindo do Corte
-      if (isCorteColumn) {
+      // 🔥 Só passa a quantidade se a próxima etapa for depois do Corte
+      if (isNextStageAfterCorte) {
         await onConfirm(
           isOficina ? selectedSupplierId : selectedUserId,
-          isOficina ? 'supplier' : 'user',
-          quantity
+          isOficina ? "supplier" : "user",
+          quantity,
         );
       } else {
         await onConfirm(
           isOficina ? selectedSupplierId : selectedUserId,
-          isOficina ? 'supplier' : 'user'
+          isOficina ? "supplier" : "user",
         );
       }
       onClose();
-    } catch (error) {
+    } catch (error: any) {
+      // 🔥 Aqui você pode capturar o erro do backend e exibir
+      const errorMsg =
+        error.response?.data?.message || "Erro ao concluir etapa";
+      toast.error(errorMsg);
       console.error(error);
     } finally {
       setConfirming(false);
     }
   };
 
-  const isOficina = nextStage?.name?.trim().toLowerCase() === 'oficina';
+  const isOficina = nextStage?.name?.trim().toLowerCase() === "oficina";
 
   if (!nextStage) {
     return (
@@ -288,25 +329,23 @@ export function CompleteStageModal({
           </div>
 
           {/* =========================================================================== */}
-          {/* 🔥 CAMPO DE QUANTIDADE - Aparece SOMENTE quando a COLUNA ATUAL é CORTE */}
-          {/* NÃO depende da coluna destino - pode ser QUALQUER UMA! */}
-          {/* AGORA PERMITE 0 PARA TESTES */}
+          {/* 🔥 CAMPO DE QUANTIDADE - PERMITE DIGITAR 0 MAS MOSTRA AVISO */}
           {/* =========================================================================== */}
-          {isCorteColumn && (
+          {isNextStageAfterCorte && (
             <div className="space-y-2">
               <Label className="flex items-center gap-1">
                 <Package size={16} className="text-slate-400" />
-                Quantidade do Item 
+                Quantidade do Item
               </Label>
               <div className="relative">
                 <Input
                   type="number"
-                  min="0" // 🔥 AGORA PERMITE 0
+                  min="0"
                   step="1"
-                  value={quantity === 0 ? "0" : quantity} // 🔥 Mostra 0 explicitamente
+                  value={quantity === 0 ? "0" : quantity}
                   onChange={handleQuantityChange}
                   placeholder="Digite a quantidade..."
-                  className={`pr-12 ${quantityError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                  className={`pr-12 ${quantityError ? "border-amber-500 focus-visible:ring-amber-500" : ""}`}
                   disabled={confirming || isLoading}
                 />
                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -314,9 +353,16 @@ export function CompleteStageModal({
                 </div>
               </div>
               {quantityError && (
-                <p className="text-xs text-red-500 mt-1">{quantityError}</p>
+                <p
+                  className={`text-xs ${quantity === 0 ? "text-amber-600" : "text-red-500"} mt-1`}
+                >
+                  {quantityError}
+                </p>
               )}
-              
+              <p className="text-xs text-slate-400">
+                * Quantidade obrigatória para itens que entram em etapas após o
+                Corte
+              </p>
             </div>
           )}
 
@@ -378,14 +424,6 @@ export function CompleteStageModal({
               <Label className="flex items-center gap-1">
                 <User size={16} className="text-slate-400" />
                 Responsável da Próxima Etapa
-                {/* {nextStage.allowedRole && 
-                 nextStage.allowedRole !== "all" && 
-                 nextStage.allowedRole !== "null" && 
-                 nextStage.allowedRole.trim() !== "" && (
-                  <span className="text-xs font-normal text-slate-400 ml-1">
-                    (Cargo necessário: {nextStage.allowedRole})
-                  </span>
-                )} */}
               </Label>
 
               {loadingUsers ? (
@@ -424,34 +462,32 @@ export function CompleteStageModal({
                 </Select>
               )}
 
-              {availableUsers.length === 0 && !loadingUsers && nextStage.allowedRole && (
-                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                  <span>⚠️</span>
-                  Nenhum usuário encontrado com o cargo &quot;{nextStage.allowedRole}&quot;
-                </p>
-              )}
+              {availableUsers.length === 0 &&
+                !loadingUsers &&
+                nextStage.allowedRole && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                    <span>⚠️</span>
+                    Nenhum usuário encontrado com o cargo &quot;
+                    {nextStage.allowedRole}&quot;
+                  </p>
+                )}
             </div>
           )}
         </div>
 
         <DialogFooter className="gap-2">
-          <Button 
-            variant="outline" 
-            onClick={onClose} 
-            disabled={confirming}
-          >
+          <Button variant="outline" onClick={onClose} disabled={confirming}>
             Cancelar
           </Button>
           <Button
             onClick={handleConfirm}
             disabled={
-              (isOficina ? !selectedSupplierId : !selectedUserId) || 
-              loadingUsers || 
-              loadingSuppliers || 
-              confirming || 
-              isLoading ||
-              // 🔥 AGORA SÓ BLOQUEIA SE FOR NEGATIVO, NÃO MAIS POR SER 0
-              (isCorteColumn && quantity < 0)
+              (isOficina ? !selectedSupplierId : !selectedUserId) ||
+              loadingUsers ||
+              loadingSuppliers ||
+              confirming ||
+              isLoading
+              // 🔥 REMOVIDO: qualquer referência a quantity
             }
             className="bg-orange-600 hover:bg-orange-700 text-white"
           >

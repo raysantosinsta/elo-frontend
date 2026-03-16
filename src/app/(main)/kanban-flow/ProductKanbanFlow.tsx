@@ -494,51 +494,52 @@ export default function ProductFlowKanban() {
   // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL
   // ===========================================================================
   const handleCompleteWithResponsible = async (
-    responsibleId: string,
-    type: "user" | "supplier",
-  ) => {
-    if (!completingItem || !nextStageForCompletion) return;
+  responsibleId: string,
+  type: "user" | "supplier",
+) => {
+  if (!completingItem || !nextStageForCompletion) return;
 
-    toast.loading("Concluindo etapa...", { id: "complete-stage" });
+  const toastId = toast.loading("Concluindo etapa..."); // SEM ID
 
-    try {
-      const payload: any = { newStageId: nextStageForCompletion.id };
+  try {
+    const payload: any = { newStageId: nextStageForCompletion.id };
 
-      if (type === "user") {
-        payload.assignedToId = responsibleId;
-      } else {
-        payload.supplierId = responsibleId;
-      }
-
-      await api.put(`/flow/items/${completingItem.id}/move`, payload);
-
-      // toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
-      //   id: "complete-stage",
-      // });
-
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
-      }
-
-      setIsCompleteStageModalOpen(false);
-      setCompletingItem(null);
-      setNextStageForCompletion(null);
-    } catch (error: any) {
-      const errorMsg =
-        error.response?.data?.message || "Erro ao concluir etapa.";
-      console.log(errorMsg);
-      // toast.error(errorMsg, { id: "complete-stage" });
+    if (type === "user") {
+      payload.assignedToId = responsibleId;
+    } else {
+      payload.supplierId = responsibleId;
     }
-  };
+
+    await api.put(`/flow/items/${completingItem.id}/move`, payload);
+
+    toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
+      id: toastId, // USA O MESMO ID PARA SUBSTITUIR
+    });
+
+    const hasFilters =
+      activeFilterStartDate ||
+      activeFilterEndDate ||
+      activeFilterOverdue ||
+      activeFilterUpcoming ||
+      activeColumnNameFilter;
+
+    if (hasFilters) {
+      await fetchFilteredBoards();
+    } else {
+      await fetchSelectedBoards();
+    }
+
+    setIsCompleteStageModalOpen(false);
+    setCompletingItem(null);
+    setNextStageForCompletion(null);
+  } catch (error: any) {
+    const errorMsg = error.response?.data?.message || "Erro ao concluir etapa.";
+    toast.error(errorMsg, {
+      id: toastId, // USA O MESMO ID PARA SUBSTITUIR
+      duration: 4000,
+    });
+  }
+};
 
   // ===========================================================================
   // 🛡️ LÓGICA DE PERMISSÃO
