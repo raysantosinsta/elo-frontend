@@ -7,6 +7,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Edit,
+  EyeOff,
   Factory,
   Layers,
   Loader2,
@@ -52,6 +53,7 @@ import { api } from "@/services/api";
 
 // Import do componente de histórico
 import { AuditLogEntry, FlowHistoryModal } from "./flow-history-modal";
+import { useProductRefPermission } from "@/hooks/use-product-ref-permission";
 
 // --- INTERFACES ---
 
@@ -942,6 +944,12 @@ export function FlowItemModal({
     return `${nameWithoutExt.substring(0, keepChars)}...${nameWithoutExt.substring(nameWithoutExt.length - keepChars)}${ext}`;
   };
 
+  const { canManageRef, canViewRef } = useProductRefPermission();
+
+  // Determine se o campo deve ser editável
+  const isRefEditable = !isReadOnly && canManageRef;
+  const canSeeRef = !isReadOnly || canViewRef;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl h-[95vh] md:h-[90vh] flex flex-col p-0 overflow-hidden">
@@ -1220,14 +1228,40 @@ export function FlowItemModal({
                           name="productRef"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Referência</FormLabel>
+                              <FormLabel className="flex items-center gap-2">
+                                Referência do Produto
+                                {!canManageRef && !isReadOnly && (
+                                  <span className="text-xs text-amber-600 flex items-center gap-1">
+                                    <Lock size={10} /> (apenas modelagem)
+                                  </span>
+                                )}
+                              </FormLabel>
                               <FormControl>
-                                <Input
-                                  placeholder="REF-001"
-                                  {...field}
-                                  disabled={isReadOnly}
-                                />
+                                <div className="relative">
+                                  <Input
+                                    placeholder="REF-001"
+                                    {...field}
+                                    disabled={!isRefEditable}
+                                    className={cn(
+                                      !canSeeRef &&
+                                        "bg-slate-100 text-slate-400",
+                                    )}
+                                  />
+                                  {!canSeeRef && (
+                                    <div className="absolute inset-0 bg-slate-50/80 flex items-center justify-center text-xs text-slate-400">
+                                      <EyeOff size={12} className="mr-1" />
+                                      Sem permissão para visualizar
+                                    </div>
+                                  )}
+                                </div>
                               </FormControl>
+                              {!canManageRef && !isReadOnly && (
+                                <p className="text-[10px] text-amber-600 mt-1">
+                                  ⚠️ Apenas usuários com cargo de modelagem
+                                  podem editar este campo
+                                </p>
+                              )}
+                              <FormMessage />
                             </FormItem>
                           )}
                         />

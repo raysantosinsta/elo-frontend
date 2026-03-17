@@ -7,8 +7,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { useProductRefPermission } from "@/hooks/use-product-ref-permission";
 import { cn } from "@/lib/utils";
-import { Edit, Eye, MoreHorizontal, Trash2, CheckCircle2 } from "lucide-react";
+import { Edit, Eye, MoreHorizontal, Trash2, CheckCircle2, EyeOff, Lock } from "lucide-react";
 import React from "react";
 
 export interface KanbanCardProps {
@@ -54,8 +55,23 @@ export function KanbanCard({
   extraMenuItems,
   children
 }: KanbanCardProps) {
+
+  const { canViewRef, canManageRef } = useProductRefPermission();
   
   const hasActions = onComplete || onView || onEdit || onDelete || extraMenuItems;
+
+ const renderSubtitle = () => {
+  if (!subtitle) return null;
+
+  if (canViewRef) {  // 🔥 TODOS QUE PODEM VER (que é todo mundo)
+    return (
+      <p className="text-[9px] text-slate-500 font-mono mt-0.5 uppercase truncate leading-tight">
+        {subtitle}
+      </p>
+    );
+  }
+  // Se não pode ver (nunca acontece, porque canViewRef é true para todos)
+};
 
   return (
     <Card
@@ -68,6 +84,17 @@ export function KanbanCard({
       )}
       style={{ borderLeftColor: priorityColor }}
     >
+
+        {/* Badge de permissão (opcional - para usuários sem acesso)
+      {!canManageRef && subtitle && (
+        <div className="absolute top-1 right-1 z-10">
+          <div className="text-[8px] bg-slate-800/70 text-white px-1.5 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-sm">
+            <Lock size={8} />
+            <span>Leitura</span>
+          </div>
+        </div>
+      )} */}
+
       {/* 🖼️ IMAGEM MAIS COMPACTA */}
       {coverImage && (
         <div className="w-full h-24 flex-shrink-0 overflow-hidden bg-slate-100">
@@ -152,11 +179,8 @@ export function KanbanCard({
             <h4 className="font-semibold text-xs text-slate-700 line-clamp-2 leading-snug group-hover:text-[#D35400] transition-colors">
               {title}
             </h4>
-            {subtitle && (
-              <p className="text-[9px] text-slate-500 font-mono mt-0.5 uppercase truncate leading-tight">
-                {subtitle}
-              </p>
-            )}
+            {/* 🔥 Subtítulo com controle de permissão */}
+          {renderSubtitle()}
         </div>
 
         {/* Conteúdo/Descrição - COM MENOS ESPAÇO */}
