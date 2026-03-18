@@ -644,58 +644,67 @@ export default function ProductFlowKanban() {
 
     setIsCompleteStageModalOpen(true);
   };
+// ===========================================================================
+// 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL - CORRIGIDA (ADICIONA QUANTIDADE)
+// ===========================================================================
+const handleCompleteWithResponsible = async (
+  responsibleId: string,
+  type: "user" | "supplier",
+  quantity?: number, // 🔥 ADICIONA O PARÂMETRO QUANTIDADE (OPCIONAL)
+) => {
+  if (!completingItem || !nextStageForCompletion) return;
 
-  // ===========================================================================
-  // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL
-  // ===========================================================================
-  const handleCompleteWithResponsible = async (
-    responsibleId: string,
-    type: "user" | "supplier",
-  ) => {
-    if (!completingItem || !nextStageForCompletion) return;
+  const toastId = toast.loading("Concluindo etapa...");
 
-    const toastId = toast.loading("Concluindo etapa..."); // SEM ID
-
-    try {
-      const payload: any = { newStageId: nextStageForCompletion.id };
-
-      if (type === "user") {
-        payload.assignedToId = responsibleId;
-      } else {
-        payload.supplierId = responsibleId;
-      }
-
-      await api.put(`/flow/items/${completingItem.id}/move`, payload);
-
-      toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
-        id: toastId, // USA O MESMO ID PARA SUBSTITUIR
-      });
-
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
-      }
-
-      setIsCompleteStageModalOpen(false);
-      setCompletingItem(null);
-      setNextStageForCompletion(null);
-    } catch (error: any) {
-      const errorMsg =
-        error.response?.data?.message || "Erro ao concluir etapa.";
-      toast.error(errorMsg, {
-        id: toastId, // USA O MESMO ID PARA SUBSTITUIR
-        duration: 4000,
+  try {
+    // 🔥 PASSO 1: Se tiver quantidade, atualizar o item primeiro
+    if (quantity !== undefined) {
+      console.log(`📝 [COMPLETE] Atualizando quantidade para: ${quantity}`);
+      await api.put(`/flow/items/${completingItem.id}`, {
+        quantity: quantity,
       });
     }
-  };
+
+    // 🔥 PASSO 2: Mover o item
+    const payload: any = { newStageId: nextStageForCompletion.id };
+
+    if (type === "user") {
+      payload.assignedToId = responsibleId;
+    } else {
+      payload.supplierId = responsibleId;
+    }
+
+    await api.put(`/flow/items/${completingItem.id}/move`, payload);
+
+    toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
+      id: toastId,
+    });
+
+    const hasFilters =
+      activeFilterStartDate ||
+      activeFilterEndDate ||
+      activeFilterOverdue ||
+      activeFilterUpcoming ||
+      activeColumnNameFilter;
+
+    if (hasFilters) {
+      await fetchFilteredBoards();
+    } else {
+      await fetchSelectedBoards();
+    }
+
+    setIsCompleteStageModalOpen(false);
+    setCompletingItem(null);
+    setNextStageForCompletion(null);
+  } catch (error: any) {
+    const errorMsg =
+      error.response?.data?.message || "Erro ao concluir etapa.";
+    toast.error(errorMsg, {
+      id: toastId,
+      duration: 4000,
+    });
+  }
+};
 
   // ===========================================================================
   // 🛡️ LÓGICA DE PERMISSÃO
