@@ -13,6 +13,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSidebar } from "@/hooks/SidebarContext";
 import { useNotifications } from "@/hooks/use-app-features";
 import { cn } from "@/lib/utils";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import {
   BarChart,
   BarChart2,
@@ -20,6 +22,7 @@ import {
   Bell,
   Calendar,
   CarFront,
+  CheckCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -28,12 +31,13 @@ import {
   KanbanSquare,
   LayoutDashboard,
   MessageSquare,
-  Shield, // 👈 IMPORT ADICIONADO
-  Users,
+  RefreshCw,
+  Shield,
+  Users
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 // --- 1. DEFINIÇÃO DA ESTRUTURA DO MENU ---
 const menuItems = [
@@ -44,6 +48,7 @@ const menuItems = [
       { title: "Company", href: "/" },
       { title: "Usuario", href: "/dashboard-user" },
       { title: "Coleção", href: "/colecao" },
+      { title: "Itens Completos", href: "/completed-items-dashboard" },
     ],
   },
   {
@@ -73,9 +78,140 @@ const menuItems = [
   { title: "Rotas", href: "/route-planner", icon: CarFront },
   { title: "Fornecedores", href: "/suppliers", icon: Factory },
   { title: "Usuários", href: "/users", icon: Users },
-  // 👇 NOVO ITEM - AUDIT
   { title: "Audit", href: "/audit", icon: Shield },
 ];
+
+// Componente de Notificações
+function NotificationsPopover() {
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    refresh,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications();
+
+  const [open, setOpen] = useState(false);
+
+  const handleMarkAsRead = async (id: string) => {
+    await markAsRead(id);
+  };
+
+  const handleMarkAllAsRead = async () => {
+    await markAllAsRead();
+  };
+
+  const handleRefresh = () => {
+    refresh();
+  };
+
+  // Formatar a data relativa
+  const formatDate = (date: string) => {
+    try {
+      return formatDistanceToNow(new Date(date), {
+        addSuffix: true,
+        locale: ptBR,
+      });
+    } catch {
+      return "Data desconhecida";
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 relative text-gray-300 hover:bg-white/10 hover:text-white"
+        >
+          <Bell className="w-5 h-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#D35400] text-[10px] font-bold text-white ring-2 ring-[#2C3E50]">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={5}
+        className="w-80 p-0 bg-[#2C3E50] border-white/10 text-white"
+      >
+        {/* Header do Popover */}
+        <div className="flex items-center justify-between p-3 border-b border-white/10">
+          <h3 className="font-semibold text-sm">Notificações</h3>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-gray-400 hover:text-white hover:bg-white/10"
+              onClick={handleRefresh}
+              disabled={loading}
+            >
+              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+            </Button>
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-gray-400 hover:text-white hover:bg-white/10"
+                onClick={handleMarkAllAsRead}
+              >
+                <CheckCheck className="w-3 h-3 mr-1" />
+                Marcar todas
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Lista de Notificações */}
+        <ScrollArea className="max-h-96">
+          {loading && notifications.length === 0 ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="w-6 h-6 animate-spin text-gray-500" />
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              Nenhuma notificação
+            </div>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {notifications.map((notif: any) => (
+                <div
+                  key={notif.id}
+                  className={cn(
+                    "p-3 hover:bg-white/5 transition-colors cursor-pointer",
+                    !notif.isRead && "bg-white/5"
+                  )}
+                  onClick={() => handleMarkAsRead(notif.id)}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white">
+                        {notif.title || "Notificação"}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">
+                        {notif.message || notif.content}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formatDate(notif.createdAt)}
+                      </p>
+                    </div>
+                    {!notif.isRead && (
+                      <div className="w-2 h-2 rounded-full bg-[#D35400] flex-shrink-0 mt-2" />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function SidebarContent({
   collapsed,
@@ -107,7 +243,7 @@ function SidebarContent({
     );
   }, []);
 
-  // --- 2. LÓGICA DE PERMISSÕES SIMPLIFICADA ---
+  // --- 2. LÓGICA DE PERMISSÕES PARA MASTER ---
   const filteredMenuItems = useMemo(() => {
     if (!user) {
       console.log("⚠️ [Sidebar] Usuário não encontrado");
@@ -116,13 +252,38 @@ function SidebarContent({
 
     console.log("🎯 [Sidebar] Filtrando itens para role:", user.role);
 
+    // 👇 SE FOR MASTER, MOSTRA APENAS OS ITENS ESPECÍFICOS
+    if (user.role === "MASTER") {
+      console.log("👑 [Sidebar] Usuário MASTER - filtrando itens específicos");
+      
+      const masterItems = menuItems.filter((item) => {
+        // Lista de títulos permitidos para MASTER
+        const allowedTitles = ["Empresas", "Usuários", "Dashboard", "Audit"];
+        
+        if (allowedTitles.includes(item.title)) {
+          console.log(`✅ Item MASTER permitido: ${item.title}`);
+          return true;
+        }
+        
+        console.log(`❌ Item MASTER bloqueado: ${item.title}`);
+        return false;
+      });
+      
+      console.log(
+        "📊 [Sidebar] Itens para MASTER:",
+        masterItems.map((item) => item.title),
+      );
+      return masterItems;
+    }
+
+    // Para outros usuários (ADMIN, EMPLOYER)
     const filtered = menuItems.filter((item) => {
       // LOG 3: Verificar cada item
       console.log(`📌 Verificando item: ${item.title}`);
 
-      // Se for ADMIN ou MASTER, mostra todos os itens
-      if (user.role === "ADMIN" || user.role === "MASTER") {
-        console.log(`✅ Item ${item.title} liberado para ${user.role}`);
+      // Se for ADMIN, mostra todos os itens
+      if (user.role === "ADMIN") {
+        console.log(`✅ Item ${item.title} liberado para ADMIN`);
         return true;
       }
 
@@ -144,15 +305,6 @@ function SidebarContent({
     );
     return filtered;
   }, [user]);
-
-  const {
-    notifications,
-    unreadCount,
-    loading,
-    refresh,
-    markAsRead,
-    markAllAsRead,
-  } = useNotifications();
 
   return (
     <div
@@ -179,22 +331,8 @@ function SidebarContent({
         <div
           className={cn("flex items-center", collapsed ? "justify-center" : "")}
         >
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 relative text-gray-300 hover:bg-white/10 hover:text-white"
-              >
-                <Bell className="w-5 h-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#D35400] text-[10px] font-bold text-white ring-2 ring-[#2C3E50]">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-              </Button>
-            </PopoverTrigger>
-          </Popover>
+          {/* Componente de Notificações */}
+          <NotificationsPopover />
         </div>
       </div>
 
