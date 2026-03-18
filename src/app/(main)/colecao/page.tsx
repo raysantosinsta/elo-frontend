@@ -2,6 +2,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+// Adicione este import no início do arquivo
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -12,6 +14,7 @@ import {
   AlertTriangle,
   Filter,
   CalendarClock,
+  ExternalLink,
 } from "lucide-react";
 import {
   Card,
@@ -100,6 +103,37 @@ interface FlowItem {
 export default function RealTimeFlowDashboard() {
   const { user } = useAuth();
   const [selectedFlowId, setSelectedFlowId] = useState<string>("all");
+
+  // Dentro do componente RealTimeFlowDashboard, adicione:
+  const router = useRouter();
+
+  // Adicione esta função para navegar com os filtros
+  const handleCardClick = (filterType: "overdue" | "upcoming") => {
+    const params = new URLSearchParams();
+
+    if (filterType === "overdue") {
+      params.set("filter", "overdue");
+      params.set("dateType", "dueDate");
+    } else if (filterType === "upcoming") {
+      params.set("filter", "upcoming");
+      params.set("dateType", "dueDate");
+
+      // Adiciona o intervalo de 7 dias
+      const today = new Date();
+      const sevenDaysFromNow = new Date(today);
+      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+      params.set("startDate", today.toISOString().split("T")[0]);
+      params.set("endDate", sevenDaysFromNow.toISOString().split("T")[0]);
+    }
+
+    // Se não estiver em "Todos os Fluxos", adiciona o flowId
+    if (selectedFlowId !== "all") {
+      params.set("flowId", selectedFlowId);
+    }
+
+    router.push(`/kanban-flow?${params.toString()}`);
+  };
 
   // --- FUNÇÃO DE FETCH ---
   const fetchData = async (endpoint: string) => {
@@ -499,8 +533,11 @@ export default function RealTimeFlowDashboard() {
 
       {/* CARDS DE MÉTRICAS PRINCIPAIS */}
       <div className="grid gap-4 md:grid-cols-5">
-        {/* Card de Itens Atrasados */}
-        <Card className="border-l-4 border-l-red-500 shadow-sm">
+        {/* Card de Itens Atrasados - TORNE-O CLICÁVEL */}
+        <Card
+          className="border-l-4 border-l-red-500 shadow-sm cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
+          onClick={() => handleCardClick("overdue")}
+        >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Atrasados
@@ -519,8 +556,11 @@ export default function RealTimeFlowDashboard() {
           </CardContent>
         </Card>
 
-        {/* 🔥 Card de Itens a Vencer em 7 Dias (MODIFICADO) */}
-        <Card className="border-l-4 border-l-yellow-500 shadow-sm">
+        {/* Card de Itens a Vencer em 7 Dias - TORNE-O CLICÁVEL */}
+        <Card
+          className="border-l-4 border-l-yellow-500 shadow-sm cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
+          onClick={() => handleCardClick("upcoming")}
+        >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Vencem em 7 dias
@@ -539,11 +579,18 @@ export default function RealTimeFlowDashboard() {
 
         {/* Card de Total de Itens */}
         <Card className="border-l-4 border-l-blue-500 shadow-sm">
+          {/* Dentro do CardHeader, após o CardTitle */}
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Em Produção
-            </CardTitle>
-            <Package className="h-5 w-5 text-blue-500" />
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Atrasados
+              </CardTitle>
+              <span className="text-[10px] text-muted-foreground/50 flex items-center gap-1">
+                <ExternalLink className="h-3 w-3" />
+                clicar para filtrar
+              </span>
+            </div>
+            <AlertCircle className="h-5 w-5 text-red-500" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">

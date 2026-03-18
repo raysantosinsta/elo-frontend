@@ -257,32 +257,26 @@ export default function ProductFlowKanban() {
   const [isCompleteStageModalOpen, setIsCompleteStageModalOpen] =
     useState(false);
   const [completingItem, setCompletingItem] = useState<FlowItem | null>(null);
-  // ===========================================================================
-  // 🎯 ESTADOS PARA MODAL DE CONCLUSÃO DE ETAPA
-  // ===========================================================================
-  const [nextStageForCompletion, setNextStageForCompletion] = useState<{
-    id: string;
-    name: string;
-    allowedRole?: string | null;
-    isAfterCorte: boolean; // 🔥 TORNA OBRIGATÓRIO, NÃO OPCIONAL
-    isDistribuicao: boolean; // 🔥 ADICIONE ESTA LINHA
-  } | null>(null);
+ const [nextStageForCompletion, setNextStageForCompletion] = useState<{
+  id: string;
+  name: string;
+  allowedRole?: string | null;
+  isAfterCorte: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
+  isDistribuicao: boolean;
+} | null>(null);
 
   // ===========================================================================
   // 🎯 ESTADOS PARA MODAL DE ARRASTAR
   // ===========================================================================
   const [isDragModalOpen, setIsDragModalOpen] = useState(false);
   const [dragItemId, setDragItemId] = useState<string | null>(null);
-  // ===========================================================================
-  // 🎯 ESTADOS PARA MODAL DE ARRASTAR - CORRIGIDO
-  // ===========================================================================
   const [dragTargetStage, setDragTargetStage] = useState<{
-    id: string;
-    name: string;
-    allowedRole?: string | null;
-    isAfterCorte?: boolean; // 🔥 ADICIONADO
-    isDistribuicao?: boolean; // 🔥 ADICIONADO
-  } | null>(null);
+  id: string;
+  name: string;
+  allowedRole?: string | null;
+  isAfterCorte?: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
+  isDistribuicao?: boolean;
+} | null>(null);
 
   // ===========================================================================
   // 🎯 ESTADO PARA ARMAZENAR STAGES DO ITEM SENDO EDITADO
@@ -315,6 +309,68 @@ export default function ProductFlowKanban() {
   const [itemsPendingRemoval, setItemsPendingRemoval] = useState<Set<string>>(
     new Set(),
   );
+
+  // ===========================================================================
+// 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS CORTE
+// ===========================================================================
+const checkIfIsAfterCorte = (
+  stageId: string,
+  flowId: string,
+): boolean => {
+  // 1. Encontra o board do fluxo específico
+  const board = boards.find((b) => b.id === flowId);
+  if (!board) {
+    console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
+    return false;
+  }
+
+  // 2. Ordena todas as etapas do fluxo
+  const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
+
+  console.log(
+    `📊 [checkIfIsAfterCorte] Stages do fluxo ${flowId}:`,
+    sortedStages.map((s) => ({ id: s.id, name: s.name, order: s.order })),
+  );
+
+  // 3. Palavras-chave para identificar a etapa de Corte
+  const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
+
+  // 4. Encontra o índice da etapa de Corte
+  const corteIndex = sortedStages.findIndex((stage) =>
+    CORTE_KEYWORDS.some((keyword) =>
+      stage.name.toLowerCase().includes(keyword.toLowerCase()),
+    ),
+  );
+
+  // Se não encontrar etapa de Corte, retorna false
+  if (corteIndex === -1) {
+    console.log(
+      `ℹ️ Nenhuma etapa de Corte encontrada no fluxo ${flowId}`,
+    );
+    return false;
+  }
+
+  // 5. Encontra o índice da etapa que estamos verificando
+  const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
+
+  // Se não encontrar a etapa, retorna false
+  if (stageIndex === -1) {
+    console.warn(`⚠️ Stage ${stageId} não encontrada no fluxo ${flowId}`);
+    return false;
+  }
+
+  const isAfter = stageIndex > corteIndex;
+
+  console.log(`📊 [checkIfIsAfterCorte] Resultado:`, {
+    stageName: sortedStages[stageIndex].name,
+    corteName: sortedStages[corteIndex].name,
+    stageIndex,
+    corteIndex,
+    isAfter,
+  });
+
+  return isAfter;
+};
 
   // ===========================================================================
   // 🔥 REF PARA GUARDAR O ÚLTIMO ITEM MOVIDO
@@ -582,129 +638,128 @@ export default function ProductFlowKanban() {
     }, 50);
   };
 
+const handleOpenCompleteModal = (item: FlowItem) => {
+  const currentBoard = boards.find((b) => b.id === item.flowId);
+  if (!currentBoard) return;
+
+  // Ordena todas as etapas do fluxo
+  const allStages = [...currentBoard.stages].sort(
+    (a, b) => a.order - b.order,
+  );
+
+  const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
+  const nextStage = allStages[currentIndex + 1];
+
+  if (!nextStage) {
+    handleAdvanceItem(item);
+    return;
+  }
+
+  // 🔥 PALAVRAS-CHAVE PARA CORTE
+  const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
+  
+  // 🔥 PALAVRAS-CHAVE PARA DISTRIBUIÇÃO
+  const DISTRIBUICAO_KEYWORDS = [
+    "distribuição",
+    "distribuicao",
+    "expedição",
+    "expedicao",
+  ];
+
+  // 🔥 Encontra o índice da etapa de CORTE
+  const corteIndex = allStages.findIndex((s) =>
+    CORTE_KEYWORDS.some((keyword) =>
+      s.name.toLowerCase().includes(keyword.toLowerCase()),
+    ),
+  );
+
+  // 🔥 Verifica se a próxima etapa é Distribuição
+  const isDistribuicao = DISTRIBUICAO_KEYWORDS.some((keyword) =>
+    nextStage.name.toLowerCase().includes(keyword.toLowerCase()),
+  );
+
+  // 🔥 Está depois do CORTE?
+  const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
+
+  console.log("🔍 ===== DEBUG DO MODAL DE CONCLUSÃO =====");
+  console.log("📦 Item:", item.title);
+  console.log("🎯 Próxima etapa:", nextStage.name);
+  console.log("📐 Corte index:", corteIndex);
+  console.log("📐 isAfterCorte:", isAfterCorte);
+  console.log("📐 isDistribuicao:", isDistribuicao);
+
+  setCompletingItem(item);
+  setNextStageForCompletion({
+    id: nextStage.id,
+    name: nextStage.name,
+    allowedRole: nextStage.allowedRole,
+    isAfterCorte, // 🔥 USA isAfterCorte
+    isDistribuicao,
+  });
+
+  setIsCompleteStageModalOpen(true);
+};
   // ===========================================================================
-  // 🎯 FUNÇÃO PARA ABRIR MODAL DE CONCLUSÃO - CORRIGIDA
+  // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL - CORRIGIDA (ADICIONA QUANTIDADE)
   // ===========================================================================
-  const handleOpenCompleteModal = (item: FlowItem) => {
-    const currentBoard = boards.find((b) => b.id === item.flowId);
-    if (!currentBoard) return;
+  const handleCompleteWithResponsible = async (
+    responsibleId: string,
+    type: "user" | "supplier",
+    quantity?: number, // 🔥 ADICIONA O PARÂMETRO QUANTIDADE (OPCIONAL)
+  ) => {
+    if (!completingItem || !nextStageForCompletion) return;
 
-    // Ordena todas as etapas do fluxo
-    const allStages = [...currentBoard.stages].sort(
-      (a, b) => a.order - b.order,
-    );
+    const toastId = toast.loading("Concluindo etapa...");
 
-    const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
-    const nextStage = allStages[currentIndex + 1];
+    try {
+      // 🔥 PASSO 1: Se tiver quantidade, atualizar o item primeiro
+      if (quantity !== undefined) {
+        console.log(`📝 [COMPLETE] Atualizando quantidade para: ${quantity}`);
+        await api.put(`/flow/items/${completingItem.id}`, {
+          quantity: quantity,
+        });
+      }
 
-    if (!nextStage) {
-      handleAdvanceItem(item);
-      return;
-    }
+      // 🔥 PASSO 2: Mover o item
+      const payload: any = { newStageId: nextStageForCompletion.id };
 
-    // 🔥 PALAVRAS-CHAVE
-    const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
-    const DISTRIBUICAO_KEYWORDS = [
-      "distribuição",
-      "distribuicao",
-      // "expedição",
-      // "expedicao",
-    ];
+      if (type === "user") {
+        payload.assignedToId = responsibleId;
+      } else {
+        payload.supplierId = responsibleId;
+      }
 
-    // 🔥 Encontra o índice da etapa de Corte
-    const corteIndex = allStages.findIndex((s) =>
-      CORTE_KEYWORDS.some((keyword) =>
-        s.name.toLowerCase().includes(keyword.toLowerCase()),
-      ),
-    );
+      await api.put(`/flow/items/${completingItem.id}/move`, payload);
 
-    // 🔥 Verifica se a próxima etapa é Distribuição
-    const isDistribuicao = DISTRIBUICAO_KEYWORDS.some((keyword) =>
-      nextStage.name.toLowerCase().includes(keyword.toLowerCase()),
-    );
+      toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
+        id: toastId,
+      });
 
-    // 🔥 Está depois do corte? (mas ainda pode ser distribuição)
-    const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
+      const hasFilters =
+        activeFilterStartDate ||
+        activeFilterEndDate ||
+        activeFilterOverdue ||
+        activeFilterUpcoming ||
+        activeColumnNameFilter;
 
-    console.log("🔍 ===== DEBUG DO MODAL DE CONCLUSÃO =====");
-    console.log("📦 Item:", item.title);
-    console.log("🎯 Próxima etapa:", nextStage.name);
-    console.log("📐 Corte index:", corteIndex);
-    console.log("📐 isAfterCorte:", isAfterCorte);
-    console.log("📐 isDistribuicao:", isDistribuicao);
+      if (hasFilters) {
+        await fetchFilteredBoards();
+      } else {
+        await fetchSelectedBoards();
+      }
 
-    setCompletingItem(item);
-    setNextStageForCompletion({
-      id: nextStage.id,
-      name: nextStage.name,
-      allowedRole: nextStage.allowedRole,
-      isAfterCorte: isAfterCorte,
-      isDistribuicao: isDistribuicao, // 🔥 NOVA PROP
-    });
-
-    setIsCompleteStageModalOpen(true);
-  };
-// ===========================================================================
-// 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL - CORRIGIDA (ADICIONA QUANTIDADE)
-// ===========================================================================
-const handleCompleteWithResponsible = async (
-  responsibleId: string,
-  type: "user" | "supplier",
-  quantity?: number, // 🔥 ADICIONA O PARÂMETRO QUANTIDADE (OPCIONAL)
-) => {
-  if (!completingItem || !nextStageForCompletion) return;
-
-  const toastId = toast.loading("Concluindo etapa...");
-
-  try {
-    // 🔥 PASSO 1: Se tiver quantidade, atualizar o item primeiro
-    if (quantity !== undefined) {
-      console.log(`📝 [COMPLETE] Atualizando quantidade para: ${quantity}`);
-      await api.put(`/flow/items/${completingItem.id}`, {
-        quantity: quantity,
+      setIsCompleteStageModalOpen(false);
+      setCompletingItem(null);
+      setNextStageForCompletion(null);
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.message || "Erro ao concluir etapa.";
+      toast.error(errorMsg, {
+        id: toastId,
+        duration: 4000,
       });
     }
-
-    // 🔥 PASSO 2: Mover o item
-    const payload: any = { newStageId: nextStageForCompletion.id };
-
-    if (type === "user") {
-      payload.assignedToId = responsibleId;
-    } else {
-      payload.supplierId = responsibleId;
-    }
-
-    await api.put(`/flow/items/${completingItem.id}/move`, payload);
-
-    toast.success(`Item movido para "${nextStageForCompletion.name}"!`, {
-      id: toastId,
-    });
-
-    const hasFilters =
-      activeFilterStartDate ||
-      activeFilterEndDate ||
-      activeFilterOverdue ||
-      activeFilterUpcoming ||
-      activeColumnNameFilter;
-
-    if (hasFilters) {
-      await fetchFilteredBoards();
-    } else {
-      await fetchSelectedBoards();
-    }
-
-    setIsCompleteStageModalOpen(false);
-    setCompletingItem(null);
-    setNextStageForCompletion(null);
-  } catch (error: any) {
-    const errorMsg =
-      error.response?.data?.message || "Erro ao concluir etapa.";
-    toast.error(errorMsg, {
-      id: toastId,
-      duration: 4000,
-    });
-  }
-};
+  };
 
   // ===========================================================================
   // 🛡️ LÓGICA DE PERMISSÃO
@@ -2263,10 +2318,7 @@ const handleCompleteWithResponsible = async (
       }
     },
 
-    // ===========================================================================
-// 🔥 HOOK DE DRAG - onRequireResponsible COM MAIS LOGS
-// ===========================================================================
-onRequireResponsible: (itemId, targetStageId, targetStageName) => {
+  onRequireResponsible: (itemId, targetStageId, targetStageName) => {
   console.log("👤 [onRequireResponsible] Requer responsável:", {
     itemId,
     targetStageId,
@@ -2287,7 +2339,8 @@ onRequireResponsible: (itemId, targetStageId, targetStageName) => {
     id: item.id,
     title: item.title,
     flowId: item.flowId,
-    currentStageId: item.stageId
+    currentStageId: item.stageId,
+    quantity: item.quantity,
   });
 
   // 🔥 ENCONTRA A STAGE DESTINO
@@ -2296,13 +2349,21 @@ onRequireResponsible: (itemId, targetStageId, targetStageName) => {
   );
 
   if (!targetStage) {
-    console.error("❌ [onRequireResponsible] Stage não encontrada:", targetStageName);
+    console.error(
+      "❌ [onRequireResponsible] Stage não encontrada:",
+      targetStageName,
+    );
     return;
   }
 
-  // 🔥 CALCULA AS FLAGS
+  // ===========================================================================
+  // 🔥 CALCULA AS FLAGS - USA isAfterCorte
+  // ===========================================================================
   const isDistribuicao = checkIfIsDistribuicao(targetStage.name);
-  const isAfterCorte = checkIfIsAfterCorte(targetStageId, item.flowId);
+  const isAfterCorte = checkIfIsAfterCorte( // ← FUNÇÃO QUE VERIFICA CORTE
+    targetStageId,
+    item.flowId,
+  );
 
   console.log("📊 [onRequireResponsible] Flags calculadas:", {
     itemId: item.id,
@@ -2310,21 +2371,23 @@ onRequireResponsible: (itemId, targetStageId, targetStageName) => {
     flowId: item.flowId,
     targetStageName: targetStage.name,
     targetStageId,
-    isAfterCorte,
+    isAfterCorte, // ← AGORA USA isAfterCorte
     isDistribuicao,
   });
 
   const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
 
   if (isOficina) {
-    console.log("🏭 [onRequireResponsible] É coluna OFICINA, requer fornecedor");
+    console.log(
+      "🏭 [onRequireResponsible] É coluna OFICINA, requer fornecedor",
+    );
     setDragItemId(itemId);
     setDragTargetStage({
       id: targetStageId,
       name: targetStage.name,
       allowedRole: targetStage.allowedRole,
-      isAfterCorte, // 🔥 ADICIONA A FLAG
-      isDistribuicao, // 🔥 ADICIONA A FLAG
+      isAfterCorte, // ← PASSA isAfterCorte (agora o tipo aceita)
+      isDistribuicao,
     });
     setIsDragModalOpen(true);
     return;
@@ -2336,18 +2399,22 @@ onRequireResponsible: (itemId, targetStageId, targetStageName) => {
     targetStage.allowedRole !== "null" &&
     targetStage.allowedRole.trim() !== ""
   ) {
-    console.log(`👤 [onRequireResponsible] Requer cargo: ${targetStage.allowedRole}`);
+    console.log(
+      `👤 [onRequireResponsible] Requer cargo: ${targetStage.allowedRole}`,
+    );
     setDragItemId(itemId);
     setDragTargetStage({
       id: targetStageId,
       name: targetStage.name,
       allowedRole: targetStage.allowedRole,
-      isAfterCorte, // 🔥 ADICIONA A FLAG
-      isDistribuicao, // 🔥 ADICIONA A FLAG
+      isAfterCorte, // ← PASSA isAfterCorte
+      isDistribuicao,
     });
     setIsDragModalOpen(true);
   } else {
-    console.log("✅ [onRequireResponsible] Sem restrição, movendo diretamente");
+    console.log(
+      "✅ [onRequireResponsible] Sem restrição, movendo diretamente",
+    );
     executeMove(itemId, targetStageId);
   }
 },
@@ -2651,73 +2718,86 @@ onRequireResponsible: (itemId, targetStageId, targetStageName) => {
   };
 
   // ===========================================================================
-// 🔥 FUNÇÕES AUXILIARES CORRIGIDAS
-// ===========================================================================
-const checkIfIsDistribuicao = (stageName: string): boolean => {
-  const DISTRIBUICAO_KEYWORDS = [
-    "distribuição",
-    "distribuicao",
-    // "expedição",
-    // "expedicao",
-  ];
-  return DISTRIBUICAO_KEYWORDS.some((keyword) =>
-    stageName.toLowerCase().includes(keyword.toLowerCase()),
-  );
-};
+  // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE É DISTRIBUIÇÃO
+  // ===========================================================================
+  const checkIfIsDistribuicao = (stageName: string): boolean => {
+    const DISTRIBUICAO_KEYWORDS = [
+      "distribuição",
+      "distribuicao",
+      "expedição",
+      "expedicao",
+    ];
+    return DISTRIBUICAO_KEYWORDS.some((keyword) =>
+      stageName.toLowerCase().includes(keyword.toLowerCase()),
+    );
+  };
 
-// 🔥 FUNÇÃO CORRIGIDA - USA O BOARD CORRETO
-const checkIfIsAfterCorte = (stageId: string, flowId: string): boolean => {
-  // 1. Encontra o board do fluxo específico
-  const board = boards.find((b) => b.id === flowId);
-  if (!board) {
-    console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
-    return false;
-  }
+  // ===========================================================================
+  // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS DISTRIBUIÇÃO
+  // ===========================================================================
+  const checkIfIsAfterDistribuicao = (
+    stageId: string,
+    flowId: string,
+  ): boolean => {
+    // 1. Encontra o board do fluxo específico
+    const board = boards.find((b) => b.id === flowId);
+    if (!board) {
+      console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
+      return false;
+    }
 
-  // 2. Ordena todas as etapas do fluxo
-  const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
-  
-  console.log(`📊 [checkIfIsAfterCorte] Stages do fluxo ${flowId}:`, 
-    sortedStages.map(s => ({ id: s.id, name: s.name, order: s.order }))
-  );
+    // 2. Ordena todas as etapas do fluxo
+    const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
 
-  // 3. Palavras-chave para identificar a etapa de corte
-  const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
-  
-  // 4. Encontra o índice da etapa de corte
-  const corteIndex = sortedStages.findIndex((stage) =>
-    CORTE_KEYWORDS.some((keyword) =>
-      stage.name.toLowerCase().includes(keyword.toLowerCase()),
-    ),
-  );
+    console.log(
+      `📊 [checkIfIsAfterDistribuicao] Stages do fluxo ${flowId}:`,
+      sortedStages.map((s) => ({ id: s.id, name: s.name, order: s.order })),
+    );
 
-  // Se não encontrar etapa de corte, retorna false
-  if (corteIndex === -1) {
-    console.log(`ℹ️ Nenhuma etapa de corte encontrada no fluxo ${flowId}`);
-    return false;
-  }
+    // 3. Palavras-chave para identificar a etapa de Distribuição
+    const DISTRIBUICAO_KEYWORDS = [
+      "distribuição",
+      "distribuicao",
+      "expedição",
+      "expedicao",
+    ];
 
-  // 5. Encontra o índice da etapa que estamos verificando
-  const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
-  
-  // Se não encontrar a etapa, retorna false
-  if (stageIndex === -1) {
-    console.warn(`⚠️ Stage ${stageId} não encontrada no fluxo ${flowId}`);
-    return false;
-  }
+    // 4. Encontra o índice da etapa de Distribuição
+    const distribuicaoIndex = sortedStages.findIndex((stage) =>
+      DISTRIBUICAO_KEYWORDS.some((keyword) =>
+        stage.name.toLowerCase().includes(keyword.toLowerCase()),
+      ),
+    );
 
-  const isAfter = stageIndex > corteIndex;
-  
-  console.log(`📊 [checkIfIsAfterCorte] Resultado:`, {
-    stageName: sortedStages[stageIndex].name,
-    corteName: sortedStages[corteIndex].name,
-    stageIndex,
-    corteIndex,
-    isAfter
-  });
+    // Se não encontrar etapa de Distribuição, retorna false
+    if (distribuicaoIndex === -1) {
+      console.log(
+        `ℹ️ Nenhuma etapa de Distribuição encontrada no fluxo ${flowId}`,
+      );
+      return false;
+    }
 
-  return isAfter;
-};
+    // 5. Encontra o índice da etapa que estamos verificando
+    const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
+
+    // Se não encontrar a etapa, retorna false
+    if (stageIndex === -1) {
+      console.warn(`⚠️ Stage ${stageId} não encontrada no fluxo ${flowId}`);
+      return false;
+    }
+
+    const isAfter = stageIndex > distribuicaoIndex;
+
+    console.log(`📊 [checkIfIsAfterDistribuicao] Resultado:`, {
+      stageName: sortedStages[stageIndex].name,
+      distribuicaoName: sortedStages[distribuicaoIndex].name,
+      stageIndex,
+      distribuicaoIndex,
+      isAfter,
+    });
+
+    return isAfter;
+  };
 
   return (
     <KanbanLayout>

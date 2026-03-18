@@ -17,10 +17,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2, User, Building2, Package } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { api } from "@/services/api";
 import { toast } from "sonner";
 
+// ===========================================================================
+// 🔥 INTERFACE
+// ===========================================================================
 interface CompleteStageModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -35,12 +38,11 @@ interface CompleteStageModalProps {
     id: string;
     name: string;
     allowedRole?: string | null;
-    isAfterCorte?: boolean;
-    isDistribuicao?: boolean; // 🔥 NOVA PROP
+    isAfterCorte?: boolean; // 🔥 Volta a ser isAfterCorte
+    isDistribuicao?: boolean;
   } | null;
-  isLoading?: boolean;
+  isLoading: boolean;
   currentQuantity?: number;
-  // 🔥 PROP: indica se o item JÁ TEM quantidade definida
   hasQuantity?: boolean;
 }
 
@@ -79,142 +81,53 @@ export function CompleteStageModal({
   const [confirming, setConfirming] = useState(false);
 
   // ===========================================================================
-  // 🔥 CONSTANTES PARA IDENTIFICAR ETAPAS
-  // ===========================================================================
-  const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
-  const MODELAGEM_KEYWORDS = ["modelagem", "modelista", "modelo", "pilotagem"];
-  const DISTRIBUICAO_KEYWORDS = [
-    "distribuição",
-    "distribuicao",
-    // "expedição",
-    // "expedicao",
-  ];
-
-  // ===========================================================================
   // 🔥 ESTADO DA QUANTIDADE
   // ===========================================================================
   const [quantity, setQuantity] = useState<number>(currentQuantity);
   const [quantityError, setQuantityError] = useState<string>("");
 
   // ===========================================================================
-  // 🔥 DETERMINA SE A PRÓXIMA ETAPA É DEPOIS DO CORTE
+  // 🔥 REGRA: Mostrar quantidade se:
+  // 1. Está após o CORTE (isAfterCorte = true)
+  // 2. E a quantidade está zerada (hasQuantity = false)
   // ===========================================================================
-  const isNextStageAfterCorte = useMemo(() => {
+  const shouldShowQuantity = (() => {
     if (!nextStage) return false;
 
-    if (nextStage.isAfterCorte !== undefined) {
-      return nextStage.isAfterCorte;
-    }
+    const isAfterCorte = nextStage.isAfterCorte || false;
+    const quantidadeZerada = !hasQuantity || currentQuantity <= 0;
 
-    const stageName = nextStage.name?.toLowerCase().trim() || "";
-
-    // Se for etapa de modelagem, está antes do corte
-    if (MODELAGEM_KEYWORDS.some((keyword) => stageName.includes(keyword))) {
-      return false;
-    }
-
-    // Se for etapa de corte, está no corte (não depois)
-    if (CORTE_KEYWORDS.some((keyword) => stageName.includes(keyword))) {
-      return false;
-    }
-
-    // Se for etapa de distribuição, está depois do corte (mas não deve mostrar quantidade)
-    if (DISTRIBUICAO_KEYWORDS.some((keyword) => stageName.includes(keyword))) {
-      return true; // Está depois do corte, mas trataremos separadamente
-    }
-
-    // Qualquer outra etapa depois do corte
-    return true;
-  }, [nextStage]);
-
-  // ===========================================================================
-  // 🔥 DETERMINA SE A PRÓXIMA ETAPA É DISTRIBUIÇÃO
-  // ===========================================================================
-  const isNextStageDistribuicao = useMemo(() => {
-    if (!nextStage) return false;
-
-    const stageName = nextStage.name?.toLowerCase().trim() || "";
-    return DISTRIBUICAO_KEYWORDS.some((keyword) => stageName.includes(keyword));
-  }, [nextStage]);
-
-  // No CompleteStageModal
-  const shouldShowQuantity = useMemo(() => {
-    if (!nextStage) return false;
-
-    // 🔥 PALAVRAS-CHAVE PARA ETAPAS DEPOIS DA DISTRIBUIÇÃO
-    const DEPOIS_DISTRIBUICAO_KEYWORDS = [
-      "oficina",
-      "revisão",
-      "revisao",
-      "acabamento",
-      "dpa",
-      "expedição",
-      "expedicao",
-    ];
-
-    const stageName = nextStage.name.toLowerCase();
-
-    // 🔥 Verifica se é uma etapa que vem DEPOIS da Distribuição
-    const isDepoisDistribuicao = DEPOIS_DISTRIBUICAO_KEYWORDS.some((keyword) =>
-      stageName.includes(keyword.toLowerCase()),
-    );
-
-    // 🔥 Verifica se é a própria DISTRIBUIÇÃO (deve mostrar)
-    const DISTRIBUICAO_KEYWORDS = ["distribuição", "distribuicao"];
-
-    const isDistribuicao = DISTRIBUICAO_KEYWORDS.some((keyword) =>
-      stageName.includes(keyword.toLowerCase()),
-    );
-
-    console.log("📦 [shouldShowQuantity] Analisando:", {
+    console.log("📦 [CompleteStageModal] Calculando shouldShowQuantity:", {
       stageName: nextStage.name,
-      isAfterCorte: nextStage.isAfterCorte,
-      isDistribuicao,
-      isDepoisDistribuicao,
+      isAfterCorte,
       hasQuantity,
-      // ✅ REGRA: Mostra se:
-      // 1. Está após o corte
-      // 2. É a própria Distribuição OU (está após o corte E não é depois da Distribuição)
-      // 3. Não tem quantidade
-      shouldShow:
-        nextStage.isAfterCorte === true &&
-        (isDistribuicao || !isDepoisDistribuicao) &&
-        !hasQuantity,
+      currentQuantity,
+      quantidadeZerada,
+      result: isAfterCorte && quantidadeZerada,
     });
 
-    // ✅ REGRA DE NEGÓCIO IMPLEMENTADA:
-    // - Se é DISTRIBUIÇÃO → MOSTRA quantidade
-    // - Se é depois da DISTRIBUIÇÃO (Oficina, Revisão, etc.) → NÃO MOSTRA
-    // - Se está após o corte mas não é Distribuição nem depois → MOSTRA (caso genérico)
+    // ✅ REGRA CORRETA:
+    // - Se está após o CORTE E quantidade está zerada → MOSTRA
+    // - Se está após o CORTE MAS já tem quantidade (>0) → NÃO MOSTRA
+    // - Se está antes do CORTE → NUNCA MOSTRA
+    return isAfterCorte && quantidadeZerada;
+  })();
 
-    if (!nextStage.isAfterCorte) return false; // Antes do corte nunca mostra
-
-    if (isDistribuicao) return !hasQuantity; // Distribuição mostra se não tem quantidade
-
-    if (isDepoisDistribuicao) return false; // Depois da distribuição nunca mostra
-
-    return !hasQuantity; // Qualquer outra etapa após o corte mostra
-  }, [nextStage, hasQuantity]);
-
-  // Log adicional para debug
+  // ===========================================================================
+  // 🔥 LOG PARA DEBUG
+  // ===========================================================================
   useEffect(() => {
     if (nextStage) {
       console.log("📦 CompleteStageModal - nextStage:", {
         name: nextStage.name,
-        isAfterCorteFromProps: nextStage.isAfterCorte,
-        isAfterCorteCalculated: isNextStageAfterCorte,
-        isDistribuicao: isNextStageDistribuicao,
+        isAfterCorte: nextStage.isAfterCorte,
+        isDistribuicao: nextStage.isDistribuicao,
         hasQuantity,
+        currentQuantity,
         shouldShowQuantity,
       });
     }
-  }, [
-    nextStage,
-    isNextStageAfterCorte,
-    isNextStageDistribuicao,
-    hasQuantity,
-    shouldShowQuantity,
-  ]);
+  }, [nextStage, hasQuantity, currentQuantity, shouldShowQuantity]);
 
   // Reset estado quando o modal abre
   useEffect(() => {
@@ -244,6 +157,10 @@ export function CompleteStageModal({
     }
     if (value > 999999) {
       setQuantityError("Quantidade muito alta (máximo: 999.999)");
+      return false;
+    }
+    if (value === 0 && shouldShowQuantity) {
+      setQuantityError("A quantidade deve ser maior que zero");
       return false;
     }
 
@@ -339,6 +256,17 @@ export function CompleteStageModal({
       }
     }
 
+    // 🔥 VALIDAÇÃO DA QUANTIDADE SE NECESSÁRIA
+    if (shouldShowQuantity) {
+      if (!quantity || quantity <= 0) {
+        toast.error("A quantidade deve ser maior que zero");
+        return;
+      }
+      if (!validateQuantity(quantity)) {
+        return;
+      }
+    }
+
     setConfirming(true);
     try {
       // 🔥 Só passa a quantidade se o campo for mostrado
@@ -424,26 +352,28 @@ export function CompleteStageModal({
             {hasQuantity && (
               <div className="mt-2 text-xs text-slate-500 flex items-center gap-1">
                 <Package size={12} className="text-orange-500" />
-                Quantidade já definida: {currentQuantity} un
+                Quantidade atual: {currentQuantity} un
               </div>
             )}
           </div>
 
           {/* =========================================================================== */}
-          {/* 🔥 CAMPO DE QUANTIDADE - SÓ APARECE NAS ETAPAS ENTRE CORTE E DISTRIBUIÇÃO */}
+          {/* 🔥 CAMPO DE QUANTIDADE - SÓ APARECE SE: */}
+          {/* 1. Está após o CORTE */}
+          {/* 2. E a quantidade está zerada */}
           {/* =========================================================================== */}
           {shouldShowQuantity && (
             <div className="space-y-2">
               <Label className="flex items-center gap-1">
                 <Package size={16} className="text-slate-400" />
-                Quantidade do Item
+                Quantidade do Item <span className="text-red-500">*</span>
               </Label>
               <div className="relative">
                 <Input
                   type="number"
-                  min="0"
+                  min="1"
                   step="1"
-                  value={quantity === 0 ? "0" : quantity}
+                  value={quantity === 0 ? "" : quantity}
                   onChange={handleQuantityChange}
                   placeholder="Digite a quantidade..."
                   className={`pr-12 ${quantityError ? "border-amber-500 focus-visible:ring-amber-500" : ""}`}
@@ -457,17 +387,16 @@ export function CompleteStageModal({
                 <p className="text-xs text-red-500 mt-1">{quantityError}</p>
               )}
               <p className="text-xs text-slate-400">
-                * Quantidade obrigatória para itens que entram em etapas após o
-                Corte
+                * Este item está após o Corte e precisa ter uma quantidade definida
               </p>
             </div>
           )}
 
-          {/* Mensagem explicativa para quando não mostra quantidade */}
-          {!shouldShowQuantity && hasQuantity && (
+          {/* Mensagem informativa quando já tem quantidade após o Corte */}
+          {nextStage.isAfterCorte && hasQuantity && currentQuantity > 0 && (
             <div className="text-xs text-slate-500 bg-blue-50 p-2 rounded border border-blue-100">
               <Package size={12} className="inline mr-1 text-blue-500" />
-              Quantidade já definida anteriormente: {currentQuantity} unidades
+              Quantidade já definida: {currentQuantity} unidades
             </div>
           )}
 
@@ -477,7 +406,7 @@ export function CompleteStageModal({
             <div className="space-y-2">
               <Label className="flex items-center gap-1">
                 <Building2 size={16} className="text-slate-400" />
-                Oficina Responsável
+                Oficina Responsável <span className="text-red-500">*</span>
               </Label>
 
               {loadingSuppliers ? (
@@ -528,7 +457,7 @@ export function CompleteStageModal({
             <div className="space-y-2">
               <Label className="flex items-center gap-1">
                 <User size={16} className="text-slate-400" />
-                Responsável da Próxima Etapa
+                Responsável da Próxima Etapa <span className="text-red-500">*</span>
               </Label>
 
               {loadingUsers ? (
@@ -592,8 +521,7 @@ export function CompleteStageModal({
               loadingSuppliers ||
               confirming ||
               isLoading ||
-                (shouldShowQuantity && quantity === undefined) // 🔥 SÓ BLOQUEIA SE QUANTIDADE FOR undefined
-
+              (shouldShowQuantity && (!quantity || quantity <= 0))
             }
             className="bg-orange-600 hover:bg-orange-700 text-white"
           >
