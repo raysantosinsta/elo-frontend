@@ -67,13 +67,14 @@ export function KanbanColumn({
 
   return (
     <div
-      className="w-[260px] flex-shrink-0 flex flex-col h-full max-h-[calc(100vh-140px)] rounded-lg bg-gray-100/50 border border-gray-200 transition-colors"
+      className="w-[280px] flex-shrink-0 flex flex-col h-full rounded-lg bg-gray-100/50 border border-gray-200 transition-colors"
+      style={{ height: "100%" }} // 🔥 Garante que a coluna ocupe 100% da altura disponível
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
     >
-      {/* Header da Coluna */}
+      {/* Header da Coluna - FIXO */}
       <div
-        className="px-3 py-2 rounded-t-lg flex justify-between items-center text-white shadow-sm"
+        className="px-3 py-2 rounded-t-lg flex justify-between items-center text-white shadow-sm flex-shrink-0"
         style={{ backgroundColor: color }}
       >
         <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide truncate">
@@ -142,12 +143,12 @@ export function KanbanColumn({
         </div>
       </div>
 
-      {/* Corpo da Coluna */}
-      <div className="p-2 overflow-y-auto flex-1 space-y-2 custom-scrollbar">
+      {/* Corpo da Coluna - Área com rolagem vertical */}
+      <div className="p-2 overflow-y-auto flex-1 space-y-2 custom-scrollbar min-h-[100px]">
         {children}
         {React.Children.count(children) === 0 && (
           <div className="h-16 border-2 border-dashed border-gray-300 rounded flex items-center justify-center text-gray-400 text-xs">
-            Vazio
+            Arraste itens para cá
           </div>
         )}
       </div>

@@ -54,6 +54,7 @@ import { api } from "@/services/api";
 // Import do componente de histórico
 import { AuditLogEntry, FlowHistoryModal } from "./flow-history-modal";
 import { useProductRefPermission } from "@/hooks/use-product-ref-permission";
+import { StagesDeadlineTab } from "./StagesDeadlineTab-modal";
 
 // --- INTERFACES ---
 
@@ -214,6 +215,26 @@ export function FlowItemModal({
       deliveryAt: "",
     },
   });
+
+ // talvez remova
+const handleStageDeadlineUpdate = async () => {
+  if (initialData?.id) {
+    try {
+      // 🔥 USAR A ROTA CORRETA - Board do fluxo
+      const response = await api.get(`/flow/${initialData.flowId}/board`);
+      console.log("📊 Board atualizado:", response.data);
+      
+      // Se precisar atualizar o item específico, filtre no response
+      const updatedItem = response.data.stages
+        .flatMap((s: any) => s.items)
+        .find((i: any) => i.id === initialData.id);
+      
+      console.log("📦 Item atualizado:", updatedItem);
+    } catch (error) {
+      console.error("Erro ao recarregar item:", error);
+    }
+  }
+};
 
   const selectedFlowId = form.watch("flowId");
 
@@ -640,7 +661,7 @@ export function FlowItemModal({
     isCorteStage,
     isOpen,
     veioDoClique,
-    selectedStageId, // 🔥 ESSENCIAL
+    selectedStageId,
   ]);
 
   // ===========================================================================
@@ -747,145 +768,138 @@ export function FlowItemModal({
   );
 
   // ===========================================================================
-  // 🔥 HANDLE SUBMIT - VERSÃO QUE ESTAVA FUNCIONANDO
-  // ===========================================================================
-  const handleSubmit = async (values: ItemFormValues) => {
-    console.log("\n📤 [handleSubmit] Valores:", values);
-    console.log("veioDoClique:", veioDoClique);
-    console.log("initialStageId:", initialStageId);
-    console.log("stageClicada:", stageClicada);
+// 🔥 FUNÇÃO PARA CORRIGIR DATA (FUSO HORÁRIO)
+// ===========================================================================
+const fixDate = (dateString: string) => {
+  if (!dateString) return null;
+  
+  // 🔥 LOGS PARA DEBUG
+  console.log('='.repeat(30));
+  console.log('🔍 FIXDATE - CORREÇÃO DE DATA');
+  console.log('📅 Data original (input):', dateString);
+  console.log('📅 Tipo:', typeof dateString);
+  
+  // Extrai ano, mês, dia da string "YYYY-MM-DD"
+  const [year, month, day] = dateString.split('-').map(Number);
+  
+  console.log(`📅 Ano: ${year}, Mês: ${month}, Dia: ${day}`);
+  
+  // 🔥 CRIA A DATA PRESERVANDO O DIA CORRETO
+  // Usamos UTC com hora 12:00 para evitar problemas de fuso
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  
+  console.log('📅 Data UTC:', date.toUTCString());
+  console.log('📅 Data local (Brasil):', date.toLocaleDateString('pt-BR'));
+  console.log('📅 ISO String:', date.toISOString());
+  console.log('='.repeat(30));
+  
+  return date.toISOString();
+};
 
-    // 🔥 CASO ESPECIAL: VEIO DO CLIQUE NO +
-    if (veioDoClique) {
-      if (!stageClicada) {
-        console.error("❌ Stage não encontrada");
-        toast.error("Erro: etapa não encontrada");
-        return;
+// ===========================================================================
+// 🔥 HANDLE SUBMIT COMPLETO
+// ===========================================================================
+const handleSubmit = async (values: ItemFormValues) => {
+  console.log("\n" + "=".repeat(80));
+  console.log("📤 [handleSubmit] INICIANDO SUBMIT");
+  console.log("=".repeat(80));
+  console.log("📦 Values recebidos:", {
+    title: values.title,
+    description: values.description,
+    productRef: values.productRef,
+    quantity: values.quantity,
+    status: values.status,
+    flowId: values.flowId,
+    stageId: values.stageId,
+    assignedToId: values.assignedToId,
+    supplierId: values.supplierId,
+    dueDate: values.dueDate,
+    productionStartedAt: values.productionStartedAt,
+    deliveryAt: values.deliveryAt,
+  });
+  console.log("veioDoClique:", veioDoClique);
+  console.log("initialStageId:", initialStageId);
+  console.log("stageClicada:", stageClicada);
+
+  // 🔥 CASO ESPECIAL: VEIO DO CLIQUE NO +
+  if (veioDoClique) {
+    if (!stageClicada) {
+      console.error("❌ Stage não encontrada");
+      toast.error("Erro: etapa não encontrada");
+      return;
+    }
+
+    if (!values.title || values.title.trim() === "") {
+      toast.error("Título é obrigatório");
+      return;
+    }
+
+    // 🔥 Se tem múltiplos fluxos, USA O FLOWID SELECIONADO NO FORM
+    const finalFlowId = hasMultipleFlows
+      ? values.flowId
+      : stageClicada.flowId;
+
+    if (!finalFlowId) {
+      if (hasMultipleFlows) {
+        toast.error("Selecione uma coleção");
       }
+      return;
+    }
 
-      if (!values.title || values.title.trim() === "") {
-        toast.error("Título é obrigatório");
-        return;
-      }
+    // 🔥 Busca as stages do flow selecionado
+    const stagesOfSelectedFlow = await getStagesForFlow(finalFlowId);
 
-      // 🔥 Se tem múltiplos fluxos, USA O FLOWID SELECIONADO NO FORM
-      const finalFlowId = hasMultipleFlows
-        ? values.flowId
-        : stageClicada.flowId;
+    console.log(
+      `Stages do flow ${finalFlowId}:`,
+      stagesOfSelectedFlow.map((s) => s.name),
+    );
 
-      if (!finalFlowId) {
-        if (hasMultipleFlows) {
-          toast.error("Selecione uma coleção");
-        }
-        return;
-      }
+    // 🔥 Verifica se existe uma stage com o mesmo NOME no flow selecionado
+    const targetStage = stagesOfSelectedFlow.find(
+      (s) =>
+        s.name.toLowerCase().trim() ===
+        stageClicada.name.toLowerCase().trim(),
+    );
 
-      // 🔥 Busca as stages do flow selecionado
-      const stagesOfSelectedFlow = await getStagesForFlow(finalFlowId);
-
+    if (!targetStage) {
+      console.error("❌ Stage não encontrada no flow selecionado");
+      console.log("Nome da etapa procurada:", stageClicada.name);
       console.log(
-        `Stages do flow ${finalFlowId}:`,
+        "Stages disponíveis:",
         stagesOfSelectedFlow.map((s) => s.name),
       );
 
-      // 🔥 Verifica se existe uma stage com o mesmo NOME no flow selecionado
-      const targetStage = stagesOfSelectedFlow.find(
-        (s) =>
-          s.name.toLowerCase().trim() ===
-          stageClicada.name.toLowerCase().trim(),
-      );
+      const selectedFlow = flows.find((f) => f.id === finalFlowId);
 
-      if (!targetStage) {
-        console.error("❌ Stage não encontrada no flow selecionado");
-        console.log("Nome da etapa procurada:", stageClicada.name);
-        console.log(
-          "Stages disponíveis:",
-          stagesOfSelectedFlow.map((s) => s.name),
-        );
-
-        const selectedFlow = flows.find((f) => f.id === finalFlowId);
-
-        toast.error("Esta etapa não existe na coleção escolhida", {
-          description: `A etapa "${stageClicada.name}" não está presente na coleção "${selectedFlow?.name || finalFlowId}".`,
-        });
-        return;
-      }
-
-      const finalPayload = {
-        title: values.title,
-        description: values.description || null,
-        productRef: values.productRef || null,
-        quantity: Number(values.quantity) || 0,
-        status: values.status || "PENDENTE",
-        flowId: finalFlowId,
-        stageId: targetStage.id, // 🔥 Usa o ID da stage do fluxo selecionado
-        assignedToId:
-          values.assignedToId === "unassigned" ? null : values.assignedToId,
-        supplierId: values.supplierId === "internal" ? null : values.supplierId,
-        dueDate: values.dueDate || null,
-        productionStartedAt: values.productionStartedAt || null,
-        deliveryAt: values.deliveryAt || null,
-        // orderNumber: values.orderNumber || "",
-        // priority: values.priority || 3,
-      };
-
-      console.log("🚀 Payload final:", finalPayload);
-
-      try {
-        await onSubmit(
-          finalPayload,
-          { images, audios, videos },
-          {
-            images: removedImageIds,
-            audios: removedAudioIds,
-            videos: removedVideoIds,
-          },
-        );
-      } catch (error) {
-        console.error("Erro no submit:", error);
-      }
+      toast.error("Esta etapa não existe na coleção escolhida", {
+        description: `A etapa "${stageClicada.name}" não está presente na coleção "${selectedFlow?.name || finalFlowId}".`,
+      });
       return;
     }
 
-    // 🔥 CASO NORMAL (SEM INITIALSTAGEID)
-    if (hasMultipleFlows && !values.flowId) {
-      toast.error("Selecione uma coleção");
-      return;
-    }
-
-    if (!values.stageId) {
-      toast.error("Selecione uma etapa");
-      return;
-    }
-
-    const quantityNum = Number(values.quantity) || 0;
-    const isAdmin = isUserAdmin();
-
-    if (!isAdmin) {
-      if (isInCorte && (!quantityNum || quantityNum < 1)) {
-        setShowQuantityWarning(true);
-        toast.error("Quantidade é obrigatória na coluna Corte");
-        return;
-      }
-    }
+    // 🔥 CORREÇÃO DE DATA - APLICADA AQUI!
+    const dueDateFixed = values.dueDate ? fixDate(values.dueDate) : null;
+    
+    console.log('📅 DueDate original:', values.dueDate);
+    console.log('📅 DueDate corrigido:', dueDateFixed);
 
     const finalPayload = {
       title: values.title,
       description: values.description || null,
       productRef: values.productRef || null,
-      quantity: quantityNum,
+      quantity: Number(values.quantity) || 0,
       status: values.status || "PENDENTE",
-      flowId: values.flowId || (flows.length > 0 ? flows[0].id : ""),
-      stageId: values.stageId,
+      flowId: finalFlowId,
+      stageId: targetStage.id,
       assignedToId:
         values.assignedToId === "unassigned" ? null : values.assignedToId,
       supplierId: values.supplierId === "internal" ? null : values.supplierId,
-      dueDate: values.dueDate || null,
+      dueDate: dueDateFixed, // 🔥 USA A DATA CORRIGIDA
       productionStartedAt: values.productionStartedAt || null,
       deliveryAt: values.deliveryAt || null,
-      // orderNumber: values.orderNumber || "",
-      // priority: values.priority || 3,
     };
+
+    console.log("🚀 Payload final:", finalPayload);
 
     try {
       await onSubmit(
@@ -900,7 +914,66 @@ export function FlowItemModal({
     } catch (error) {
       console.error("Erro no submit:", error);
     }
+    return;
+  }
+
+  // 🔥 CASO NORMAL (SEM INITIALSTAGEID)
+  if (hasMultipleFlows && !values.flowId) {
+    toast.error("Selecione uma coleção");
+    return;
+  }
+
+  if (!values.stageId) {
+    toast.error("Selecione uma etapa");
+    return;
+  }
+
+  const quantityNum = Number(values.quantity) || 0;
+  const isAdmin = isUserAdmin();
+
+  if (!isAdmin) {
+    if (isInCorte && (!quantityNum || quantityNum < 1)) {
+      setShowQuantityWarning(true);
+      toast.error("Quantidade é obrigatória na coluna Corte");
+      return;
+    }
+  }
+
+  // 🔥 CORREÇÃO DE DATA - APLICADA AQUI TAMBÉM!
+  const dueDateFixed = values.dueDate ? fixDate(values.dueDate) : null;
+
+  const finalPayload = {
+    title: values.title,
+    description: values.description || null,
+    productRef: values.productRef || null,
+    quantity: quantityNum,
+    status: values.status || "PENDENTE",
+    flowId: values.flowId || (flows.length > 0 ? flows[0].id : ""),
+    stageId: values.stageId,
+    assignedToId:
+      values.assignedToId === "unassigned" ? null : values.assignedToId,
+    supplierId: values.supplierId === "internal" ? null : values.supplierId,
+    dueDate: dueDateFixed, // 🔥 USA A DATA CORRIGIDA
+    productionStartedAt: values.productionStartedAt || null,
+    deliveryAt: values.deliveryAt || null,
   };
+
+  console.log("🚀 Payload final:", finalPayload);
+
+  try {
+    await onSubmit(
+      finalPayload,
+      { images, audios, videos },
+      {
+        images: removedImageIds,
+        audios: removedAudioIds,
+        videos: removedVideoIds,
+      },
+    );
+  } catch (error) {
+    console.error("Erro no submit:", error);
+  }
+};
 
   // ===========================================================================
   // 🔥 Verifica se o flow selecionado tem a stage (para o select)
@@ -952,13 +1025,16 @@ export function FlowItemModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl h-[95vh] md:h-[90vh] flex flex-col p-0 overflow-hidden">
+      <DialogContent
+        className="h-[95vh] md:h-[90vh] flex flex-col p-0 overflow-hidden"
+        style={{ maxWidth: "min(1152px, 95vw)", width: "95vw" }}
+      >
         {/* HEADER */}
         <DialogHeader className="px-6 py-4 border-b bg-slate-50 shrink-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div
               className={cn(
-                "p-2 rounded",
+                "p-2.5 rounded-lg",
                 isReadOnly
                   ? "bg-slate-200 text-slate-500"
                   : "bg-orange-100 text-orange-600",
@@ -979,7 +1055,7 @@ export function FlowItemModal({
                   : "Novo Item de Produção"}
               </DialogTitle>
               {veioDoClique && stageClicada && (
-                <p className="text-xs text-green-600 font-medium mt-1">
+                <p className="text-sm text-green-600 font-medium mt-1">
                   ➕ Criando na coluna: <strong>{stageClicada.name}</strong>
                 </p>
               )}
@@ -998,16 +1074,26 @@ export function FlowItemModal({
                   className="space-y-6"
                 >
                   <Tabs defaultValue="details" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 mb-6 bg-slate-100 p-1">
-                      <TabsTrigger value="details">
+                    <TabsList className="grid w-full grid-cols-4 mb-6 bg-slate-100 p-1 rounded-lg">
+                      <TabsTrigger value="details" className="py-2.5 text-sm">
                         Detalhes & Datas
                       </TabsTrigger>
-                      <TabsTrigger value="media">Mídias & Anexos</TabsTrigger>
-                      <TabsTrigger value="history">Histórico</TabsTrigger>
+                      <TabsTrigger
+                        value="stages-deadlines"
+                        className="py-2.5 text-sm"
+                      >
+                        Prazos por Etapa
+                      </TabsTrigger>
+                      <TabsTrigger value="media" className="py-2.5 text-sm">
+                        Mídias & Anexos
+                      </TabsTrigger>
+                      <TabsTrigger value="history" className="py-2.5 text-sm">
+                        Histórico
+                      </TabsTrigger>
                     </TabsList>
 
                     {/* TAB DETALHES */}
-                    <TabsContent value="details" className="space-y-4">
+                    <TabsContent value="details" className="space-y-6">
                       {/* ====================================================== */}
                       {/* 🔥 SEÇÃO 1: QUANDO VEIO DO CLIQUE */}
                       {/* ====================================================== */}
@@ -1024,9 +1110,9 @@ export function FlowItemModal({
                                   : false;
 
                                 return (
-                                  <FormItem>
-                                    <FormLabel className="flex items-center gap-2">
-                                      <Factory size={14} /> Coleção *
+                                  <FormItem className="mb-4">
+                                    <FormLabel className="flex items-center gap-2 text-sm font-medium">
+                                      <Factory size={16} /> Coleção *
                                     </FormLabel>
                                     <Select
                                       onValueChange={(value) => {
@@ -1042,6 +1128,7 @@ export function FlowItemModal({
                                       <FormControl>
                                         <SelectTrigger
                                           className={cn(
+                                            "h-10",
                                             field.value &&
                                               !selectedFlowHasStage &&
                                               "border-amber-500 bg-amber-50",
@@ -1059,6 +1146,7 @@ export function FlowItemModal({
                                             <SelectItem
                                               key={flow.id}
                                               value={flow.id}
+                                              className="py-2.5"
                                             >
                                               <div className="flex items-center gap-2">
                                                 <div
@@ -1068,7 +1156,7 @@ export function FlowItemModal({
                                                       flow.color || "#D35400",
                                                   }}
                                                 />
-                                                {flow.name}
+                                                <span>{flow.name}</span>
                                                 {!hasStage && (
                                                   <span className="text-xs text-amber-600 ml-2">
                                                     (não contém esta etapa)
@@ -1081,8 +1169,8 @@ export function FlowItemModal({
                                       </SelectContent>
                                     </Select>
                                     {field.value && !selectedFlowHasStage && (
-                                      <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-                                        <AlertTriangle size={12} />A etapa
+                                      <p className="text-sm text-amber-600 flex items-center gap-1 mt-2">
+                                        <AlertTriangle size={14} />A etapa
                                         &ldquo;{stageClicada.name}&ldquo; não
                                         existe nesta coleção
                                       </p>
@@ -1107,9 +1195,9 @@ export function FlowItemModal({
                               control={form.control}
                               name="flowId"
                               render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel className="flex items-center gap-2">
-                                    <Layers size={14} /> Coleção *
+                                <FormItem className="mb-4">
+                                  <FormLabel className="flex items-center gap-2 text-sm font-medium">
+                                    <Layers size={16} /> Coleção *
                                   </FormLabel>
                                   <Select
                                     onValueChange={(value) => {
@@ -1120,7 +1208,7 @@ export function FlowItemModal({
                                     disabled={isReadOnly || isLoadingStages}
                                   >
                                     <FormControl>
-                                      <SelectTrigger>
+                                      <SelectTrigger className="h-10">
                                         <SelectValue placeholder="Selecione uma coleção..." />
                                       </SelectTrigger>
                                     </FormControl>
@@ -1129,6 +1217,7 @@ export function FlowItemModal({
                                         <SelectItem
                                           key={flow.id}
                                           value={flow.id}
+                                          className="py-2.5"
                                         >
                                           <div className="flex items-center gap-2">
                                             <div
@@ -1149,53 +1238,6 @@ export function FlowItemModal({
                               )}
                             />
                           )}
-
-                          {/* 🔥 CAMPO ETAPA */}
-                          {/* <FormField
-                            control={form.control}
-                            name="stageId"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="flex items-center gap-2">
-                                  <Layers size={14} /> Etapa *
-                                </FormLabel>
-                                <Select
-                                  onValueChange={field.onChange}
-                                  value={field.value}
-                                  disabled={
-                                    isReadOnly ||
-                                    isLoadingStages ||
-                                    (hasMultipleFlows && !selectedFlowId) ||
-                                    availableStages.length === 0
-                                  }
-                                >
-                                  <FormControl>
-                                    <SelectTrigger>
-                                      <SelectValue 
-                                        placeholder={
-                                          isLoadingStages
-                                            ? "Carregando etapas..."
-                                            : hasMultipleFlows && !selectedFlowId
-                                              ? "Selecione uma coleção primeiro"
-                                              : availableStages.length === 0
-                                                ? "Nenhuma etapa disponível"
-                                                : "Selecione uma etapa"
-                                        }
-                                      />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {availableStages.map((stage) => (
-                                      <SelectItem key={stage.id} value={stage.id}>
-                                        {stage.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          /> */}
                         </>
                       )}
 
@@ -1204,16 +1246,19 @@ export function FlowItemModal({
                       {/* ====================================================== */}
 
                       {/* Título e Referência */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <FormField
                           control={form.control}
                           name="title"
                           render={({ field }) => (
-                            <FormItem className="col-span-2">
-                              <FormLabel>Título do Produto *</FormLabel>
+                            <FormItem className="md:col-span-2">
+                              <FormLabel className="text-sm font-medium">
+                                Título do Produto *
+                              </FormLabel>
                               <FormControl>
                                 <Input
                                   placeholder="Ex: Camisa Linho M"
+                                  className="h-10"
                                   {...field}
                                   disabled={isReadOnly}
                                 />
@@ -1228,11 +1273,11 @@ export function FlowItemModal({
                           name="productRef"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="flex items-center gap-2">
+                              <FormLabel className="flex items-center gap-2 text-sm font-medium">
                                 Referência do Produto
                                 {!canManageRef && !isReadOnly && (
                                   <span className="text-xs text-amber-600 flex items-center gap-1">
-                                    <Lock size={10} /> (apenas modelagem)
+                                    <Lock size={12} /> (apenas modelagem)
                                   </span>
                                 )}
                               </FormLabel>
@@ -1240,23 +1285,20 @@ export function FlowItemModal({
                                 <div className="relative">
                                   <Input
                                     placeholder="REF-001"
+                                    className="h-10"
                                     {...field}
                                     disabled={!isRefEditable}
-                                    className={cn(
-                                      !canSeeRef &&
-                                        "bg-slate-100 text-slate-400",
-                                    )}
                                   />
                                   {!canSeeRef && (
-                                    <div className="absolute inset-0 bg-slate-50/80 flex items-center justify-center text-xs text-slate-400">
-                                      <EyeOff size={12} className="mr-1" />
-                                      Sem permissão para visualizar
+                                    <div className="absolute inset-0 bg-slate-50/80 flex items-center justify-center text-xs text-slate-400 rounded-md">
+                                      <EyeOff size={14} className="mr-1" />
+                                      Sem permissão
                                     </div>
                                   )}
                                 </div>
                               </FormControl>
                               {!canManageRef && !isReadOnly && (
-                                <p className="text-[10px] text-amber-600 mt-1">
+                                <p className="text-xs text-amber-600 mt-1">
                                   ⚠️ Apenas usuários com cargo de modelagem
                                   podem editar este campo
                                 </p>
@@ -1270,12 +1312,14 @@ export function FlowItemModal({
                           control={form.control}
                           name="description"
                           render={({ field }) => (
-                            <FormItem className="col-span-2">
-                              <FormLabel>Descrição / Observações</FormLabel>
+                            <FormItem className="md:col-span-2">
+                              <FormLabel className="text-sm font-medium">
+                                Descrição / Observações
+                              </FormLabel>
                               <FormControl>
                                 <Textarea
                                   placeholder="Detalhes técnicos..."
-                                  className="resize-none h-20"
+                                  className="resize-none h-24"
                                   {...field}
                                   disabled={isReadOnly}
                                 />
@@ -1296,7 +1340,7 @@ export function FlowItemModal({
                                 <FormLabel className="text-base font-bold">
                                   Quantidade
                                   {isQuantityRequired && (
-                                    <span className="ml-2 text-xs font-normal text-red-500">
+                                    <span className="ml-2 text-sm font-normal text-red-500">
                                       *
                                     </span>
                                   )}
@@ -1310,7 +1354,7 @@ export function FlowItemModal({
                                   {...field}
                                   disabled={isQuantityDisabled}
                                   className={cn(
-                                    "text-lg font-bold",
+                                    "text-lg font-bold h-12",
                                     isQuantityDisabled &&
                                       "bg-slate-100 text-slate-500 cursor-not-allowed opacity-50",
                                     showQuantityWarning &&
@@ -1330,8 +1374,8 @@ export function FlowItemModal({
                                 />
                               </FormControl>
                               {showQuantityWarning && isQuantityRequired && (
-                                <p className="text-xs text-red-500 font-medium flex items-center gap-1 mt-1">
-                                  <AlertCircle size={12} /> Quantidade
+                                <p className="text-sm text-red-500 font-medium flex items-center gap-1 mt-2">
+                                  <AlertCircle size={14} /> Quantidade
                                   obrigatória na coluna Corte
                                 </p>
                               )}
@@ -1342,14 +1386,14 @@ export function FlowItemModal({
                       </div>
 
                       {/* Responsáveis */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-dashed">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-dashed">
                         <FormField
                           control={form.control}
                           name="assignedToId"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="flex items-center gap-2">
-                                <User size={14} /> Responsável Interno
+                              <FormLabel className="flex items-center gap-2 text-sm font-medium">
+                                <User size={16} /> Responsável Interno
                               </FormLabel>
                               <Select
                                 onValueChange={field.onChange}
@@ -1357,16 +1401,23 @@ export function FlowItemModal({
                                 disabled={isReadOnly}
                               >
                                 <FormControl>
-                                  <SelectTrigger>
+                                  <SelectTrigger className="h-10">
                                     <SelectValue placeholder="Selecione..." />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="unassigned">
+                                  <SelectItem
+                                    value="unassigned"
+                                    className="py-2.5"
+                                  >
                                     Nenhum
                                   </SelectItem>
                                   {users.map((u) => (
-                                    <SelectItem key={u.id} value={u.id}>
+                                    <SelectItem
+                                      key={u.id}
+                                      value={u.id}
+                                      className="py-2.5"
+                                    >
                                       {u.name}
                                     </SelectItem>
                                   ))}
@@ -1381,8 +1432,8 @@ export function FlowItemModal({
                           name="supplierId"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="flex items-center gap-2">
-                                <Factory size={14} /> Oficina / Terceirizado
+                              <FormLabel className="flex items-center gap-2 text-sm font-medium">
+                                <Factory size={16} /> Oficina / Terceirizado
                               </FormLabel>
                               <Select
                                 onValueChange={field.onChange}
@@ -1390,16 +1441,23 @@ export function FlowItemModal({
                                 disabled={isReadOnly}
                               >
                                 <FormControl>
-                                  <SelectTrigger>
+                                  <SelectTrigger className="h-10">
                                     <SelectValue placeholder="Produção Interna" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="internal">
+                                  <SelectItem
+                                    value="internal"
+                                    className="py-2.5"
+                                  >
                                     Produção Interna
                                   </SelectItem>
                                   {suppliers.map((s) => (
-                                    <SelectItem key={s.id} value={s.id}>
+                                    <SelectItem
+                                      key={s.id}
+                                      value={s.id}
+                                      className="py-2.5"
+                                    >
                                       {s.name}
                                     </SelectItem>
                                   ))}
@@ -1411,40 +1469,32 @@ export function FlowItemModal({
                       </div>
 
                       {/* Datas */}
-                      <div className="grid grid-cols-3 gap-4 pt-4 border-t border-dashed">
-                        {/* <FormField
-                          control={form.control}
-                          name="productionStartedAt"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-xs font-bold uppercase">
-                                Próximos a vencer
-                              </FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="date"
-                                  {...field}
-                                  value={field.value || ""}
-                                  disabled={isReadOnly}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        /> */}
-
+                      <div className="grid grid-cols-1 gap-4 pt-4 border-t border-dashed">
                         <FormField
                           control={form.control}
                           name="dueDate"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-xs font-bold uppercase">
+                              <FormLabel className="text-sm font-bold uppercase">
                                 Prazo Final
                               </FormLabel>
                               <FormControl>
                                 <Input
                                   type="date"
+                                  className="h-10"
                                   {...field}
                                   value={field.value || ""}
+                                  onChange={(e) => {
+                                    console.log(
+                                      "📅 Data selecionada no input:",
+                                      e.target.value,
+                                    );
+                                    console.log(
+                                      "📅 valueAsDate:",
+                                      e.target.valueAsDate,
+                                    );
+                                    field.onChange(e.target.value);
+                                  }}
                                   disabled={isReadOnly}
                                 />
                               </FormControl>
@@ -1457,9 +1507,9 @@ export function FlowItemModal({
                     {/* TAB MÍDIA */}
                     <TabsContent value="media" className="space-y-6">
                       {/* IMAGENS */}
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-bold">Imagens</h3>
+                          <h3 className="text-base font-bold">Imagens</h3>
                           <div className="flex gap-2">
                             <Input
                               type="file"
@@ -1480,13 +1530,14 @@ export function FlowItemModal({
                             <Button
                               type="button"
                               variant="outline"
-                              size="sm"
+                              size="default"
                               onClick={() =>
                                 document.getElementById("image-upload")?.click()
                               }
                               disabled={isReadOnly}
+                              className="h-9"
                             >
-                              <Plus size={14} className="mr-1" /> Adicionar
+                              <Plus size={16} className="mr-1" /> Adicionar
                             </Button>
                           </div>
                         </div>
@@ -1494,7 +1545,7 @@ export function FlowItemModal({
                         {/* Imagens existentes */}
                         {initialData?.images &&
                           initialData.images.length > 0 && (
-                            <div className="grid grid-cols-4 gap-2">
+                            <div className="grid grid-cols-4 gap-3">
                               {initialData.images
                                 .filter(
                                   (img) => !removedImageIds.includes(img.id),
@@ -1518,9 +1569,9 @@ export function FlowItemModal({
                                             "image",
                                           )
                                         }
-                                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                        className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                                       >
-                                        <Trash2 size={12} />
+                                        <Trash2 size={14} />
                                       </button>
                                     )}
                                   </div>
@@ -1530,14 +1581,14 @@ export function FlowItemModal({
 
                         {/* Novas imagens */}
                         {images.length > 0 && (
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-4 gap-3">
                             {images.map((file, index) => (
                               <div
                                 key={index}
                                 className="relative group aspect-square rounded-lg overflow-hidden border bg-slate-50"
                               >
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <span className="text-xs text-center p-1">
+                                <div className="w-full h-full flex items-center justify-center p-2">
+                                  <span className="text-xs text-center">
                                     {truncateFileName(file.name, 15)}
                                   </span>
                                 </div>
@@ -1547,9 +1598,9 @@ export function FlowItemModal({
                                     onClick={() =>
                                       handleRemoveNewFile(index, "image")
                                     }
-                                    className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full"
+                                    className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-full"
                                   >
-                                    <Trash2 size={12} />
+                                    <Trash2 size={14} />
                                   </button>
                                 )}
                               </div>
@@ -1559,9 +1610,9 @@ export function FlowItemModal({
                       </div>
 
                       {/* VÍDEOS */}
-                      <div className="space-y-3 pt-4 border-t">
+                      <div className="space-y-4 pt-4 border-t">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-bold">Vídeos</h3>
+                          <h3 className="text-base font-bold">Vídeos</h3>
                           <Input
                             type="file"
                             accept="video/*"
@@ -1581,20 +1632,21 @@ export function FlowItemModal({
                           <Button
                             type="button"
                             variant="outline"
-                            size="sm"
+                            size="default"
                             onClick={() =>
                               document.getElementById("video-upload")?.click()
                             }
                             disabled={isReadOnly}
+                            className="h-9"
                           >
-                            <Plus size={14} className="mr-1" /> Adicionar
+                            <Plus size={16} className="mr-1" /> Adicionar
                           </Button>
                         </div>
 
                         {/* Vídeos existentes */}
                         {initialData?.videos &&
                           initialData.videos.length > 0 && (
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-3">
                               {initialData.videos
                                 .filter(
                                   (vid) => !removedVideoIds.includes(vid.id),
@@ -1602,10 +1654,10 @@ export function FlowItemModal({
                                 .map((vid) => (
                                   <div
                                     key={vid.id}
-                                    className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                    className="relative group p-3 bg-slate-50 rounded-lg border flex items-center justify-between"
                                   >
-                                    <span className="text-xs truncate">
-                                      {truncateFileName(vid.filename, 25)}
+                                    <span className="text-sm truncate max-w-[180px]">
+                                      {truncateFileName(vid.filename, 30)}
                                     </span>
                                     {!isReadOnly && (
                                       <button
@@ -1616,9 +1668,9 @@ export function FlowItemModal({
                                             "video",
                                           )
                                         }
-                                        className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
                                       >
-                                        <Trash2 size={12} />
+                                        <Trash2 size={14} />
                                       </button>
                                     )}
                                   </div>
@@ -1628,14 +1680,14 @@ export function FlowItemModal({
 
                         {/* Novos vídeos */}
                         {videos.length > 0 && (
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-2 gap-3">
                             {videos.map((file, index) => (
                               <div
                                 key={index}
-                                className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                className="relative group p-3 bg-slate-50 rounded-lg border flex items-center justify-between"
                               >
-                                <span className="text-xs truncate">
-                                  {truncateFileName(file.name, 25)}
+                                <span className="text-sm truncate max-w-[180px]">
+                                  {truncateFileName(file.name, 30)}
                                 </span>
                                 {!isReadOnly && (
                                   <button
@@ -1643,9 +1695,9 @@ export function FlowItemModal({
                                     onClick={() =>
                                       handleRemoveNewFile(index, "video")
                                     }
-                                    className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded"
                                   >
-                                    <Trash2 size={12} />
+                                    <Trash2 size={14} />
                                   </button>
                                 )}
                               </div>
@@ -1655,17 +1707,18 @@ export function FlowItemModal({
                       </div>
 
                       {/* ÁUDIOS */}
-                      <div className="space-y-3 pt-4 border-t">
+                      <div className="space-y-4 pt-4 border-t">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-bold">Áudios</h3>
+                          <h3 className="text-base font-bold">Áudios</h3>
                           <div className="flex gap-2">
                             {!isRecording ? (
                               <Button
                                 type="button"
                                 variant="outline"
-                                size="sm"
+                                size="default"
                                 onClick={startRecording}
                                 disabled={isReadOnly}
+                                className="h-9"
                               >
                                 <span className="text-red-500 mr-1">●</span>{" "}
                                 Gravar
@@ -1674,8 +1727,9 @@ export function FlowItemModal({
                               <Button
                                 type="button"
                                 variant="destructive"
-                                size="sm"
+                                size="default"
                                 onClick={stopRecording}
+                                className="h-9"
                               >
                                 Parar
                               </Button>
@@ -1699,13 +1753,14 @@ export function FlowItemModal({
                             <Button
                               type="button"
                               variant="outline"
-                              size="sm"
+                              size="default"
                               onClick={() =>
                                 document.getElementById("audio-upload")?.click()
                               }
                               disabled={isReadOnly}
+                              className="h-9"
                             >
-                              <Plus size={14} className="mr-1" /> Upload
+                              <Plus size={16} className="mr-1" /> Upload
                             </Button>
                           </div>
                         </div>
@@ -1713,7 +1768,7 @@ export function FlowItemModal({
                         {/* Áudios existentes */}
                         {initialData?.audios &&
                           initialData.audios.length > 0 && (
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-3">
                               {initialData.audios
                                 .filter(
                                   (aud) => !removedAudioIds.includes(aud.id),
@@ -1721,10 +1776,10 @@ export function FlowItemModal({
                                 .map((aud) => (
                                   <div
                                     key={aud.id}
-                                    className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                    className="relative group p-3 bg-slate-50 rounded-lg border flex items-center justify-between"
                                   >
-                                    <span className="text-xs truncate">
-                                      {truncateFileName(aud.filename, 25)}
+                                    <span className="text-sm truncate max-w-[180px]">
+                                      {truncateFileName(aud.filename, 30)}
                                     </span>
                                     {!isReadOnly && (
                                       <button
@@ -1735,9 +1790,9 @@ export function FlowItemModal({
                                             "audio",
                                           )
                                         }
-                                        className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
                                       >
-                                        <Trash2 size={12} />
+                                        <Trash2 size={14} />
                                       </button>
                                     )}
                                   </div>
@@ -1747,14 +1802,14 @@ export function FlowItemModal({
 
                         {/* Novos áudios */}
                         {audios.length > 0 && (
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-2 gap-3">
                             {audios.map((file, index) => (
                               <div
                                 key={index}
-                                className="relative group p-2 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                className="relative group p-3 bg-slate-50 rounded-lg border flex items-center justify-between"
                               >
-                                <span className="text-xs truncate">
-                                  {truncateFileName(file.name, 25)}
+                                <span className="text-sm truncate max-w-[180px]">
+                                  {truncateFileName(file.name, 30)}
                                 </span>
                                 {!isReadOnly && (
                                   <button
@@ -1762,9 +1817,9 @@ export function FlowItemModal({
                                     onClick={() =>
                                       handleRemoveNewFile(index, "audio")
                                     }
-                                    className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded"
                                   >
-                                    <Trash2 size={12} />
+                                    <Trash2 size={14} />
                                   </button>
                                 )}
                               </div>
@@ -1784,6 +1839,21 @@ export function FlowItemModal({
                         stages={stages}
                       />
                     </TabsContent>
+
+                    {/* 🔥 NOVA TAB DE PRAZOS POR ETAPA */}
+                    <TabsContent
+                      value="stages-deadlines"
+                      className="h-[calc(100vh-300px)] md:h-[calc(90vh-250px)]"
+                    >
+                      <StagesDeadlineTab
+                        itemId={initialData?.id}
+                        stages={stages}
+                        isLoading={isLoadingStages}
+                        isAdmin={isUserAdmin()}
+                        currentStageId={initialData?.stageId}
+                        onDeadlineUpdate={handleStageDeadlineUpdate}
+                      />
+                    </TabsContent>
                   </Tabs>
                 </form>
               </Form>
@@ -1792,13 +1862,13 @@ export function FlowItemModal({
         </div>
 
         {/* FOOTER */}
-        <DialogFooter className="px-6 py-4 border-t bg-slate-50 shrink-0 flex items-center justify-between sm:justify-between">
+        <DialogFooter className="px-6 py-4 border-t bg-slate-50 shrink-0">
           <div>
             {isEditing && onDelete && initialData && !isReadOnly && (
               <Button
                 type="button"
                 variant="ghost"
-                className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                className="text-red-500 hover:bg-red-50 hover:text-red-600 h-10 px-4"
                 onClick={() => onDelete(initialData.id)}
                 disabled={isLoading}
               >
@@ -1807,12 +1877,13 @@ export function FlowItemModal({
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
               disabled={isLoading}
+              className="h-10 px-6"
             >
               {isReadOnly ? "Fechar" : "Cancelar"}
             </Button>
@@ -1821,7 +1892,7 @@ export function FlowItemModal({
               <Button
                 form="flow-item-form"
                 type="submit"
-                className="bg-slate-800 hover:bg-slate-900 text-white"
+                className="bg-slate-800 hover:bg-slate-900 text-white h-10 px-6"
                 disabled={isLoading || isLoadingStages}
               >
                 {isLoading ? (

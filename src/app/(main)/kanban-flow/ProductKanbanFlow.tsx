@@ -257,13 +257,13 @@ export default function ProductFlowKanban() {
   const [isCompleteStageModalOpen, setIsCompleteStageModalOpen] =
     useState(false);
   const [completingItem, setCompletingItem] = useState<FlowItem | null>(null);
- const [nextStageForCompletion, setNextStageForCompletion] = useState<{
-  id: string;
-  name: string;
-  allowedRole?: string | null;
-  isAfterCorte: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
-  isDistribuicao: boolean;
-} | null>(null);
+  const [nextStageForCompletion, setNextStageForCompletion] = useState<{
+    id: string;
+    name: string;
+    allowedRole?: string | null;
+    isAfterCorte: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
+    isDistribuicao: boolean;
+  } | null>(null);
 
   // ===========================================================================
   // 🎯 ESTADOS PARA MODAL DE ARRASTAR
@@ -271,12 +271,12 @@ export default function ProductFlowKanban() {
   const [isDragModalOpen, setIsDragModalOpen] = useState(false);
   const [dragItemId, setDragItemId] = useState<string | null>(null);
   const [dragTargetStage, setDragTargetStage] = useState<{
-  id: string;
-  name: string;
-  allowedRole?: string | null;
-  isAfterCorte?: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
-  isDistribuicao?: boolean;
-} | null>(null);
+    id: string;
+    name: string;
+    allowedRole?: string | null;
+    isAfterCorte?: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
+    isDistribuicao?: boolean;
+  } | null>(null);
 
   // ===========================================================================
   // 🎯 ESTADO PARA ARMAZENAR STAGES DO ITEM SENDO EDITADO
@@ -310,67 +310,64 @@ export default function ProductFlowKanban() {
     new Set(),
   );
 
+
+
   // ===========================================================================
-// 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS CORTE
-// ===========================================================================
-const checkIfIsAfterCorte = (
-  stageId: string,
-  flowId: string,
-): boolean => {
-  // 1. Encontra o board do fluxo específico
-  const board = boards.find((b) => b.id === flowId);
-  if (!board) {
-    console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
-    return false;
-  }
+  // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS CORTE
+  // ===========================================================================
+  const checkIfIsAfterCorte = (stageId: string, flowId: string): boolean => {
+    // 1. Encontra o board do fluxo específico
+    const board = boards.find((b) => b.id === flowId);
+    if (!board) {
+      console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
+      return false;
+    }
 
-  // 2. Ordena todas as etapas do fluxo
-  const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
+    // 2. Ordena todas as etapas do fluxo
+    const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
 
-  console.log(
-    `📊 [checkIfIsAfterCorte] Stages do fluxo ${flowId}:`,
-    sortedStages.map((s) => ({ id: s.id, name: s.name, order: s.order })),
-  );
-
-  // 3. Palavras-chave para identificar a etapa de Corte
-  const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
-
-  // 4. Encontra o índice da etapa de Corte
-  const corteIndex = sortedStages.findIndex((stage) =>
-    CORTE_KEYWORDS.some((keyword) =>
-      stage.name.toLowerCase().includes(keyword.toLowerCase()),
-    ),
-  );
-
-  // Se não encontrar etapa de Corte, retorna false
-  if (corteIndex === -1) {
     console.log(
-      `ℹ️ Nenhuma etapa de Corte encontrada no fluxo ${flowId}`,
+      `📊 [checkIfIsAfterCorte] Stages do fluxo ${flowId}:`,
+      sortedStages.map((s) => ({ id: s.id, name: s.name, order: s.order })),
     );
-    return false;
-  }
 
-  // 5. Encontra o índice da etapa que estamos verificando
-  const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
+    // 3. Palavras-chave para identificar a etapa de Corte
+    const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
 
-  // Se não encontrar a etapa, retorna false
-  if (stageIndex === -1) {
-    console.warn(`⚠️ Stage ${stageId} não encontrada no fluxo ${flowId}`);
-    return false;
-  }
+    // 4. Encontra o índice da etapa de Corte
+    const corteIndex = sortedStages.findIndex((stage) =>
+      CORTE_KEYWORDS.some((keyword) =>
+        stage.name.toLowerCase().includes(keyword.toLowerCase()),
+      ),
+    );
 
-  const isAfter = stageIndex > corteIndex;
+    // Se não encontrar etapa de Corte, retorna false
+    if (corteIndex === -1) {
+      console.log(`ℹ️ Nenhuma etapa de Corte encontrada no fluxo ${flowId}`);
+      return false;
+    }
 
-  console.log(`📊 [checkIfIsAfterCorte] Resultado:`, {
-    stageName: sortedStages[stageIndex].name,
-    corteName: sortedStages[corteIndex].name,
-    stageIndex,
-    corteIndex,
-    isAfter,
-  });
+    // 5. Encontra o índice da etapa que estamos verificando
+    const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
 
-  return isAfter;
-};
+    // Se não encontrar a etapa, retorna false
+    if (stageIndex === -1) {
+      console.warn(`⚠️ Stage ${stageId} não encontrada no fluxo ${flowId}`);
+      return false;
+    }
+
+    const isAfter = stageIndex > corteIndex;
+
+    console.log(`📊 [checkIfIsAfterCorte] Resultado:`, {
+      stageName: sortedStages[stageIndex].name,
+      corteName: sortedStages[corteIndex].name,
+      stageIndex,
+      corteIndex,
+      isAfter,
+    });
+
+    return isAfter;
+  };
 
   // ===========================================================================
   // 🔥 REF PARA GUARDAR O ÚLTIMO ITEM MOVIDO
@@ -524,181 +521,182 @@ const checkIfIsAfterCorte = (
   }, [selectedFlowIds]);
 
   // ===========================================================================
-  // 🎯 FUNÇÃO DE EDIÇÃO DE ITEM
-  // ===========================================================================
-  const handleEditItem = async (item: FlowItem) => {
-    console.log("📝 Abrindo modal de edição para item:", item.id);
+// 🎯 FUNÇÃO DE EDIÇÃO DE ITEM - ATUALIZADA
+// ===========================================================================
+const handleEditItem = async (item: FlowItem) => {
+  console.log("📝 Abrindo modal de edição para item:", item.id);
 
-    setIsModalLoading(true);
-    setEditingItem(item);
+  setIsModalLoading(true);
+  setEditingItem(item);
 
-    try {
-      let itemBoard = boards.find((b) => b.id === item.flowId);
-
-      if (!itemBoard) {
-        console.log("🔄 Board não encontrado localmente, buscando da API...");
-        const response = await api.get(`/flow/${item.flowId}/board`);
-        itemBoard = response.data;
-      }
-
-      if (!itemBoard) {
-        throw new Error("Board não encontrado");
-      }
-
-      setCurrentItemStages(itemBoard.stages);
-
-      const stage = itemBoard.stages.find((s) => s.id === item.stageId);
-      setIsModalReadOnly(stage ? !canUserEditStage(stage) : true);
-
-      setTimeout(() => {
-        setIsEditItemModal(true);
-        setIsModalLoading(false);
-      }, 50);
-    } catch (error) {
-      console.error("❌ Erro ao carregar board:", error);
-      toast.error("Erro ao carregar dados do fluxo");
-      setIsModalLoading(false);
-    }
-  };
-
-  // ===========================================================================
-  // 🎯 FUNÇÃO DE CRIAÇÃO DE ITEM - CORRIGIDA
-  // ===========================================================================
-  const handleCreateItem = (stageId: string) => {
-    console.log("\n");
-    console.log("=".repeat(80));
-    console.log("🎯 [handleCreateItem] INÍCIO - Stage clicada:", stageId);
-    console.log("=".repeat(80));
-
-    // 🔥 LOG IMPORTANTE 1: Verificar fluxos selecionados
-    console.log("📊 Fluxos selecionados:", {
-      quantidade: selectedFlowIds.length,
-      ids: selectedFlowIds,
-      hasMultipleFlows: selectedFlowIds.length > 1,
-    });
-
-    const itemBoard = boards.find((b) =>
-      b.stages.some((s) => s.id === stageId),
-    );
+  try {
+    let itemBoard = boards.find((b) => b.id === item.flowId);
 
     if (!itemBoard) {
-      console.error("❌ Board não encontrado para stage:", stageId);
-      console.log(
-        "📋 Boards disponíveis:",
-        boards.map((b) => ({
-          id: b.id,
-          name: b.name,
-          stages: b.stages.map((s) => ({ id: s.id, name: s.name })),
-        })),
-      );
-      toast.error("Erro ao carregar dados do fluxo");
-      return;
+      console.log("🔄 Board não encontrado localmente, buscando da API...");
+      const response = await api.get(`/flow/${item.flowId}/board`);
+      itemBoard = response.data;
     }
 
-    console.log("✅ Board encontrado:", {
-      boardId: itemBoard.id,
-      boardName: itemBoard.name,
-      flowId: itemBoard.id,
-      flowName: itemBoard.name,
-    });
+    if (!itemBoard) {
+      throw new Error("Board não encontrado");
+    }
 
-    console.log(
-      "📋 Stages disponíveis no board:",
-      itemBoard.stages.map((s) => ({
-        id: s.id,
-        name: s.name,
-        flowId: s.flowId,
-      })),
-    );
+    // 🔥 GUARDA AS STAGES DO BOARD PARA REFERÊNCIA
+    setCurrentItemStages(itemBoard.stages); // <-- ADICIONE ESTA LINHA
 
-    console.log("🎯 Stage clicada:", {
-      stageId: stageId,
-      stageInfo: itemBoard.stages.find((s) => s.id === stageId),
-    });
-
-    // 🔥 Guarda o stageId que veio do clique
-    setActiveStageId(stageId);
-    console.log("💾 activeStageId setado para:", stageId);
-
-    // Guarda as stages do board para referência
-    setCurrentItemStages(itemBoard.stages);
-    console.log(
-      "💾 currentItemStages setado com",
-      itemBoard.stages.length,
-      "stages",
-    );
-
-    console.log("🔄 Abrindo modal em 50ms...");
+    const stage = itemBoard.stages.find((s) => s.id === item.stageId);
+    setIsModalReadOnly(stage ? !canUserEditStage(stage) : true);
 
     setTimeout(() => {
-      console.log("⏰ Timeout executado - abrindo modal");
-      setIsModalReadOnly(false);
-      setIsItemModal(true);
-      console.log("✅ Modal aberto");
+      setIsEditItemModal(true);
+      setIsModalLoading(false);
     }, 50);
-  };
+  } catch (error) {
+    console.error("❌ Erro ao carregar board:", error);
+    toast.error("Erro ao carregar dados do fluxo");
+    setIsModalLoading(false);
+  }
+};
 
-const handleOpenCompleteModal = (item: FlowItem) => {
-  const currentBoard = boards.find((b) => b.id === item.flowId);
-  if (!currentBoard) return;
+  // ===========================================================================
+// 🎯 FUNÇÃO DE CRIAÇÃO DE ITEM - ATUALIZADA
+// ===========================================================================
+const handleCreateItem = (stageId: string) => {
+  console.log("\n");
+  console.log("=".repeat(80));
+  console.log("🎯 [handleCreateItem] INÍCIO - Stage clicada:", stageId);
+  console.log("=".repeat(80));
 
-  // Ordena todas as etapas do fluxo
-  const allStages = [...currentBoard.stages].sort(
-    (a, b) => a.order - b.order,
+  // 🔥 LOG IMPORTANTE 1: Verificar fluxos selecionados
+  console.log("📊 Fluxos selecionados:", {
+    quantidade: selectedFlowIds.length,
+    ids: selectedFlowIds,
+    hasMultipleFlows: selectedFlowIds.length > 1,
+  });
+
+  const itemBoard = boards.find((b) =>
+    b.stages.some((s) => s.id === stageId),
   );
 
-  const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
-  const nextStage = allStages[currentIndex + 1];
-
-  if (!nextStage) {
-    handleAdvanceItem(item);
+  if (!itemBoard) {
+    console.error("❌ Board não encontrado para stage:", stageId);
+    console.log(
+      "📋 Boards disponíveis:",
+      boards.map((b) => ({
+        id: b.id,
+        name: b.name,
+        stages: b.stages.map((s) => ({ id: s.id, name: s.name })),
+      })),
+    );
+    toast.error("Erro ao carregar dados do fluxo");
     return;
   }
 
-  // 🔥 PALAVRAS-CHAVE PARA CORTE
-  const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
-  
-  // 🔥 PALAVRAS-CHAVE PARA DISTRIBUIÇÃO
-  const DISTRIBUICAO_KEYWORDS = [
-    "distribuição",
-    "distribuicao",
-    "expedição",
-    "expedicao",
-  ];
-
-  // 🔥 Encontra o índice da etapa de CORTE
-  const corteIndex = allStages.findIndex((s) =>
-    CORTE_KEYWORDS.some((keyword) =>
-      s.name.toLowerCase().includes(keyword.toLowerCase()),
-    ),
-  );
-
-  // 🔥 Verifica se a próxima etapa é Distribuição
-  const isDistribuicao = DISTRIBUICAO_KEYWORDS.some((keyword) =>
-    nextStage.name.toLowerCase().includes(keyword.toLowerCase()),
-  );
-
-  // 🔥 Está depois do CORTE?
-  const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
-
-  console.log("🔍 ===== DEBUG DO MODAL DE CONCLUSÃO =====");
-  console.log("📦 Item:", item.title);
-  console.log("🎯 Próxima etapa:", nextStage.name);
-  console.log("📐 Corte index:", corteIndex);
-  console.log("📐 isAfterCorte:", isAfterCorte);
-  console.log("📐 isDistribuicao:", isDistribuicao);
-
-  setCompletingItem(item);
-  setNextStageForCompletion({
-    id: nextStage.id,
-    name: nextStage.name,
-    allowedRole: nextStage.allowedRole,
-    isAfterCorte, // 🔥 USA isAfterCorte
-    isDistribuicao,
+  console.log("✅ Board encontrado:", {
+    boardId: itemBoard.id,
+    boardName: itemBoard.name,
+    flowId: itemBoard.id,
+    flowName: itemBoard.name,
   });
 
-  setIsCompleteStageModalOpen(true);
+  console.log(
+    "📋 Stages disponíveis no board:",
+    itemBoard.stages.map((s) => ({
+      id: s.id,
+      name: s.name,
+      flowId: s.flowId,
+    })),
+  );
+
+  console.log("🎯 Stage clicada:", {
+    stageId: stageId,
+    stageInfo: itemBoard.stages.find((s) => s.id === stageId),
+  });
+
+  // 🔥 Guarda o stageId que veio do clique
+  setActiveStageId(stageId);
+  console.log("💾 activeStageId setado para:", stageId);
+
+  // 🔥 GUARDA AS STAGES DO BOARD PARA REFERÊNCIA
+  setCurrentItemStages(itemBoard.stages); // <-- ADICIONE ESTA LINHA
+  console.log(
+    "💾 currentItemStages setado com",
+    itemBoard.stages.length,
+    "stages",
+  );
+
+  console.log("🔄 Abrindo modal em 50ms...");
+
+  setTimeout(() => {
+    console.log("⏰ Timeout executado - abrindo modal");
+    setIsModalReadOnly(false);
+    setIsItemModal(true);
+    console.log("✅ Modal aberto");
+  }, 50);
 };
+
+  const handleOpenCompleteModal = (item: FlowItem) => {
+    const currentBoard = boards.find((b) => b.id === item.flowId);
+    if (!currentBoard) return;
+
+    // Ordena todas as etapas do fluxo
+    const allStages = [...currentBoard.stages].sort(
+      (a, b) => a.order - b.order,
+    );
+
+    const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
+    const nextStage = allStages[currentIndex + 1];
+
+    if (!nextStage) {
+      handleAdvanceItem(item);
+      return;
+    }
+
+    // 🔥 PALAVRAS-CHAVE PARA CORTE
+    const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
+
+    // 🔥 PALAVRAS-CHAVE PARA DISTRIBUIÇÃO
+    const DISTRIBUICAO_KEYWORDS = [
+      "distribuição",
+      "distribuicao",
+      "expedição",
+      "expedicao",
+    ];
+
+    // 🔥 Encontra o índice da etapa de CORTE
+    const corteIndex = allStages.findIndex((s) =>
+      CORTE_KEYWORDS.some((keyword) =>
+        s.name.toLowerCase().includes(keyword.toLowerCase()),
+      ),
+    );
+
+    // 🔥 Verifica se a próxima etapa é Distribuição
+    const isDistribuicao = DISTRIBUICAO_KEYWORDS.some((keyword) =>
+      nextStage.name.toLowerCase().includes(keyword.toLowerCase()),
+    );
+
+    // 🔥 Está depois do CORTE?
+    const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
+
+    console.log("🔍 ===== DEBUG DO MODAL DE CONCLUSÃO =====");
+    console.log("📦 Item:", item.title);
+    console.log("🎯 Próxima etapa:", nextStage.name);
+    console.log("📐 Corte index:", corteIndex);
+    console.log("📐 isAfterCorte:", isAfterCorte);
+    console.log("📐 isDistribuicao:", isDistribuicao);
+
+    setCompletingItem(item);
+    setNextStageForCompletion({
+      id: nextStage.id,
+      name: nextStage.name,
+      allowedRole: nextStage.allowedRole,
+      isAfterCorte, // 🔥 USA isAfterCorte
+      isDistribuicao,
+    });
+
+    setIsCompleteStageModalOpen(true);
+  };
   // ===========================================================================
   // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL - CORRIGIDA (ADICIONA QUANTIDADE)
   // ===========================================================================
@@ -2318,106 +2316,107 @@ const handleOpenCompleteModal = (item: FlowItem) => {
       }
     },
 
-  onRequireResponsible: (itemId, targetStageId, targetStageName) => {
-  console.log("👤 [onRequireResponsible] Requer responsável:", {
-    itemId,
-    targetStageId,
-    targetStageName,
-  });
+    onRequireResponsible: (itemId, targetStageId, targetStageName) => {
+      console.log("👤 [onRequireResponsible] Requer responsável:", {
+        itemId,
+        targetStageId,
+        targetStageName,
+      });
 
-  // 🔥 ENCONTRA O ITEM PARA PEGAR O FLOW ID
-  const item = unifiedStages
-    .flatMap((s) => s.items)
-    .find((i) => i.id === itemId);
+      // 🔥 ENCONTRA O ITEM PARA PEGAR O FLOW ID
+      const item = unifiedStages
+        .flatMap((s) => s.items)
+        .find((i) => i.id === itemId);
 
-  if (!item) {
-    console.error("❌ Item não encontrado:", itemId);
-    return;
-  }
+      if (!item) {
+        console.error("❌ Item não encontrado:", itemId);
+        return;
+      }
 
-  console.log("📦 Item encontrado:", {
-    id: item.id,
-    title: item.title,
-    flowId: item.flowId,
-    currentStageId: item.stageId,
-    quantity: item.quantity,
-  });
+      console.log("📦 Item encontrado:", {
+        id: item.id,
+        title: item.title,
+        flowId: item.flowId,
+        currentStageId: item.stageId,
+        quantity: item.quantity,
+      });
 
-  // 🔥 ENCONTRA A STAGE DESTINO
-  const targetStage = unifiedStages.find(
-    (s) => s.name.toLowerCase() === targetStageName.toLowerCase(),
-  );
+      // 🔥 ENCONTRA A STAGE DESTINO
+      const targetStage = unifiedStages.find(
+        (s) => s.name.toLowerCase() === targetStageName.toLowerCase(),
+      );
 
-  if (!targetStage) {
-    console.error(
-      "❌ [onRequireResponsible] Stage não encontrada:",
-      targetStageName,
-    );
-    return;
-  }
+      if (!targetStage) {
+        console.error(
+          "❌ [onRequireResponsible] Stage não encontrada:",
+          targetStageName,
+        );
+        return;
+      }
 
-  // ===========================================================================
-  // 🔥 CALCULA AS FLAGS - USA isAfterCorte
-  // ===========================================================================
-  const isDistribuicao = checkIfIsDistribuicao(targetStage.name);
-  const isAfterCorte = checkIfIsAfterCorte( // ← FUNÇÃO QUE VERIFICA CORTE
-    targetStageId,
-    item.flowId,
-  );
+      // ===========================================================================
+      // 🔥 CALCULA AS FLAGS - USA isAfterCorte
+      // ===========================================================================
+      const isDistribuicao = checkIfIsDistribuicao(targetStage.name);
+      const isAfterCorte = checkIfIsAfterCorte(
+        // ← FUNÇÃO QUE VERIFICA CORTE
+        targetStageId,
+        item.flowId,
+      );
 
-  console.log("📊 [onRequireResponsible] Flags calculadas:", {
-    itemId: item.id,
-    itemTitle: item.title,
-    flowId: item.flowId,
-    targetStageName: targetStage.name,
-    targetStageId,
-    isAfterCorte, // ← AGORA USA isAfterCorte
-    isDistribuicao,
-  });
+      console.log("📊 [onRequireResponsible] Flags calculadas:", {
+        itemId: item.id,
+        itemTitle: item.title,
+        flowId: item.flowId,
+        targetStageName: targetStage.name,
+        targetStageId,
+        isAfterCorte, // ← AGORA USA isAfterCorte
+        isDistribuicao,
+      });
 
-  const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
+      const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
 
-  if (isOficina) {
-    console.log(
-      "🏭 [onRequireResponsible] É coluna OFICINA, requer fornecedor",
-    );
-    setDragItemId(itemId);
-    setDragTargetStage({
-      id: targetStageId,
-      name: targetStage.name,
-      allowedRole: targetStage.allowedRole,
-      isAfterCorte, // ← PASSA isAfterCorte (agora o tipo aceita)
-      isDistribuicao,
-    });
-    setIsDragModalOpen(true);
-    return;
-  }
+      if (isOficina) {
+        console.log(
+          "🏭 [onRequireResponsible] É coluna OFICINA, requer fornecedor",
+        );
+        setDragItemId(itemId);
+        setDragTargetStage({
+          id: targetStageId,
+          name: targetStage.name,
+          allowedRole: targetStage.allowedRole,
+          isAfterCorte, // ← PASSA isAfterCorte (agora o tipo aceita)
+          isDistribuicao,
+        });
+        setIsDragModalOpen(true);
+        return;
+      }
 
-  if (
-    targetStage?.allowedRole &&
-    targetStage.allowedRole !== "all" &&
-    targetStage.allowedRole !== "null" &&
-    targetStage.allowedRole.trim() !== ""
-  ) {
-    console.log(
-      `👤 [onRequireResponsible] Requer cargo: ${targetStage.allowedRole}`,
-    );
-    setDragItemId(itemId);
-    setDragTargetStage({
-      id: targetStageId,
-      name: targetStage.name,
-      allowedRole: targetStage.allowedRole,
-      isAfterCorte, // ← PASSA isAfterCorte
-      isDistribuicao,
-    });
-    setIsDragModalOpen(true);
-  } else {
-    console.log(
-      "✅ [onRequireResponsible] Sem restrição, movendo diretamente",
-    );
-    executeMove(itemId, targetStageId);
-  }
-},
+      if (
+        targetStage?.allowedRole &&
+        targetStage.allowedRole !== "all" &&
+        targetStage.allowedRole !== "null" &&
+        targetStage.allowedRole.trim() !== ""
+      ) {
+        console.log(
+          `👤 [onRequireResponsible] Requer cargo: ${targetStage.allowedRole}`,
+        );
+        setDragItemId(itemId);
+        setDragTargetStage({
+          id: targetStageId,
+          name: targetStage.name,
+          allowedRole: targetStage.allowedRole,
+          isAfterCorte, // ← PASSA isAfterCorte
+          isDistribuicao,
+        });
+        setIsDragModalOpen(true);
+      } else {
+        console.log(
+          "✅ [onRequireResponsible] Sem restrição, movendo diretamente",
+        );
+        executeMove(itemId, targetStageId);
+      }
+    },
 
     onMoveSuccess: async () => {
       console.log(
@@ -3288,21 +3287,21 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         isOpen={isItemModal}
         onClose={() => {
           setIsItemModal(false);
-          setCurrentItemStages([]);
+          setCurrentItemStages([]); // 🔥 Limpa as stages
           setActiveStageId(null);
         }}
         onSubmit={handleItemSubmit}
         isLoading={isSubmitting || isModalLoading}
         users={users}
         suppliers={suppliers}
-        stages={currentItemStages}
+        stages={currentItemStages} // 🔥 PASSA AS STAGES ATUAIS
         flows={flows}
         initialStageId={activeStageId}
         currentUserRole={user?.professionalRole}
         currentUserSystemRole={user?.role}
         isReadOnly={false}
         hasMultipleFlows={selectedFlowIds.length > 1}
-        // 🔥 Passa a função de busca
+        // 🔥 FUNÇÃO PARA BUSCAR STAGES DE UM FLOW (USADA QUANDO MUDA O FLUXO)
         fetchStagesForFlow={async (flowId) => {
           try {
             const response = await api.get(`/flow/${flowId}/stages`);
@@ -3319,7 +3318,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         onClose={() => {
           setIsEditItemModal(false);
           setEditingItem(null);
-          setCurrentItemStages([]);
+          setCurrentItemStages([]); // 🔥 Limpa as stages
           setActiveStageId(null);
         }}
         initialData={editingItem}
@@ -3327,7 +3326,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         isLoading={isSubmitting || isModalLoading}
         users={users}
         suppliers={suppliers}
-        stages={currentItemStages}
+        stages={currentItemStages} // 🔥 PASSA AS STAGES ATUAIS
         flows={flows}
         initialStageId={activeStageId}
         onAdvance={handleAdvanceItem}
@@ -3339,8 +3338,8 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         currentUserRole={user?.professionalRole}
         currentUserSystemRole={user?.role}
         isReadOnly={isModalReadOnly}
-        // 🔥 NOVA PROP: indica se tem múltiplos fluxos selecionados
         hasMultipleFlows={selectedFlowIds.length > 1}
+        // 🔥 FUNÇÃO PARA BUSCAR STAGES DE UM FLOW (USADA QUANDO MUDA O FLUXO)
         onFlowChange={async (flowId) => {
           try {
             console.log("🔄 Buscando stages para flow:", flowId);
@@ -3350,7 +3349,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
             const response = await api.get(`/flow/${flowId}/stages`);
             console.log("✅ Stages carregadas:", response.data.length);
 
-            setCurrentItemStages(response.data);
+            setCurrentItemStages(response.data); // 🔥 ATUALIZA O ESTADO
 
             return response.data;
           } catch (error) {
