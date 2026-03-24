@@ -48,7 +48,7 @@ const menuItems = [
       { title: "Company", href: "/" },
       { title: "Usuario", href: "/dashboard-user" },
       { title: "Coleção", href: "/colecao" },
-      { title: "Itens Completos", href: "/completed-items-dashboard" },
+      { title: "Itens Finalizados", href: "/completed-items-dashboard" },
     ],
   },
   {

@@ -85,7 +85,7 @@ const PaginationControls = ({
   const end = Math.min(currentPage * itemsPerPage, totalItems);
 
   return (
-    <div className="flex items-center justify-between py-4 border-t border-[#95A5A6]/20 mt-4">
+    <div className="flex items-center justify-between py-3 border-t border-[#95A5A6]/20">
       <div className="flex-1">
         <span className="text-sm text-[#95A5A6]">
           Mostrando{" "}
@@ -96,7 +96,7 @@ const PaginationControls = ({
         </span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         <Button
           variant="outline"
           size="icon"
@@ -196,8 +196,8 @@ const PaginationControls = ({
 // Skeleton da tabela
 function TableSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-4 p-4 bg-[#F5F0E6]/50 rounded-t-lg">
+    <div className="space-y-3">
+      <div className="flex items-center gap-4 p-3 bg-[#F5F0E6]/50 rounded-t-lg">
         <Skeleton className="h-4 w-[250px] bg-slate-300 animate-pulse" />
         <Skeleton className="h-4 w-[100px] bg-slate-300 animate-pulse" />
         <Skeleton className="h-4 w-[120px] bg-slate-300 animate-pulse" />
@@ -208,7 +208,7 @@ function TableSkeleton() {
       {Array.from({ length: 5 }).map((_, i) => (
         <div
           key={i}
-          className="flex items-center gap-4 p-4 border-b border-[#95A5A6]/20"
+          className="flex items-center gap-4 p-3 border-b border-[#95A5A6]/20"
         >
           <div className="flex items-center gap-3 flex-1">
             <Skeleton className="h-10 w-10 rounded-md bg-slate-300 animate-pulse" />
@@ -527,7 +527,7 @@ export function CompletedItemsDashboard() {
     {
       header: "Item",
       cell: (item: any) => (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {item.imageUrl ? (
             <Avatar className="h-10 w-10 rounded-md">
               <AvatarImage src={item.imageUrl} alt={item.title} />
@@ -563,7 +563,7 @@ export function CompletedItemsDashboard() {
     {
       header: "Responsável",
       cell: (item: any) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Users size={14} className="text-[#95A5A6]" />
           <span className="text-sm text-[#2D3436]">
             {item.assignedToName || item.supplierName || "Não atribuído"}
@@ -574,7 +574,7 @@ export function CompletedItemsDashboard() {
     {
       header: "Concluído em",
       cell: (item: any) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Calendar size={14} className="text-[#95A5A6]" />
           <span className="text-sm text-[#2D3436]">
             {formatDate(item.completedAt)}
@@ -598,15 +598,15 @@ export function CompletedItemsDashboard() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Cabeçalho */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Package className="text-orange-500" size={24} />
-            Itens Concluídos
+            Itens Finalizados
           </h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-500 mt-0.5">
             Acompanhe todos os itens que finalizaram o fluxo de produção
           </p>
         </div>
@@ -616,78 +616,12 @@ export function CompletedItemsDashboard() {
         </Button>
       </div>
 
-      {/* Cards de Estatísticas */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-500">Total Concluídos</p>
-                  <p className="text-2xl font-bold">{stats.total}</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {getPeriodLabel(selectedPeriod)}
-                  </p>
-                </div>
-                <div className="bg-green-100 p-3 rounded-full">
-                  <CheckCircle className="text-green-600" size={24} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Factory size={16} />
-                Por Fluxo
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-1 max-h-24 overflow-y-auto">
-                {Object.entries(stats.byFlow).map(([flow, count]) => (
-                  <div
-                    key={flow}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span className="truncate max-w-[150px]">{flow}</span>
-                    <span className="font-bold ml-2">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Users size={16} />
-                Por Responsável
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-1 max-h-24 overflow-y-auto">
-                {Object.entries(stats.byResponsible).map(([name, count]) => (
-                  <div
-                    key={name}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span className="truncate max-w-[150px]">{name}</span>
-                    <span className="font-bold ml-2">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
       {/* Filtros */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-end gap-4">
+        <CardContent className="pt-4 pb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
             {/* Filtro por Referência */}
-            <div className="flex-1 min-w-[250px]">
+            <div className="col-span-1 sm:col-span-2 lg:col-span-1">
               <label className="text-xs text-slate-500 mb-1 block">
                 Referência do Produto
               </label>
@@ -707,36 +641,17 @@ export function CompletedItemsDashboard() {
                     onClick={clearSearch}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2"
                   >
-                    <X size={16} className="text-slate-400" />
+                    <X
+                      size={16}
+                      className="text-slate-400 hover:text-slate-600"
+                    />
                   </button>
                 )}
               </div>
-
-              {searchRefInput && searchRefInput !== searchRefClean && (
-                <div className="flex items-center gap-1 mt-1">
-                  <Badge
-                    variant="outline"
-                    className="bg-amber-50 text-amber-700 border-amber-200 text-xs"
-                  >
-                    ⚠️ Espaços ignorados
-                  </Badge>
-                  {searchRefClean && (
-                    <span className="text-xs text-amber-600">
-                      Buscando por: &quot;{searchRefClean}&quot;
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {searchRefClean && !searchRefInput.includes("  ") && (
-                <p className="text-xs text-green-600 mt-1">
-                  ✓ Buscando por: &quot;{searchRefClean}&quot;
-                </p>
-              )}
             </div>
 
             {/* Filtro por Fluxo */}
-            <div className="w-[220px]">
+            <div className="col-span-1">
               <label className="text-xs text-slate-500 mb-1 block">Fluxo</label>
               <Select
                 value={selectedFlowId}
@@ -769,8 +684,8 @@ export function CompletedItemsDashboard() {
               </Select>
             </div>
 
-            {/* 🔥 Filtro por Responsável - CORRIGIDO */}
-            <div className="w-[180px]">
+            {/* Filtro por Responsável */}
+            <div className="col-span-1">
               <label className="text-xs text-slate-500 mb-1 block">
                 Responsável
               </label>
@@ -806,7 +721,7 @@ export function CompletedItemsDashboard() {
             </div>
 
             {/* Filtro por Período */}
-            <div className="w-[160px]">
+            <div className="col-span-1">
               <label className="text-xs text-slate-500 mb-1 block">
                 Data de Conclusão
               </label>
@@ -832,73 +747,26 @@ export function CompletedItemsDashboard() {
 
             {/* Botão Limpar Filtros */}
             {hasActiveFilters() && (
-              <Button
-                variant="ghost"
-                onClick={clearFilters}
-                className="gap-2 text-slate-500 mb-[2px]"
-              >
-                <RotateCcw size={16} />
-                Limpar filtros
-              </Button>
+              <div className="col-span-1">
+                <Button
+                  variant="ghost"
+                  onClick={clearFilters}
+                  className="gap-2 text-slate-500 w-full"
+                >
+                  <RotateCcw size={16} />
+                  Limpar filtros
+                </Button>
+              </div>
             )}
           </div>
-
-          {/* Tags com filtros ativos */}
-          {hasActiveFilters() && (
-            <div className="flex flex-wrap gap-2 mt-4">
-              {searchRefClean && (
-                <Badge variant="secondary" className="gap-1">
-                  Referência: {searchRefClean}
-                  <X
-                    size={14}
-                    className="cursor-pointer hover:text-red-500"
-                    onClick={clearSearch}
-                  />
-                </Badge>
-              )}
-
-              {selectedFlowId !== "all" && (
-                <Badge variant="secondary" className="gap-1">
-                  Fluxo: {getSelectedFlowName()}
-                  <X
-                    size={14}
-                    className="cursor-pointer hover:text-red-500"
-                    onClick={() => setSelectedFlowId("all")}
-                  />
-                </Badge>
-              )}
-
-              {selectedResponsibleId !== "all" && (
-                <Badge variant="secondary" className="gap-1">
-                  Responsável: {getSelectedResponsibleName()}
-                  <X
-                    size={14}
-                    className="cursor-pointer hover:text-red-500"
-                    onClick={() => setSelectedResponsibleId("all")}
-                  />
-                </Badge>
-              )}
-
-              {selectedPeriod !== "week" && (
-                <Badge variant="secondary" className="gap-1">
-                  Período: {getPeriodLabel(selectedPeriod)}
-                  <X
-                    size={14}
-                    className="cursor-pointer hover:text-red-500"
-                    onClick={() => setSelectedPeriod("week")}
-                  />
-                </Badge>
-              )}
-            </div>
-          )}
         </CardContent>
       </Card>
 
       {/* Tabela com Paginação */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-4">
           <CardTitle className="text-xl text-[#2D3436]">
-            Itens Concluídos
+            Itens Finalizados
           </CardTitle>
 
           {/* Selector de itens por página */}
@@ -920,34 +788,30 @@ export function CompletedItemsDashboard() {
             </Select>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0 px-4 pb-4">
           {loading ? (
             <TableSkeleton />
           ) : (
-            <>
-              <GenericTable
-                title=""
-                data={items}
-                columns={columns}
-                isLoading={false}
-                searchTerm=""
-                onSearchChange={() => {}}
-                emptyMessage={
-                  searchRefClean ||
-                  selectedFlowId !== "all" ||
-                  selectedResponsibleId !== "all"
-                    ? "Nenhum item encontrado com os filtros aplicados"
-                    : "Nenhum item concluído no período selecionado"
-                }
-                pagination={{
-                  currentPage,
-                  totalPages,
-                  onPageChange: handlePageChange,
-                  totalItems,
-                  itemsPerPage,
-                }}
-              />
-            </>
+            <GenericTable
+              title=""
+              data={items}
+              columns={columns}
+              isLoading={false}
+              emptyMessage={
+                searchRefClean ||
+                selectedFlowId !== "all" ||
+                selectedResponsibleId !== "all"
+                  ? "Nenhum item encontrado com os filtros aplicados"
+                  : "Nenhum item concluído no período selecionado"
+              }
+              pagination={{
+                currentPage,
+                totalPages,
+                onPageChange: handlePageChange,
+                totalItems,
+                itemsPerPage,
+              }}
+            />
           )}
         </CardContent>
       </Card>

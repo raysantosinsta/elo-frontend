@@ -5,6 +5,8 @@
 import {
   AlertTriangle,
   Calendar,
+  Check,
+  ChevronDown,
   Clock,
   Factory,
   Filter as FilterIcon,
@@ -64,6 +66,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 // import { useProductRefPermission } from "@/hooks/use-product-ref-permission";
 
 // --- CONSTANTES ---
@@ -312,6 +317,8 @@ export default function ProductFlowKanban() {
   );
 
   const [stageDefaultDays, setStageDefaultDays] = useState<number>(1); // 🔥 NOVO ESTADO
+
+  const [openColumnSelector, setOpenColumnSelector] = useState(false);
 
   // ===========================================================================
   // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS CORTE
@@ -613,11 +620,16 @@ export default function ProductFlowKanban() {
       console.log("✅ Modal aberto");
     }, 50);
   };
-  const handleOpenCompleteModal = (item: FlowItem) => {
-    const currentBoard = boards.find((b) => b.id === item.flowId);
-    if (!currentBoard) return;
+  
 
-    // Ordena todas as etapas do fluxo
+const handleOpenCompleteModal = (item: FlowItem) => {
+    const currentBoard = boards.find((b) => b.id === item.flowId);
+    if (!currentBoard) {
+      toast.error("Fluxo não encontrado.");
+      return;
+    }
+
+    // 1. Ordena todas as etapas do fluxo para verificar a posição atual
     const allStages = [...currentBoard.stages].sort(
       (a, b) => a.order - b.order,
     );
@@ -625,15 +637,32 @@ export default function ProductFlowKanban() {
     const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
     const nextStage = allStages[currentIndex + 1];
 
+    // ===========================================================================
+    // 🏁 AJUSTE: LÓGICA PARA A ÚLTIMA ETAPA
+    // ===========================================================================
     if (!nextStage) {
-      handleAdvanceItem(item);
-      return;
+      console.log("🏁 Última etapa detectada. Finalizando item...");
+      
+      // Chamamos o handleAdvanceItem que agora dispara a conclusão no backend
+      // Usamos toast.promise para dar um feedback visual elegante de finalização
+      toast.promise(handleAdvanceItem(item), {
+        loading: `Finalizando "${item.title}"...`,
+        success: () => {
+          return `Item "${item.title}" concluído com sucesso!`;
+        },
+        error: (err) => {
+          return err?.response?.data?.message || "Erro ao finalizar item.";
+        },
+      });
+      return; // Encerra aqui, sem abrir o modal de próxima etapa
     }
 
-    // 🔥 PALAVRAS-CHAVE PARA CORTE
+    // ===========================================================================
+    // 🚀 LÓGICA PARA QUANDO EXISTE UMA PRÓXIMA ETAPA (ABRE MODAL)
+    // ===========================================================================
+    
+    // Palavras-chave para identificação de regras especiais
     const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
-
-    // 🔥 PALAVRAS-CHAVE PARA DISTRIBUIÇÃO
     const DISTRIBUICAO_KEYWORDS = [
       "distribuição",
       "distribuicao",
@@ -641,39 +670,40 @@ export default function ProductFlowKanban() {
       "expedicao",
     ];
 
-    // 🔥 Encontra o índice da etapa de CORTE
+    // Encontra o índice da etapa de CORTE no fluxo
     const corteIndex = allStages.findIndex((s) =>
       CORTE_KEYWORDS.some((keyword) =>
         s.name.toLowerCase().includes(keyword.toLowerCase()),
       ),
     );
 
-    // 🔥 Verifica se a próxima etapa é Distribuição
+    // Verifica se a próxima etapa é Distribuição
     const isDistribuicao = DISTRIBUICAO_KEYWORDS.some((keyword) =>
       nextStage.name.toLowerCase().includes(keyword.toLowerCase()),
     );
 
-    // 🔥 Está depois do CORTE?
-    const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
+    // Regra: Está depois do CORTE? (Usado para validar quantidades/responsáveis)
+    const isAfterCorte = corteIndex !== -1 && (currentIndex + 1) > corteIndex;
 
-    console.log("🔍 ===== DEBUG DO MODAL DE CONCLUSÃO =====");
-    console.log("📦 Item:", item.title);
-    console.log("🎯 Próxima etapa:", nextStage.name);
-    console.log("📐 Corte index:", corteIndex);
-    console.log("📐 isAfterCorte:", isAfterCorte);
-    console.log("📐 isDistribuicao:", isDistribuicao);
+    console.log("🔍 [handleOpenCompleteModal] Preparando modal de avanço:", {
+      item: item.title,
+      nextStage: nextStage.name,
+      isAfterCorte,
+      isDistribuicao,
+    });
 
     setCompletingItem(item);
     setNextStageForCompletion({
       id: nextStage.id,
       name: nextStage.name,
       allowedRole: nextStage.allowedRole,
-      isAfterCorte, // 🔥 USA isAfterCorte
+      isAfterCorte, 
       isDistribuicao,
     });
 
     setIsCompleteStageModalOpen(true);
   };
+
   // ===========================================================================
   // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL - CORRIGIDA (ADICIONA QUANTIDADE)
   // ===========================================================================
@@ -830,77 +860,99 @@ export default function ProductFlowKanban() {
     return items;
   };
 
-  // ===========================================================================
-  // 🔄 FUNÇÕES DE FILTRO GLOBAL
-  // ===========================================================================
-  useEffect(() => {
-    const filterParam = searchParams.get("filter");
-    const typeParam = searchParams.get("dateType");
-    const startDateParam = searchParams.get("startDate");
-    const endDateParam = searchParams.get("endDate");
-    const assignedParam = searchParams.get("assignedToId");
-    const supplierParam = searchParams.get("supplierId");
-    const productRefParam = searchParams.get("productRef");
-    const stageNameParam = searchParams.get("stageName");
+// ===========================================================================
+// 🔄 FUNÇÕES DE FILTRO GLOBAL (AJUSTADO PARA MÚLTIPLOS FLUXOS)
+// ===========================================================================
+useEffect(() => {
+  const filterParam = searchParams.get("filter");
+  const typeParam = searchParams.get("dateType");
+  const startDateParam = searchParams.get("startDate");
+  const endDateParam = searchParams.get("endDate");
+  const assignedParam = searchParams.get("assignedToId");
+  const supplierParam = searchParams.get("supplierId");
+  const productRefParam = searchParams.get("productRef");
+  const stageNameParam = searchParams.get("stageName");
+  
+  // Parâmetros de Fluxo
+  const flowIdParam = searchParams.get("flowId");
+  const flowIdsParam = searchParams.get("flowIds");
 
-    if (filterParam === "overdue") {
-      setTempFilterOverdue(true);
-      setTempFilterUpcoming(false);
-    } else if (filterParam === "upcoming") {
-      setTempFilterUpcoming(true);
-      setTempFilterOverdue(false);
-    }
+  // 1. Resolve os IDs da URL
+  let idsFromUrl: string[] = [];
+  if (flowIdsParam) {
+    idsFromUrl = flowIdsParam.split(",").filter(Boolean);
+  } else if (flowIdParam) {
+    idsFromUrl = [flowIdParam];
+  }
 
-    // 🔥 Se for filtro upcoming, sempre usa dueDate
-    if (filterParam === "upcoming") {
-      setTempFilterDateType("dueDate");
-    } else if (typeParam === "productionStartedAt" || typeParam === "dueDate") {
-      setTempFilterDateType(typeParam);
-    }
+  console.log("🔍 [useEffect URL] Parâmetros detectados:", {
+    filter: filterParam,
+    flowIds: idsFromUrl,
+    stage: stageNameParam
+  });
 
-    if (startDateParam) {
-      setTempFilterStartDate(startDateParam.split("T")[0]);
-    }
+  // --- 1. Lógica de Seleção de Fluxos (Com trava de comparação profunda para evitar loops) ---
+  if (idsFromUrl.length > 0) {
+    setSelectedFlowIds(prev => {
+      // Verifica se os arrays são iguais para evitar re-render desnecessário e loop
+      const isSame = 
+        prev.length === idsFromUrl.length && 
+        prev.every((id, idx) => id === idsFromUrl[idx]);
+        
+      if (isSame) return prev;
+      
+      console.log("✅ [useEffect URL] Atualizando selectedFlowIds para:", idsFromUrl);
+      return idsFromUrl;
+    });
+  }
 
-    if (endDateParam) {
-      setTempFilterEndDate(endDateParam.split("T")[0]);
-    }
+  // --- 2. Sincronização de Filtros de Status (Overdue/Upcoming) ---
+  const isOverdue = filterParam === "overdue";
+  const isUpcoming = filterParam === "upcoming";
 
-    if (assignedParam) {
-      setTempFilterAssignedTo(assignedParam);
-    }
+  setTempFilterOverdue(isOverdue);
+  setActiveFilterOverdue(isOverdue);
+  setTempFilterUpcoming(isUpcoming);
+  setActiveFilterUpcoming(isUpcoming);
 
-    if (supplierParam) {
-      setTempFilterSupplier(supplierParam);
-    }
+  // --- 3. Configuração de Datas e Tipos ---
+  const finalDateType = isUpcoming 
+    ? "dueDate" 
+    : (typeParam === "productionStartedAt" || typeParam === "dueDate" ? typeParam : "productionStartedAt");
 
-    if (productRefParam) {
-      setTempFilterProductRef(productRefParam);
-    }
+  const finalStartDate = startDateParam ? startDateParam.split("T")[0] : "";
+  const finalEndDate = endDateParam ? endDateParam.split("T")[0] : "";
 
-    if (stageNameParam) {
-      setColumnNameFilter(stageNameParam);
-    }
+  setTempFilterDateType(finalDateType);
+  setActiveFilterDateType(finalDateType);
+  
+  setTempFilterStartDate(finalStartDate);
+  setActiveFilterStartDate(finalStartDate);
+  
+  setTempFilterEndDate(finalEndDate);
+  setActiveFilterEndDate(finalEndDate);
 
-    // 🔥 Atualiza os filtros ativos
-    setActiveFilterDateType(
-      filterParam === "upcoming"
-        ? "dueDate"
-        : typeParam === "productionStartedAt" || typeParam === "dueDate"
-          ? typeParam
-          : "dueDate", // 🔥 Muda o padrão para dueDate
-    );
-    setActiveFilterStartDate(
-      startDateParam ? startDateParam.split("T")[0] : "",
-    );
-    setActiveFilterEndDate(endDateParam ? endDateParam.split("T")[0] : "");
-    setActiveFilterOverdue(filterParam === "overdue");
-    setActiveFilterUpcoming(filterParam === "upcoming");
-    setActiveFilterAssignedTo(assignedParam || "all");
-    setActiveFilterSupplier(supplierParam || "all");
-    setActiveFilterProductRef(productRefParam || "");
-    setActiveColumnNameFilter(stageNameParam || "");
-  }, [searchParams]);
+  // --- 4. Filtros de Entidades e Referências ---
+  const finalAssigned = assignedParam || "all";
+  const finalSupplier = supplierParam || "all";
+  const finalRef = productRefParam || "";
+  const finalColumn = stageNameParam || "";
+
+  setTempFilterAssignedTo(finalAssigned);
+  setActiveFilterAssignedTo(finalAssigned);
+  
+  setTempFilterSupplier(finalSupplier);
+  setActiveFilterSupplier(finalSupplier);
+  
+  setTempFilterProductRef(finalRef);
+  setActiveFilterProductRef(finalRef);
+  
+  setColumnNameFilter(finalColumn);
+  setActiveColumnNameFilter(finalColumn);
+
+  console.log("✅ [useEffect URL] Estados sincronizados com a URL.");
+
+}, [searchParams, setSelectedFlowIds]);
 
   const fetchSelectedBoards = useCallback(async () => {
     console.log(
@@ -970,332 +1022,88 @@ export default function ProductFlowKanban() {
   }, [selectedFlowIds, flows]);
 
   const fetchFilteredBoards = useCallback(
-    async (paramsFromUrl?: URLSearchParams) => {
-      console.log("\n" + "=".repeat(80));
-      console.log("🚀 [fetchFilteredBoards] INICIANDO");
-      console.log("=".repeat(80));
+  async (paramsFromUrl?: URLSearchParams) => {
+    console.log("\n" + "=".repeat(80));
+    console.log("🚀 [fetchFilteredBoards] INICIANDO");
+    console.log("=".repeat(80));
 
-      if (selectedFlowIds.length === 0) {
-        console.log("⚠️ Nenhum fluxo selecionado");
-        setBoards([]);
-        setLoading(false);
-        return;
-      }
+    if (selectedFlowIds.length === 0) {
+      console.log("⚠️ Nenhum fluxo selecionado");
+      setBoards([]);
+      setLoading(false);
+      return;
+    }
 
-      setLoading(true);
-      setIsFiltering(true);
+    setLoading(true);
+    setIsFiltering(true);
 
-      // 🔥 Cria um controller para timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.error("❌ Timeout após 15 segundos");
-        controller.abort();
-      }, 15000);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.error("❌ Timeout após 15 segundos");
+      controller.abort();
+    }, 15000);
 
-      try {
-        const params =
-          paramsFromUrl || new URLSearchParams(window.location.search);
+    try {
+      const params = paramsFromUrl || new URLSearchParams(window.location.search);
+      
+      // Sincronização de estados de filtro (UI)
+      const startDate = params.get("startDate");
+      const endDate = params.get("endDate");
+      const filter = params.get("filter");
+      const stageName = params.get("stageName");
 
-        const startDate = params.get("startDate");
-        const endDate = params.get("endDate");
-        const dateType = params.get("dateType");
-        const filter = params.get("filter");
-        const assignedToId = params.get("assignedToId");
-        const supplierId = params.get("supplierId");
-        const productRef = params.get("productRef");
-        const stageName = params.get("stageName");
+      setActiveFilterOverdue(filter === "overdue");
+      setActiveFilterUpcoming(filter === "upcoming");
+      setActiveColumnNameFilter(stageName || "");
 
-        console.log("🔍 Parâmetros da URL:", {
-          startDate,
-          endDate,
-          dateType,
-          filter,
-          assignedToId,
-          supplierId,
-          productRef,
-          stageName,
-          selectedFlowIds,
-        });
+      // Preparação da Query API
+      const baseQueryParams = new URLSearchParams();
+      if (startDate) baseQueryParams.set("startDate", new Date(startDate).toISOString());
+      if (endDate) baseQueryParams.set("endDate", new Date(endDate).toISOString());
+      if (params.get("dateType")) baseQueryParams.set("dateType", params.get("dateType")!);
+      if (filter === "overdue") baseQueryParams.set("isOverdue", "true");
+      if (filter === "upcoming") baseQueryParams.set("isUpcoming", "true");
+      if (params.get("assignedToId") && params.get("assignedToId") !== "all") 
+        baseQueryParams.set("assignedToId", params.get("assignedToId")!);
+      if (params.get("supplierId") && params.get("supplierId") !== "all") 
+        baseQueryParams.set("supplierId", params.get("supplierId")!);
+      if (params.get("productRef")) baseQueryParams.set("productRef", params.get("productRef")!);
+      if (stageName) baseQueryParams.set("stageName", stageName.trim());
 
-        setActiveFilterStartDate(startDate?.split("T")[0] || "");
-        setActiveFilterEndDate(endDate?.split("T")[0] || "");
-        setActiveFilterDateType(
-          (dateType as "productionStartedAt" | "dueDate") ||
-            "productionStartedAt",
-        );
-        setActiveFilterOverdue(filter === "overdue");
-        setActiveFilterUpcoming(filter === "upcoming");
-        setActiveFilterAssignedTo(assignedToId || "all");
-        setActiveFilterSupplier(supplierId || "all");
-        setActiveFilterProductRef(productRef || "");
-        setActiveColumnNameFilter(stageName || "");
-        setColumnNameFilter(stageName || "");
+      console.log("📡 Buscando dados para IDs:", selectedFlowIds);
 
-        const baseQueryParams = new URLSearchParams();
-
-        if (startDate) {
-          const startDateTime = new Date(startDate);
-          startDateTime.setUTCHours(0, 0, 0, 0);
-          baseQueryParams.set("startDate", startDateTime.toISOString());
-          console.log("📅 startDate convertido:", startDateTime.toISOString());
+      // Criamos as promises para TODOS os fluxos selecionados
+      const boardsPromises = selectedFlowIds.map(async (flowId) => {
+        try {
+          const url = `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`;
+          const response = await api.get(url, { signal: controller.signal });
+          return response.data;
+        } catch (error: any) {
+          console.error(`❌ Erro no board ${flowId}, buscando board original como fallback.`);
+          // Fallback: busca o board limpo para garantir que a coluna apareça
+          const fallback = await api.get(`/flow/${flowId}/board`);
+          return { ...fallback.data, stages: fallback.data.stages.map((s: any) => ({ ...s, items: [] })) };
         }
+      });
 
-        if (endDate) {
-          const endDateTime = new Date(endDate);
-          endDateTime.setUTCHours(23, 59, 59, 999);
-          baseQueryParams.set("endDate", endDateTime.toISOString());
-          console.log("📅 endDate convertido:", endDateTime.toISOString());
-        }
+      const results = await Promise.all(boardsPromises);
+      const finalBoards = results.filter(Boolean);
 
-        if (dateType) {
-          baseQueryParams.set("dateType", dateType);
-        }
+      console.log(`✅ [fetchFilteredBoards] Finalizado. Processados ${finalBoards.length} de ${selectedFlowIds.length}`);
+      setBoards(finalBoards);
 
-        if (filter === "overdue") {
-          baseQueryParams.set("isOverdue", "true");
-          console.log("⚠️ Filtro: Atrasados");
-        }
-        if (filter === "upcoming") {
-          baseQueryParams.set("isUpcoming", "true");
-          console.log("⏰ Filtro: Próximos 7 dias");
-        }
-
-        if (assignedToId && assignedToId !== "all") {
-          baseQueryParams.set("assignedToId", assignedToId);
-          console.log("👤 Filtro por responsável:", assignedToId);
-        }
-
-        if (supplierId && supplierId !== "all") {
-          baseQueryParams.set("supplierId", supplierId);
-          console.log("🏭 Filtro por oficina:", supplierId);
-        }
-
-        if (productRef && productRef.trim() !== "") {
-          baseQueryParams.set("productRef", productRef.trim());
-          console.log("📦 Filtro por referência:", productRef.trim());
-        }
-
-        console.log("\n📡 Query params finais:", baseQueryParams.toString());
-
-        if (stageName && stageName.trim() !== "") {
-          console.log(`\n🎯 Filtrando por nome da coluna: "${stageName}"`);
-          baseQueryParams.set("stageName", stageName.trim());
-
-          const boardsPromises = selectedFlowIds.map(async (flowId) => {
-            const url = `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`;
-            console.log(`📡 Requisição para: ${url}`);
-
-            try {
-              const response = await api.get(url, {
-                signal: controller.signal,
-              });
-
-              console.log(`✅ Board ${flowId} filtrado:`, {
-                flowName: response.data.name,
-                stagesCount: response.data.stages?.length || 0,
-                itemsCount:
-                  response.data.stages?.reduce(
-                    (acc: number, s: any) => acc + s.items.length,
-                    0,
-                  ) || 0,
-              });
-
-              return response.data;
-            } catch (error: any) {
-              console.error(`❌ Erro ao filtrar board ${flowId}:`, {
-                status: error.response?.status,
-                data: error.response?.data,
-                message: error.message,
-              });
-
-              console.log(
-                `📡 Buscando board vazio como fallback para ${flowId}`,
-              );
-              const emptyBoard = await api.get(`/flow/${flowId}/board`);
-              return {
-                ...emptyBoard.data,
-                stages: [],
-              };
-            }
-          });
-
-          const filteredBoards = await Promise.all(boardsPromises);
-          console.log(
-            `\n✅ Total de boards processados: ${filteredBoards.length}`,
-          );
-          setBoards(filteredBoards);
-
-          toast.success(`Filtrando apenas itens da coluna: "${stageName}"`);
-        } else {
-          console.log("\n🌐 Filtrando itens globalmente");
-
-          const itemsUrl = `/flow/filter/items?${baseQueryParams.toString()}`;
-          console.log(`📡 Buscando itens filtrados: ${itemsUrl}`);
-
-          const itemsResponse = await api.get(itemsUrl, {
-            signal: controller.signal,
-          });
-          const filteredItems = itemsResponse.data;
-
-          console.log(
-            `✅ Itens filtrados recebidos: ${filteredItems?.length || 0}`,
-          );
-
-          if (filteredItems?.length > 0) {
-            console.log(
-              "📋 Primeiros 3 itens:",
-              filteredItems.slice(0, 3).map((i: any) => ({
-                id: i.id,
-                title: i.title,
-                dueDate: i.dueDate,
-                flowName: i.flow?.name,
-              })),
-            );
-          } else {
-            console.log("⚠️ Nenhum item encontrado com os filtros aplicados");
-          }
-
-          const boardsPromises = selectedFlowIds.map(async (flowId) => {
-            try {
-              console.log(
-                `📡 Buscando board ${flowId} para combinar com itens filtrados`,
-              );
-              const boardRes = await api.get(`/flow/${flowId}/board`);
-              const board = boardRes.data;
-
-              console.log(`✅ Board ${flowId} carregado:`, {
-                name: board.name,
-                stages: board.stages.length,
-                totalItems: board.stages.reduce(
-                  (acc: number, s: any) => acc + s.items.length,
-                  0,
-                ),
-              });
-
-              const filteredBoard = {
-                ...board,
-                stages: board.stages.map((stage: FlowStage) => {
-                  const originalCount = stage.items.length;
-                  const filteredStageItems = stage.items
-                    .filter((item: FlowItem) =>
-                      filteredItems.some(
-                        (filteredItem: FlowItem) => filteredItem.id === item.id,
-                      ),
-                    )
-                    .map((item: FlowItem) => {
-                      const filteredItem = filteredItems.find(
-                        (fi: FlowItem) => fi.id === item.id,
-                      );
-
-                      // 🔥 Pega as informações do flow do filteredItem se disponível
-                      const flowInfo = filteredItem?.flow || board;
-
-                      return {
-                        ...item,
-                        flowColor: flowInfo.color || board.color || "#D35400",
-                        flowName: flowInfo.name || board.name,
-                        ...(filteredItem && {
-                          dueDate: filteredItem.dueDate,
-                          assignedTo: filteredItem.assignedTo,
-                          supplier: filteredItem.supplier,
-                          status: filteredItem.status,
-                        }),
-                      };
-                    });
-
-                  console.log(
-                    `   Stage "${stage.name}": ${originalCount} -> ${filteredStageItems.length} itens`,
-                  );
-
-                  return {
-                    ...stage,
-                    items: filteredStageItems,
-                  };
-                }),
-              };
-
-              return filteredBoard;
-            } catch (error: any) {
-              console.error(`❌ Erro ao carregar board ${flowId}:`, {
-                status: error.response?.status,
-                message: error.message,
-              });
-              return null;
-            }
-          });
-
-          console.log("\n⏳ Aguardando todas as promises...");
-          const results = await Promise.all(boardsPromises);
-          const filteredBoards = results.filter((board) => board !== null);
-
-          console.log(
-            `\n✅ Boards processados: ${filteredBoards.length} de ${selectedFlowIds.length}`,
-          );
-
-          // Log do resultado final
-          filteredBoards.forEach((board) => {
-            const totalItems = board.stages.reduce(
-              (acc: number, s: any) => acc + s.items.length,
-              0,
-            );
-            console.log(
-              `📊 Board "${board.name}": ${totalItems} itens no total`,
-            );
-          });
-
-          setBoards(filteredBoards);
-        }
-
-        clearTimeout(timeoutId);
-        console.log("\n✅ [fetchFilteredBoards] FINALIZADO COM SUCESSO");
-        console.log("=".repeat(80) + "\n");
-      } catch (error: any) {
-        clearTimeout(timeoutId);
-
-        console.error("\n❌ [fetchFilteredBoards] ERRO:");
-        console.error("=".repeat(40));
-
-        if (error.name === "AbortError" || error.code === "ECONNABORTED") {
-          console.error(
-            "⏰ Timeout: A requisição demorou muito para responder",
-          );
-          toast.error("O filtro está demorando muito. Tente novamente.");
-        } else if (error.response?.status === 401) {
-          console.error("🔐 Erro de autenticação, tentando novamente em 1s...");
-          setTimeout(async () => {
-            try {
-              const params =
-                paramsFromUrl || new URLSearchParams(window.location.search);
-              await fetchFilteredBoards(params);
-            } catch (retryError) {
-              console.error("❌ Falha na segunda tentativa:", retryError);
-              toast.error("Erro de autenticação. Faça login novamente.");
-            }
-          }, 1000);
-        } else {
-          console.error("Mensagem:", error.message);
-          console.error("Status:", error.response?.status);
-          console.error("Data:", error.response?.data);
-          console.error("Stack:", error.stack);
-
-          const errorMessage =
-            error.response?.data?.message ||
-            error.message ||
-            "Erro ao aplicar filtros";
-
-          toast.error(errorMessage);
-        }
-
-        // Tenta carregar os boards sem filtro como fallback
-        await fetchSelectedBoards();
-      } finally {
-        setLoading(false);
-        setIsFiltering(false);
-        console.log("🏁 Estado de loading resetado");
-      }
-    },
-    [selectedFlowIds, fetchSelectedBoards],
-  );
+    } catch (error: any) {
+      console.error("❌ Erro crítico no fetchFilteredBoards:", error);
+      toast.error("Erro ao aplicar filtros");
+      await fetchSelectedBoards(); // Fallback para visualização sem filtros
+    } finally {
+      clearTimeout(timeoutId);
+      setLoading(false);
+      setIsFiltering(false);
+    }
+  },
+  [selectedFlowIds, fetchSelectedBoards]
+);
 
   // ===========================================================================
   // 🔥 FUNÇÃO PARA ATUALIZAR BOARDS APÓS ALTERAÇÃO DE PRAZOS
@@ -1428,28 +1236,30 @@ export default function ProductFlowKanban() {
     }
   };
 
-  // ===========================================================================
-  // 🔄 FUNÇÕES DE DADOS INICIAIS
-  // ===========================================================================
-  const fetchInitialData = useCallback(async () => {
-    if (!user?.company?.id) return;
-    try {
-      const [fRes, uRes, sRes, tRes] = await Promise.all([
-        api.get(`/flow?companyId=${user.company.id}`),
-        api.get(`/users/company/${user.company.id}`),
-        api.get(`/suppliers?companyId=${user.company.id}`),
-        api.get(`/flow/templates`),
-      ]);
-      setFlows(fRes.data);
-      setUsers(uRes.data);
-      setSuppliers(sRes.data.data || sRes.data);
-      setTemplates(tRes.data);
-      if (fRes.data.length > 0 && selectedFlowIds.length === 0)
-        setSelectedFlowIds([fRes.data[0].id]);
-    } catch {
-      toast.error("Erro ao carregar dados iniciais");
+ const fetchInitialData = useCallback(async () => {
+  if (!user?.company?.id) return;
+  try {
+    const [fRes, uRes, sRes, tRes] = await Promise.all([
+      api.get(`/flow?companyId=${user.company.id}`),
+      api.get(`/users/company/${user.company.id}`),
+      api.get(`/suppliers?companyId=${user.company.id}`),
+      api.get(`/flow/templates`),
+    ]);
+    setFlows(fRes.data);
+    setUsers(uRes.data);
+    setSuppliers(sRes.data.data || sRes.data);
+    setTemplates(tRes.data);
+
+    // 🔥 TRAVA AQUI: Só seleciona o padrão se NÃO houver nada na URL
+    const hasFlowsInUrl = searchParams.get("flowIds") || searchParams.get("flowId");
+    
+    if (fRes.data.length > 0 && selectedFlowIds.length === 0 && !hasFlowsInUrl) {
+      setSelectedFlowIds([fRes.data[0].id]);
     }
-  }, [user?.company?.id, selectedFlowIds.length]);
+  } catch {
+    toast.error("Erro ao carregar dados iniciais");
+  }
+}, [user?.company?.id, searchParams]); // Adicione searchParams aqui
 
   // ===========================================================================
   // 🎯 EFEITO PRINCIPAL
@@ -1687,19 +1497,21 @@ export default function ProductFlowKanban() {
     }
   };
 
-  const handleApplyTemplate = async () => {
-    if (!selectedTemplateId || selectedFlowIds.length === 0)
-      return toast.error("Selecione template e fluxo");
-    try {
-      await api.post(
-        `/flow/${selectedFlowIds[0]}/apply-template/${selectedTemplateId}`,
-      );
-      toast.success("Etapas aplicadas!");
-      fetchSelectedBoards();
-    } catch {
-      toast.error("Erro ao aplicar template");
-    }
-  };
+const handleApplyTemplate = async () => {
+  if (!selectedTemplateId || selectedFlowIds.length === 0)
+    return toast.error("Selecione template e fluxo");
+  try {
+    await api.post(
+      `/flow/${selectedFlowIds[0]}/apply-template/${selectedTemplateId}`,
+    );
+    toast.success("Etapas aplicadas!");
+    
+    // 🔥 FORÇAR RECARREGAMENTO COMPLETO
+    await fetchSelectedBoards(); // Isso vai buscar os novos IDs das etapas criadas
+  } catch {
+    toast.error("Erro ao aplicar template");
+  }
+};
 
   const handleDeleteFlow = async (flowId: string) => {
     try {
@@ -2464,157 +2276,49 @@ export default function ProductFlowKanban() {
       );
       console.log("🔄 [onMoveSuccess] Movimento concluído com sucesso!");
       console.log("📌 Timestamp:", new Date().toISOString());
-      console.log(
-        "🔄 [onMoveSuccess] ========================================",
-      );
 
       // ===========================================================================
-      // 🔥 PASSO 1: PEGAR O ÚLTIMO ITEM MOVIDO DO REF
+      // 🧹 LIMPEZA E SINCRONIZAÇÃO IMEDIATA
       // ===========================================================================
-      const lastMoved = lastMovedItemRef.current;
-      console.log("📦 lastMovedItemRef.current:", lastMoved);
 
-      // ===========================================================================
-      // 🔥 PASSO 2: SE TIVER ITEM MOVIDO, VERIFICAR SE É ÚLTIMA ETAPA
-      // ===========================================================================
-      if (lastMoved) {
-        console.log("📦 Último item movido:", {
-          id: lastMoved.id,
-          targetStageName: lastMoved.targetStageName,
-          targetStageId: lastMoved.targetStageId,
-        });
-
-        // 🔥 Buscar a última etapa no unifiedStages (comparação por NOME)
-        const lastStage = unifiedStages[unifiedStages.length - 1];
-
-        console.log("🎯 Última etapa no unifiedStages:", {
-          name: lastStage?.name,
-          id: lastStage?.id,
-        });
-
-        console.log("🎯 Target stage name:", lastMoved.targetStageName);
-
-        const isLastStage =
-          lastStage && lastMoved.targetStageName === lastStage.name;
-        console.log("🎯 É última etapa?", isLastStage);
-
-        // ===========================================================================
-        // 🔥 PASSO 3: SE FOR ÚLTIMA ETAPA, INICIAR CONTAGEM REGRESSIVA
-        // ===========================================================================
-        if (isLastStage) {
-          console.log(
-            "⏰ É a última etapa! Iniciando contagem de 3 segundos...",
-          );
-
-          // Inicia contagem de 3 segundos (item fica visível na tela)
-          console.log("⏰ Chamando startItemRemovalTimer para:", lastMoved.id);
-          startItemRemovalTimer(lastMoved.id);
-
-          // ===========================================================================
-          // 🔥 PASSO 4: AGENDAR BUSCA DOS BOARDS APÓS 10 SEGUNDOS
-          // ===========================================================================
-          const buscaAgendada = Date.now() + 10000;
-          console.log(
-            `⏰ Agendando busca para daqui 10s (${new Date(buscaAgendada).toISOString()})`,
-          );
-
-          setTimeout(async () => {
-            console.log("\n" + "=".repeat(50));
-            console.log(
-              `🔄 EXECUTANDO BUSCA AGENDADA para item ${lastMoved.id} em ${new Date().toISOString()}`,
-            );
-            console.log("=".repeat(50));
-
-            try {
-              // Verificar se existem filtros ativos
-              const hasFilters =
-                activeFilterStartDate ||
-                activeFilterEndDate ||
-                activeFilterOverdue ||
-                activeFilterUpcoming ||
-                activeColumnNameFilter;
-
-              console.log("📊 hasFilters:", hasFilters);
-              console.log("📊 activeFilterStartDate:", activeFilterStartDate);
-              console.log("📊 activeFilterEndDate:", activeFilterEndDate);
-              console.log("📊 activeFilterOverdue:", activeFilterOverdue);
-              console.log("📊 activeFilterUpcoming:", activeFilterUpcoming);
-              console.log("📊 activeColumnNameFilter:", activeColumnNameFilter);
-
-              // Buscar boards com ou sem filtros
-              if (hasFilters) {
-                console.log("📊 Aplicando filtros na busca pós-conclusão...");
-                await fetchFilteredBoards();
-              } else {
-                console.log(
-                  "📊 Buscando boards selecionados na pós-conclusão...",
-                );
-                await fetchSelectedBoards();
-              }
-
-              // Forçar recálculo do unifiedStages
-              console.log("✅ fetch concluído, chamando setRefreshKey");
-              setRefreshKey((prev) => {
-                console.log(`🔄 RefreshKey: ${prev} -> ${prev + 1}`);
-                return prev + 1;
-              });
-
-              console.log(
-                `✅ Boards atualizados após conclusão do item ${lastMoved.id}!`,
-              );
-            } catch (error: any) {
-              console.error("❌ Erro ao buscar boards após conclusão:", error);
-              console.error("❌ Status:", error.response?.status);
-              console.error("❌ Data:", error.response?.data);
-              console.error("❌ Message:", error.message);
-            }
-          }, 10000); // 10 segundos
-        } else {
-          console.log("⏭️ Não é a última etapa, ignorando contagem");
-        }
-
-        // ===========================================================================
-        // 🔥 PASSO 5: LIMPAR O REF (DEPOIS DE USAR)
-        // ===========================================================================
-        console.log("🧹 Limpando lastMovedItemRef");
+      // Limpamos a referência do último item movido, pois não haverá conclusão automática
+      if (lastMovedItemRef.current) {
+        console.log(
+          "🧹 Limpando lastMovedItemRef:",
+          lastMovedItemRef.current.id,
+        );
         lastMovedItemRef.current = null;
-      } else {
-        console.log("⚠️ Nenhum item encontrado no ref");
       }
 
-      // ===========================================================================
-      // 🔥 PASSO 6: PRIMEIRA BUSCA IMEDIATA (já existente)
-      // ===========================================================================
+      // Verificamos se existem filtros ativos para saber qual método de busca chamar
       const hasFilters =
         activeFilterStartDate ||
         activeFilterEndDate ||
         activeFilterOverdue ||
         activeFilterUpcoming ||
+        activeFilterAssignedTo !== "all" ||
+        activeFilterSupplier !== "all" ||
+        activeFilterProductRef ||
         activeColumnNameFilter;
 
-      console.log("\n📊 Primeira busca imediata:");
-      console.log("📊 hasFilters:", hasFilters);
+      console.log("📊 Atualizando board. Filtros ativos:", !!hasFilters);
 
       try {
         if (hasFilters) {
-          console.log(
-            "📊 [onMoveSuccess] Aplicando filtros antes de atualizar...",
-          );
           await fetchFilteredBoards();
         } else {
-          console.log("📊 [onMoveSuccess] Buscando boards selecionados...");
           await fetchSelectedBoards();
         }
 
-        console.log("✅ Primeira busca concluída, chamando setRefreshKey");
-        setRefreshKey((prev) => {
-          console.log(`🔄 RefreshKey: ${prev} -> ${prev + 1}`);
-          return prev + 1;
-        });
+        // Forçamos a atualização da chave de renderização para garantir que a UI reflita o banco
+        setRefreshKey((prev) => prev + 1);
 
-        console.log("✅ [onMoveSuccess] Boards recarregados com sucesso!");
+        console.log("✅ [onMoveSuccess] Boards atualizados com sucesso!");
       } catch (error) {
-        console.error("❌ [onMoveSuccess] Erro ao recarregar boards:", error);
+        console.error(
+          "❌ [onMoveSuccess] Erro ao atualizar boards após movimento:",
+          error,
+        );
       }
 
       console.log(
@@ -2889,42 +2593,82 @@ export default function ProductFlowKanban() {
       )} */}
 
       <KanbanFilter>
-        <div className="grid gap-1 min-w-[180px]">
-          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-            Filtrar por Coluna
-          </label>
-          <div className="relative">
-            <select
-              className="flex h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 py-1 text-xs text-foreground appearance-none"
-              value={columnNameFilter}
-              onChange={(e) => setColumnNameFilter(e.target.value)}
+        <div className="grid gap-1 min-w-[200px]">
+        <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+          Filtrar por Coluna
+        </label>
+        
+        <Popover open={openColumnSelector} onOpenChange={setOpenColumnSelector}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={openColumnSelector}
+              className="h-8 w-full justify-between bg-background pl-8 pr-2 text-xs font-normal border-input hover:bg-accent"
             >
-              <option value="">Todas as colunas</option>
-              {columnOptions.map((columnName) => (
-                <option key={columnName} value={columnName}>
-                  {columnName}
-                </option>
-              ))}
-            </select>
-            <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400 pointer-events-none" />
-            {/* Seta do select */}
-            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
-              <svg
-                className="w-3 h-3 text-slate-500 dark:text-slate-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
+              <div className="flex items-center gap-2 truncate">
+                <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
+                <span className="truncate">
+                  {columnNameFilter || "Todas as colunas"}
+                </span>
+              </div>
+              <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          
+          <PopoverContent className="w-[250px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Buscar etapa..." className="h-8 text-xs" />
+              <CommandList className="max-h-[300px]">
+                <CommandEmpty className="py-3 text-center text-xs text-slate-500">
+                  Nenhuma coluna encontrada.
+                </CommandEmpty>
+                <CommandGroup>
+                  {/* Opção para limpar/ver todas */}
+                  <CommandItem
+                    value=""
+                    onSelect={() => {
+                      setColumnNameFilter("");
+                      setOpenColumnSelector(false);
+                    }}
+                    className="text-xs cursor-pointer"
+                  >
+                    <div className={cn(
+                      "mr-2 flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-primary",
+                      !columnNameFilter ? "bg-primary text-primary-foreground" : "opacity-50"
+                    )}>
+                      {!columnNameFilter && <Check className="h-3 w-3" />}
+                    </div>
+                    Todas as colunas
+                  </CommandItem>
+
+                  {/* Lista dinâmica de colunas */}
+                  {columnOptions.map((option) => (
+                    <CommandItem
+                      key={option}
+                      value={option}
+                      onSelect={(currentValue) => {
+                        // currentValue vem em lowercase do Command
+                        setColumnNameFilter(currentValue === columnNameFilter ? "" : option);
+                        setOpenColumnSelector(false);
+                      }}
+                      className="text-xs cursor-pointer"
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-3 w-3 text-orange-600",
+                          columnNameFilter === option ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      {option}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+      </div>
 
         <div className="grid gap-1 min-w-[140px]">
           <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">

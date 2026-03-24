@@ -437,18 +437,18 @@ export function FlowHistoryModal({
                     <p className="text-sm font-semibold text-slate-800">
                       {config.label}
                     </p>
-                    <time className="text-xs text-slate-400 whitespace-nowrap">
+                    <time className="text-xs text-slate-600 font-medium whitespace-nowrap">
                       {formatDateTime(log.createdAt)}
                     </time>
                   </div>
 
                   {/* Usuário */}
                   <div className="flex items-center gap-1 mt-1">
-                    <User size={12} className="text-slate-400 shrink-0" />
-                    <p className="text-xs text-slate-600 truncate">
+                    <User size={12} className="text-slate-500 shrink-0" />
+                    <p className="text-xs text-slate-700 truncate font-medium">
                       {log.user?.name || "Usuário desconhecido"}
                       {log.metadata?.isAdmin && (
-                        <span className="ml-1 text-purple-600 font-medium">(Admin)</span>
+                        <span className="ml-1 text-purple-700 font-bold">(Admin)</span>
                       )}
                     </p>
                   </div>
