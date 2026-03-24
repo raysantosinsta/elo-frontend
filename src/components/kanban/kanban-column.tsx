@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Edit, MoreVertical, Plus, Trash2 } from "lucide-react";
+import { Calendar, Edit, MoreVertical, Plus, Trash2 } from "lucide-react";
 import React from "react";
 import { ColumnFilterIcons } from "./column-filter-icons";
 
@@ -32,6 +32,9 @@ interface KanbanColumnProps {
   isOverdueFilterActive?: boolean;
   isUpcomingFilterActive?: boolean;
   filterDisabled?: boolean;
+  
+  // 🔥 NOVA PROP: dias padrão para exibir
+  defaultDays?: number;
 }
 
 export function KanbanColumn({
@@ -55,6 +58,9 @@ export function KanbanColumn({
   isOverdueFilterActive = false,
   isUpcomingFilterActive = false,
   filterDisabled = false,
+  
+  // 🔥 NOVA PROP
+  defaultDays,
 }: KanbanColumnProps) {
   
   const handleDrop = (e: React.DragEvent) => {
@@ -77,14 +83,24 @@ export function KanbanColumn({
         className="px-3 py-2 rounded-t-lg flex justify-between items-center text-white shadow-sm flex-shrink-0"
         style={{ backgroundColor: color }}
       >
-        <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide truncate">
-          {title}
-          <Badge
-            variant="secondary"
-            className="bg-white/20 text-white border-0 hover:bg-white/30 text-[9px] h-4 px-1"
-          >
-            {count}
-          </Badge>
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide truncate">
+            {title}
+            <Badge
+              variant="secondary"
+              className="bg-white/20 text-white border-0 hover:bg-white/30 text-[9px] h-4 px-1"
+            >
+              {count}
+            </Badge>
+          </div>
+          
+          {/* 🔥 EXIBE OS DIAS PADRÃO DA ETAPA */}
+          {defaultDays !== undefined && defaultDays > 0 && (
+            <div className="flex items-center gap-1 text-[9px] text-white/80 mt-0.5">
+              <Calendar className="w-2.5 h-2.5" />
+              <span>Padrão: {defaultDays} {defaultDays === 1 ? 'dia' : 'dias'}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-0.5">

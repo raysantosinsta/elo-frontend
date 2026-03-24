@@ -98,7 +98,9 @@ interface FlowStage {
   order: number;
   color?: string;
   allowedRole?: string;
-  flowId: string;
+  defaultDays?: number;
+  flowId: string; // 🔥 GARANTA QUE ESTE CAMPO EXISTE
+  items: FlowItem[];
 }
 
 interface FlowItemModalProps {
@@ -124,6 +126,8 @@ interface FlowItemModalProps {
   onAdvance?: (item: FlowItem) => Promise<void>;
   onFlowChange?: (flowId: string) => Promise<FlowStage[]>;
   fetchStagesForFlow?: (flowId: string) => Promise<FlowStage[]>;
+  onDeadlineUpdate?: () => void;
+  selectedFlowIds?: string[]; // 🔥 NOVA PROP
 }
 
 // --- SCHEMA DE VALIDAÇÃO ---
@@ -168,6 +172,9 @@ export function FlowItemModal({
   fetchStagesForFlow,
   isReadOnly = false,
   hasMultipleFlows = false,
+  onDeadlineUpdate,
+    selectedFlowIds = [], // 🔥 RECEBE A PROP
+
 }: FlowItemModalProps) {
   const isEditing = !!initialData;
 
@@ -216,25 +223,43 @@ export function FlowItemModal({
     },
   });
 
- // talvez remova
-const handleStageDeadlineUpdate = async () => {
-  if (initialData?.id) {
+  // ===========================================================================
+  // 🔥 FUNÇÃO PARA ATUALIZAR O ITEM APÓS ALTERAÇÃO DE PRAZOS
+  // ===========================================================================
+  const handleStageDeadlineUpdate = async () => {
+    if (!initialData?.id) return;
+
     try {
-      // 🔥 USAR A ROTA CORRETA - Board do fluxo
-      const response = await api.get(`/flow/${initialData.flowId}/board`);
-      console.log("📊 Board atualizado:", response.data);
-      
-      // Se precisar atualizar o item específico, filtre no response
-      const updatedItem = response.data.stages
-        .flatMap((s: any) => s.items)
-        .find((i: any) => i.id === initialData.id);
-      
-      console.log("📦 Item atualizado:", updatedItem);
+      console.log(
+        "🔄 [handleStageDeadlineUpdate] Recarregando item após alteração de prazos...",
+      );
+
+      // Busca o item atualizado com o novo dueDate
+      const response = await api.get(`/flow/items/${initialData.id}`);
+      const updatedItem = response.data;
+
+      console.log("📦 Item atualizado:", {
+        id: updatedItem.id,
+        title: updatedItem.title,
+        dueDate: updatedItem.dueDate,
+      });
+
+      // Atualiza o formulário com o novo dueDate
+      if (updatedItem.dueDate) {
+        form.setValue("dueDate", updatedItem.dueDate.substring(0, 10));
+      }
+
+      // Mostra toast informando que o prazo foi atualizado
+      toast.success("Prazo final do item atualizado automaticamente!");
+
+      // 🔥 CHAMA O CALLBACK DO PARENT PARA ATUALIZAR O KANBAN
+      if (onDeadlineUpdate) {
+        onDeadlineUpdate();
+      }
     } catch (error) {
-      console.error("Erro ao recarregar item:", error);
+      console.error("❌ Erro ao recarregar item:", error);
     }
-  }
-};
+  };
 
   const selectedFlowId = form.watch("flowId");
 
@@ -345,36 +370,38 @@ const handleStageDeadlineUpdate = async () => {
     else {
       // 🔥 CASO 1: VEIO DO CLIQUE NO + (TEM INITIALSTAGEID)
       if (initialStageId) {
-        console.log("✅ VEIO DO CLIQUE - stageId:", initialStageId);
+   console.log("✅ VEIO DO CLIQUE - stageId:", initialStageId);
 
-        const stage = stages.find((s) => s.id === initialStageId);
+  // 🔥 BUSCA A STAGE NAS STAGES RECEBIDAS (que já devem ter flowId)
+  const stage = stages.find((s) => s.id === initialStageId);
 
-        if (stage) {
-          console.log(
-            "✅ Stage encontrada:",
-            stage.name,
-            "flowId:",
-            stage.flowId,
-          );
+  if (stage) {
+    console.log(
+      "✅ Stage encontrada:",
+      stage.name,
+      "flowId:",
+      stage.flowId,
+    );
 
-          const initialFlowId = hasMultipleFlows ? "" : stage.flowId;
+    const initialFlowId = hasMultipleFlows ? "" : stage.flowId;
 
-          form.reset({
-            title: "",
-            description: "",
-            productRef: "",
-            quantity: 0,
-            status: "PENDENTE",
-            flowId: initialFlowId,
-            stageId: initialStageId,
-            assignedToId: "unassigned",
-            supplierId: "internal",
-            dueDate: "",
-            productionStartedAt: "",
-            deliveryAt: "",
-          });
+    form.reset({
+      title: "",
+      description: "",
+      productRef: "",
+      quantity: 0,
+      status: "PENDENTE",
+      flowId: initialFlowId,
+      stageId: initialStageId,
+      assignedToId: "unassigned",
+      supplierId: "internal",
+      dueDate: "",
+      productionStartedAt: "",
+      deliveryAt: "",
+    });
         } else {
-          console.error("❌ Stage não encontrada");
+          console.error("❌ Stage não encontrada nas stages recebidas");
+    console.log("Stages disponíveis:", stages.map(s => ({ id: s.id, name: s.name, flowId: s.flowId })));
         }
       }
       // 🔥 CASO 2: NÃO VEIO DO CLIQUE - MÚLTIPLOS FLUXOS
@@ -767,13 +794,12 @@ const handleStageDeadlineUpdate = async () => {
     [fetchStagesForFlow, stagesCache],
   );
 
-  // ===========================================================================
-// 🔥 FUNÇÃO PARA CORRIGIR DATA (FUSO HORÁRIO)
+ // ===========================================================================
+// 🔥 FUNÇÃO PARA CORRIGIR DATA (PRESERVAR O DIA CORRETO)
 // ===========================================================================
 const fixDate = (dateString: string) => {
   if (!dateString) return null;
   
-  // 🔥 LOGS PARA DEBUG
   console.log('='.repeat(30));
   console.log('🔍 FIXDATE - CORREÇÃO DE DATA');
   console.log('📅 Data original (input):', dateString);
@@ -784,8 +810,8 @@ const fixDate = (dateString: string) => {
   
   console.log(`📅 Ano: ${year}, Mês: ${month}, Dia: ${day}`);
   
-  // 🔥 CRIA A DATA PRESERVANDO O DIA CORRETO
-  // Usamos UTC com hora 12:00 para evitar problemas de fuso
+  // 🔥 CORREÇÃO: Criar data com hora 12:00 UTC para evitar problemas de fuso
+  // Isso garante que a data seja 27/03 em qualquer fuso horário
   const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
   
   console.log('📅 Data UTC:', date.toUTCString());
@@ -796,7 +822,7 @@ const fixDate = (dateString: string) => {
   return date.toISOString();
 };
 
-// ===========================================================================
+ // ===========================================================================
 // 🔥 HANDLE SUBMIT COMPLETO
 // ===========================================================================
 const handleSubmit = async (values: ItemFormValues) => {
@@ -834,14 +860,25 @@ const handleSubmit = async (values: ItemFormValues) => {
       return;
     }
 
-    // 🔥 Se tem múltiplos fluxos, USA O FLOWID SELECIONADO NO FORM
-    const finalFlowId = hasMultipleFlows
-      ? values.flowId
-      : stageClicada.flowId;
+ // 🔥 CORREÇÃO: OBTÉM O FLOWID DA STAGE CLICADA
+  let finalFlowId = hasMultipleFlows ? values.flowId : stageClicada.flowId;
+    
+    // 🔥 FALLBACK: Se ainda não tem flowId, tenta buscar do primeiro fluxo selecionado
+    if (!finalFlowId && selectedFlowIds.length > 0) {
+      finalFlowId = selectedFlowIds[0];
+      console.log("⚠️ flowId não encontrado, usando primeiro fluxo selecionado:", finalFlowId);
+    }
+
+    console.log("📦 finalFlowId calculado:", finalFlowId);
+    console.log("📦 stageClicada.flowId:", stageClicada.flowId);
+    console.log("📦 hasMultipleFlows:", hasMultipleFlows);
+    console.log("📦 values.flowId:", values.flowId);
 
     if (!finalFlowId) {
       if (hasMultipleFlows) {
         toast.error("Selecione uma coleção");
+      } else {
+        toast.error("Erro: fluxo não identificado. Recarregue a página.");
       }
       return;
     }
@@ -851,7 +888,7 @@ const handleSubmit = async (values: ItemFormValues) => {
 
     console.log(
       `Stages do flow ${finalFlowId}:`,
-      stagesOfSelectedFlow.map((s) => s.name),
+      stagesOfSelectedFlow.map((s) => ({ id: s.id, name: s.name, flowId: s.flowId })),
     );
 
     // 🔥 Verifica se existe uma stage com o mesmo NOME no flow selecionado
@@ -879,9 +916,9 @@ const handleSubmit = async (values: ItemFormValues) => {
 
     // 🔥 CORREÇÃO DE DATA - APLICADA AQUI!
     const dueDateFixed = values.dueDate ? fixDate(values.dueDate) : null;
-    
-    console.log('📅 DueDate original:', values.dueDate);
-    console.log('📅 DueDate corrigido:', dueDateFixed);
+
+    console.log("📅 DueDate original:", values.dueDate);
+    console.log("📅 DueDate corrigido:", dueDateFixed);
 
     const finalPayload = {
       title: values.title,
@@ -894,7 +931,7 @@ const handleSubmit = async (values: ItemFormValues) => {
       assignedToId:
         values.assignedToId === "unassigned" ? null : values.assignedToId,
       supplierId: values.supplierId === "internal" ? null : values.supplierId,
-      dueDate: dueDateFixed, // 🔥 USA A DATA CORRIGIDA
+      dueDate: dueDateFixed,
       productionStartedAt: values.productionStartedAt || null,
       deliveryAt: values.deliveryAt || null,
     };
@@ -942,23 +979,30 @@ const handleSubmit = async (values: ItemFormValues) => {
   // 🔥 CORREÇÃO DE DATA - APLICADA AQUI TAMBÉM!
   const dueDateFixed = values.dueDate ? fixDate(values.dueDate) : null;
 
+  // 🔥 DETERMINA O FLOWID PARA CASO NORMAL
+  let normalFlowId = values.flowId;
+  if (!normalFlowId && flows.length > 0) {
+    normalFlowId = flows[0].id;
+    console.log("⚠️ flowId não informado, usando primeiro fluxo:", normalFlowId);
+  }
+
   const finalPayload = {
     title: values.title,
     description: values.description || null,
     productRef: values.productRef || null,
     quantity: quantityNum,
     status: values.status || "PENDENTE",
-    flowId: values.flowId || (flows.length > 0 ? flows[0].id : ""),
+    flowId: normalFlowId,
     stageId: values.stageId,
     assignedToId:
       values.assignedToId === "unassigned" ? null : values.assignedToId,
     supplierId: values.supplierId === "internal" ? null : values.supplierId,
-    dueDate: dueDateFixed, // 🔥 USA A DATA CORRIGIDA
+    dueDate: dueDateFixed,
     productionStartedAt: values.productionStartedAt || null,
     deliveryAt: values.deliveryAt || null,
   };
 
-  console.log("🚀 Payload final:", finalPayload);
+  console.log("🚀 Payload final (caso normal):", finalPayload);
 
   try {
     await onSubmit(
@@ -1851,7 +1895,7 @@ const handleSubmit = async (values: ItemFormValues) => {
                         isLoading={isLoadingStages}
                         isAdmin={isUserAdmin()}
                         currentStageId={initialData?.stageId}
-                        onDeadlineUpdate={handleStageDeadlineUpdate}
+                        onDeadlineUpdate={handleStageDeadlineUpdate} // 🔥 PASSA A FUNÇÃO
                       />
                     </TabsContent>
                   </Tabs>

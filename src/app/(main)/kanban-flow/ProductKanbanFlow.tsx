@@ -126,8 +126,9 @@ interface FlowStage {
   order: number;
   color?: string;
   allowedRole?: string;
+  defaultDays?: number;
+  flowId: string; // 🔥 ADICIONAR ESTE CAMPO
   items: FlowItem[];
-  flowId: string;
 }
 
 export interface ProductFlow {
@@ -310,7 +311,7 @@ export default function ProductFlowKanban() {
     new Set(),
   );
 
-
+  const [stageDefaultDays, setStageDefaultDays] = useState<number>(1); // 🔥 NOVO ESTADO
 
   // ===========================================================================
   // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS CORTE
@@ -520,122 +521,98 @@ export default function ProductFlowKanban() {
     loadAllStages();
   }, [selectedFlowIds]);
 
-  // ===========================================================================
-// 🎯 FUNÇÃO DE EDIÇÃO DE ITEM - ATUALIZADA
-// ===========================================================================
-const handleEditItem = async (item: FlowItem) => {
-  console.log("📝 Abrindo modal de edição para item:", item.id);
+  const handleEditItem = async (item: FlowItem) => {
+    console.log("📝 Abrindo modal de edição para item:", item.id);
 
-  setIsModalLoading(true);
-  setEditingItem(item);
+    setIsModalLoading(true);
+    setEditingItem(item);
 
-  try {
-    let itemBoard = boards.find((b) => b.id === item.flowId);
+    try {
+      let itemBoard = boards.find((b) => b.id === item.flowId);
 
-    if (!itemBoard) {
-      console.log("🔄 Board não encontrado localmente, buscando da API...");
-      const response = await api.get(`/flow/${item.flowId}/board`);
-      itemBoard = response.data;
-    }
+      if (!itemBoard) {
+        console.log("🔄 Board não encontrado localmente, buscando da API...");
+        const response = await api.get(`/flow/${item.flowId}/board`);
+        itemBoard = response.data;
+      }
 
-    if (!itemBoard) {
-      throw new Error("Board não encontrado");
-    }
+      if (!itemBoard) {
+        throw new Error("Board não encontrado");
+      }
 
-    // 🔥 GUARDA AS STAGES DO BOARD PARA REFERÊNCIA
-    setCurrentItemStages(itemBoard.stages); // <-- ADICIONE ESTA LINHA
+      // 🔥 GUARDA AS STAGES DO BOARD COM defaultDays
+      const stagesWithDefaults = itemBoard.stages.map((stage) => ({
+        ...stage,
+        defaultDays: stage.defaultDays,
+      }));
 
-    const stage = itemBoard.stages.find((s) => s.id === item.stageId);
-    setIsModalReadOnly(stage ? !canUserEditStage(stage) : true);
+      setCurrentItemStages(stagesWithDefaults);
 
-    setTimeout(() => {
-      setIsEditItemModal(true);
+      const stage = stagesWithDefaults.find((s) => s.id === item.stageId);
+      setIsModalReadOnly(stage ? !canUserEditStage(stage) : true);
+
+      setTimeout(() => {
+        setIsEditItemModal(true);
+        setIsModalLoading(false);
+      }, 50);
+    } catch (error) {
+      console.error("❌ Erro ao carregar board:", error);
+      toast.error("Erro ao carregar dados do fluxo");
       setIsModalLoading(false);
-    }, 50);
-  } catch (error) {
-    console.error("❌ Erro ao carregar board:", error);
-    toast.error("Erro ao carregar dados do fluxo");
-    setIsModalLoading(false);
-  }
-};
+    }
+  };
 
-  // ===========================================================================
-// 🎯 FUNÇÃO DE CRIAÇÃO DE ITEM - ATUALIZADA
-// ===========================================================================
-const handleCreateItem = (stageId: string) => {
-  console.log("\n");
-  console.log("=".repeat(80));
-  console.log("🎯 [handleCreateItem] INÍCIO - Stage clicada:", stageId);
-  console.log("=".repeat(80));
+  const handleCreateItem = (stageId: string) => {
+    console.log("\n");
+    console.log("=".repeat(80));
+    console.log("🎯 [handleCreateItem] INÍCIO - Stage clicada:", stageId);
+    console.log("=".repeat(80));
 
-  // 🔥 LOG IMPORTANTE 1: Verificar fluxos selecionados
-  console.log("📊 Fluxos selecionados:", {
-    quantidade: selectedFlowIds.length,
-    ids: selectedFlowIds,
-    hasMultipleFlows: selectedFlowIds.length > 1,
-  });
+    const itemBoard = boards.find((b) =>
+      b.stages.some((s) => s.id === stageId),
+    );
 
-  const itemBoard = boards.find((b) =>
-    b.stages.some((s) => s.id === stageId),
-  );
+    if (!itemBoard) {
+      console.error("❌ Board não encontrado para stage:", stageId);
+      toast.error("Erro ao carregar dados do fluxo");
+      return;
+    }
 
-  if (!itemBoard) {
-    console.error("❌ Board não encontrado para stage:", stageId);
+    // 🔥 ADICIONA O flowId E defaultDays EM CADA STAGE
+    const stagesWithFlowId = itemBoard.stages.map((stage) => ({
+      ...stage,
+      flowId: itemBoard.id,
+      defaultDays: stage.defaultDays, // 🔥 GARANTA QUE ESTÁ AQUI
+    }));
+
     console.log(
-      "📋 Boards disponíveis:",
-      boards.map((b) => ({
-        id: b.id,
-        name: b.name,
-        stages: b.stages.map((s) => ({ id: s.id, name: s.name })),
+      "📋 Stages disponíveis no board:",
+      stagesWithFlowId.map((s) => ({
+        id: s.id,
+        name: s.name,
+        flowId: s.flowId,
+        defaultDays: s.defaultDays,
       })),
     );
-    toast.error("Erro ao carregar dados do fluxo");
-    return;
-  }
 
-  console.log("✅ Board encontrado:", {
-    boardId: itemBoard.id,
-    boardName: itemBoard.name,
-    flowId: itemBoard.id,
-    flowName: itemBoard.name,
-  });
+    const clickedStage = stagesWithFlowId.find((s) => s.id === stageId);
+    console.log("🎯 Stage clicada:", {
+      stageId,
+      stageInfo: clickedStage,
+      flowId: clickedStage?.flowId,
+      defaultDays: clickedStage?.defaultDays,
+    });
 
-  console.log(
-    "📋 Stages disponíveis no board:",
-    itemBoard.stages.map((s) => ({
-      id: s.id,
-      name: s.name,
-      flowId: s.flowId,
-    })),
-  );
+    setActiveStageId(stageId);
+    setCurrentItemStages(stagesWithFlowId);
 
-  console.log("🎯 Stage clicada:", {
-    stageId: stageId,
-    stageInfo: itemBoard.stages.find((s) => s.id === stageId),
-  });
-
-  // 🔥 Guarda o stageId que veio do clique
-  setActiveStageId(stageId);
-  console.log("💾 activeStageId setado para:", stageId);
-
-  // 🔥 GUARDA AS STAGES DO BOARD PARA REFERÊNCIA
-  setCurrentItemStages(itemBoard.stages); // <-- ADICIONE ESTA LINHA
-  console.log(
-    "💾 currentItemStages setado com",
-    itemBoard.stages.length,
-    "stages",
-  );
-
-  console.log("🔄 Abrindo modal em 50ms...");
-
-  setTimeout(() => {
-    console.log("⏰ Timeout executado - abrindo modal");
-    setIsModalReadOnly(false);
-    setIsItemModal(true);
-    console.log("✅ Modal aberto");
-  }, 50);
-};
-
+    setTimeout(() => {
+      console.log("⏰ Timeout executado - abrindo modal");
+      setIsModalReadOnly(false);
+      setIsItemModal(true);
+      console.log("✅ Modal aberto");
+    }, 50);
+  };
   const handleOpenCompleteModal = (item: FlowItem) => {
     const currentBoard = boards.find((b) => b.id === item.flowId);
     if (!currentBoard) return;
@@ -954,6 +931,17 @@ const handleCreateItem = (stageId: string) => {
 
       const results = await Promise.all(promises);
       const newBoards = results.map((r) => r.data);
+
+      // 🔥 ADICIONE ESTE LOG DETALHADO
+      console.log("🔍 DEBUG - DETALHES DOS BOARDS:");
+      newBoards.forEach((board) => {
+        console.log(`Board: ${board.name}`);
+        board.stages.forEach((stage: any) => {
+          console.log(
+            `  Stage: ${stage.name} - defaultDays: ${stage.defaultDays}`,
+          );
+        });
+      });
 
       // 🔥 Log detalhado dos itens
       console.log(`📊 [${new Date().toISOString()}] NOVOS BOARDS CARREGADOS:`);
@@ -1308,6 +1296,36 @@ const handleCreateItem = (stageId: string) => {
     },
     [selectedFlowIds, fetchSelectedBoards],
   );
+
+  // ===========================================================================
+  // 🔥 FUNÇÃO PARA ATUALIZAR BOARDS APÓS ALTERAÇÃO DE PRAZOS
+  // ===========================================================================
+  const refreshBoardsAfterDeadlineUpdate = useCallback(async () => {
+    console.log("🔄 [refreshBoardsAfterDeadlineUpdate] Atualizando boards...");
+
+    const hasFilters =
+      activeFilterStartDate ||
+      activeFilterEndDate ||
+      activeFilterOverdue ||
+      activeFilterUpcoming ||
+      activeColumnNameFilter;
+
+    if (hasFilters) {
+      await fetchFilteredBoards();
+    } else {
+      await fetchSelectedBoards();
+    }
+
+    setRefreshKey((prev) => prev + 1);
+  }, [
+    activeFilterStartDate,
+    activeFilterEndDate,
+    activeFilterOverdue,
+    activeFilterUpcoming,
+    activeColumnNameFilter,
+    fetchFilteredBoards,
+    fetchSelectedBoards,
+  ]);
 
   // ===========================================================================
   // 🔥 FUNÇÃO handleFilterClick
@@ -1771,6 +1789,7 @@ const handleCreateItem = (stageId: string) => {
         stageAllowedRole === "all" || !stageAllowedRole
           ? null
           : stageAllowedRole,
+      defaultDays: stageDefaultDays, // 🔥 ENVIA O CAMPO
     };
 
     try {
@@ -1783,16 +1802,14 @@ const handleCreateItem = (stageId: string) => {
       }
       setIsStageModal(false);
       fetchSelectedBoards();
-    } catch {
-      toast.error("Erro ao salvar etapa");
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || "Erro ao salvar etapa";
+      toast.error(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ===========================================================================
-  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
-  // ===========================================================================
   // ===========================================================================
   // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
   // ===========================================================================
@@ -1932,6 +1949,16 @@ const handleCreateItem = (stageId: string) => {
         console.log("📡 Enviando PUT para:", `/flow/items/${editingItem.id}`);
 
         const startTime = Date.now();
+
+        // 🔥 VERIFICAÇÃO ANTES DE ENVIAR
+        console.log("🔍 ===== VERIFICAÇÃO FINAL (EDIÇÃO) =====");
+        console.log("📦 FlowId:", updatePayload.flowId);
+        console.log("📦 StageId:", updatePayload.stageId);
+        console.log("📦 Title:", updatePayload.title);
+        console.log("📦 DueDate:", updatePayload.dueDate);
+        console.log("📦 Quantity:", updatePayload.quantity);
+        console.log("========================================\n");
+
         await api.put(`/flow/items/${editingItem.id}`, updatePayload);
         const endTime = Date.now();
 
@@ -1953,7 +1980,7 @@ const handleCreateItem = (stageId: string) => {
       }
 
       // ===========================================================================
-      // 🔥 MODO CRIAÇÃO - CORRIGIDO (SEM VALIDAÇÃO COM currentItemStages)
+      // 🔥 MODO CRIAÇÃO
       // ===========================================================================
       else {
         console.log("\n🆕 Modo CRIAÇÃO - Novo Item");
@@ -1973,17 +2000,10 @@ const handleCreateItem = (stageId: string) => {
           return;
         }
 
-        // 🔥 IMPORTANTE: REMOVIDA a validação com currentItemStages
-        // O modal já validou que a stage existe no flow selecionado
-        // e buscou o ID correto
-
         console.log("🔍 VERIFICAÇÃO DE STAGE (validação pelo modal):");
         console.log("   flowId enviado:", values.flowId);
         console.log("   stageId enviado:", values.stageId);
         console.log("   activeStageId (ignorado):", activeStageId);
-        console.log(
-          "   ⚠️ Validação com currentItemStages foi REMOVIDA - confiamos no modal",
-        );
 
         // 🔥 Prepara payload para criação
         const createPayload = {
@@ -2008,6 +2028,15 @@ const handleCreateItem = (stageId: string) => {
         console.log("\n📡 Enviando POST para /flow/items");
         console.log("📦 Payload completo:", createPayload);
 
+        // 🔥 VERIFICAÇÃO ANTES DE ENVIAR
+        console.log("🔍 ===== VERIFICAÇÃO FINAL (CRIAÇÃO) =====");
+        console.log("📦 FlowId:", createPayload.flowId);
+        console.log("📦 StageId:", createPayload.stageId);
+        console.log("📦 Title:", createPayload.title);
+        console.log("📦 DueDate:", createPayload.dueDate);
+        console.log("📦 Quantity:", createPayload.quantity);
+        console.log("========================================\n");
+
         const startTime = Date.now();
 
         let response;
@@ -2015,11 +2044,18 @@ const handleCreateItem = (stageId: string) => {
           response = await api.post(`/flow/items`, createPayload);
           console.log("✅ Resposta da API:", response.data);
         } catch (apiError: any) {
-          console.error("❌ Erro na requisição:", {
+          console.error("❌ ERRO COMPLETO:", {
+            message: apiError.message,
             status: apiError.response?.status,
             statusText: apiError.response?.statusText,
             data: apiError.response?.data,
-            message: apiError.message,
+            config: {
+              url: apiError.config?.url,
+              method: apiError.config?.method,
+              data: apiError.config?.data
+                ? JSON.parse(apiError.config.data)
+                : null,
+            },
           });
           throw apiError;
         }
@@ -2135,19 +2171,15 @@ const handleCreateItem = (stageId: string) => {
         errorMessage = "Erro interno do servidor. Tente novamente mais tarde.";
       }
 
-      // 🔥 LOG DO ERRO MAS NÃO BLOQUEIA COM MENSAGEM ESPECÍFICA
+      // 🔥 LOG DO ERRO COM DETALHES
       if (error.response?.data?.message?.includes("Etapa inválida")) {
         console.error("🔍 ERRO DO BACKEND: Etapa inválida");
         console.error("   - flowId enviado:", values?.flowId);
         console.error("   - stageId enviado:", values?.stageId);
         console.error("   - activeStageId:", activeStageId);
-        console.error(
-          "   ⚠️ Isso indica que o modal não encontrou o ID correto",
-        );
       }
 
-      // toast.error(errorMessage);
-
+      toast.error(errorMessage);
       console.error("=".repeat(80));
       console.error("\n");
     } finally {
@@ -2190,7 +2222,13 @@ const handleCreateItem = (stageId: string) => {
       const flowColor = board.color || "#D35400";
       const flowName = board.name;
 
+      console.log(`📊 Processando board: ${board.name}`); // 🔥 ADICIONE
+
       board.stages.forEach((stage) => {
+        console.log(
+          `  Stage: ${stage.name} - defaultDays: ${stage.defaultDays}`,
+        ); // 🔥 ADICIONE
+
         const key = stage.name.toUpperCase();
 
         if (!stageGroups[key]) {
@@ -2200,6 +2238,8 @@ const handleCreateItem = (stageId: string) => {
             order: stage.order,
             color: stage.color,
             allowedRole: stage.allowedRole,
+            defaultDays: stage.defaultDays, // 🔥 GARANTA QUE ESTÁ AQUI
+
             flowId: board.id,
             items: [],
           };
@@ -3092,6 +3132,7 @@ const handleCreateItem = (stageId: string) => {
                 count={filteredItems.length} // ✅ USA filteredItems (já inclui todos os filtros)
                 color={stage.color}
                 isFirstColumn={index === 0}
+                defaultDays={stage.defaultDays} // 🔥 PASSA OS DIAS PADRÃO
                 onDropItem={(itemId) => {
                   const allItems = unifiedStages.flatMap((s) => s.items);
                   const draggingItem = allItems.find((i) => i.id === itemId);
@@ -3155,6 +3196,7 @@ const handleCreateItem = (stageId: string) => {
                   setStageName(stage.name);
                   setStageColor(stage.color || "#2D3436");
                   setStageAllowedRole(stage.allowedRole || "");
+                  setStageDefaultDays(stage.defaultDays ?? 1); // 🔥 CARREGA O VALOR
                   setIsStageModal(true);
                 }}
                 onDeleteClick={() => {
@@ -3287,21 +3329,21 @@ const handleCreateItem = (stageId: string) => {
         isOpen={isItemModal}
         onClose={() => {
           setIsItemModal(false);
-          setCurrentItemStages([]); // 🔥 Limpa as stages
+          setCurrentItemStages([]);
           setActiveStageId(null);
         }}
         onSubmit={handleItemSubmit}
         isLoading={isSubmitting || isModalLoading}
         users={users}
         suppliers={suppliers}
-        stages={currentItemStages} // 🔥 PASSA AS STAGES ATUAIS
+        stages={currentItemStages}
         flows={flows}
         initialStageId={activeStageId}
         currentUserRole={user?.professionalRole}
         currentUserSystemRole={user?.role}
         isReadOnly={false}
         hasMultipleFlows={selectedFlowIds.length > 1}
-        // 🔥 FUNÇÃO PARA BUSCAR STAGES DE UM FLOW (USADA QUANDO MUDA O FLUXO)
+        selectedFlowIds={selectedFlowIds} // 🔥 PASSA O selectedFlowIds
         fetchStagesForFlow={async (flowId) => {
           try {
             const response = await api.get(`/flow/${flowId}/stages`);
@@ -3311,6 +3353,7 @@ const handleCreateItem = (stageId: string) => {
             return [];
           }
         }}
+        onDeadlineUpdate={refreshBoardsAfterDeadlineUpdate}
       />
 
       <FlowItemModal
@@ -3440,12 +3483,14 @@ const handleCreateItem = (stageId: string) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Modal de Etapa */}
       <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
         <DialogContent className="bg-white">
           <DialogHeader>
             <DialogTitle>{editingStage ? "Editar" : "Nova"} Etapa</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4 text-sm font-medium">
+            {/* Nome da Etapa */}
             <div className="space-y-2">
               <Label>Nome da Etapa</Label>
               <Input
@@ -3455,6 +3500,29 @@ const handleCreateItem = (stageId: string) => {
               />
             </div>
 
+            {/* 🔥 NOVO CAMPO: Dias Padrão para Conclusão */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Calendar size={16} className="text-orange-500" />
+                Dias Padrão para Conclusão
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={stageDefaultDays}
+                onChange={(e) =>
+                  setStageDefaultDays(parseInt(e.target.value) || 0)
+                }
+                placeholder="Ex: 3"
+                className="h-10"
+              />
+              <p className="text-xs text-muted-foreground">
+                Quantos dias esta etapa normalmente leva para ser concluída?
+                Este valor será usado como padrão para novos itens.
+              </p>
+            </div>
+
+            {/* Cargo Permitido */}
             <div className="space-y-2">
               <Label>Cargo Permitido (Quem pode mover?)</Label>
               <Select
@@ -3483,6 +3551,7 @@ const handleCreateItem = (stageId: string) => {
               </p>
             </div>
 
+            {/* Cor da Etapa */}
             <div className="space-y-2">
               <Label>Cor da Etapa</Label>
               <div className="flex gap-2 items-center">

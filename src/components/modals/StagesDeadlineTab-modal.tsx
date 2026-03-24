@@ -78,10 +78,12 @@ export function StagesDeadlineTab({
   const [deadlines, setDeadlines] = useState<StageDeadline[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  
+
   // 🔥 NOVOS ESTADOS PARA EDIÇÃO EM LOTE
   const [isBulkEditing, setIsBulkEditing] = useState(false);
-  const [pendingEdits, setPendingEdits] = useState<Record<string, PendingEdit>>({});
+  const [pendingEdits, setPendingEdits] = useState<Record<string, PendingEdit>>(
+    {},
+  );
   const [hasChanges, setHasChanges] = useState(false);
 
   // ===========================================================================
@@ -121,12 +123,11 @@ export function StagesDeadlineTab({
       });
 
       setDeadlines(enriched);
-      
+
       // 🔥 Limpa edições pendentes ao recarregar
       setPendingEdits({});
       setHasChanges(false);
       setIsBulkEditing(false);
-      
     } catch (error) {
       console.error("Erro ao carregar prazos:", error);
       toast.error("Erro ao carregar prazos das etapas");
@@ -138,19 +139,20 @@ export function StagesDeadlineTab({
   // ===========================================================================
   // 🔥 FUNÇÕES PARA EDIÇÃO EM LOTE
   // ===========================================================================
-  
+
   // Iniciar modo de edição em lote
   const startBulkEditing = () => {
     // 🔥 Inicializa com os valores atuais
     const initialEdits: Record<string, PendingEdit> = {};
-    deadlines.forEach(stage => {
+    deadlines.forEach((stage) => {
       if (stage.canEdit) {
         initialEdits[stage.stageId] = {
           stageId: stage.stageId,
-          suggestedDeadline: stage.suggestedDeadline?.split('T')[0] || '',
-          notes: stage.notes || '',
-          originalSuggestedDeadline: stage.suggestedDeadline?.split('T')[0] || '',
-          originalNotes: stage.notes || '',
+          suggestedDeadline: stage.suggestedDeadline?.split("T")[0] || "",
+          notes: stage.notes || "",
+          originalSuggestedDeadline:
+            stage.suggestedDeadline?.split("T")[0] || "",
+          originalNotes: stage.notes || "",
         };
       }
     });
@@ -167,8 +169,12 @@ export function StagesDeadlineTab({
   };
 
   // Atualizar um campo específico
-  const updatePendingEdit = (stageId: string, field: 'suggestedDeadline' | 'notes', value: string) => {
-    setPendingEdits(prev => {
+  const updatePendingEdit = (
+    stageId: string,
+    field: "suggestedDeadline" | "notes",
+    value: string,
+  ) => {
+    setPendingEdits((prev) => {
       const updated = {
         ...prev,
         [stageId]: {
@@ -176,14 +182,15 @@ export function StagesDeadlineTab({
           [field]: value,
         },
       };
-      
+
       // 🔥 Verifica se houve mudança
-      const hasAnyChange = Object.values(updated).some(edit => 
-        edit.suggestedDeadline !== edit.originalSuggestedDeadline ||
-        edit.notes !== edit.originalNotes
+      const hasAnyChange = Object.values(updated).some(
+        (edit) =>
+          edit.suggestedDeadline !== edit.originalSuggestedDeadline ||
+          edit.notes !== edit.originalNotes,
       );
       setHasChanges(hasAnyChange);
-      
+
       return updated;
     });
   };
@@ -202,11 +209,12 @@ export function StagesDeadlineTab({
     try {
       // 🔥 Filtra apenas etapas com alterações
       const updates = Object.values(pendingEdits)
-        .filter(edit => 
-          edit.suggestedDeadline !== edit.originalSuggestedDeadline ||
-          edit.notes !== edit.originalNotes
+        .filter(
+          (edit) =>
+            edit.suggestedDeadline !== edit.originalSuggestedDeadline ||
+            edit.notes !== edit.originalNotes,
         )
-        .map(edit => ({
+        .map((edit) => ({
           stageId: edit.stageId,
           suggestedDeadline: new Date(edit.suggestedDeadline).toISOString(),
           notes: edit.notes || undefined,
@@ -227,9 +235,14 @@ export function StagesDeadlineTab({
 
       // 🔥 Recarrega os dados
       await loadDeadlines();
-      
-      if (onDeadlineUpdate) onDeadlineUpdate();
-      
+
+      // 🔥 CHAMA O CALLBACK PARA ATUALIZAR O ITEM
+      if (onDeadlineUpdate) {
+        onDeadlineUpdate();
+      }
+      toast.success(`${updates.length} prazo(s) atualizado(s) com sucesso!`, {
+        id: toastId,
+      });
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || "Erro ao salvar prazos";
       toast.error(errorMsg, { id: toastId });
@@ -393,34 +406,51 @@ export function StagesDeadlineTab({
         <table className="w-full min-w-[1100px] border-collapse">
           <thead className="bg-slate-100 sticky top-0 z-10">
             <tr>
-              <th className="text-left p-4 text-sm font-bold w-[250px]">Etapa</th>
-              <th className="text-left p-4 text-sm font-bold w-[140px]">Status</th>
-              <th className="text-left p-4 text-sm font-bold w-[180px]">Prazo</th>
-              <th className="text-left p-4 text-sm font-bold w-[140px]">Data Real</th>
-              <th className="text-left p-4 text-sm font-bold w-[250px]">Observações</th>
+              <th className="text-left p-4 text-sm font-bold w-[250px]">
+                Etapa
+              </th>
+              <th className="text-left p-4 text-sm font-bold w-[140px]">
+                Status
+              </th>
+              <th className="text-left p-4 text-sm font-bold w-[180px]">
+                Prazo
+              </th>
+              <th className="text-left p-4 text-sm font-bold w-[140px]">
+                Data Real
+              </th>
+              <th className="text-left p-4 text-sm font-bold w-[250px]">
+                Observações
+              </th>
             </tr>
           </thead>
           <tbody>
             {deadlines.map((stage) => {
               const editData = pendingEdits[stage.stageId];
               const isEditing = isBulkEditing && stage.canEdit;
-              
+
               return (
-                <tr 
+                <tr
                   key={stage.id}
                   className={`border-t border-slate-100 ${
                     stage.isCurrentStage ? "bg-blue-50/50" : "hover:bg-slate-50"
-                  } ${isEditing && editData && (
-                    editData.suggestedDeadline !== editData.originalSuggestedDeadline ||
-                    editData.notes !== editData.originalNotes
-                  ) ? "bg-amber-50" : ""}`}
+                  } ${
+                    isEditing &&
+                    editData &&
+                    (editData.suggestedDeadline !==
+                      editData.originalSuggestedDeadline ||
+                      editData.notes !== editData.originalNotes)
+                      ? "bg-amber-50"
+                      : ""
+                  }`}
                 >
                   {/* ETAPA */}
                   <td className="p-4 align-top">
                     <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full flex-shrink-0" 
-                        style={{ backgroundColor: stage.stageColor || "#94A3B8" }} 
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{
+                          backgroundColor: stage.stageColor || "#94A3B8",
+                        }}
                       />
                       <div className="flex flex-col">
                         <span className="font-medium text-sm">
@@ -436,9 +466,7 @@ export function StagesDeadlineTab({
                   </td>
 
                   {/* STATUS */}
-                  <td className="p-4 align-top">
-                    {getStatusBadge(stage)}
-                  </td>
+                  <td className="p-4 align-top">{getStatusBadge(stage)}</td>
 
                   {/* PRAZO */}
                   <td className="p-4 align-top">
@@ -446,29 +474,41 @@ export function StagesDeadlineTab({
                       <Input
                         type="date"
                         value={editData.suggestedDeadline}
-                        onChange={(e) => updatePendingEdit(stage.stageId, 'suggestedDeadline', e.target.value)}
+                        onChange={(e) =>
+                          updatePendingEdit(
+                            stage.stageId,
+                            "suggestedDeadline",
+                            e.target.value,
+                          )
+                        }
                         className="h-9 text-sm w-full"
                         disabled={saving}
                       />
                     ) : (
                       <div>
                         <div className="text-sm font-medium">
-                          {formatDate(stage.suggestedDeadline || stage.deadline)}
+                          {formatDate(
+                            stage.suggestedDeadline || stage.deadline,
+                          )}
                         </div>
-                        {stage.daysRemaining !== undefined && 
-                         stage.daysRemaining !== null && 
-                         stage.status !== "CONCLUIDO" && (
-                          <div className={cn(
-                            "text-xs font-medium mt-1",
-                            stage.daysRemaining < 0 ? "text-red-600" : 
-                            stage.daysRemaining <= 3 ? "text-amber-600" : "text-slate-400"
-                          )}>
-                            {stage.daysRemaining < 0 
-                              ? `${Math.abs(stage.daysRemaining)} dias atrasado`
-                              : `${stage.daysRemaining} dias restantes`
-                            }
-                          </div>
-                        )}
+                        {stage.daysRemaining !== undefined &&
+                          stage.daysRemaining !== null &&
+                          stage.status !== "CONCLUIDO" && (
+                            <div
+                              className={cn(
+                                "text-xs font-medium mt-1",
+                                stage.daysRemaining < 0
+                                  ? "text-red-600"
+                                  : stage.daysRemaining <= 3
+                                    ? "text-amber-600"
+                                    : "text-slate-400",
+                              )}
+                            >
+                              {stage.daysRemaining < 0
+                                ? `${Math.abs(stage.daysRemaining)} dias atrasado`
+                                : `${stage.daysRemaining} dias restantes`}
+                            </div>
+                          )}
                       </div>
                     )}
                   </td>
@@ -491,7 +531,13 @@ export function StagesDeadlineTab({
                     {isEditing && editData ? (
                       <Textarea
                         value={editData.notes}
-                        onChange={(e) => updatePendingEdit(stage.stageId, 'notes', e.target.value)}
+                        onChange={(e) =>
+                          updatePendingEdit(
+                            stage.stageId,
+                            "notes",
+                            e.target.value,
+                          )
+                        }
                         placeholder="Observações..."
                         className="h-20 text-sm resize-none"
                         disabled={saving}
