@@ -42,6 +42,7 @@ import {
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
+import { useCompanySettings } from "@/hooks/use-company-settings";
 
 // --- INTERFACES ---
 
@@ -92,6 +93,12 @@ export default function RealTimeFlowDashboard() {
   const [selectedFlowId, setSelectedFlowId] = useState<string>("all");
   const router = useRouter();
 
+   // 🔥 NOVO: Buscar configuração da empresa
+  const { data: companySettings, isLoading: loadingSettings } = useCompanySettings(
+    user?.company?.id || ""
+  );
+
+  const notificationDays = companySettings?.notificationDays ?? 7; // fallback 7
   // Adicione isso no topo do componente, após as interfaces
 const FINALIZED_STATUSES = ['CONCLUIDO', 'ENTREGUE', 'FINALIZADO', 'CANCELADO'];
 
@@ -159,20 +166,20 @@ const FINALIZED_STATUSES = ['CONCLUIDO', 'ENTREGUE', 'FINALIZADO', 'CANCELADO'];
   // --- LÓGICA DE FILTRAGEM (O React Compiler otimiza isso automaticamente) ---
   const today = new Date();
   const todayStr = today.toISOString().split("T")[0];
-  const sevenDaysLimit = new Date();
-  sevenDaysLimit.setDate(today.getDate() + 7);
-  const sevenDaysStr = sevenDaysLimit.toISOString().split("T")[0];
+  const notificationLimit = new Date();
+  notificationLimit.setDate(today.getDate() + notificationDays);
+  const notificationLimitStr = notificationLimit.toISOString().split("T")[0];
 
  const overdueItems = allItems.filter((item) => {
-  if (!item.dueDate || FINALIZED_STATUSES.includes(item.status)) return false;
-  return item.dueDate.split("T")[0] < todayStr;
-});
+    if (!item.dueDate || FINALIZED_STATUSES.includes(item.status)) return false;
+    return item.dueDate.split("T")[0] < todayStr;
+  });
 
-const upcomingItems = allItems.filter((item) => {
-  if (!item.dueDate || FINALIZED_STATUSES.includes(item.status)) return false;
-  const date = item.dueDate.split("T")[0];
-  return date >= todayStr && date <= sevenDaysStr;
-});
+  const upcomingItems = allItems.filter((item) => {
+    if (!item.dueDate || FINALIZED_STATUSES.includes(item.status)) return false;
+    const date = item.dueDate.split("T")[0];
+    return date >= todayStr && date <= notificationLimitStr;
+  });
 
 useEffect(() => {
   if (allItems.length > 0) {
@@ -221,7 +228,7 @@ useEffect(() => {
     if (filterType === "upcoming") {
       const todayStr = new Date().toISOString().split("T")[0];
       const target = new Date();
-      target.setDate(target.getDate() + 7);
+      target.setDate(target.getDate() + notificationDays); // 🔥 USAR notificationDays
       const targetStr = target.toISOString().split("T")[0];
       params.set("startDate", todayStr);
       params.set("endDate", targetStr);
@@ -384,11 +391,11 @@ useEffect(() => {
           subtitle="Itens com prazo vencido"
         />
         <MetricCard
-          title="Vencem em 7 dias"
+          title={`Vencem em ${notificationDays} dias`} // 🔥 DINÂMICO
           value={upcomingItems.length}
           icon={<CalendarClock className="h-5 w-5 text-yellow-500" />}
           onClick={() => handleCardClick("upcoming")}
-          subtitle="Próximos vencimentos"
+          subtitle={`Próximos ${notificationDays} dias`} // 🔥 DINÂMICO
         />
         <MetricCard
           title="Em Produção"

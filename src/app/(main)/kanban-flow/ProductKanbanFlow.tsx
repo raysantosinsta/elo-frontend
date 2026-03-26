@@ -20,6 +20,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useCompanySettings } from "@/hooks/use-company-settings"; // 🔥 NOVO
+
 // --- Infraestrutura ---
 import { useAuth } from "@/contexts/AuthContext";
 import { useKanbanDrag } from "@/hooks/use-kanban-drag";
@@ -66,8 +68,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 // import { useProductRefPermission } from "@/hooks/use-product-ref-permission";
 
@@ -163,6 +176,57 @@ export default function ProductFlowKanban() {
   const searchParams = useSearchParams();
   const router = useRouter();
   // const { canManageRef, canViewRef } = useProductRefPermission();
+
+  // 🔥 NOVO: Buscar configuração da empresa
+  const {
+    data: companySettings,
+    isLoading: loadingSettings,
+    refetch: refetchSettings,
+  } = useCompanySettings(user?.company?.id || "");
+
+  // 🔥 ADICIONE ESTE LOG
+  console.log("🔍 [ProductFlowKanban] Company Settings:", {
+    companyId: user?.company?.id,
+    companySettings,
+    notificationDays: companySettings?.notificationDays ?? 7,
+    loadingSettings,
+  });
+
+  const notificationDays = companySettings?.notificationDays ?? 7; // fallback 7
+
+  // 🔥 EFEITO PARA LOGAR QUANDO O VALOR MUDAR
+  useEffect(() => {
+    console.log(
+      "🔍 [ProductFlowKanban] notificationDays mudou para:",
+      notificationDays,
+    );
+  }, [notificationDays]);
+
+  // 🔥 FORÇAR ATUALIZAÇÃO DOS FILTROS QUANDO notificationDays MUDAR
+  useEffect(() => {
+    if (tempFilterUpcoming && notificationDays) {
+      // Se o filtro upcoming estiver ativo, recalcular as datas
+      const today = new Date();
+      const todayUTC = new Date(
+        Date.UTC(
+          today.getUTCFullYear(),
+          today.getUTCMonth(),
+          today.getUTCDate(),
+        ),
+      );
+      const notificationLimit = new Date(todayUTC);
+      notificationLimit.setUTCDate(todayUTC.getUTCDate() + notificationDays);
+
+      const todayStr = todayUTC.toISOString().split("T")[0];
+      const limitStr = notificationLimit.toISOString().split("T")[0];
+
+      setTempFilterStartDate(todayStr);
+      setTempFilterEndDate(limitStr);
+
+      // Reaplicar o filtro
+      handleFilterClick();
+    }
+  }, [notificationDays]);
 
   // ===========================================================================
   // 🔥 REF PARA CONTROLAR PRIMEIRA RENDERIZAÇÃO
@@ -620,9 +684,8 @@ export default function ProductFlowKanban() {
       console.log("✅ Modal aberto");
     }, 50);
   };
-  
 
-const handleOpenCompleteModal = (item: FlowItem) => {
+  const handleOpenCompleteModal = (item: FlowItem) => {
     const currentBoard = boards.find((b) => b.id === item.flowId);
     if (!currentBoard) {
       toast.error("Fluxo não encontrado.");
@@ -642,7 +705,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     // ===========================================================================
     if (!nextStage) {
       console.log("🏁 Última etapa detectada. Finalizando item...");
-      
+
       // Chamamos o handleAdvanceItem que agora dispara a conclusão no backend
       // Usamos toast.promise para dar um feedback visual elegante de finalização
       toast.promise(handleAdvanceItem(item), {
@@ -660,7 +723,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     // ===========================================================================
     // 🚀 LÓGICA PARA QUANDO EXISTE UMA PRÓXIMA ETAPA (ABRE MODAL)
     // ===========================================================================
-    
+
     // Palavras-chave para identificação de regras especiais
     const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
     const DISTRIBUICAO_KEYWORDS = [
@@ -683,7 +746,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     );
 
     // Regra: Está depois do CORTE? (Usado para validar quantidades/responsáveis)
-    const isAfterCorte = corteIndex !== -1 && (currentIndex + 1) > corteIndex;
+    const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
 
     console.log("🔍 [handleOpenCompleteModal] Preparando modal de avanço:", {
       item: item.title,
@@ -697,7 +760,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
       id: nextStage.id,
       name: nextStage.name,
       allowedRole: nextStage.allowedRole,
-      isAfterCorte, 
+      isAfterCorte,
       isDistribuicao,
     });
 
@@ -860,99 +923,103 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     return items;
   };
 
-// ===========================================================================
-// 🔄 FUNÇÕES DE FILTRO GLOBAL (AJUSTADO PARA MÚLTIPLOS FLUXOS)
-// ===========================================================================
-useEffect(() => {
-  const filterParam = searchParams.get("filter");
-  const typeParam = searchParams.get("dateType");
-  const startDateParam = searchParams.get("startDate");
-  const endDateParam = searchParams.get("endDate");
-  const assignedParam = searchParams.get("assignedToId");
-  const supplierParam = searchParams.get("supplierId");
-  const productRefParam = searchParams.get("productRef");
-  const stageNameParam = searchParams.get("stageName");
-  
-  // Parâmetros de Fluxo
-  const flowIdParam = searchParams.get("flowId");
-  const flowIdsParam = searchParams.get("flowIds");
+  // ===========================================================================
+  // 🔄 FUNÇÕES DE FILTRO GLOBAL (AJUSTADO PARA MÚLTIPLOS FLUXOS)
+  // ===========================================================================
+  useEffect(() => {
+    const filterParam = searchParams.get("filter");
+    const typeParam = searchParams.get("dateType");
+    const startDateParam = searchParams.get("startDate");
+    const endDateParam = searchParams.get("endDate");
+    const assignedParam = searchParams.get("assignedToId");
+    const supplierParam = searchParams.get("supplierId");
+    const productRefParam = searchParams.get("productRef");
+    const stageNameParam = searchParams.get("stageName");
 
-  // 1. Resolve os IDs da URL
-  let idsFromUrl: string[] = [];
-  if (flowIdsParam) {
-    idsFromUrl = flowIdsParam.split(",").filter(Boolean);
-  } else if (flowIdParam) {
-    idsFromUrl = [flowIdParam];
-  }
+    // Parâmetros de Fluxo
+    const flowIdParam = searchParams.get("flowId");
+    const flowIdsParam = searchParams.get("flowIds");
 
-  console.log("🔍 [useEffect URL] Parâmetros detectados:", {
-    filter: filterParam,
-    flowIds: idsFromUrl,
-    stage: stageNameParam
-  });
+    // 1. Resolve os IDs da URL
+    let idsFromUrl: string[] = [];
+    if (flowIdsParam) {
+      idsFromUrl = flowIdsParam.split(",").filter(Boolean);
+    } else if (flowIdParam) {
+      idsFromUrl = [flowIdParam];
+    }
 
-  // --- 1. Lógica de Seleção de Fluxos (Com trava de comparação profunda para evitar loops) ---
-  if (idsFromUrl.length > 0) {
-    setSelectedFlowIds(prev => {
-      // Verifica se os arrays são iguais para evitar re-render desnecessário e loop
-      const isSame = 
-        prev.length === idsFromUrl.length && 
-        prev.every((id, idx) => id === idsFromUrl[idx]);
-        
-      if (isSame) return prev;
-      
-      console.log("✅ [useEffect URL] Atualizando selectedFlowIds para:", idsFromUrl);
-      return idsFromUrl;
+    console.log("🔍 [useEffect URL] Parâmetros detectados:", {
+      filter: filterParam,
+      flowIds: idsFromUrl,
+      stage: stageNameParam,
     });
-  }
 
-  // --- 2. Sincronização de Filtros de Status (Overdue/Upcoming) ---
-  const isOverdue = filterParam === "overdue";
-  const isUpcoming = filterParam === "upcoming";
+    // --- 1. Lógica de Seleção de Fluxos (Com trava de comparação profunda para evitar loops) ---
+    if (idsFromUrl.length > 0) {
+      setSelectedFlowIds((prev) => {
+        // Verifica se os arrays são iguais para evitar re-render desnecessário e loop
+        const isSame =
+          prev.length === idsFromUrl.length &&
+          prev.every((id, idx) => id === idsFromUrl[idx]);
 
-  setTempFilterOverdue(isOverdue);
-  setActiveFilterOverdue(isOverdue);
-  setTempFilterUpcoming(isUpcoming);
-  setActiveFilterUpcoming(isUpcoming);
+        if (isSame) return prev;
 
-  // --- 3. Configuração de Datas e Tipos ---
-  const finalDateType = isUpcoming 
-    ? "dueDate" 
-    : (typeParam === "productionStartedAt" || typeParam === "dueDate" ? typeParam : "productionStartedAt");
+        console.log(
+          "✅ [useEffect URL] Atualizando selectedFlowIds para:",
+          idsFromUrl,
+        );
+        return idsFromUrl;
+      });
+    }
 
-  const finalStartDate = startDateParam ? startDateParam.split("T")[0] : "";
-  const finalEndDate = endDateParam ? endDateParam.split("T")[0] : "";
+    // --- 2. Sincronização de Filtros de Status (Overdue/Upcoming) ---
+    const isOverdue = filterParam === "overdue";
+    const isUpcoming = filterParam === "upcoming";
 
-  setTempFilterDateType(finalDateType);
-  setActiveFilterDateType(finalDateType);
-  
-  setTempFilterStartDate(finalStartDate);
-  setActiveFilterStartDate(finalStartDate);
-  
-  setTempFilterEndDate(finalEndDate);
-  setActiveFilterEndDate(finalEndDate);
+    setTempFilterOverdue(isOverdue);
+    setActiveFilterOverdue(isOverdue);
+    setTempFilterUpcoming(isUpcoming);
+    setActiveFilterUpcoming(isUpcoming);
 
-  // --- 4. Filtros de Entidades e Referências ---
-  const finalAssigned = assignedParam || "all";
-  const finalSupplier = supplierParam || "all";
-  const finalRef = productRefParam || "";
-  const finalColumn = stageNameParam || "";
+    // --- 3. Configuração de Datas e Tipos ---
+    const finalDateType = isUpcoming
+      ? "dueDate"
+      : typeParam === "productionStartedAt" || typeParam === "dueDate"
+        ? typeParam
+        : "productionStartedAt";
 
-  setTempFilterAssignedTo(finalAssigned);
-  setActiveFilterAssignedTo(finalAssigned);
-  
-  setTempFilterSupplier(finalSupplier);
-  setActiveFilterSupplier(finalSupplier);
-  
-  setTempFilterProductRef(finalRef);
-  setActiveFilterProductRef(finalRef);
-  
-  setColumnNameFilter(finalColumn);
-  setActiveColumnNameFilter(finalColumn);
+    const finalStartDate = startDateParam ? startDateParam.split("T")[0] : "";
+    const finalEndDate = endDateParam ? endDateParam.split("T")[0] : "";
 
-  console.log("✅ [useEffect URL] Estados sincronizados com a URL.");
+    setTempFilterDateType(finalDateType);
+    setActiveFilterDateType(finalDateType);
 
-}, [searchParams, setSelectedFlowIds]);
+    setTempFilterStartDate(finalStartDate);
+    setActiveFilterStartDate(finalStartDate);
+
+    setTempFilterEndDate(finalEndDate);
+    setActiveFilterEndDate(finalEndDate);
+
+    // --- 4. Filtros de Entidades e Referências ---
+    const finalAssigned = assignedParam || "all";
+    const finalSupplier = supplierParam || "all";
+    const finalRef = productRefParam || "";
+    const finalColumn = stageNameParam || "";
+
+    setTempFilterAssignedTo(finalAssigned);
+    setActiveFilterAssignedTo(finalAssigned);
+
+    setTempFilterSupplier(finalSupplier);
+    setActiveFilterSupplier(finalSupplier);
+
+    setTempFilterProductRef(finalRef);
+    setActiveFilterProductRef(finalRef);
+
+    setColumnNameFilter(finalColumn);
+    setActiveColumnNameFilter(finalColumn);
+
+    console.log("✅ [useEffect URL] Estados sincronizados com a URL.");
+  }, [searchParams, setSelectedFlowIds]);
 
   const fetchSelectedBoards = useCallback(async () => {
     console.log(
@@ -1022,88 +1089,102 @@ useEffect(() => {
   }, [selectedFlowIds, flows]);
 
   const fetchFilteredBoards = useCallback(
-  async (paramsFromUrl?: URLSearchParams) => {
-    console.log("\n" + "=".repeat(80));
-    console.log("🚀 [fetchFilteredBoards] INICIANDO");
-    console.log("=".repeat(80));
+    async (paramsFromUrl?: URLSearchParams) => {
+      console.log("\n" + "=".repeat(80));
+      console.log("🚀 [fetchFilteredBoards] INICIANDO");
+      console.log("=".repeat(80));
 
-    if (selectedFlowIds.length === 0) {
-      console.log("⚠️ Nenhum fluxo selecionado");
-      setBoards([]);
-      setLoading(false);
-      return;
-    }
+      if (selectedFlowIds.length === 0) {
+        console.log("⚠️ Nenhum fluxo selecionado");
+        setBoards([]);
+        setLoading(false);
+        return;
+      }
 
-    setLoading(true);
-    setIsFiltering(true);
+      setLoading(true);
+      setIsFiltering(true);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.error("❌ Timeout após 15 segundos");
-      controller.abort();
-    }, 15000);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.error("❌ Timeout após 15 segundos");
+        controller.abort();
+      }, 15000);
 
-    try {
-      const params = paramsFromUrl || new URLSearchParams(window.location.search);
-      
-      // Sincronização de estados de filtro (UI)
-      const startDate = params.get("startDate");
-      const endDate = params.get("endDate");
-      const filter = params.get("filter");
-      const stageName = params.get("stageName");
+      try {
+        const params =
+          paramsFromUrl || new URLSearchParams(window.location.search);
 
-      setActiveFilterOverdue(filter === "overdue");
-      setActiveFilterUpcoming(filter === "upcoming");
-      setActiveColumnNameFilter(stageName || "");
+        // Sincronização de estados de filtro (UI)
+        const startDate = params.get("startDate");
+        const endDate = params.get("endDate");
+        const filter = params.get("filter");
+        const stageName = params.get("stageName");
 
-      // Preparação da Query API
-      const baseQueryParams = new URLSearchParams();
-      if (startDate) baseQueryParams.set("startDate", new Date(startDate).toISOString());
-      if (endDate) baseQueryParams.set("endDate", new Date(endDate).toISOString());
-      if (params.get("dateType")) baseQueryParams.set("dateType", params.get("dateType")!);
-      if (filter === "overdue") baseQueryParams.set("isOverdue", "true");
-      if (filter === "upcoming") baseQueryParams.set("isUpcoming", "true");
-      if (params.get("assignedToId") && params.get("assignedToId") !== "all") 
-        baseQueryParams.set("assignedToId", params.get("assignedToId")!);
-      if (params.get("supplierId") && params.get("supplierId") !== "all") 
-        baseQueryParams.set("supplierId", params.get("supplierId")!);
-      if (params.get("productRef")) baseQueryParams.set("productRef", params.get("productRef")!);
-      if (stageName) baseQueryParams.set("stageName", stageName.trim());
+        setActiveFilterOverdue(filter === "overdue");
+        setActiveFilterUpcoming(filter === "upcoming");
+        setActiveColumnNameFilter(stageName || "");
 
-      console.log("📡 Buscando dados para IDs:", selectedFlowIds);
+        // Preparação da Query API
+        const baseQueryParams = new URLSearchParams();
+        if (startDate)
+          baseQueryParams.set("startDate", new Date(startDate).toISOString());
+        if (endDate)
+          baseQueryParams.set("endDate", new Date(endDate).toISOString());
+        if (params.get("dateType"))
+          baseQueryParams.set("dateType", params.get("dateType")!);
+        if (filter === "overdue") baseQueryParams.set("isOverdue", "true");
+        if (filter === "upcoming") baseQueryParams.set("isUpcoming", "true");
+        if (params.get("assignedToId") && params.get("assignedToId") !== "all")
+          baseQueryParams.set("assignedToId", params.get("assignedToId")!);
+        if (params.get("supplierId") && params.get("supplierId") !== "all")
+          baseQueryParams.set("supplierId", params.get("supplierId")!);
+        if (params.get("productRef"))
+          baseQueryParams.set("productRef", params.get("productRef")!);
+        if (stageName) baseQueryParams.set("stageName", stageName.trim());
 
-      // Criamos as promises para TODOS os fluxos selecionados
-      const boardsPromises = selectedFlowIds.map(async (flowId) => {
-        try {
-          const url = `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`;
-          const response = await api.get(url, { signal: controller.signal });
-          return response.data;
-        } catch (error: any) {
-          console.error(`❌ Erro no board ${flowId}, buscando board original como fallback.`);
-          // Fallback: busca o board limpo para garantir que a coluna apareça
-          const fallback = await api.get(`/flow/${flowId}/board`);
-          return { ...fallback.data, stages: fallback.data.stages.map((s: any) => ({ ...s, items: [] })) };
-        }
-      });
+        console.log("📡 Buscando dados para IDs:", selectedFlowIds);
 
-      const results = await Promise.all(boardsPromises);
-      const finalBoards = results.filter(Boolean);
+        // Criamos as promises para TODOS os fluxos selecionados
+        const boardsPromises = selectedFlowIds.map(async (flowId) => {
+          try {
+            const url = `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`;
+            const response = await api.get(url, { signal: controller.signal });
+            return response.data;
+          } catch (error: any) {
+            console.error(
+              `❌ Erro no board ${flowId}, buscando board original como fallback.`,
+            );
+            // Fallback: busca o board limpo para garantir que a coluna apareça
+            const fallback = await api.get(`/flow/${flowId}/board`);
+            return {
+              ...fallback.data,
+              stages: fallback.data.stages.map((s: any) => ({
+                ...s,
+                items: [],
+              })),
+            };
+          }
+        });
 
-      console.log(`✅ [fetchFilteredBoards] Finalizado. Processados ${finalBoards.length} de ${selectedFlowIds.length}`);
-      setBoards(finalBoards);
+        const results = await Promise.all(boardsPromises);
+        const finalBoards = results.filter(Boolean);
 
-    } catch (error: any) {
-      console.error("❌ Erro crítico no fetchFilteredBoards:", error);
-      toast.error("Erro ao aplicar filtros");
-      await fetchSelectedBoards(); // Fallback para visualização sem filtros
-    } finally {
-      clearTimeout(timeoutId);
-      setLoading(false);
-      setIsFiltering(false);
-    }
-  },
-  [selectedFlowIds, fetchSelectedBoards]
-);
+        console.log(
+          `✅ [fetchFilteredBoards] Finalizado. Processados ${finalBoards.length} de ${selectedFlowIds.length}`,
+        );
+        setBoards(finalBoards);
+      } catch (error: any) {
+        console.error("❌ Erro crítico no fetchFilteredBoards:", error);
+        toast.error("Erro ao aplicar filtros");
+        await fetchSelectedBoards(); // Fallback para visualização sem filtros
+      } finally {
+        clearTimeout(timeoutId);
+        setLoading(false);
+        setIsFiltering(false);
+      }
+    },
+    [selectedFlowIds, fetchSelectedBoards],
+  );
 
   // ===========================================================================
   // 🔥 FUNÇÃO PARA ATUALIZAR BOARDS APÓS ALTERAÇÃO DE PRAZOS
@@ -1139,6 +1220,14 @@ useEffect(() => {
   // 🔥 FUNÇÃO handleFilterClick
   // ===========================================================================
   const handleFilterClick = async () => {
+    console.log("🔍 [handleFilterClick] INICIADO", {
+      tempFilterUpcoming,
+      notificationDays,
+      // tempFilterExactDate,
+      tempFilterStartDate,
+      tempFilterEndDate,
+    });
+
     setIsFiltering(true);
 
     const params = new URLSearchParams();
@@ -1149,8 +1238,25 @@ useEffect(() => {
 
     // Se o filtro de próximos 7 dias estiver ativo, sempre usa dueDate
     if (tempFilterUpcoming) {
-      params.set("dateType", "dueDate");
-      setTempFilterDateType("dueDate"); // <-- GARANTE A SINCRONIA
+      const today = new Date();
+      const notificationLimit = new Date(today);
+      notificationLimit.setDate(today.getDate() + notificationDays);
+
+      const todayStr = today.toISOString().split("T")[0];
+      const limitStr = notificationLimit.toISOString().split("T")[0];
+
+      console.log("📅 [handleFilterClick] FILTRO UPCOMING:", {
+        notificationDays,
+        todayStr,
+        limitStr,
+      });
+
+      params.set("startDate", todayStr);
+      params.set("endDate", limitStr);
+      params.set("filter", "upcoming");
+
+      console.log("🔍 Parâmetros do filtro:", params.toString());
+      router.push(`?${params.toString()}`);
     } else if (tempFilterDateType) {
       params.set("dateType", tempFilterDateType);
     }
@@ -1212,54 +1318,64 @@ useEffect(() => {
     } else {
       setTempFilterUpcoming(true);
       setTempFilterOverdue(false);
-
-      // 🔥 FORÇA O TIPO DE DATA PARA dueDate
       setTempFilterDateType("dueDate");
 
-      // Calcula as datas para os próximos 7 dias
+      // 🔥 USAR UTC para evitar problemas de fuso
       const today = new Date();
-      const sevenDaysFromNow = new Date(today);
-      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+      const todayUTC = new Date(
+        Date.UTC(
+          today.getUTCFullYear(),
+          today.getUTCMonth(),
+          today.getUTCDate(),
+        ),
+      );
 
-      // Formata as datas no formato ISO (YYYY-MM-DD)
-      const todayStr = today.toISOString().split("T")[0];
-      const sevenDaysStr = sevenDaysFromNow.toISOString().split("T")[0];
+      const notificationLimit = new Date(todayUTC);
+      notificationLimit.setUTCDate(todayUTC.getUTCDate() + notificationDays);
 
-      console.log("📅 Filtro Próximos 7 dias:", {
-        hoje: todayStr,
-        daqui7dias: sevenDaysStr,
-        dateType: "dueDate",
+      const todayStr = todayUTC.toISOString().split("T")[0];
+      const limitStr = notificationLimit.toISOString().split("T")[0];
+
+      console.log("📅 [toggleUpcomingFilter] DATAS UTC:", {
+        notificationDays,
+        todayStr,
+        limitStr,
       });
 
       setTempFilterStartDate(todayStr);
-      setTempFilterEndDate(sevenDaysStr);
+      setTempFilterEndDate(limitStr);
     }
   };
 
- const fetchInitialData = useCallback(async () => {
-  if (!user?.company?.id) return;
-  try {
-    const [fRes, uRes, sRes, tRes] = await Promise.all([
-      api.get(`/flow?companyId=${user.company.id}`),
-      api.get(`/users/company/${user.company.id}`),
-      api.get(`/suppliers?companyId=${user.company.id}`),
-      api.get(`/flow/templates`),
-    ]);
-    setFlows(fRes.data);
-    setUsers(uRes.data);
-    setSuppliers(sRes.data.data || sRes.data);
-    setTemplates(tRes.data);
+  const fetchInitialData = useCallback(async () => {
+    if (!user?.company?.id) return;
+    try {
+      const [fRes, uRes, sRes, tRes] = await Promise.all([
+        api.get(`/flow?companyId=${user.company.id}`),
+        api.get(`/users/company/${user.company.id}`),
+        api.get(`/suppliers?companyId=${user.company.id}`),
+        api.get(`/flow/templates`),
+      ]);
+      setFlows(fRes.data);
+      setUsers(uRes.data);
+      setSuppliers(sRes.data.data || sRes.data);
+      setTemplates(tRes.data);
 
-    // 🔥 TRAVA AQUI: Só seleciona o padrão se NÃO houver nada na URL
-    const hasFlowsInUrl = searchParams.get("flowIds") || searchParams.get("flowId");
-    
-    if (fRes.data.length > 0 && selectedFlowIds.length === 0 && !hasFlowsInUrl) {
-      setSelectedFlowIds([fRes.data[0].id]);
+      // 🔥 TRAVA AQUI: Só seleciona o padrão se NÃO houver nada na URL
+      const hasFlowsInUrl =
+        searchParams.get("flowIds") || searchParams.get("flowId");
+
+      if (
+        fRes.data.length > 0 &&
+        selectedFlowIds.length === 0 &&
+        !hasFlowsInUrl
+      ) {
+        setSelectedFlowIds([fRes.data[0].id]);
+      }
+    } catch {
+      toast.error("Erro ao carregar dados iniciais");
     }
-  } catch {
-    toast.error("Erro ao carregar dados iniciais");
-  }
-}, [user?.company?.id, searchParams]); // Adicione searchParams aqui
+  }, [user?.company?.id, searchParams]); // Adicione searchParams aqui
 
   // ===========================================================================
   // 🎯 EFEITO PRINCIPAL
@@ -1497,21 +1613,21 @@ useEffect(() => {
     }
   };
 
-const handleApplyTemplate = async () => {
-  if (!selectedTemplateId || selectedFlowIds.length === 0)
-    return toast.error("Selecione template e fluxo");
-  try {
-    await api.post(
-      `/flow/${selectedFlowIds[0]}/apply-template/${selectedTemplateId}`,
-    );
-    toast.success("Etapas aplicadas!");
-    
-    // 🔥 FORÇAR RECARREGAMENTO COMPLETO
-    await fetchSelectedBoards(); // Isso vai buscar os novos IDs das etapas criadas
-  } catch {
-    toast.error("Erro ao aplicar template");
-  }
-};
+  const handleApplyTemplate = async () => {
+    if (!selectedTemplateId || selectedFlowIds.length === 0)
+      return toast.error("Selecione template e fluxo");
+    try {
+      await api.post(
+        `/flow/${selectedFlowIds[0]}/apply-template/${selectedTemplateId}`,
+      );
+      toast.success("Etapas aplicadas!");
+
+      // 🔥 FORÇAR RECARREGAMENTO COMPLETO
+      await fetchSelectedBoards(); // Isso vai buscar os novos IDs das etapas criadas
+    } catch {
+      toast.error("Erro ao aplicar template");
+    }
+  };
 
   const handleDeleteFlow = async (flowId: string) => {
     try {
@@ -2594,81 +2710,95 @@ const handleApplyTemplate = async () => {
 
       <KanbanFilter>
         <div className="grid gap-1 min-w-[200px]">
-        <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-          Filtrar por Coluna
-        </label>
-        
-        <Popover open={openColumnSelector} onOpenChange={setOpenColumnSelector}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              role="combobox"
-              aria-expanded={openColumnSelector}
-              className="h-8 w-full justify-between bg-background pl-8 pr-2 text-xs font-normal border-input hover:bg-accent"
-            >
-              <div className="flex items-center gap-2 truncate">
-                <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
-                <span className="truncate">
-                  {columnNameFilter || "Todas as colunas"}
-                </span>
-              </div>
-              <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          
-          <PopoverContent className="w-[250px] p-0" align="start">
-            <Command>
-              <CommandInput placeholder="Buscar etapa..." className="h-8 text-xs" />
-              <CommandList className="max-h-[300px]">
-                <CommandEmpty className="py-3 text-center text-xs text-slate-500">
-                  Nenhuma coluna encontrada.
-                </CommandEmpty>
-                <CommandGroup>
-                  {/* Opção para limpar/ver todas */}
-                  <CommandItem
-                    value=""
-                    onSelect={() => {
-                      setColumnNameFilter("");
-                      setOpenColumnSelector(false);
-                    }}
-                    className="text-xs cursor-pointer"
-                  >
-                    <div className={cn(
-                      "mr-2 flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-primary",
-                      !columnNameFilter ? "bg-primary text-primary-foreground" : "opacity-50"
-                    )}>
-                      {!columnNameFilter && <Check className="h-3 w-3" />}
-                    </div>
-                    Todas as colunas
-                  </CommandItem>
+          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+            Filtrar por Coluna
+          </label>
 
-                  {/* Lista dinâmica de colunas */}
-                  {columnOptions.map((option) => (
+          <Popover
+            open={openColumnSelector}
+            onOpenChange={setOpenColumnSelector}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={openColumnSelector}
+                className="h-8 w-full justify-between bg-background pl-8 pr-2 text-xs font-normal border-input hover:bg-accent"
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
+                  <span className="truncate">
+                    {columnNameFilter || "Todas as colunas"}
+                  </span>
+                </div>
+                <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+
+            <PopoverContent className="w-[250px] p-0" align="start">
+              <Command>
+                <CommandInput
+                  placeholder="Buscar etapa..."
+                  className="h-8 text-xs"
+                />
+                <CommandList className="max-h-[300px]">
+                  <CommandEmpty className="py-3 text-center text-xs text-slate-500">
+                    Nenhuma coluna encontrada.
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {/* Opção para limpar/ver todas */}
                     <CommandItem
-                      key={option}
-                      value={option}
-                      onSelect={(currentValue) => {
-                        // currentValue vem em lowercase do Command
-                        setColumnNameFilter(currentValue === columnNameFilter ? "" : option);
+                      value=""
+                      onSelect={() => {
+                        setColumnNameFilter("");
                         setOpenColumnSelector(false);
                       }}
                       className="text-xs cursor-pointer"
                     >
-                      <Check
+                      <div
                         className={cn(
-                          "mr-2 h-3 w-3 text-orange-600",
-                          columnNameFilter === option ? "opacity-100" : "opacity-0"
+                          "mr-2 flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-primary",
+                          !columnNameFilter
+                            ? "bg-primary text-primary-foreground"
+                            : "opacity-50",
                         )}
-                      />
-                      {option}
+                      >
+                        {!columnNameFilter && <Check className="h-3 w-3" />}
+                      </div>
+                      Todas as colunas
                     </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
-      </div>
+
+                    {/* Lista dinâmica de colunas */}
+                    {columnOptions.map((option) => (
+                      <CommandItem
+                        key={option}
+                        value={option}
+                        onSelect={(currentValue) => {
+                          // currentValue vem em lowercase do Command
+                          setColumnNameFilter(
+                            currentValue === columnNameFilter ? "" : option,
+                          );
+                          setOpenColumnSelector(false);
+                        }}
+                        className="text-xs cursor-pointer"
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-3 w-3 text-orange-600",
+                            columnNameFilter === option
+                              ? "opacity-100"
+                              : "opacity-0",
+                          )}
+                        />
+                        {option}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </div>
 
         <div className="grid gap-1 min-w-[140px]">
           <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
@@ -2754,7 +2884,7 @@ const handleApplyTemplate = async () => {
             onClick={toggleUpcomingFilter}
           >
             <Clock className="w-3 h-3 mr-2" />
-            Próximos a vencer (7 dias)
+            Próximos a vencer ({notificationDays} dias) {/* 🔥 DINÂMICO */}
           </Button>
         </div>
 
