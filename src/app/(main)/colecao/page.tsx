@@ -2,26 +2,12 @@
 
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import {
-  AlertCircle,
-  Package,
-  Loader2,
-  TrendingUp,
-  RefreshCw,
-  AlertTriangle,
-  Filter,
-  CalendarClock,
-  ExternalLink,
-} from "lucide-react";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
 import {
   Select,
@@ -30,19 +16,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCompanySettings } from "@/hooks/use-company-settings";
+import { api } from "@/services/api";
+import { useQuery } from "@tanstack/react-query";
 import {
-  BarChart,
+  AlertCircle,
+  CalendarClock,
+  Filter,
+  Loader2,
+  Package,
+  RefreshCw
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import {
   Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
 } from "recharts";
-import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/services/api";
-import { useCompanySettings } from "@/hooks/use-company-settings";
 
 // --- INTERFACES ---
 

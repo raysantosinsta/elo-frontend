@@ -9,8 +9,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useProductRefPermission } from "@/hooks/use-product-ref-permission";
 import { cn } from "@/lib/utils";
-import { Edit, Eye, MoreHorizontal, Trash2, CheckCircle2, EyeOff, Lock } from "lucide-react";
-import React from "react";
+import { Edit, Eye, MoreHorizontal, Trash2, CheckCircle2, EyeOff, Lock, Clock } from "lucide-react";
+import React, { useMemo } from "react";
 
 export interface KanbanCardProps {
   id: string;
@@ -22,6 +22,7 @@ export interface KanbanCardProps {
   priorityColor?: string;
   coverImage?: string; 
   imagesCount?: number; 
+  dueDate?: string;
   footer?: React.ReactNode;
   children?: React.ReactNode;
   
@@ -45,6 +46,7 @@ export function KanbanCard({
   statusColor = "#95A5A6",
   priorityColor = "#ccc",
   coverImage,
+  dueDate,
   footer,
   onView,
   onEdit,
@@ -72,6 +74,16 @@ export function KanbanCard({
     }
     // Se não pode ver (nunca acontece, porque canViewRef é true para todos)
   };
+
+  // Helper para formatar a data compacta no card
+  const formattedDate = useMemo(() => {
+    if (!dueDate) return null;
+    try {
+      return new Date(dueDate).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' });
+    } catch {
+      return null;
+    }
+  }, [dueDate]);
 
   return (
     <Card
@@ -176,6 +188,14 @@ export function KanbanCard({
         
         {/* Subtítulo - MAIS VISÍVEL */}
         {renderSubtitle()}
+
+        {/* 🔥 NOVO: Prazo no corpo do card para destaque */}
+        {formattedDate && (
+          <div className="flex items-center gap-1.5 mt-2 text-[#D35400] bg-orange-50 w-fit px-2 py-0.5 rounded border border-orange-100">
+            <Clock size={10} className="font-bold" />
+            <span className="text-[10px] font-bold">Prazo: {formattedDate}</span>
+          </div>
+        )}
 
         {/* Conteúdo/Descrição */}
         {children && (

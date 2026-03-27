@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react"; // 1. Adicionado useEffect
 import { useForm } from "react-hook-form";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,19 +21,30 @@ type FormData = {
 };
 
 export const NotificationTab: React.FC<NotificationTabProps> = ({ companyId }) => {
+  // Busca os dados do banco via hook que utiliza React Query
   const { data: settings, isLoading } = useCompanySettings(companyId);
 
   const form = useForm<FormData>({
     defaultValues: {
-      notificationDays: settings?.notificationDays ?? 7,
+      notificationDays: 7, // Valor de fallback inicial
     },
   });
+
+  // 🔥 SOLUÇÃO: Sincroniza o formulário quando os dados do banco chegam
+  useEffect(() => {
+    if (settings?.notificationDays !== undefined) {
+      form.reset({
+        notificationDays: settings.notificationDays,
+      });
+    }
+  }, [settings, form]);
 
   if (isLoading) {
     return <Skeleton className="h-[200px] w-full rounded-2xl" />;
   }
 
-  const notificationDays = form.watch("notificationDays") ?? 7;
+  // Monitora o valor do input em tempo real para o texto explicativo abaixo
+  const notificationDays = form.watch("notificationDays");
 
   return (
     <Card className="rounded-2xl shadow-sm">
@@ -46,7 +57,6 @@ export const NotificationTab: React.FC<NotificationTabProps> = ({ companyId }) =
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {/* Campo */}
         <div className="space-y-2">
           <Label htmlFor="notificationDays">
             Dias de Antecedência
@@ -75,22 +85,21 @@ export const NotificationTab: React.FC<NotificationTabProps> = ({ companyId }) =
           </p>
         </div>
 
-        {/* Alerta */}
         <Alert>
           <InfoIcon className="h-4 w-4" />
           <AlertTitle>Como funciona</AlertTitle>
           <AlertDescription>
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                Com <strong>{notificationDays} dias</strong> de antecedência,
+                Com <strong>{notificationDays || 7} dias</strong> de antecedência,
                 você receberá notificações de itens que vencem em{" "}
-                {notificationDays} dias
+                {notificationDays || 7} dias
               </li>
               <li>
                 Altere esse valor para controlar com quanta antecedência deseja
                 ser avisado
               </li>
-              <li>O valor padrão é 7 dias para novas lojas</li>
+              <li>O valor padrão é 7 dias caso não haja configuração</li>
             </ul>
           </AlertDescription>
         </Alert>

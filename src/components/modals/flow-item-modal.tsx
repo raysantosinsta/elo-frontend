@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertCircle,
   AlertTriangle,
+  Calendar,
   Edit,
   EyeOff,
   Factory,
@@ -20,6 +21,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
+
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -173,8 +177,7 @@ export function FlowItemModal({
   isReadOnly = false,
   hasMultipleFlows = false,
   onDeadlineUpdate,
-    selectedFlowIds = [], // 🔥 RECEBE A PROP
-
+  selectedFlowIds = [], // 🔥 RECEBE A PROP
 }: FlowItemModalProps) {
   const isEditing = !!initialData;
 
@@ -204,6 +207,8 @@ export function FlowItemModal({
   const [availableStages, setAvailableStages] = useState<FlowStage[]>([]);
   const [isLoadingStages, setIsLoadingStages] = useState(false);
 
+  const [activeTab, setActiveTab] = useState("details");
+
   // --- Hook Form ---
   const form = useForm({
     resolver: zodResolver(itemSchema),
@@ -222,6 +227,21 @@ export function FlowItemModal({
       deliveryAt: "",
     },
   });
+
+  // Helper para formatar a data de visualização no topo
+  const formDueDate = form.watch("dueDate");
+
+  const displayDueDate = useMemo(() => {
+    const dateStr = isEditing ? initialData?.dueDate : formDueDate;
+    if (!dateStr) return "Não definido";
+    try {
+      return format(new Date(dateStr), "dd 'de' MMMM 'de' yyyy", {
+        locale: ptBR,
+      });
+    } catch {
+      return dateStr;
+    }
+  }, [isEditing, initialData?.dueDate, formDueDate]);
 
   // ===========================================================================
   // 🔥 FUNÇÃO PARA ATUALIZAR O ITEM APÓS ALTERAÇÃO DE PRAZOS
@@ -370,38 +390,41 @@ export function FlowItemModal({
     else {
       // 🔥 CASO 1: VEIO DO CLIQUE NO + (TEM INITIALSTAGEID)
       if (initialStageId) {
-   console.log("✅ VEIO DO CLIQUE - stageId:", initialStageId);
+        console.log("✅ VEIO DO CLIQUE - stageId:", initialStageId);
 
-  // 🔥 BUSCA A STAGE NAS STAGES RECEBIDAS (que já devem ter flowId)
-  const stage = stages.find((s) => s.id === initialStageId);
+        // 🔥 BUSCA A STAGE NAS STAGES RECEBIDAS (que já devem ter flowId)
+        const stage = stages.find((s) => s.id === initialStageId);
 
-  if (stage) {
-    console.log(
-      "✅ Stage encontrada:",
-      stage.name,
-      "flowId:",
-      stage.flowId,
-    );
+        if (stage) {
+          console.log(
+            "✅ Stage encontrada:",
+            stage.name,
+            "flowId:",
+            stage.flowId,
+          );
 
-    const initialFlowId = hasMultipleFlows ? "" : stage.flowId;
+          const initialFlowId = hasMultipleFlows ? "" : stage.flowId;
 
-    form.reset({
-      title: "",
-      description: "",
-      productRef: "",
-      quantity: 0,
-      status: "PENDENTE",
-      flowId: initialFlowId,
-      stageId: initialStageId,
-      assignedToId: "unassigned",
-      supplierId: "internal",
-      dueDate: "",
-      productionStartedAt: "",
-      deliveryAt: "",
-    });
+          form.reset({
+            title: "",
+            description: "",
+            productRef: "",
+            quantity: 0,
+            status: "PENDENTE",
+            flowId: initialFlowId,
+            stageId: initialStageId,
+            assignedToId: "unassigned",
+            supplierId: "internal",
+            dueDate: "",
+            productionStartedAt: "",
+            deliveryAt: "",
+          });
         } else {
           console.error("❌ Stage não encontrada nas stages recebidas");
-    console.log("Stages disponíveis:", stages.map(s => ({ id: s.id, name: s.name, flowId: s.flowId })));
+          console.log(
+            "Stages disponíveis:",
+            stages.map((s) => ({ id: s.id, name: s.name, flowId: s.flowId })),
+          );
         }
       }
       // 🔥 CASO 2: NÃO VEIO DO CLIQUE - MÚLTIPLOS FLUXOS
@@ -794,140 +817,216 @@ export function FlowItemModal({
     [fetchStagesForFlow, stagesCache],
   );
 
- // ===========================================================================
-// 🔥 FUNÇÃO PARA CORRIGIR DATA (PRESERVAR O DIA CORRETO)
-// ===========================================================================
-const fixDate = (dateString: string) => {
-  if (!dateString) return null;
-  
-  console.log('='.repeat(30));
-  console.log('🔍 FIXDATE - CORREÇÃO DE DATA');
-  console.log('📅 Data original (input):', dateString);
-  console.log('📅 Tipo:', typeof dateString);
-  
-  // Extrai ano, mês, dia da string "YYYY-MM-DD"
-  const [year, month, day] = dateString.split('-').map(Number);
-  
-  console.log(`📅 Ano: ${year}, Mês: ${month}, Dia: ${day}`);
-  
-  // 🔥 CORREÇÃO: Criar data com hora 12:00 UTC para evitar problemas de fuso
-  // Isso garante que a data seja 27/03 em qualquer fuso horário
-  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-  
-  console.log('📅 Data UTC:', date.toUTCString());
-  console.log('📅 Data local (Brasil):', date.toLocaleDateString('pt-BR'));
-  console.log('📅 ISO String:', date.toISOString());
-  console.log('='.repeat(30));
-  
-  return date.toISOString();
-};
+  // ===========================================================================
+  // 🔥 FUNÇÃO PARA CORRIGIR DATA (PRESERVAR O DIA CORRETO)
+  // ===========================================================================
+  const fixDate = (dateString: string) => {
+    if (!dateString) return null;
 
- // ===========================================================================
-// 🔥 HANDLE SUBMIT COMPLETO
-// ===========================================================================
-const handleSubmit = async (values: ItemFormValues) => {
-  console.log("\n" + "=".repeat(80));
-  console.log("📤 [handleSubmit] INICIANDO SUBMIT");
-  console.log("=".repeat(80));
-  console.log("📦 Values recebidos:", {
-    title: values.title,
-    description: values.description,
-    productRef: values.productRef,
-    quantity: values.quantity,
-    status: values.status,
-    flowId: values.flowId,
-    stageId: values.stageId,
-    assignedToId: values.assignedToId,
-    supplierId: values.supplierId,
-    dueDate: values.dueDate,
-    productionStartedAt: values.productionStartedAt,
-    deliveryAt: values.deliveryAt,
-  });
-  console.log("veioDoClique:", veioDoClique);
-  console.log("initialStageId:", initialStageId);
-  console.log("stageClicada:", stageClicada);
+    console.log("=".repeat(30));
+    console.log("🔍 FIXDATE - CORREÇÃO DE DATA");
+    console.log("📅 Data original (input):", dateString);
+    console.log("📅 Tipo:", typeof dateString);
 
-  // 🔥 CASO ESPECIAL: VEIO DO CLIQUE NO +
-  if (veioDoClique) {
-    if (!stageClicada) {
-      console.error("❌ Stage não encontrada");
-      toast.error("Erro: etapa não encontrada");
-      return;
-    }
+    // Extrai ano, mês, dia da string "YYYY-MM-DD"
+    const [year, month, day] = dateString.split("-").map(Number);
 
-    if (!values.title || values.title.trim() === "") {
-      toast.error("Título é obrigatório");
-      return;
-    }
+    console.log(`📅 Ano: ${year}, Mês: ${month}, Dia: ${day}`);
 
- // 🔥 CORREÇÃO: OBTÉM O FLOWID DA STAGE CLICADA
-  let finalFlowId = hasMultipleFlows ? values.flowId : stageClicada.flowId;
-    
-    // 🔥 FALLBACK: Se ainda não tem flowId, tenta buscar do primeiro fluxo selecionado
-    if (!finalFlowId && selectedFlowIds.length > 0) {
-      finalFlowId = selectedFlowIds[0];
-      console.log("⚠️ flowId não encontrado, usando primeiro fluxo selecionado:", finalFlowId);
-    }
+    // 🔥 CORREÇÃO: Criar data com hora 12:00 UTC para evitar problemas de fuso
+    // Isso garante que a data seja 27/03 em qualquer fuso horário
+    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 
-    console.log("📦 finalFlowId calculado:", finalFlowId);
-    console.log("📦 stageClicada.flowId:", stageClicada.flowId);
-    console.log("📦 hasMultipleFlows:", hasMultipleFlows);
-    console.log("📦 values.flowId:", values.flowId);
+    console.log("📅 Data UTC:", date.toUTCString());
+    console.log("📅 Data local (Brasil):", date.toLocaleDateString("pt-BR"));
+    console.log("📅 ISO String:", date.toISOString());
+    console.log("=".repeat(30));
 
-    if (!finalFlowId) {
-      if (hasMultipleFlows) {
-        toast.error("Selecione uma coleção");
-      } else {
-        toast.error("Erro: fluxo não identificado. Recarregue a página.");
+    return date.toISOString();
+  };
+
+  // ===========================================================================
+  // 🔥 HANDLE SUBMIT COMPLETO
+  // ===========================================================================
+  const handleSubmit = async (values: ItemFormValues) => {
+    console.log("\n" + "=".repeat(80));
+    console.log("📤 [handleSubmit] INICIANDO SUBMIT");
+    console.log("=".repeat(80));
+    console.log("📦 Values recebidos:", {
+      title: values.title,
+      description: values.description,
+      productRef: values.productRef,
+      quantity: values.quantity,
+      status: values.status,
+      flowId: values.flowId,
+      stageId: values.stageId,
+      assignedToId: values.assignedToId,
+      supplierId: values.supplierId,
+      dueDate: values.dueDate,
+      productionStartedAt: values.productionStartedAt,
+      deliveryAt: values.deliveryAt,
+    });
+    console.log("veioDoClique:", veioDoClique);
+    console.log("initialStageId:", initialStageId);
+    console.log("stageClicada:", stageClicada);
+
+    // 🔥 CASO ESPECIAL: VEIO DO CLIQUE NO +
+    if (veioDoClique) {
+      if (!stageClicada) {
+        console.error("❌ Stage não encontrada");
+        toast.error("Erro: etapa não encontrada");
+        return;
+      }
+
+      if (!values.title || values.title.trim() === "") {
+        toast.error("Título é obrigatório");
+        return;
+      }
+
+      // 🔥 CORREÇÃO: OBTÉM O FLOWID DA STAGE CLICADA
+      let finalFlowId = hasMultipleFlows ? values.flowId : stageClicada.flowId;
+
+      // 🔥 FALLBACK: Se ainda não tem flowId, tenta buscar do primeiro fluxo selecionado
+      if (!finalFlowId && selectedFlowIds.length > 0) {
+        finalFlowId = selectedFlowIds[0];
+        console.log(
+          "⚠️ flowId não encontrado, usando primeiro fluxo selecionado:",
+          finalFlowId,
+        );
+      }
+
+      console.log("📦 finalFlowId calculado:", finalFlowId);
+      console.log("📦 stageClicada.flowId:", stageClicada.flowId);
+      console.log("📦 hasMultipleFlows:", hasMultipleFlows);
+      console.log("📦 values.flowId:", values.flowId);
+
+      if (!finalFlowId) {
+        if (hasMultipleFlows) {
+          toast.error("Selecione uma coleção");
+        } else {
+          toast.error("Erro: fluxo não identificado. Recarregue a página.");
+        }
+        return;
+      }
+
+      // 🔥 Busca as stages do flow selecionado
+      const stagesOfSelectedFlow = await getStagesForFlow(finalFlowId);
+
+      console.log(
+        `Stages do flow ${finalFlowId}:`,
+        stagesOfSelectedFlow.map((s) => ({
+          id: s.id,
+          name: s.name,
+          flowId: s.flowId,
+        })),
+      );
+
+      // 🔥 Verifica se existe uma stage com o mesmo NOME no flow selecionado
+      const targetStage = stagesOfSelectedFlow.find(
+        (s) =>
+          s.name.toLowerCase().trim() ===
+          stageClicada.name.toLowerCase().trim(),
+      );
+
+      if (!targetStage) {
+        console.error("❌ Stage não encontrada no flow selecionado");
+        console.log("Nome da etapa procurada:", stageClicada.name);
+        console.log(
+          "Stages disponíveis:",
+          stagesOfSelectedFlow.map((s) => s.name),
+        );
+
+        const selectedFlow = flows.find((f) => f.id === finalFlowId);
+
+        toast.error("Esta etapa não existe na coleção escolhida", {
+          description: `A etapa "${stageClicada.name}" não está presente na coleção "${selectedFlow?.name || finalFlowId}".`,
+        });
+        return;
+      }
+
+      // 🔥 CORREÇÃO DE DATA - APLICADA AQUI!
+      const dueDateFixed = values.dueDate ? fixDate(values.dueDate) : null;
+
+      console.log("📅 DueDate original:", values.dueDate);
+      console.log("📅 DueDate corrigido:", dueDateFixed);
+
+      const finalPayload = {
+        title: values.title,
+        description: values.description || null,
+        productRef: values.productRef || null,
+        quantity: Number(values.quantity) || 0,
+        status: values.status || "PENDENTE",
+        flowId: finalFlowId,
+        stageId: targetStage.id,
+        assignedToId:
+          values.assignedToId === "unassigned" ? null : values.assignedToId,
+        supplierId: values.supplierId === "internal" ? null : values.supplierId,
+        dueDate: dueDateFixed,
+        productionStartedAt: values.productionStartedAt || null,
+        deliveryAt: values.deliveryAt || null,
+      };
+
+      console.log("🚀 Payload final:", finalPayload);
+
+      try {
+        await onSubmit(
+          finalPayload,
+          { images, audios, videos },
+          {
+            images: removedImageIds,
+            audios: removedAudioIds,
+            videos: removedVideoIds,
+          },
+        );
+      } catch (error) {
+        console.error("Erro no submit:", error);
       }
       return;
     }
 
-    // 🔥 Busca as stages do flow selecionado
-    const stagesOfSelectedFlow = await getStagesForFlow(finalFlowId);
-
-    console.log(
-      `Stages do flow ${finalFlowId}:`,
-      stagesOfSelectedFlow.map((s) => ({ id: s.id, name: s.name, flowId: s.flowId })),
-    );
-
-    // 🔥 Verifica se existe uma stage com o mesmo NOME no flow selecionado
-    const targetStage = stagesOfSelectedFlow.find(
-      (s) =>
-        s.name.toLowerCase().trim() ===
-        stageClicada.name.toLowerCase().trim(),
-    );
-
-    if (!targetStage) {
-      console.error("❌ Stage não encontrada no flow selecionado");
-      console.log("Nome da etapa procurada:", stageClicada.name);
-      console.log(
-        "Stages disponíveis:",
-        stagesOfSelectedFlow.map((s) => s.name),
-      );
-
-      const selectedFlow = flows.find((f) => f.id === finalFlowId);
-
-      toast.error("Esta etapa não existe na coleção escolhida", {
-        description: `A etapa "${stageClicada.name}" não está presente na coleção "${selectedFlow?.name || finalFlowId}".`,
-      });
+    // 🔥 CASO NORMAL (SEM INITIALSTAGEID)
+    if (hasMultipleFlows && !values.flowId) {
+      toast.error("Selecione uma coleção");
       return;
     }
 
-    // 🔥 CORREÇÃO DE DATA - APLICADA AQUI!
+    if (!values.stageId) {
+      toast.error("Selecione uma etapa");
+      return;
+    }
+
+    const quantityNum = Number(values.quantity) || 0;
+    const isAdmin = isUserAdmin();
+
+    if (!isAdmin) {
+      if (isInCorte && (!quantityNum || quantityNum < 1)) {
+        setShowQuantityWarning(true);
+        toast.error("Quantidade é obrigatória na coluna Corte");
+        return;
+      }
+    }
+
+    // 🔥 CORREÇÃO DE DATA - APLICADA AQUI TAMBÉM!
     const dueDateFixed = values.dueDate ? fixDate(values.dueDate) : null;
 
-    console.log("📅 DueDate original:", values.dueDate);
-    console.log("📅 DueDate corrigido:", dueDateFixed);
+    // 🔥 DETERMINA O FLOWID PARA CASO NORMAL
+    let normalFlowId = values.flowId;
+    if (!normalFlowId && flows.length > 0) {
+      normalFlowId = flows[0].id;
+      console.log(
+        "⚠️ flowId não informado, usando primeiro fluxo:",
+        normalFlowId,
+      );
+    }
 
     const finalPayload = {
       title: values.title,
       description: values.description || null,
       productRef: values.productRef || null,
-      quantity: Number(values.quantity) || 0,
+      quantity: quantityNum,
       status: values.status || "PENDENTE",
-      flowId: finalFlowId,
-      stageId: targetStage.id,
+      flowId: normalFlowId,
+      stageId: values.stageId,
       assignedToId:
         values.assignedToId === "unassigned" ? null : values.assignedToId,
       supplierId: values.supplierId === "internal" ? null : values.supplierId,
@@ -936,7 +1035,7 @@ const handleSubmit = async (values: ItemFormValues) => {
       deliveryAt: values.deliveryAt || null,
     };
 
-    console.log("🚀 Payload final:", finalPayload);
+    console.log("🚀 Payload final (caso normal):", finalPayload);
 
     try {
       await onSubmit(
@@ -951,73 +1050,7 @@ const handleSubmit = async (values: ItemFormValues) => {
     } catch (error) {
       console.error("Erro no submit:", error);
     }
-    return;
-  }
-
-  // 🔥 CASO NORMAL (SEM INITIALSTAGEID)
-  if (hasMultipleFlows && !values.flowId) {
-    toast.error("Selecione uma coleção");
-    return;
-  }
-
-  if (!values.stageId) {
-    toast.error("Selecione uma etapa");
-    return;
-  }
-
-  const quantityNum = Number(values.quantity) || 0;
-  const isAdmin = isUserAdmin();
-
-  if (!isAdmin) {
-    if (isInCorte && (!quantityNum || quantityNum < 1)) {
-      setShowQuantityWarning(true);
-      toast.error("Quantidade é obrigatória na coluna Corte");
-      return;
-    }
-  }
-
-  // 🔥 CORREÇÃO DE DATA - APLICADA AQUI TAMBÉM!
-  const dueDateFixed = values.dueDate ? fixDate(values.dueDate) : null;
-
-  // 🔥 DETERMINA O FLOWID PARA CASO NORMAL
-  let normalFlowId = values.flowId;
-  if (!normalFlowId && flows.length > 0) {
-    normalFlowId = flows[0].id;
-    console.log("⚠️ flowId não informado, usando primeiro fluxo:", normalFlowId);
-  }
-
-  const finalPayload = {
-    title: values.title,
-    description: values.description || null,
-    productRef: values.productRef || null,
-    quantity: quantityNum,
-    status: values.status || "PENDENTE",
-    flowId: normalFlowId,
-    stageId: values.stageId,
-    assignedToId:
-      values.assignedToId === "unassigned" ? null : values.assignedToId,
-    supplierId: values.supplierId === "internal" ? null : values.supplierId,
-    dueDate: dueDateFixed,
-    productionStartedAt: values.productionStartedAt || null,
-    deliveryAt: values.deliveryAt || null,
   };
-
-  console.log("🚀 Payload final (caso normal):", finalPayload);
-
-  try {
-    await onSubmit(
-      finalPayload,
-      { images, audios, videos },
-      {
-        images: removedImageIds,
-        audios: removedAudioIds,
-        videos: removedVideoIds,
-      },
-    );
-  } catch (error) {
-    console.error("Erro no submit:", error);
-  }
-};
 
   // ===========================================================================
   // 🔥 Verifica se o flow selecionado tem a stage (para o select)
@@ -1117,7 +1150,12 @@ const handleSubmit = async (values: ItemFormValues) => {
                   onSubmit={form.handleSubmit(handleSubmit)}
                   className="space-y-6"
                 >
-                  <Tabs defaultValue="details" className="w-full">
+                  <Tabs
+                    defaultValue="details"
+                    value={activeTab}
+                    onValueChange={setActiveTab}
+                    className="w-full"
+                  >
                     <TabsList className="grid w-full grid-cols-4 mb-6 bg-slate-100 p-1 rounded-lg">
                       <TabsTrigger value="details" className="py-2.5 text-sm">
                         Detalhes & Datas
@@ -1135,6 +1173,31 @@ const handleSubmit = async (values: ItemFormValues) => {
                         Histórico
                       </TabsTrigger>
                     </TabsList>
+
+                    {/* 🔥 NOVO: Banner de Prazo Final (Visível em todas as abas para referência) */}
+                    <div className="mb-6 flex items-center justify-between p-4 bg-orange-50 border border-orange-100 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-orange-500 rounded-lg text-white">
+                          <Calendar size={18} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">
+                            Prazo Final de Entrega
+                          </p>
+                          <p className="text-sm font-bold text-slate-800">
+                            {displayDueDate}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right hidden sm:block">
+                        <p className="text-[10px] text-slate-400 uppercase font-medium">
+                          Ajuste via
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-500 italic">
+                          Prazos por Etapa
+                        </p>
+                      </div>
+                    </div>
 
                     {/* TAB DETALHES */}
                     <TabsContent value="details" className="space-y-6">
@@ -1512,7 +1575,7 @@ const handleSubmit = async (values: ItemFormValues) => {
                         />
                       </div>
 
-                      {/* Datas */}
+                      {/* Datas
                       <div className="grid grid-cols-1 gap-4 pt-4 border-t border-dashed">
                         <FormField
                           control={form.control}
@@ -1545,7 +1608,7 @@ const handleSubmit = async (values: ItemFormValues) => {
                             </FormItem>
                           )}
                         />
-                      </div>
+                      </div> */}
                     </TabsContent>
 
                     {/* TAB MÍDIA */}
@@ -1687,10 +1750,10 @@ const handleSubmit = async (values: ItemFormValues) => {
                           </Button>
                         </div>
 
-                        {/* Vídeos existentes */}
+                        {/* Vídeos existentes vindos do banco */}
                         {initialData?.videos &&
                           initialData.videos.length > 0 && (
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3">
                               {initialData.videos
                                 .filter(
                                   (vid) => !removedVideoIds.includes(vid.id),
@@ -1698,25 +1761,36 @@ const handleSubmit = async (values: ItemFormValues) => {
                                 .map((vid) => (
                                   <div
                                     key={vid.id}
-                                    className="relative group p-3 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                    className="p-3 bg-slate-50 rounded-lg border"
                                   >
-                                    <span className="text-sm truncate max-w-[180px]">
-                                      {truncateFileName(vid.filename, 30)}
-                                    </span>
-                                    {!isReadOnly && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleRemoveExistingMedia(
-                                            vid.id,
-                                            "video",
-                                          )
-                                        }
-                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    )}
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-xs font-bold truncate max-w-[200px]">
+                                        {vid.filename}
+                                      </span>
+                                      {!isReadOnly && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 text-red-500"
+                                          onClick={() =>
+                                            handleRemoveExistingMedia(
+                                              vid.id,
+                                              "video",
+                                            )
+                                          }
+                                        >
+                                          <Trash2 size={14} />
+                                        </Button>
+                                      )}
+                                    </div>
+                                    <video
+                                      controls
+                                      className="w-full rounded-md bg-black max-h-48"
+                                      preload="metadata"
+                                    >
+                                      <source src={vid.url} type="video/mp4" />
+                                      Seu navegador não suporta vídeos.
+                                    </video>
                                   </div>
                                 ))}
                             </div>
@@ -1809,10 +1883,10 @@ const handleSubmit = async (values: ItemFormValues) => {
                           </div>
                         </div>
 
-                        {/* Áudios existentes */}
+                        {/* Áudios existentes vindos do banco */}
                         {initialData?.audios &&
                           initialData.audios.length > 0 && (
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-2">
                               {initialData.audios
                                 .filter(
                                   (aud) => !removedAudioIds.includes(aud.id),
@@ -1820,25 +1894,31 @@ const handleSubmit = async (values: ItemFormValues) => {
                                 .map((aud) => (
                                   <div
                                     key={aud.id}
-                                    className="relative group p-3 bg-slate-50 rounded-lg border flex items-center justify-between"
+                                    className="p-3 bg-slate-50 rounded-lg border"
                                   >
-                                    <span className="text-sm truncate max-w-[180px]">
-                                      {truncateFileName(aud.filename, 30)}
-                                    </span>
-                                    {!isReadOnly && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleRemoveExistingMedia(
-                                            aud.id,
-                                            "audio",
-                                          )
-                                        }
-                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    )}
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-xs font-bold">
+                                        {aud.filename}
+                                      </span>
+                                      {!isReadOnly && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 text-red-500"
+                                          onClick={() =>
+                                            handleRemoveExistingMedia(
+                                              aud.id,
+                                              "audio",
+                                            )
+                                          }
+                                        >
+                                          <Trash2 size={14} />
+                                        </Button>
+                                      )}
+                                    </div>
+                                    <audio controls className="w-full h-10">
+                                      <source src={aud.url} />
+                                    </audio>
                                   </div>
                                 ))}
                             </div>
@@ -1932,7 +2012,7 @@ const handleSubmit = async (values: ItemFormValues) => {
               {isReadOnly ? "Fechar" : "Cancelar"}
             </Button>
 
-            {!isReadOnly && (
+            {!isReadOnly && activeTab !== "stages-deadlines" && (
               <Button
                 form="flow-item-form"
                 type="submit"
@@ -1940,10 +2020,7 @@ const handleSubmit = async (values: ItemFormValues) => {
                 disabled={isLoading || isLoadingStages}
               >
                 {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
-                    Salvando...
-                  </>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   "Salvar"
                 )}

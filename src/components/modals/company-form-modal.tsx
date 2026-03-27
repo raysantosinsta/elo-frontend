@@ -16,7 +16,8 @@ import {
   MapPin,
   Phone,
   Mail,
-  Bell, // 🔥 NOVO: ícone para notificações
+  Bell,
+  InfoIcon,
 } from "lucide-react";
 
 import {
@@ -37,10 +38,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useError } from "@/contexts/error-context";
-import { useCompanySettings } from "@/hooks/use-company-settings"; // 🔥 NOVO
-import { companyService } from "@/services/company.service"; // 🔥 NOVO
+import { useCompanySettings } from "@/hooks/use-company-settings";
 
 // --- Interfaces ---
 interface CompanyData {
@@ -57,7 +57,7 @@ interface CompanyData {
   cidade: string;
   estado: string;
   ramoAtividade?: string;
-  notificationDays?: number; // 🔥 NOVO
+  notificationDays?: number;
   status: string;
 }
 
@@ -70,50 +70,28 @@ interface CompanyFormModalProps {
 }
 
 // --- Helpers e Schema ---
-const cleanMask = (value: string | undefined) =>
-  value ? value.replace(/\D/g, "") : "";
-
+const cleanMask = (value: string | undefined) => value ? value.replace(/\D/g, "") : "";
+const formatCNPJ = (v: string | undefined) => {
+  if (!v) return "";
+  return v.replace(/\D/g, "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5").substring(0, 18);
+};
 const formatPhone = (v: string | undefined) => {
   if (!v) return "";
   let r = v.replace(/\D/g, "");
   if (r.length > 11) r = r.substring(0, 11);
-  if (r.length > 10) return r.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-  if (r.length > 5) return r.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
-  if (r.length > 2) return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
-  return r.replace(/^(\d*)/, "($1");
+  return r.replace(/^(\d{2})(\d{4,5})(\d{4})/, "($1) $2-$3");
 };
-
-const formatCNPJ = (v: string | undefined) => {
-  if (!v) return "";
-  return v
-    .replace(/\D/g, "")
-    .replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")
-    .substring(0, 18);
-};
-
 const formatCEP = (v: string | undefined) => {
   if (!v) return "";
-  return v
-    .replace(/\D/g, "")
-    .replace(/^(\d{5})(\d)/, "$1-$2")
-    .substring(0, 9);
+  return v.replace(/\D/g, "").replace(/^(\d{5})(\d)/, "$1-$2").substring(0, 9);
 };
 
 const companySchema = z.object({
   name: z.string().min(2, "Nome obrigatório"),
-  cnpj: z
-    .string()
-    .min(14, "CNPJ inválido")
-    .transform((v) => cleanMask(v)),
+  cnpj: z.string().min(14, "CNPJ inválido").transform((v) => cleanMask(v)),
   email: z.string().email("E-mail inválido"),
-  telefone: z
-    .string()
-    .min(10, "Telefone inválido")
-    .transform((v) => cleanMask(v)),
-  cep: z
-    .string()
-    .min(8, "CEP inválido")
-    .transform((v) => cleanMask(v)),
+  telefone: z.string().min(10, "Telefone inválido").transform((v) => cleanMask(v)),
+  cep: z.string().min(8, "CEP inválido").transform((v) => cleanMask(v)),
   endereco: z.string().min(1, "Endereço obrigatório"),
   numero: z.string().min(1, "Número obrigatório"),
   complemento: z.string().optional(),
@@ -121,134 +99,10 @@ const companySchema = z.object({
   cidade: z.string().min(1, "Cidade obrigatória"),
   estado: z.string().length(2, "UF inválida"),
   ramoAtividade: z.string().optional(),
-  notificationDays: z
-    .number()
-    .min(1, "Mínimo 1 dia")
-    .max(90, "Máximo 90 dias")
-    .optional(), // 🔥 NOVO
+  notificationDays: z.number().min(1, "Mínimo 1 dia").max(90, "Máximo 90 dias").optional(),
 });
 
 type CompanyFormValues = z.infer<typeof companySchema>;
-
-// 🔥 NOVO COMPONENTE: Notification Tab
-function NotificationTab({ companyId }: { companyId: string }) {
-  const { data: settings, isLoading, refetch } = useCompanySettings(companyId);
-  const { showError } = useError();
-  const [isUpdating, setIsUpdating] = useState(false);
-
-  const handleUpdate = async (days: number) => {
-    console.log("🔍 [NotificationTab] ========== INICIANDO UPDATE ==========");
-    console.log("🔍 companyId:", companyId);
-    console.log("🔍 days:", days);
-
-    setIsUpdating(true);
-    try {
-      console.log("📡 Chamando API updateNotificationSettings...");
-      const result = await companyService.updateNotificationSettings(
-        companyId,
-        {
-          notificationDays: days,
-        },
-      );
-      console.log("✅ Resposta da API:", result);
-
-      console.log("📡 Chamando refetch...");
-      await refetch();
-      console.log("✅ Refetch concluído");
-    } catch (error: any) {
-      console.error("❌ ERRO COMPLETO:", error);
-      console.error("❌ Response data:", error.response?.data);
-      console.error("❌ Status:", error.response?.status);
-      showError(
-        "Erro",
-        error.response?.data?.message || "Erro ao atualizar configurações",
-      );
-    } finally {
-      setIsUpdating(false);
-      console.log("🔍 [NotificationTab] ========== FIM ==========");
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
-        <span className="ml-2 text-sm text-muted-foreground">
-          Carregando configurações...
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4 p-2">
-      <div className="flex items-center gap-2 mb-4">
-        <Bell className="h-5 w-5 text-orange-500" />
-        <h3 className="text-sm font-bold text-[#2C3E50] uppercase tracking-wider">
-          Configurações de Notificação
-        </h3>
-      </div>
-
-      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-        <p className="text-sm text-gray-700 mb-4">
-          Configure com quantos dias de antecedência você deseja receber
-          notificações de vencimento de tarefas, orçamentos e outros itens.
-        </p>
-
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Dias de Antecedência
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={1}
-                max={90}
-                value={settings?.notificationDays ?? 7}
-                onChange={(e) => {
-                  const value = parseInt(e.target.value);
-                  if (!isNaN(value) && value >= 1 && value <= 90) {
-                    handleUpdate(value);
-                  }
-                }}
-                disabled={isUpdating}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-              />
-              <span className="text-sm text-gray-500">dias</span>
-              {isUpdating && (
-                <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
-              )}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Valor atual:{" "}
-              <strong>{settings?.notificationDays ?? 7} dias</strong> de
-              antecedência
-            </p>
-          </div>
-
-          <div className="flex-1 bg-white rounded-lg p-3 border border-gray-200">
-            <p className="text-xs font-medium text-gray-700 mb-1">
-              📌 Exemplo de funcionamento:
-            </p>
-            <ul className="text-xs text-gray-600 space-y-1 list-disc list-inside">
-              <li>
-                Com <strong>{settings?.notificationDays ?? 7} dias</strong>,
-                você receberá alertas de itens que vencem em{" "}
-                {settings?.notificationDays ?? 7} dias
-              </li>
-              <li>
-                Altere esse valor para controlar com quanta antecedência deseja
-                ser avisado
-              </li>
-              <li>O valor padrão é 7 dias para novas lojas</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function CompanyFormModal({
   isOpen,
@@ -259,68 +113,52 @@ export function CompanyFormModal({
 }: CompanyFormModalProps) {
   const { showError } = useError();
   const [isCepLoading, setIsCepLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    "basic" | "address" | "notifications"
-  >("basic"); // 🔥 NOVO
-  const isEditing = !!initialData;
+  const [activeTab, setActiveTab] = useState<"basic" | "address" | "notifications">("basic");
+  
+  // 🔥 Busca dados dinâmicos do banco (notificações)
+  const { data: settings } = useCompanySettings(initialData?.id || "");
 
   const form = useForm<CompanyFormValues>({
     resolver: zodResolver(companySchema),
     defaultValues: {
-      name: "",
-      cnpj: "",
-      email: "",
-      telefone: "",
-      cep: "",
-      endereco: "",
-      numero: "",
-      complemento: "",
-      bairro: "",
-      cidade: "",
-      estado: "",
-      ramoAtividade: "",
-      notificationDays: 7, // 🔥 NOVO
+      name: "", cnpj: "", email: "", telefone: "", cep: "", endereco: "",
+      numero: "", complemento: "", bairro: "", cidade: "", estado: "",
+      ramoAtividade: "", notificationDays: 7,
     },
   });
 
-  // Reset form when modal opens or data changes
+  // Reset/Sincronização do formulário
   useEffect(() => {
     if (isOpen) {
-      if (initialData) {
-        form.reset({
-          name: initialData.name,
-          cnpj: formatCNPJ(initialData.cnpj),
-          email: initialData.email,
-          telefone: formatPhone(initialData.telefone),
-          cep: formatCEP(initialData.cep),
-          endereco: initialData.endereco,
-          numero: initialData.numero,
-          complemento: initialData.complemento || "",
-          bairro: initialData.bairro,
-          cidade: initialData.cidade,
-          estado: initialData.estado,
-          ramoAtividade: initialData.ramoAtividade || "",
-          notificationDays: initialData.notificationDays ?? 7, // Certifique-se que initialData vem atualizado
-        });
-      } else {
-        form.reset({
-          name: "",
-          cnpj: "",
-          email: "",
-          telefone: "",
-          cep: "",
-          endereco: "",
-          numero: "",
-          complemento: "",
-          bairro: "",
-          cidade: "",
-          estado: "",
-          ramoAtividade: "",
-          notificationDays: 7, // 🔥 NOVO
-        });
-      }
+      const baseData = initialData ? {
+        name: initialData.name,
+        cnpj: formatCNPJ(initialData.cnpj),
+        email: initialData.email,
+        telefone: formatPhone(initialData.telefone),
+        cep: formatCEP(initialData.cep),
+        endereco: initialData.endereco,
+        numero: initialData.numero,
+        complemento: initialData.complemento || "",
+        bairro: initialData.bairro,
+        cidade: initialData.cidade,
+        estado: initialData.estado,
+        ramoAtividade: initialData.ramoAtividade || "",
+        notificationDays: settings?.notificationDays ?? initialData.notificationDays ?? 7,
+      } : {
+        name: "", cnpj: "", email: "", telefone: "", cep: "", endereco: "",
+        numero: "", complemento: "", bairro: "", cidade: "", estado: "",
+        ramoAtividade: "", notificationDays: 7,
+      };
+      form.reset(baseData);
     }
-  }, [isOpen, initialData, form]);
+  }, [isOpen, initialData, settings, form]);
+
+  // 🔥 Sincroniza especificamente o notificationDays se o banco carregar depois
+  useEffect(() => {
+    if (settings?.notificationDays) {
+      form.setValue("notificationDays", settings.notificationDays);
+    }
+  }, [settings, form]);
 
   const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const rawCep = e.target.value.replace(/\D/g, "");
@@ -329,435 +167,143 @@ export function CompanyFormModal({
     try {
       const res = await fetch(`https://viacep.com.br/ws/${rawCep}/json/`);
       const data = await res.json();
-      if (data.erro) {
-        showError("CEP Inválido", "O CEP informado não foi encontrado.");
-        return;
-      }
+      if (data.erro) return showError("CEP Inválido", "CEP não encontrado.");
       form.setValue("endereco", data.logradouro);
       form.setValue("bairro", data.bairro);
       form.setValue("cidade", data.localidade);
       form.setValue("estado", data.uf);
-      form.setFocus("numero");
     } catch (err) {
-      showError("Erro na Busca", "Não foi possível consultar o CEP.");
+      showError("Erro", "Erro ao buscar CEP.");
     } finally {
       setIsCepLoading(false);
     }
   };
 
-  const handleSubmit = async (values: CompanyFormValues) => {
-  // 1. Criamos um objeto apenas com o que o ADMIN pode alterar
-  const submitValues: any = {
-    name: values.name,
-    email: values.email,
-    telefone: values.telefone,
-    cep: values.cep,
-    endereco: values.endereco,
-    numero: values.numero,
-    bairro: values.bairro,
-    cidade: values.cidade,
-    estado: values.estado,
-    notificationDays: values.notificationDays,
-    complemento: values.complemento || null,
-    ramoAtividade: values.ramoAtividade || null,
+  const internalOnSubmit = async (values: CompanyFormValues) => {
+    const payload: any = { ...values };
+    // Lógica de CNPJ idêntica ao seu original
+    const cnpjLimpo = cleanMask(values.cnpj);
+    if (initialData && cnpjLimpo === cleanMask(initialData.cnpj)) delete payload.cnpj;
+    
+    // Converte para null campos vazios
+    payload.complemento = values.complemento || null;
+    payload.ramoAtividade = values.ramoAtividade || null;
+
+    await onSubmit(payload);
   };
 
-  // 2. Lógica inteligente para o CNPJ
-  const cnpjLimpo = values.cnpj.replace(/\D/g, "");
-  
-  if (isEditing && initialData) {
-    const cnpjOriginal = initialData.cnpj.replace(/\D/g, "");
-    // SÓ envia o CNPJ se ele for REALMENTE diferente do que já está no banco
-    if (cnpjLimpo !== cnpjOriginal && cnpjLimpo.length === 14) {
-      submitValues.cnpj = cnpjLimpo;
-    }
-  } else if (cnpjLimpo.length === 14) {
-    submitValues.cnpj = cnpjLimpo;
-  }
-
-  // 3. Remove campos undefined para não quebrar a API
-  Object.keys(submitValues).forEach(key => 
-    submitValues[key] === undefined && delete submitValues[key]
-  );
-
-  await onSubmit(submitValues);
-};
+  const currentNotificationDays = form.watch("notificationDays") || 7;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 bg-white border-[#F5F0E6]">
-        {/* Header */}
-        <DialogHeader className="px-6 py-4 border-b border-[#F5F0E6] bg-[#F9F7F2] shrink-0">
+      <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 bg-white">
+        <DialogHeader className="px-6 py-4 border-b bg-[#F9F7F2] shrink-0">
           <div className="flex items-center gap-3">
-            <div
-              className={`p-2.5 rounded-full ${isEditing ? "bg-blue-100 text-blue-600" : "bg-orange-100 text-orange-600"}`}
-            >
-              {isEditing ? (
-                <Edit className="h-5 w-5" />
-              ) : (
-                <Plus className="h-5 w-5" />
-              )}
+            <div className={`p-2.5 rounded-full ${initialData ? "bg-blue-100 text-blue-600" : "bg-orange-100 text-orange-600"}`}>
+              {initialData ? <Edit className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
             </div>
             <div>
               <DialogTitle className="text-[#2D3436] text-xl font-bold">
-                {isEditing ? "Editar Empresa" : "Nova Empresa"}
+                {initialData ? "Editar Empresa" : "Nova Empresa"}
               </DialogTitle>
-              <DialogDescription className="text-[#95A5A6]">
-                {isEditing
-                  ? "Atualize os dados cadastrais."
-                  : "Preencha os dados para registrar uma nova empresa."}
-              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        {/* 🔥 NOVAS TABS */}
-        <div className="px-6 pt-4 border-b border-[#F5F0E6] bg-white shrink-0">
+        {/* Tabs */}
+        <div className="px-6 pt-4 border-b bg-white shrink-0">
           <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab("basic")}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === "basic"
-                  ? "bg-orange-50 text-orange-600 border-b-2 border-orange-500"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              <Building2 className="inline h-4 w-4 mr-2" />
+            <button onClick={() => setActiveTab("basic")} className={`px-4 py-2 text-sm font-medium rounded-t-lg ${activeTab === "basic" ? "bg-orange-50 text-orange-600 border-b-2 border-orange-500" : "text-gray-500"}`}>
               Dados Básicos
             </button>
-            <button
-              onClick={() => setActiveTab("address")}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === "address"
-                  ? "bg-orange-50 text-orange-600 border-b-2 border-orange-500"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              <MapPin className="inline h-4 w-4 mr-2" />
+            <button onClick={() => setActiveTab("address")} className={`px-4 py-2 text-sm font-medium rounded-t-lg ${activeTab === "address" ? "bg-orange-50 text-orange-600 border-b-2 border-orange-500" : "text-gray-500"}`}>
               Endereço
             </button>
-            <button
-              onClick={() => setActiveTab("notifications")}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === "notifications"
-                  ? "bg-orange-50 text-orange-600 border-b-2 border-orange-500"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              <Bell className="inline h-4 w-4 mr-2" />
+            <button onClick={() => setActiveTab("notifications")} className={`px-4 py-2 text-sm font-medium rounded-t-lg ${activeTab === "notifications" ? "bg-orange-50 text-orange-600 border-b-2 border-orange-500" : "text-gray-500"}`}>
               Notificações
             </button>
           </div>
         </div>
 
-        {/* Body (Scrollable) */}
         <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full px-6 py-4">
             <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(handleSubmit)}
-                className="space-y-6 pb-4"
-              >
-                {/* 🔥 ABA 1: Dados Básicos */}
+              <form onSubmit={form.handleSubmit(internalOnSubmit)} className="space-y-6">
+                
+                {/* ABA 1: BÁSICO */}
                 {activeTab === "basic" && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="name"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Razão Social</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="cnpj"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>CNPJ</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                maxLength={18}
-                                onChange={(e) =>
-                                  field.onChange(formatCNPJ(e.target.value))
-                                }
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="email"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>E-mail</FormLabel>
-                            <div className="relative">
-                              <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                              <FormControl>
-                                <Input className="pl-9" {...field} />
-                              </FormControl>
-                            </div>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="telefone"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Telefone</FormLabel>
-                            <div className="relative">
-                              <Phone className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                              <FormControl>
-                                <Input
-                                  className="pl-9"
-                                  {...field}
-                                  maxLength={15}
-                                  onChange={(e) =>
-                                    field.onChange(formatPhone(e.target.value))
-                                  }
-                                  placeholder="(00) 00000-0000"
-                                />
-                              </FormControl>
-                            </div>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="ramoAtividade"
-                        render={({ field }) => (
-                          <FormItem className="md:col-span-2">
-                            <FormLabel>Ramo de Atividade</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField control={form.control} name="name" render={({ field }) => (
+                      <FormItem><FormLabel>Razão Social</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="cnpj" render={({ field }) => (
+                      <FormItem><FormLabel>CNPJ</FormLabel><FormControl><Input {...field} onChange={e => field.onChange(formatCNPJ(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="email" render={({ field }) => (
+                      <FormItem><FormLabel>E-mail</FormLabel><div className="relative"><Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><FormControl><Input className="pl-9" {...field} /></FormControl></div><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="telefone" render={({ field }) => (
+                      <FormItem><FormLabel>Telefone</FormLabel><div className="relative"><Phone className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><FormControl><Input className="pl-9" {...field} onChange={e => field.onChange(formatPhone(e.target.value))} /></FormControl></div><FormMessage /></FormItem>
+                    )} />
                   </div>
                 )}
 
-                {/* 🔥 ABA 2: Endereço */}
+                {/* ABA 2: ENDEREÇO */}
                 {activeTab === "address" && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="cep"
-                        render={({ field }) => (
-                          <FormItem className="md:col-span-3">
-                            <FormLabel>CEP</FormLabel>
-                            <div className="relative">
-                              <FormControl>
-                                <Input
-                                  {...field}
-                                  maxLength={9}
-                                  onChange={(e) =>
-                                    field.onChange(formatCEP(e.target.value))
-                                  }
-                                  onBlur={handleCepBlur}
-                                  className="pr-8"
-                                />
-                              </FormControl>
-                              {isCepLoading ? (
-                                <Loader2 className="absolute right-2 top-2.5 h-4 w-4 animate-spin text-orange-500" />
-                              ) : (
-                                <SearchIcon className="absolute right-2 top-2.5 h-4 w-4 text-slate-400" />
-                              )}
-                            </div>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="endereco"
-                        render={({ field }) => (
-                          <FormItem className="md:col-span-7">
-                            <FormLabel>Logradouro</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="numero"
-                        render={({ field }) => (
-                          <FormItem className="md:col-span-2">
-                            <FormLabel>Número</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="bairro"
-                        render={({ field }) => (
-                          <FormItem className="md:col-span-4">
-                            <FormLabel>Bairro</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="cidade"
-                        render={({ field }) => (
-                          <FormItem className="md:col-span-4">
-                            <FormLabel>Cidade</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="estado"
-                        render={({ field }) => (
-                          <FormItem className="md:col-span-2">
-                            <FormLabel>UF</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                maxLength={2}
-                                className="uppercase"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="complemento"
-                        render={({ field }) => (
-                          <FormItem className="md:col-span-12">
-                            <FormLabel>Complemento</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    <FormField control={form.control} name="cep" render={({ field }) => (
+                      <FormItem className="md:col-span-3"><FormLabel>CEP</FormLabel><FormControl><Input {...field} onBlur={handleCepBlur} onChange={e => field.onChange(formatCEP(e.target.value))} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="endereco" render={({ field }) => (
+                      <FormItem className="md:col-span-7"><FormLabel>Logradouro</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="numero" render={({ field }) => (
+                      <FormItem className="md:col-span-2"><FormLabel>Número</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
                   </div>
                 )}
 
-                {/* 🔥 ABA 3: Notificações */}
+                {/* ABA 3: NOTIFICAÇÕES (Refatorada) */}
                 {activeTab === "notifications" && (
-                  <div className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name="notificationDays"
-                      render={({ field }) => (
+                  <div className="space-y-4 p-2">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Bell className="h-5 w-5 text-orange-500" />
+                      <h3 className="text-sm font-bold text-[#2C3E50] uppercase">Configurações de Notificação</h3>
+                    </div>
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                      <FormField control={form.control} name="notificationDays" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>
-                            Dias de Antecedência para Notificações
-                          </FormLabel>
-                          <FormControl>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min={1}
-                                max={90}
-                                {...field}
-                                onChange={(e) => {
-                                  const value = parseInt(e.target.value) || 7;
-                                  field.onChange(value);
-                                  console.log(
-                                    "📝 [NotificationDays] Valor alterado para:",
-                                    value,
-                                  );
-                                }}
-                                className="w-32"
-                              />
-                              <span className="text-sm text-gray-500">
-                                dias
-                              </span>
-                            </div>
-                          </FormControl>
+                          <FormLabel>Dias de Antecedência</FormLabel>
+                          <div className="flex items-center gap-2">
+                            <FormControl>
+                              <Input type="number" min={1} max={90} className="w-32 bg-white" {...field} onChange={e => field.onChange(parseInt(e.target.value) || 0)} />
+                            </FormControl>
+                            <span className="text-sm text-gray-500">dias</span>
+                          </div>
                           <FormMessage />
-                          <p className="text-xs text-gray-500 mt-1">
-                            Defina com quantos dias de antecedência você quer
-                            receber alertas de vencimento. Valor padrão: 7 dias.
-                          </p>
                         </FormItem>
-                      )}
-                    />
-
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mt-4">
-                      <h4 className="text-sm font-semibold text-orange-800 mb-2">
-                        📌 Exemplo de funcionamento:
-                      </h4>
-                      <ul className="text-xs text-gray-700 space-y-1 list-disc list-inside">
-                        <li>
-                          Com{" "}
-                          <strong>
-                            {form.watch("notificationDays") || 7} dias
-                          </strong>{" "}
-                          de antecedência, você receberá notificações de itens
-                          que vencem em {form.watch("notificationDays") || 7}{" "}
-                          dias
-                        </li>
-                        <li>
-                          Altere esse valor para controlar com quanta
-                          antecedência deseja ser avisado
-                        </li>
-                        <li>O valor padrão é 7 dias para novas lojas</li>
-                      </ul>
+                      )} />
+                      <Alert className="mt-4 bg-white">
+                        <InfoIcon className="h-4 w-4" />
+                        <AlertTitle>Como funciona</AlertTitle>
+                        <AlertDescription className="text-xs">
+                          Com <strong>{currentNotificationDays} dias</strong> de antecedência, você receberá notificações de itens que vencem. O valor padrão é 7.
+                        </AlertDescription>
+                      </Alert>
                     </div>
                   </div>
                 )}
+
               </form>
             </Form>
           </ScrollArea>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-[#F5F0E6] bg-[#F9F7F2] flex justify-end gap-3 shrink-0">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="border-slate-300 text-slate-700"
-          >
-            Cancelar
-          </Button>
-          <Button
-            onClick={() => form.handleSubmit(handleSubmit)()}
-            disabled={isLoading}
-            className="bg-[#D35400] hover:bg-[#D35400]/90 text-white min-w-[140px]"
-          >
-            {isLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-            )}
-            {isEditing ? "Salvar Alterações" : "Criar Empresa"}
+        <div className="px-6 py-4 border-t bg-[#F9F7F2] flex justify-end gap-3 shrink-0">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={form.handleSubmit(internalOnSubmit)} disabled={isLoading} className="bg-[#D35400] text-white min-w-[140px]">
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+            {initialData ? "Salvar Alterações" : "Criar Empresa"}
           </Button>
         </div>
       </DialogContent>

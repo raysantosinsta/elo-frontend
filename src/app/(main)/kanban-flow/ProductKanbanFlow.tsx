@@ -593,42 +593,54 @@ export default function ProductFlowKanban() {
   }, [selectedFlowIds]);
 
   const handleEditItem = async (item: FlowItem) => {
-    console.log("📝 Abrindo modal de edição para item:", item.id);
+    console.log("📝 Buscando detalhes completos do item:", item.id);
 
     setIsModalLoading(true);
-    setEditingItem(item);
-
+    
     try {
-      let itemBoard = boards.find((b) => b.id === item.flowId);
+      // 1. Busca o item completo no banco para garantir que arrays de vídeos/áudios venham preenchidos
+      const response = await api.get(`/flow/items/${item.id}`);
+      const fullItemData = response.data;
+
+      // 2. Define o item que será editado com os dados completos (agora com mídias)
+      setEditingItem(fullItemData);
+
+      // 3. Busca o board (coleção) correspondente para carregar as etapas
+      let itemBoard = boards.find((b) => b.id === fullItemData.flowId);
 
       if (!itemBoard) {
         console.log("🔄 Board não encontrado localmente, buscando da API...");
-        const response = await api.get(`/flow/${item.flowId}/board`);
-        itemBoard = response.data;
+        const boardResponse = await api.get(`/flow/${fullItemData.flowId}/board`);
+        itemBoard = boardResponse.data;
       }
 
       if (!itemBoard) {
-        throw new Error("Board não encontrado");
+        throw new Error("Não foi possível encontrar a coleção deste item.");
       }
 
-      // 🔥 GUARDA AS STAGES DO BOARD COM defaultDays
-      const stagesWithDefaults = itemBoard.stages.map((stage) => ({
+      // 4. Mapeia as etapas com os dias padrão (defaultDays)
+      const stagesWithDefaults = itemBoard.stages.map((stage: any) => ({
         ...stage,
         defaultDays: stage.defaultDays,
       }));
 
       setCurrentItemStages(stagesWithDefaults);
 
-      const stage = stagesWithDefaults.find((s) => s.id === item.stageId);
-      setIsModalReadOnly(stage ? !canUserEditStage(stage) : true);
+      // 5. Verifica permissões de edição para a etapa atual
+      const currentStage = stagesWithDefaults.find((s) => s.id === fullItemData.stageId);
+      setIsModalReadOnly(currentStage ? !canUserEditStage(currentStage) : true);
 
+      // 6. Abre o modal após garantir que todos os dados foram carregados
       setTimeout(() => {
         setIsEditItemModal(true);
         setIsModalLoading(false);
       }, 50);
-    } catch (error) {
-      console.error("❌ Erro ao carregar board:", error);
-      toast.error("Erro ao carregar dados do fluxo");
+
+      console.log("✅ Detalhes carregados. Vídeos encontrados:", fullItemData.videos?.length || 0);
+
+    } catch (error: any) {
+      console.error("❌ Erro ao carregar detalhes do item:", error);
+      toast.error("Erro ao carregar mídias e detalhes do item.");
       setIsModalLoading(false);
     }
   };
@@ -3142,6 +3154,7 @@ export default function ProductFlowKanban() {
                       title={item.title}
                       subtitle={item.productRef}
                       priorityColor={item.flowColor}
+                      dueDate={item.dueDate} // 🔥 ESSENCIAL: Passar a data para o card aqui
                       coverImage={item.images[0]?.url}
                       onDragStart={
                         hasPermission
