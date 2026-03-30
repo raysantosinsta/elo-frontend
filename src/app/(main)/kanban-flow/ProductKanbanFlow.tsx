@@ -19,8 +19,10 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query"; // 🔥 NOVO
 
-import { useCompanySettings } from "@/hooks/use-company-settings"; // 🔥 NOVO
+import { useCompanySettings } from "@/hooks/use-company-settings";
+import { useKanbanBoards } from "@/hooks/use-kanban-boards"; // 🔥 NOVO
 
 // --- Infraestrutura ---
 import { useAuth } from "@/contexts/AuthContext";
@@ -82,7 +84,6 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-// import { useProductRefPermission } from "@/hooks/use-product-ref-permission";
 
 // --- CONSTANTES ---
 const PROFESSIONAL_ROLES = [
@@ -145,7 +146,7 @@ interface FlowStage {
   color?: string;
   allowedRole?: string;
   defaultDays?: number;
-  flowId: string; // 🔥 ADICIONAR ESTE CAMPO
+  flowId: string;
   items: FlowItem[];
 }
 
@@ -175,37 +176,25 @@ export default function ProductFlowKanban() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
-  // const { canManageRef, canViewRef } = useProductRefPermission();
+  const queryClient = useQueryClient(); // 🔥 NOVO
 
-  // 🔥 NOVO: Buscar configuração da empresa
+  // 🔥 Buscar configuração da empresa
   const {
     data: companySettings,
     isLoading: loadingSettings,
     refetch: refetchSettings,
   } = useCompanySettings(user?.company?.id || "");
 
-  // 🔥 ADICIONE ESTE LOG
-  console.log("🔍 [ProductFlowKanban] Company Settings:", {
-    companyId: user?.company?.id,
-    companySettings,
-    notificationDays: companySettings?.notificationDays ?? 7,
-    loadingSettings,
-  });
+  const notificationDays = companySettings?.notificationDays ?? 7;
 
-  const notificationDays = companySettings?.notificationDays ?? 7; // fallback 7
-
-  // 🔥 EFEITO PARA LOGAR QUANDO O VALOR MUDAR
+  // 🔥 LOG do notificationDays
   useEffect(() => {
-    console.log(
-      "🔍 [ProductFlowKanban] notificationDays mudou para:",
-      notificationDays,
-    );
+    console.log("🔍 [ProductFlowKanban] notificationDays:", notificationDays);
   }, [notificationDays]);
 
-  // 🔥 FORÇAR ATUALIZAÇÃO DOS FILTROS QUANDO notificationDays MUDAR
+  // 🔥 Forçar atualização dos filtros quando notificationDays mudar
   useEffect(() => {
     if (tempFilterUpcoming && notificationDays) {
-      // Se o filtro upcoming estiver ativo, recalcular as datas
       const today = new Date();
       const todayUTC = new Date(
         Date.UTC(
@@ -222,8 +211,6 @@ export default function ProductFlowKanban() {
 
       setTempFilterStartDate(todayStr);
       setTempFilterEndDate(limitStr);
-
-      // Reaplicar o filtro
       handleFilterClick();
     }
   }, [notificationDays]);
@@ -236,11 +223,9 @@ export default function ProductFlowKanban() {
   // --- Estados de Dados ---
   const [flows, setFlows] = useState<ProductFlow[]>([]);
   const [selectedFlowIds, setSelectedFlowIds] = useState<string[]>([]);
-  const [boards, setBoards] = useState<ProductFlow[]>([]);
   const [templates, setTemplates] = useState<FlowTemplate[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // --- Estados de Modais ---
   const [isFlowModal, setIsFlowModal] = useState(false);
@@ -331,7 +316,7 @@ export default function ProductFlowKanban() {
     id: string;
     name: string;
     allowedRole?: string | null;
-    isAfterCorte: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
+    isAfterCorte: boolean;
     isDistribuicao: boolean;
   } | null>(null);
 
@@ -344,7 +329,7 @@ export default function ProductFlowKanban() {
     id: string;
     name: string;
     allowedRole?: string | null;
-    isAfterCorte?: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
+    isAfterCorte?: boolean;
     isDistribuicao?: boolean;
   } | null>(null);
 
@@ -361,16 +346,12 @@ export default function ProductFlowKanban() {
 
   const [allStages, setAllStages] = useState<FlowStage[]>([]);
 
-  const [refreshKey, setRefreshKey] = useState(0);
+  // 🔥 REMOVIDO refreshKey - não é mais necessário com useQuery
 
   // Verifica se a condição para mostrar o toast já foi disparada
   const [hasShownEmptyRefToast, setHasShownEmptyRefToast] = useState(false);
-  // Adicione este useState no início do seu componente (antes do handleCreateFlow)
   const [isCreatingFlow, setIsCreatingFlow] = useState(false);
-
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Adicione este useState para armazenar as opções de colunas
   const [columnOptions, setColumnOptions] = useState<string[]>([]);
 
   // ===========================================================================
@@ -380,65 +361,66 @@ export default function ProductFlowKanban() {
     new Set(),
   );
 
-  const [stageDefaultDays, setStageDefaultDays] = useState<number>(1); // 🔥 NOVO ESTADO
-
+  const [stageDefaultDays, setStageDefaultDays] = useState<number>(1);
   const [openColumnSelector, setOpenColumnSelector] = useState(false);
+
+  // ===========================================================================
+  // 🔥 NOVO: HOOK useKanbanBoards
+  // ===========================================================================
+  const {
+    boards,
+    isLoading: loading,
+    invalidateBoards,
+    refetch: refetchBoards,
+  } = useKanbanBoards({
+    selectedFlowIds,
+    filters: {
+      startDate: activeFilterStartDate,
+      endDate: activeFilterEndDate,
+      dateType: activeFilterDateType,
+      isOverdue: activeFilterOverdue,
+      isUpcoming: activeFilterUpcoming,
+      assignedToId: activeFilterAssignedTo,
+      supplierId: activeFilterSupplier,
+      productRef: activeFilterProductRef,
+      stageName: activeColumnNameFilter,
+    },
+    enabled: true,
+  });
+
+  // ===========================================================================
+  // 🔥 FUNÇÃO AUXILIAR PARA ATUALIZAR BOARDS APÓS AÇÕES
+  // ===========================================================================
+  const refreshBoardsAfterAction = useCallback(async () => {
+    console.log("🔄 [refreshBoardsAfterAction] Invalidando cache de boards");
+    await invalidateBoards();
+  }, [invalidateBoards]);
 
   // ===========================================================================
   // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS CORTE
   // ===========================================================================
   const checkIfIsAfterCorte = (stageId: string, flowId: string): boolean => {
-    // 1. Encontra o board do fluxo específico
     const board = boards.find((b) => b.id === flowId);
     if (!board) {
       console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
       return false;
     }
 
-    // 2. Ordena todas as etapas do fluxo
     const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
-
-    console.log(
-      `📊 [checkIfIsAfterCorte] Stages do fluxo ${flowId}:`,
-      sortedStages.map((s) => ({ id: s.id, name: s.name, order: s.order })),
-    );
-
-    // 3. Palavras-chave para identificar a etapa de Corte
     const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
 
-    // 4. Encontra o índice da etapa de Corte
     const corteIndex = sortedStages.findIndex((stage) =>
       CORTE_KEYWORDS.some((keyword) =>
         stage.name.toLowerCase().includes(keyword.toLowerCase()),
       ),
     );
 
-    // Se não encontrar etapa de Corte, retorna false
-    if (corteIndex === -1) {
-      console.log(`ℹ️ Nenhuma etapa de Corte encontrada no fluxo ${flowId}`);
-      return false;
-    }
+    if (corteIndex === -1) return false;
 
-    // 5. Encontra o índice da etapa que estamos verificando
     const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
+    if (stageIndex === -1) return false;
 
-    // Se não encontrar a etapa, retorna false
-    if (stageIndex === -1) {
-      console.warn(`⚠️ Stage ${stageId} não encontrada no fluxo ${flowId}`);
-      return false;
-    }
-
-    const isAfter = stageIndex > corteIndex;
-
-    console.log(`📊 [checkIfIsAfterCorte] Resultado:`, {
-      stageName: sortedStages[stageIndex].name,
-      corteName: sortedStages[corteIndex].name,
-      stageIndex,
-      corteIndex,
-      isAfter,
-    });
-
-    return isAfter;
+    return stageIndex > corteIndex;
   };
 
   // ===========================================================================
@@ -458,71 +440,24 @@ export default function ProductFlowKanban() {
       "🔄 itemsPendingRemoval mudou:",
       Array.from(itemsPendingRemoval),
     );
-
-    // 🔥 Não precisa mais forçar refresh aqui
-    // O unifiedStages já depende de itemsPendingRemoval
-  }, [itemsPendingRemoval]); // Apenas log, sem setRefreshKey
+  }, [itemsPendingRemoval]);
 
   const startItemRemovalTimer = (itemId: string) => {
     console.log(
-      `⏰ [${new Date().toISOString()}] Iniciando contagem de 3 segundos para remover item ${itemId}`,
+      `⏰ Iniciando contagem de 3 segundos para remover item ${itemId}`,
     );
 
-    // 🔥 Salva o status atual do item para debug
-    const currentItem = unifiedStages
-      .flatMap((s) => s.items)
-      .find((i) => i.id === itemId);
-    console.log(`📊 Status atual do item:`, {
-      id: currentItem?.id,
-      title: currentItem?.title,
-      status: currentItem?.status,
-      stageId: currentItem?.stageId,
-    });
-
-    // 🔥 Adiciona item ao set de pendentes
     setItemsPendingRemoval((prev) => {
-      console.log(
-        `📋 [${new Date().toISOString()}] itemsPendingRemoval ANTES:`,
-        Array.from(prev),
-      );
       const newSet = new Set(prev);
       newSet.add(itemId);
-      console.log(
-        `📋 [${new Date().toISOString()}] itemsPendingRemoval DEPOIS:`,
-        Array.from(newSet),
-      );
       return newSet;
     });
 
-    // Timer para remover após 3 segundos
     setTimeout(() => {
-      console.log(
-        `✅ [${new Date().toISOString()}] Removendo item ${itemId} da tela após 3 segundos`,
-      );
-
-      // 🔥 Verifica o status do item novamente
-      const itemAfterDelay = unifiedStages
-        .flatMap((s) => s.items)
-        .find((i) => i.id === itemId);
-      console.log(`📊 Status do item após 3s:`, {
-        id: itemAfterDelay?.id,
-        title: itemAfterDelay?.title,
-        status: itemAfterDelay?.status,
-        stageId: itemAfterDelay?.stageId,
-      });
-
-      // 🔥 Remove do set
+      console.log(`✅ Removendo item ${itemId} da tela após 3 segundos`);
       setItemsPendingRemoval((prev) => {
-        console.log(
-          `📋 [${new Date().toISOString()}] itemsPendingRemoval ANTES da remoção:`,
-          Array.from(prev),
-        );
         const newSet = new Set(prev);
         newSet.delete(itemId);
-        console.log(
-          `📋 [${new Date().toISOString()}] itemsPendingRemoval DEPOIS da remoção:`,
-          Array.from(newSet),
-        );
         return newSet;
       });
     }, 3000);
@@ -530,45 +465,30 @@ export default function ProductFlowKanban() {
 
   // useEffect para atualizar as opções de coluna quando os boards mudarem
   useEffect(() => {
-    // Extrai nomes únicos de colunas de todos os boards
     const uniqueColumnNames = new Set<string>();
-
     boards.forEach((board) => {
-      board.stages.forEach((stage) => {
+      board.stages.forEach((stage: { name: string }) => {
         uniqueColumnNames.add(stage.name);
       });
     });
-
-    // Converte para array e ordena
     const sortedColumns = Array.from(uniqueColumnNames).sort((a, b) =>
       a.localeCompare(b, "pt-BR"),
     );
-
     setColumnOptions(sortedColumns);
   }, [boards]);
 
   useEffect(() => {
-    console.log("📊 Boards atualizados:", {
+    console.log("📊 Boards atualizados via useQuery:", {
       quantidade: boards.length,
       flows: boards.map((b) => ({
         id: b.id,
         name: b.name,
         stages: b.stages.length,
-        items: b.stages.reduce((acc, s) => acc + s.items.length, 0),
+        items: b.stages.reduce(
+          (acc: any, s: { items: string | any[] }) => acc + s.items.length,
+          0,
+        ),
       })),
-    });
-
-    // Log dos itens para verificar cores
-    boards.forEach((board) => {
-      board.stages.forEach((stage) => {
-        stage.items.forEach((item) => {
-          console.log(`🎨 Item ${item.id} - ${item.title}:`, {
-            flowColor: item.flowColor,
-            flowName: item.flowName,
-            stage: stage.name,
-          });
-        });
-      });
     });
   }, [boards]);
 
@@ -576,7 +496,6 @@ export default function ProductFlowKanban() {
   useEffect(() => {
     const loadAllStages = async () => {
       if (selectedFlowIds.length === 0) return;
-
       try {
         const stagesPromises = selectedFlowIds.map((flowId) =>
           api.get(`/flow/${flowId}/stages`).then((res) => res.data),
@@ -588,29 +507,24 @@ export default function ProductFlowKanban() {
         console.error("Erro ao carregar todas as stages:", error);
       }
     };
-
     loadAllStages();
   }, [selectedFlowIds]);
 
   const handleEditItem = async (item: FlowItem) => {
     console.log("📝 Buscando detalhes completos do item:", item.id);
-
     setIsModalLoading(true);
-    
+
     try {
-      // 1. Busca o item completo no banco para garantir que arrays de vídeos/áudios venham preenchidos
       const response = await api.get(`/flow/items/${item.id}`);
       const fullItemData = response.data;
-
-      // 2. Define o item que será editado com os dados completos (agora com mídias)
       setEditingItem(fullItemData);
 
-      // 3. Busca o board (coleção) correspondente para carregar as etapas
       let itemBoard = boards.find((b) => b.id === fullItemData.flowId);
-
       if (!itemBoard) {
         console.log("🔄 Board não encontrado localmente, buscando da API...");
-        const boardResponse = await api.get(`/flow/${fullItemData.flowId}/board`);
+        const boardResponse = await api.get(
+          `/flow/${fullItemData.flowId}/board`,
+        );
         itemBoard = boardResponse.data;
       }
 
@@ -618,26 +532,21 @@ export default function ProductFlowKanban() {
         throw new Error("Não foi possível encontrar a coleção deste item.");
       }
 
-      // 4. Mapeia as etapas com os dias padrão (defaultDays)
       const stagesWithDefaults = itemBoard.stages.map((stage: any) => ({
         ...stage,
         defaultDays: stage.defaultDays,
       }));
 
       setCurrentItemStages(stagesWithDefaults);
-
-      // 5. Verifica permissões de edição para a etapa atual
-      const currentStage = stagesWithDefaults.find((s) => s.id === fullItemData.stageId);
+      const currentStage = stagesWithDefaults.find(
+        (s: { id: any }) => s.id === fullItemData.stageId,
+      );
       setIsModalReadOnly(currentStage ? !canUserEditStage(currentStage) : true);
 
-      // 6. Abre o modal após garantir que todos os dados foram carregados
       setTimeout(() => {
         setIsEditItemModal(true);
         setIsModalLoading(false);
       }, 50);
-
-      console.log("✅ Detalhes carregados. Vídeos encontrados:", fullItemData.videos?.length || 0);
-
     } catch (error: any) {
       console.error("❌ Erro ao carregar detalhes do item:", error);
       toast.error("Erro ao carregar mídias e detalhes do item.");
@@ -646,54 +555,32 @@ export default function ProductFlowKanban() {
   };
 
   const handleCreateItem = (stageId: string) => {
-    console.log("\n");
-    console.log("=".repeat(80));
-    console.log("🎯 [handleCreateItem] INÍCIO - Stage clicada:", stageId);
-    console.log("=".repeat(80));
-
     const itemBoard = boards.find((b) =>
-      b.stages.some((s) => s.id === stageId),
+      b.stages.some((s: { id: string }) => s.id === stageId),
     );
-
     if (!itemBoard) {
       console.error("❌ Board não encontrado para stage:", stageId);
       toast.error("Erro ao carregar dados do fluxo");
       return;
     }
 
-    // 🔥 ADICIONA O flowId E defaultDays EM CADA STAGE
-    const stagesWithFlowId = itemBoard.stages.map((stage) => ({
-      ...stage,
-      flowId: itemBoard.id,
-      defaultDays: stage.defaultDays, // 🔥 GARANTA QUE ESTÁ AQUI
-    }));
-
-    console.log(
-      "📋 Stages disponíveis no board:",
-      stagesWithFlowId.map((s) => ({
-        id: s.id,
-        name: s.name,
-        flowId: s.flowId,
-        defaultDays: s.defaultDays,
-      })),
+    const stagesWithFlowId = itemBoard.stages.map(
+      (stage: { defaultDays: any }) => ({
+        ...stage,
+        flowId: itemBoard.id,
+        defaultDays: stage.defaultDays,
+      }),
     );
 
-    const clickedStage = stagesWithFlowId.find((s) => s.id === stageId);
-    console.log("🎯 Stage clicada:", {
-      stageId,
-      stageInfo: clickedStage,
-      flowId: clickedStage?.flowId,
-      defaultDays: clickedStage?.defaultDays,
-    });
-
+    const clickedStage = stagesWithFlowId.find(
+      (s: { id: string }) => s.id === stageId,
+    );
     setActiveStageId(stageId);
     setCurrentItemStages(stagesWithFlowId);
 
     setTimeout(() => {
-      console.log("⏰ Timeout executado - abrindo modal");
       setIsModalReadOnly(false);
       setIsItemModal(true);
-      console.log("✅ Modal aberto");
     }, 50);
   };
 
@@ -704,39 +591,22 @@ export default function ProductFlowKanban() {
       return;
     }
 
-    // 1. Ordena todas as etapas do fluxo para verificar a posição atual
     const allStages = [...currentBoard.stages].sort(
       (a, b) => a.order - b.order,
     );
-
     const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
     const nextStage = allStages[currentIndex + 1];
 
-    // ===========================================================================
-    // 🏁 AJUSTE: LÓGICA PARA A ÚLTIMA ETAPA
-    // ===========================================================================
     if (!nextStage) {
-      console.log("🏁 Última etapa detectada. Finalizando item...");
-
-      // Chamamos o handleAdvanceItem que agora dispara a conclusão no backend
-      // Usamos toast.promise para dar um feedback visual elegante de finalização
       toast.promise(handleAdvanceItem(item), {
         loading: `Finalizando "${item.title}"...`,
-        success: () => {
-          return `Item "${item.title}" concluído com sucesso!`;
-        },
-        error: (err) => {
-          return err?.response?.data?.message || "Erro ao finalizar item.";
-        },
+        success: () => `Item "${item.title}" concluído com sucesso!`,
+        error: (err) =>
+          err?.response?.data?.message || "Erro ao finalizar item.",
       });
-      return; // Encerra aqui, sem abrir o modal de próxima etapa
+      return;
     }
 
-    // ===========================================================================
-    // 🚀 LÓGICA PARA QUANDO EXISTE UMA PRÓXIMA ETAPA (ABRE MODAL)
-    // ===========================================================================
-
-    // Palavras-chave para identificação de regras especiais
     const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
     const DISTRIBUICAO_KEYWORDS = [
       "distribuição",
@@ -745,27 +615,17 @@ export default function ProductFlowKanban() {
       "expedicao",
     ];
 
-    // Encontra o índice da etapa de CORTE no fluxo
     const corteIndex = allStages.findIndex((s) =>
       CORTE_KEYWORDS.some((keyword) =>
         s.name.toLowerCase().includes(keyword.toLowerCase()),
       ),
     );
 
-    // Verifica se a próxima etapa é Distribuição
     const isDistribuicao = DISTRIBUICAO_KEYWORDS.some((keyword) =>
       nextStage.name.toLowerCase().includes(keyword.toLowerCase()),
     );
 
-    // Regra: Está depois do CORTE? (Usado para validar quantidades/responsáveis)
     const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
-
-    console.log("🔍 [handleOpenCompleteModal] Preparando modal de avanço:", {
-      item: item.title,
-      nextStage: nextStage.name,
-      isAfterCorte,
-      isDistribuicao,
-    });
 
     setCompletingItem(item);
     setNextStageForCompletion({
@@ -775,34 +635,24 @@ export default function ProductFlowKanban() {
       isAfterCorte,
       isDistribuicao,
     });
-
     setIsCompleteStageModalOpen(true);
   };
 
-  // ===========================================================================
-  // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL - CORRIGIDA (ADICIONA QUANTIDADE)
-  // ===========================================================================
   const handleCompleteWithResponsible = async (
     responsibleId: string,
     type: "user" | "supplier",
-    quantity?: number, // 🔥 ADICIONA O PARÂMETRO QUANTIDADE (OPCIONAL)
+    quantity?: number,
   ) => {
     if (!completingItem || !nextStageForCompletion) return;
 
     const toastId = toast.loading("Concluindo etapa...");
 
     try {
-      // 🔥 PASSO 1: Se tiver quantidade, atualizar o item primeiro
       if (quantity !== undefined) {
-        console.log(`📝 [COMPLETE] Atualizando quantidade para: ${quantity}`);
-        await api.put(`/flow/items/${completingItem.id}`, {
-          quantity: quantity,
-        });
+        await api.put(`/flow/items/${completingItem.id}`, { quantity });
       }
 
-      // 🔥 PASSO 2: Mover o item
       const payload: any = { newStageId: nextStageForCompletion.id };
-
       if (type === "user") {
         payload.assignedToId = responsibleId;
       } else {
@@ -815,18 +665,8 @@ export default function ProductFlowKanban() {
         id: toastId,
       });
 
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
-      }
+      // 🔥 Atualiza os boards após a ação
+      await refreshBoardsAfterAction();
 
       setIsCompleteStageModalOpen(false);
       setCompletingItem(null);
@@ -834,10 +674,7 @@ export default function ProductFlowKanban() {
     } catch (error: any) {
       const errorMsg =
         error.response?.data?.message || "Erro ao concluir etapa.";
-      toast.error(errorMsg, {
-        id: toastId,
-        duration: 4000,
-      });
+      toast.error(errorMsg, { id: toastId, duration: 4000 });
     }
   };
 
@@ -847,21 +684,11 @@ export default function ProductFlowKanban() {
   const canUserEditStage = useCallback(
     (stage: FlowStage) => {
       if (!user) return false;
-
       const systemRole = (user as any).role || "";
       if (["MASTER", "ADMIN", "MANAGER"].includes(systemRole)) return true;
-
       if (!stage.allowedRole || stage.allowedRole.trim() === "") return true;
-
       const userRole = user.professionalRole?.toLowerCase() || "";
       const requiredRole = stage.allowedRole.toLowerCase();
-
-      console.log("🔍 [FRONTEND] Comparação de cargo:", {
-        userProfessionalRole: user.professionalRole,
-        stageAllowedRole: stage.allowedRole,
-        match: user.professionalRole === stage.allowedRole,
-      });
-
       return userRole.includes(requiredRole);
     },
     [user],
@@ -896,14 +723,9 @@ export default function ProductFlowKanban() {
     }
   };
 
-  // ===========================================================================
-  // 🔄 FUNÇÕES DE FILTRO POR COLUNA
-  // ===========================================================================
   const filterColumnItems = (stage: FlowStage) => {
-    // 🔥 O stage já vem filtrado do unifiedStages!
     let items = stage.items;
 
-    // 🔥 FILTRO 2: Se tiver filtro ativo na coluna (overdue/upcoming)
     if (
       activeColumnFilter.columnId === stage.id &&
       activeColumnFilter.filterType
@@ -931,12 +753,11 @@ export default function ProductFlowKanban() {
         return true;
       });
     }
-
     return items;
   };
 
   // ===========================================================================
-  // 🔄 FUNÇÕES DE FILTRO GLOBAL (AJUSTADO PARA MÚLTIPLOS FLUXOS)
+  // 🔄 FUNÇÕES DE FILTRO GLOBAL
   // ===========================================================================
   useEffect(() => {
     const filterParam = searchParams.get("filter");
@@ -947,12 +768,9 @@ export default function ProductFlowKanban() {
     const supplierParam = searchParams.get("supplierId");
     const productRefParam = searchParams.get("productRef");
     const stageNameParam = searchParams.get("stageName");
-
-    // Parâmetros de Fluxo
     const flowIdParam = searchParams.get("flowId");
     const flowIdsParam = searchParams.get("flowIds");
 
-    // 1. Resolve os IDs da URL
     let idsFromUrl: string[] = [];
     if (flowIdsParam) {
       idsFromUrl = flowIdsParam.split(",").filter(Boolean);
@@ -960,31 +778,16 @@ export default function ProductFlowKanban() {
       idsFromUrl = [flowIdParam];
     }
 
-    console.log("🔍 [useEffect URL] Parâmetros detectados:", {
-      filter: filterParam,
-      flowIds: idsFromUrl,
-      stage: stageNameParam,
-    });
-
-    // --- 1. Lógica de Seleção de Fluxos (Com trava de comparação profunda para evitar loops) ---
     if (idsFromUrl.length > 0) {
       setSelectedFlowIds((prev) => {
-        // Verifica se os arrays são iguais para evitar re-render desnecessário e loop
         const isSame =
           prev.length === idsFromUrl.length &&
           prev.every((id, idx) => id === idsFromUrl[idx]);
-
         if (isSame) return prev;
-
-        console.log(
-          "✅ [useEffect URL] Atualizando selectedFlowIds para:",
-          idsFromUrl,
-        );
         return idsFromUrl;
       });
     }
 
-    // --- 2. Sincronização de Filtros de Status (Overdue/Upcoming) ---
     const isOverdue = filterParam === "overdue";
     const isUpcoming = filterParam === "upcoming";
 
@@ -993,7 +796,6 @@ export default function ProductFlowKanban() {
     setTempFilterUpcoming(isUpcoming);
     setActiveFilterUpcoming(isUpcoming);
 
-    // --- 3. Configuração de Datas e Tipos ---
     const finalDateType = isUpcoming
       ? "dueDate"
       : typeParam === "productionStartedAt" || typeParam === "dueDate"
@@ -1005,14 +807,11 @@ export default function ProductFlowKanban() {
 
     setTempFilterDateType(finalDateType);
     setActiveFilterDateType(finalDateType);
-
     setTempFilterStartDate(finalStartDate);
     setActiveFilterStartDate(finalStartDate);
-
     setTempFilterEndDate(finalEndDate);
     setActiveFilterEndDate(finalEndDate);
 
-    // --- 4. Filtros de Entidades e Referências ---
     const finalAssigned = assignedParam || "all";
     const finalSupplier = supplierParam || "all";
     const finalRef = productRefParam || "";
@@ -1020,226 +819,18 @@ export default function ProductFlowKanban() {
 
     setTempFilterAssignedTo(finalAssigned);
     setActiveFilterAssignedTo(finalAssigned);
-
     setTempFilterSupplier(finalSupplier);
     setActiveFilterSupplier(finalSupplier);
-
     setTempFilterProductRef(finalRef);
     setActiveFilterProductRef(finalRef);
-
     setColumnNameFilter(finalColumn);
     setActiveColumnNameFilter(finalColumn);
-
-    console.log("✅ [useEffect URL] Estados sincronizados com a URL.");
-  }, [searchParams, setSelectedFlowIds]);
-
-  const fetchSelectedBoards = useCallback(async () => {
-    console.log(
-      `📡 [${new Date().toISOString()}] fetchSelectedBoards INICIADO`,
-    );
-
-    if (selectedFlowIds.length === 0) {
-      console.log("⚠️ Nenhum fluxo selecionado");
-      setBoards([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const validFlowIds = selectedFlowIds.filter((id) =>
-        flows.some((flow) => flow.id === id),
-      );
-
-      if (validFlowIds.length === 0) {
-        console.log("⚠️ Nenhum fluxo válido");
-        setBoards([]);
-        setLoading(false);
-        return;
-      }
-
-      console.log("📡 Buscando boards:", validFlowIds);
-      const promises = validFlowIds.map((id) => api.get(`/flow/${id}/board`));
-
-      const results = await Promise.all(promises);
-      const newBoards = results.map((r) => r.data);
-
-      // 🔥 ADICIONE ESTE LOG DETALHADO
-      console.log("🔍 DEBUG - DETALHES DOS BOARDS:");
-      newBoards.forEach((board) => {
-        console.log(`Board: ${board.name}`);
-        board.stages.forEach((stage: any) => {
-          console.log(
-            `  Stage: ${stage.name} - defaultDays: ${stage.defaultDays}`,
-          );
-        });
-      });
-
-      // 🔥 Log detalhado dos itens
-      console.log(`📊 [${new Date().toISOString()}] NOVOS BOARDS CARREGADOS:`);
-      newBoards.forEach((board) => {
-        console.log(`  Board: ${board.name}`);
-        board.stages.forEach((stage: any) => {
-          console.log(`    Stage: ${stage.name} (${stage.items.length} itens)`);
-          stage.items.forEach((item: any) => {
-            console.log(
-              `      - Item ${item.id}: ${item.title} | status: ${item.status}`,
-            );
-          });
-        });
-      });
-
-      setBoards(newBoards);
-      console.log(
-        `✅ [${new Date().toISOString()}] fetchSelectedBoards CONCLUÍDO`,
-      );
-    } catch (error: any) {
-      console.error("❌ Erro ao carregar quadros:", error);
-      toast.error("Erro ao carregar quadros");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedFlowIds, flows]);
-
-  const fetchFilteredBoards = useCallback(
-    async (paramsFromUrl?: URLSearchParams) => {
-      console.log("\n" + "=".repeat(80));
-      console.log("🚀 [fetchFilteredBoards] INICIANDO");
-      console.log("=".repeat(80));
-
-      if (selectedFlowIds.length === 0) {
-        console.log("⚠️ Nenhum fluxo selecionado");
-        setBoards([]);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setIsFiltering(true);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.error("❌ Timeout após 15 segundos");
-        controller.abort();
-      }, 15000);
-
-      try {
-        const params =
-          paramsFromUrl || new URLSearchParams(window.location.search);
-
-        // Sincronização de estados de filtro (UI)
-        const startDate = params.get("startDate");
-        const endDate = params.get("endDate");
-        const filter = params.get("filter");
-        const stageName = params.get("stageName");
-
-        setActiveFilterOverdue(filter === "overdue");
-        setActiveFilterUpcoming(filter === "upcoming");
-        setActiveColumnNameFilter(stageName || "");
-
-        // Preparação da Query API
-        const baseQueryParams = new URLSearchParams();
-        if (startDate)
-          baseQueryParams.set("startDate", new Date(startDate).toISOString());
-        if (endDate)
-          baseQueryParams.set("endDate", new Date(endDate).toISOString());
-        if (params.get("dateType"))
-          baseQueryParams.set("dateType", params.get("dateType")!);
-        if (filter === "overdue") baseQueryParams.set("isOverdue", "true");
-        if (filter === "upcoming") baseQueryParams.set("isUpcoming", "true");
-        if (params.get("assignedToId") && params.get("assignedToId") !== "all")
-          baseQueryParams.set("assignedToId", params.get("assignedToId")!);
-        if (params.get("supplierId") && params.get("supplierId") !== "all")
-          baseQueryParams.set("supplierId", params.get("supplierId")!);
-        if (params.get("productRef"))
-          baseQueryParams.set("productRef", params.get("productRef")!);
-        if (stageName) baseQueryParams.set("stageName", stageName.trim());
-
-        console.log("📡 Buscando dados para IDs:", selectedFlowIds);
-
-        // Criamos as promises para TODOS os fluxos selecionados
-        const boardsPromises = selectedFlowIds.map(async (flowId) => {
-          try {
-            const url = `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`;
-            const response = await api.get(url, { signal: controller.signal });
-            return response.data;
-          } catch (error: any) {
-            console.error(
-              `❌ Erro no board ${flowId}, buscando board original como fallback.`,
-            );
-            // Fallback: busca o board limpo para garantir que a coluna apareça
-            const fallback = await api.get(`/flow/${flowId}/board`);
-            return {
-              ...fallback.data,
-              stages: fallback.data.stages.map((s: any) => ({
-                ...s,
-                items: [],
-              })),
-            };
-          }
-        });
-
-        const results = await Promise.all(boardsPromises);
-        const finalBoards = results.filter(Boolean);
-
-        console.log(
-          `✅ [fetchFilteredBoards] Finalizado. Processados ${finalBoards.length} de ${selectedFlowIds.length}`,
-        );
-        setBoards(finalBoards);
-      } catch (error: any) {
-        console.error("❌ Erro crítico no fetchFilteredBoards:", error);
-        toast.error("Erro ao aplicar filtros");
-        await fetchSelectedBoards(); // Fallback para visualização sem filtros
-      } finally {
-        clearTimeout(timeoutId);
-        setLoading(false);
-        setIsFiltering(false);
-      }
-    },
-    [selectedFlowIds, fetchSelectedBoards],
-  );
+  }, [searchParams]);
 
   // ===========================================================================
-  // 🔥 FUNÇÃO PARA ATUALIZAR BOARDS APÓS ALTERAÇÃO DE PRAZOS
-  // ===========================================================================
-  const refreshBoardsAfterDeadlineUpdate = useCallback(async () => {
-    console.log("🔄 [refreshBoardsAfterDeadlineUpdate] Atualizando boards...");
-
-    const hasFilters =
-      activeFilterStartDate ||
-      activeFilterEndDate ||
-      activeFilterOverdue ||
-      activeFilterUpcoming ||
-      activeColumnNameFilter;
-
-    if (hasFilters) {
-      await fetchFilteredBoards();
-    } else {
-      await fetchSelectedBoards();
-    }
-
-    setRefreshKey((prev) => prev + 1);
-  }, [
-    activeFilterStartDate,
-    activeFilterEndDate,
-    activeFilterOverdue,
-    activeFilterUpcoming,
-    activeColumnNameFilter,
-    fetchFilteredBoards,
-    fetchSelectedBoards,
-  ]);
-
-  // ===========================================================================
-  // 🔥 FUNÇÃO handleFilterClick
+  // 🔥 FUNÇÃO handleFilterClick (modificada para usar invalidateBoards)
   // ===========================================================================
   const handleFilterClick = async () => {
-    console.log("🔍 [handleFilterClick] INICIADO", {
-      tempFilterUpcoming,
-      notificationDays,
-      // tempFilterExactDate,
-      tempFilterStartDate,
-      tempFilterEndDate,
-    });
-
     setIsFiltering(true);
 
     const params = new URLSearchParams();
@@ -1248,7 +839,6 @@ export default function ProductFlowKanban() {
       params.set("stageName", columnNameFilter.trim());
     }
 
-    // Se o filtro de próximos 7 dias estiver ativo, sempre usa dueDate
     if (tempFilterUpcoming) {
       const today = new Date();
       const notificationLimit = new Date(today);
@@ -1257,28 +847,20 @@ export default function ProductFlowKanban() {
       const todayStr = today.toISOString().split("T")[0];
       const limitStr = notificationLimit.toISOString().split("T")[0];
 
-      console.log("📅 [handleFilterClick] FILTRO UPCOMING:", {
-        notificationDays,
-        todayStr,
-        limitStr,
-      });
-
       params.set("startDate", todayStr);
       params.set("endDate", limitStr);
       params.set("filter", "upcoming");
-
-      console.log("🔍 Parâmetros do filtro:", params.toString());
-      router.push(`?${params.toString()}`);
+    } else if (tempFilterOverdue) {
+      // 🔥 CORREÇÃO: Enviar como boolean no formato que o backend espera
+      params.set("isOverdue", "true");
+      params.set("filter", "overdue"); // Também envia o filter
     } else if (tempFilterDateType) {
       params.set("dateType", tempFilterDateType);
     }
 
     if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
     if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
-
     if (tempFilterOverdue) params.set("filter", "overdue");
-    if (tempFilterUpcoming) params.set("filter", "upcoming");
-
     if (tempFilterAssignedTo !== "all")
       params.set("assignedToId", tempFilterAssignedTo);
     if (tempFilterSupplier !== "all")
@@ -1286,13 +868,17 @@ export default function ProductFlowKanban() {
     if (tempFilterProductRef && tempFilterProductRef.trim() !== "") {
       params.set("productRef", tempFilterProductRef.trim());
     }
-    console.log("🔍 Parâmetros do filtro:", params.toString());
+
     router.push(`?${params.toString()}`);
+
+    // Aguarda um pouco para o router atualizar
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // 🔥 Atualiza os boards com os novos filtros
+    await invalidateBoards();
+    setIsFiltering(false);
   };
 
-  // ===========================================================================
-  // 🔥 FUNÇÃO handleClearFilters
-  // ===========================================================================
   const handleClearFilters = async () => {
     setTempFilterStartDate("");
     setTempFilterEndDate("");
@@ -1308,7 +894,7 @@ export default function ProductFlowKanban() {
     router.push("/kanban-flow");
 
     await new Promise((resolve) => setTimeout(resolve, 100));
-    await fetchSelectedBoards();
+    await invalidateBoards();
   };
 
   const toggleOverdueFilter = () => {
@@ -1332,7 +918,6 @@ export default function ProductFlowKanban() {
       setTempFilterOverdue(false);
       setTempFilterDateType("dueDate");
 
-      // 🔥 USAR UTC para evitar problemas de fuso
       const today = new Date();
       const todayUTC = new Date(
         Date.UTC(
@@ -1347,12 +932,6 @@ export default function ProductFlowKanban() {
 
       const todayStr = todayUTC.toISOString().split("T")[0];
       const limitStr = notificationLimit.toISOString().split("T")[0];
-
-      console.log("📅 [toggleUpcomingFilter] DATAS UTC:", {
-        notificationDays,
-        todayStr,
-        limitStr,
-      });
 
       setTempFilterStartDate(todayStr);
       setTempFilterEndDate(limitStr);
@@ -1373,7 +952,6 @@ export default function ProductFlowKanban() {
       setSuppliers(sRes.data.data || sRes.data);
       setTemplates(tRes.data);
 
-      // 🔥 TRAVA AQUI: Só seleciona o padrão se NÃO houver nada na URL
       const hasFlowsInUrl =
         searchParams.get("flowIds") || searchParams.get("flowId");
 
@@ -1387,69 +965,10 @@ export default function ProductFlowKanban() {
     } catch {
       toast.error("Erro ao carregar dados iniciais");
     }
-  }, [user?.company?.id, searchParams]); // Adicione searchParams aqui
+  }, [user?.company?.id, searchParams, selectedFlowIds.length]);
 
   // ===========================================================================
-  // 🎯 EFEITO PRINCIPAL
-  // ===========================================================================
-  useEffect(() => {
-    if (selectedFlowIds.length === 0) {
-      setBoards([]);
-      setLoading(false);
-      return;
-    }
-
-    const hasFilters =
-      activeFilterStartDate ||
-      activeFilterEndDate ||
-      activeFilterOverdue ||
-      activeFilterUpcoming ||
-      activeFilterAssignedTo !== "all" ||
-      activeFilterSupplier !== "all" ||
-      activeFilterProductRef ||
-      activeColumnNameFilter;
-
-    console.log("🔄 useEffect executado", {
-      isFirstRender: isFirstRender.current,
-      hasFilters,
-      selectedFlowIds,
-    });
-
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      console.log("🚀 Primeira renderização - ignorando");
-
-      if (hasFilters) {
-        const params = new URLSearchParams(window.location.search);
-        fetchFilteredBoards(params);
-      } else {
-        fetchSelectedBoards();
-      }
-      return;
-    }
-
-    if (hasFilters) {
-      const params = new URLSearchParams(window.location.search);
-      fetchFilteredBoards(params);
-    } else {
-      fetchSelectedBoards();
-    }
-  }, [
-    activeFilterStartDate,
-    activeFilterEndDate,
-    activeFilterOverdue,
-    activeFilterUpcoming,
-    activeFilterAssignedTo,
-    activeFilterSupplier,
-    activeFilterProductRef,
-    activeColumnNameFilter,
-    selectedFlowIds,
-    fetchFilteredBoards,
-    fetchSelectedBoards,
-  ]);
-
-  // ===========================================================================
-  // 🎯 EFEITO INICIAL
+  // 🎯 EFEITO PRINCIPAL - Carrega dados iniciais
   // ===========================================================================
   useEffect(() => {
     fetchInitialData();
@@ -1459,34 +978,15 @@ export default function ProductFlowKanban() {
   // 🎯 FUNÇÃO DE AVANÇAR ITEM
   // ===========================================================================
   const handleAdvanceItem = async (item: FlowItem) => {
-    // toast.loading("Avançando item...", { id: "advance-toast" });
-
     try {
       await api.post(`/flow/items/${item.id}/advance`);
-
-      // toast.success(`Item "${item.title}" movido para próxima etapa!`, {
-      //   id: "advance-toast",
-      // });
-
       setIsPreviewModal(false);
       setIsEditItemModal(false);
-
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
-      }
+      await refreshBoardsAfterAction();
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || "Erro ao mover item.";
-      // toast.error(errorMsg, { id: "advance-toast" });
       console.log(errorMsg);
+      throw error;
     }
   };
 
@@ -1515,6 +1015,9 @@ export default function ProductFlowKanban() {
       setNewFlowColor("#D35400");
       setDeadline("");
       toast.success("Fluxo criado!");
+
+      // 🔥 Atualiza os boards
+      await refreshBoardsAfterAction();
     } catch (error) {
       toast.error("Erro ao criar fluxo");
       console.error("Erro ao criar fluxo:", error);
@@ -1581,6 +1084,9 @@ export default function ProductFlowKanban() {
 
       toast.success("Fluxo atualizado com sucesso!");
       setIsEditFlowModalOpen(false);
+
+      // 🔥 Atualiza os boards
+      await refreshBoardsAfterAction();
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Erro ao atualizar fluxo");
     } finally {
@@ -1633,9 +1139,7 @@ export default function ProductFlowKanban() {
         `/flow/${selectedFlowIds[0]}/apply-template/${selectedTemplateId}`,
       );
       toast.success("Etapas aplicadas!");
-
-      // 🔥 FORÇAR RECARREGAMENTO COMPLETO
-      await fetchSelectedBoards(); // Isso vai buscar os novos IDs das etapas criadas
+      await refreshBoardsAfterAction();
     } catch {
       toast.error("Erro ao aplicar template");
     }
@@ -1645,23 +1149,17 @@ export default function ProductFlowKanban() {
     try {
       await api.delete(`/flow/${flowId}`);
 
-      // 1. Remove da lista de fluxos
       setFlows((prev) => prev.filter((f) => f.id !== flowId));
-
-      // 2. Remove dos selecionados
       setSelectedFlowIds((prev) => {
         const newSelectedIds = prev.filter((id) => id !== flowId);
-
-        // 3. Se não houver mais fluxos, limpa os boards
         if (newSelectedIds.length === 0) {
-          setBoards([]);
-          setLoading(false);
+          // O useQuery vai lidar com o estado vazio
         }
-
         return newSelectedIds;
       });
 
       toast.success("Fluxo removido");
+      await refreshBoardsAfterAction();
     } catch (error) {
       toast.error("Erro ao excluir fluxo");
       console.error(error);
@@ -1669,7 +1167,6 @@ export default function ProductFlowKanban() {
     }
   };
 
-  // E no handleDeleteExecute:
   const handleDeleteExecute = async () => {
     if (!itemToDelete) return;
 
@@ -1679,7 +1176,6 @@ export default function ProductFlowKanban() {
       const { type, id } = itemToDelete;
 
       if (type === "stage" && flows.some((f) => f.id === id)) {
-        // É um fluxo
         await handleDeleteFlow(id);
       } else if (type === "template") {
         await api.delete(`/flow/templates/${id}`);
@@ -1691,22 +1187,7 @@ export default function ProductFlowKanban() {
           type === "item" ? `/flow/items/${id}` : `/flow/stages/${id}`,
         );
         toast.success("Excluído!");
-
-        // Recarrega os boards após excluir item/stage
-        const hasFilters =
-          activeFilterStartDate ||
-          activeFilterEndDate ||
-          activeFilterOverdue ||
-          activeFilterUpcoming ||
-          activeColumnNameFilter;
-
-        if (selectedFlowIds.length > 0) {
-          if (hasFilters) {
-            await fetchFilteredBoards();
-          } else {
-            await fetchSelectedBoards();
-          }
-        }
+        await refreshBoardsAfterAction();
       }
     } catch (error) {
       toast.error("Erro ao excluir");
@@ -1729,7 +1210,7 @@ export default function ProductFlowKanban() {
         stageAllowedRole === "all" || !stageAllowedRole
           ? null
           : stageAllowedRole,
-      defaultDays: stageDefaultDays, // 🔥 ENVIA O CAMPO
+      defaultDays: stageDefaultDays,
     };
 
     try {
@@ -1741,7 +1222,7 @@ export default function ProductFlowKanban() {
         toast.success("Etapa criada");
       }
       setIsStageModal(false);
-      fetchSelectedBoards();
+      await refreshBoardsAfterAction();
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || "Erro ao salvar etapa";
       toast.error(errorMsg);
@@ -1751,44 +1232,14 @@ export default function ProductFlowKanban() {
   };
 
   // ===========================================================================
-  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
+  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO)
   // ===========================================================================
   const handleItemSubmit = async (
     values: any,
     files: any,
     removedMedia: any,
   ): Promise<void> => {
-    // ===========================================================================
-    // 🔥 LOG 1: INÍCIO DO PROCESSO
-    // ===========================================================================
-    console.log("\n");
-    console.log("=".repeat(80));
     console.log("🎯 [handleItemSubmit] INICIANDO SUBMIT DO ITEM");
-    console.log("=".repeat(80));
-    console.log("📦 Modo:", editingItem ? "EDIÇÃO" : "CRIAÇÃO");
-    console.log("📦 Values recebidos:", {
-      title: values.title,
-      description: values.description,
-      productRef: values.productRef,
-      quantity: values.quantity,
-      status: values.status,
-      flowId: values.flowId,
-      stageId: values.stageId,
-      assignedToId: values.assignedToId,
-      supplierId: values.supplierId,
-      dueDate: values.dueDate,
-      productionStartedAt: values.productionStartedAt,
-      deliveryAt: values.deliveryAt,
-      orderNumber: values.orderNumber,
-      priority: values.priority,
-    });
-    console.log("📦 Files:", {
-      images: files.images?.length || 0,
-      audios: files.audios?.length || 0,
-      videos: files.videos?.length || 0,
-    });
-    console.log("📦 Removed Media:", removedMedia);
-    console.log("📌 activeStageId:", activeStageId);
 
     if (selectedFlowIds.length === 0) {
       console.error("❌ Nenhum fluxo selecionado");
@@ -1799,31 +1250,16 @@ export default function ProductFlowKanban() {
     setIsSubmitting(true);
 
     try {
-      // ===========================================================================
-      // 🔥 FUNÇÃO DE UPLOAD DE MÍDIA
-      // ===========================================================================
       const uploadMedia = async (itemId: string, files: any) => {
-        console.log("\n📤 Iniciando upload de mídias para item:", itemId);
-
         const upload = async (file: File, type: string) => {
-          console.log(`📤 Fazendo upload de ${type}:`, {
-            nome: file.name,
-            tamanho: file.size,
-            tipo: file.type,
-          });
-
           const fd = new FormData();
           fd.append("file", file);
-
           try {
             const response = await api.post(
               `/flow/items/${itemId}/media/${type}`,
               fd,
-              {
-                headers: { "Content-Type": "multipart/form-data" },
-              },
+              { headers: { "Content-Type": "multipart/form-data" } },
             );
-            console.log(`✅ Upload de ${type} concluído:`, response.data);
             return response.data;
           } catch (error) {
             console.error(`❌ Erro no upload de ${type}:`, error);
@@ -1832,46 +1268,23 @@ export default function ProductFlowKanban() {
         };
 
         const promises = [];
-
         if (files.images?.length > 0) {
-          console.log(`📸 ${files.images.length} imagem(ns) para upload`);
-          for (const f of files.images) {
-            promises.push(upload(f, "image"));
-          }
+          for (const f of files.images) promises.push(upload(f, "image"));
         }
-
         if (files.audios?.length > 0) {
-          console.log(`🎵 ${files.audios.length} áudio(s) para upload`);
-          for (const f of files.audios) {
-            promises.push(upload(f, "audio"));
-          }
+          for (const f of files.audios) promises.push(upload(f, "audio"));
         }
-
         if (files.videos?.length > 0) {
-          console.log(`🎬 ${files.videos.length} vídeo(s) para upload`);
-          for (const f of files.videos) {
-            promises.push(upload(f, "video"));
-          }
+          for (const f of files.videos) promises.push(upload(f, "video"));
         }
-
         if (promises.length > 0) {
-          console.log(`⏳ Aguardando ${promises.length} upload(s)...`);
-          const results = await Promise.all(promises);
-          console.log("✅ Todos os uploads concluídos:", results.length);
-          return results;
+          return await Promise.all(promises);
         }
-
-        console.log("📭 Nenhuma mídia para upload");
         return [];
       };
 
-      // ===========================================================================
-      // 🔥 MODO EDIÇÃO
-      // ===========================================================================
+      // MODO EDIÇÃO
       if (editingItem) {
-        console.log("\n✏️ Modo EDIÇÃO - Item:", editingItem.id);
-
-        // Prepara payload para edição
         const updatePayload = {
           ...values,
           removeImageIds: removedMedia.images,
@@ -1879,30 +1292,7 @@ export default function ProductFlowKanban() {
           removeAudioIds: removedMedia.audios,
         };
 
-        console.log("📦 Payload de edição:", {
-          ...updatePayload,
-          removeImageIds: updatePayload.removeImageIds?.length || 0,
-          removeVideoIds: updatePayload.removeVideoIds?.length || 0,
-          removeAudioIds: updatePayload.removeAudioIds?.length || 0,
-        });
-
-        console.log("📡 Enviando PUT para:", `/flow/items/${editingItem.id}`);
-
-        const startTime = Date.now();
-
-        // 🔥 VERIFICAÇÃO ANTES DE ENVIAR
-        console.log("🔍 ===== VERIFICAÇÃO FINAL (EDIÇÃO) =====");
-        console.log("📦 FlowId:", updatePayload.flowId);
-        console.log("📦 StageId:", updatePayload.stageId);
-        console.log("📦 Title:", updatePayload.title);
-        console.log("📦 DueDate:", updatePayload.dueDate);
-        console.log("📦 Quantity:", updatePayload.quantity);
-        console.log("========================================\n");
-
         await api.put(`/flow/items/${editingItem.id}`, updatePayload);
-        const endTime = Date.now();
-
-        console.log(`✅ Item atualizado em ${endTime - startTime}ms`);
 
         if (
           files &&
@@ -1910,42 +1300,19 @@ export default function ProductFlowKanban() {
             files.audios?.length > 0 ||
             files.videos?.length > 0)
         ) {
-          console.log(
-            "\n📤 Fazendo upload de novas mídias para o item editado...",
-          );
           await uploadMedia(editingItem.id, files);
         }
 
         toast.success("Item atualizado com sucesso!");
       }
-
-      // ===========================================================================
-      // 🔥 MODO CRIAÇÃO
-      // ===========================================================================
+      // MODO CRIAÇÃO
       else {
-        console.log("\n🆕 Modo CRIAÇÃO - Novo Item");
-
-        // 🔥 VALIDAÇÕES MÍNIMAS
-        if (!values.flowId) {
-          console.error("❌ flowId não informado");
-          toast.error("Selecione uma coleção");
+        if (!values.flowId || !values.stageId) {
+          toast.error("Selecione uma coleção e etapa");
           setIsSubmitting(false);
           return;
         }
 
-        if (!values.stageId) {
-          console.error("❌ stageId não informado nos values");
-          toast.error("Selecione uma etapa");
-          setIsSubmitting(false);
-          return;
-        }
-
-        console.log("🔍 VERIFICAÇÃO DE STAGE (validação pelo modal):");
-        console.log("   flowId enviado:", values.flowId);
-        console.log("   stageId enviado:", values.stageId);
-        console.log("   activeStageId (ignorado):", activeStageId);
-
-        // 🔥 Prepara payload para criação
         const createPayload = {
           title: values.title,
           description: values.description || null,
@@ -1965,52 +1332,9 @@ export default function ProductFlowKanban() {
           priority: values.priority || 3,
         };
 
-        console.log("\n📡 Enviando POST para /flow/items");
-        console.log("📦 Payload completo:", createPayload);
-
-        // 🔥 VERIFICAÇÃO ANTES DE ENVIAR
-        console.log("🔍 ===== VERIFICAÇÃO FINAL (CRIAÇÃO) =====");
-        console.log("📦 FlowId:", createPayload.flowId);
-        console.log("📦 StageId:", createPayload.stageId);
-        console.log("📦 Title:", createPayload.title);
-        console.log("📦 DueDate:", createPayload.dueDate);
-        console.log("📦 Quantity:", createPayload.quantity);
-        console.log("========================================\n");
-
-        const startTime = Date.now();
-
-        let response;
-        try {
-          response = await api.post(`/flow/items`, createPayload);
-          console.log("✅ Resposta da API:", response.data);
-        } catch (apiError: any) {
-          console.error("❌ ERRO COMPLETO:", {
-            message: apiError.message,
-            status: apiError.response?.status,
-            statusText: apiError.response?.statusText,
-            data: apiError.response?.data,
-            config: {
-              url: apiError.config?.url,
-              method: apiError.config?.method,
-              data: apiError.config?.data
-                ? JSON.parse(apiError.config.data)
-                : null,
-            },
-          });
-          throw apiError;
-        }
-
-        const endTime = Date.now();
+        const response = await api.post(`/flow/items`, createPayload);
         const newItem = response.data;
 
-        console.log(`✅ Item criado em ${endTime - startTime}ms:`, {
-          id: newItem.id,
-          title: newItem.title,
-          stageId: newItem.stageId,
-          flowId: newItem.flowId,
-        });
-
-        // Upload de mídias se houver
         if (
           newItem?.id &&
           files &&
@@ -2018,17 +1342,11 @@ export default function ProductFlowKanban() {
             files.audios?.length > 0 ||
             files.videos?.length > 0)
         ) {
-          console.log("\n📤 Fazendo upload de mídias para o novo item...");
           await uploadMedia(newItem.id, files);
         }
 
         toast.success("Item criado com sucesso!");
       }
-
-      // ===========================================================================
-      // 🔥 LIMPEZA DE ESTADOS
-      // ===========================================================================
-      console.log("\n🧹 Limpando estados e fechando modais...");
 
       setIsItemModal(false);
       setIsEditItemModal(false);
@@ -2036,66 +1354,12 @@ export default function ProductFlowKanban() {
       setCurrentItemStages([]);
       setActiveStageId(null);
 
-      // ===========================================================================
-      // 🔥 ATUALIZAÇÃO DO BOARD
-      // ===========================================================================
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      console.log("🔍 Verificando filtros ativos:", {
-        activeFilterStartDate,
-        activeFilterEndDate,
-        activeFilterOverdue,
-        activeFilterUpcoming,
-        activeColumnNameFilter,
-        hasFilters,
-      });
-
-      console.log("🔄 Atualizando board...");
-
-      const boardStartTime = Date.now();
-
-      if (hasFilters) {
-        console.log("📊 Aplicando filtros antes de atualizar...");
-        await fetchFilteredBoards();
-      } else {
-        console.log("📊 Buscando boards selecionados...");
-        await fetchSelectedBoards();
-      }
-
-      const boardEndTime = Date.now();
-      console.log(`✅ Board atualizado em ${boardEndTime - boardStartTime}ms`);
-
-      console.log("\n🎯 [handleItemSubmit] FINALIZADO COM SUCESSO");
-      console.log("=".repeat(80));
-      console.log("\n");
+      // 🔥 Atualiza os boards após a ação
+      await refreshBoardsAfterAction();
     } catch (error: any) {
-      // ===========================================================================
-      // 🔥 TRATAMENTO DE ERROS
-      // ===========================================================================
-      console.error("\n");
-      console.error("=".repeat(80));
-      console.error("❌ [handleItemSubmit] ERRO");
-      console.error("=".repeat(80));
-      console.error("Detalhes do erro:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          data: error.config?.data ? JSON.parse(error.config.data) : null,
-        },
-      });
+      console.error("❌ [handleItemSubmit] ERRO:", error);
 
-      // Mensagens de erro amigáveis
       let errorMessage = "Erro ao salvar item";
-
       if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       } else if (error.response?.status === 400) {
@@ -2105,44 +1369,18 @@ export default function ProductFlowKanban() {
         errorMessage = "Sessão expirada. Faça login novamente.";
       } else if (error.response?.status === 403) {
         errorMessage = "Você não tem permissão para realizar esta ação.";
-      } else if (error.response?.status === 404) {
-        errorMessage = "Recurso não encontrado.";
-      } else if (error.response?.status === 500) {
-        errorMessage = "Erro interno do servidor. Tente novamente mais tarde.";
-      }
-
-      // 🔥 LOG DO ERRO COM DETALHES
-      if (error.response?.data?.message?.includes("Etapa inválida")) {
-        console.error("🔍 ERRO DO BACKEND: Etapa inválida");
-        console.error("   - flowId enviado:", values?.flowId);
-        console.error("   - stageId enviado:", values?.stageId);
-        console.error("   - activeStageId:", activeStageId);
       }
 
       toast.error(errorMessage);
-      console.error("=".repeat(80));
-      console.error("\n");
     } finally {
       setIsSubmitting(false);
-      console.log("🏁 isSubmitting set to false");
     }
   };
 
   const shouldShowItem = useCallback(
     (item: FlowItem): boolean => {
       if (item.status === "CONCLUIDO") {
-        const show = itemsPendingRemoval.has(item.id);
-        if (show) {
-          console.log(
-            `⏰ [${new Date().toISOString()}] Item ${item.id} (${item.title}) concluído MAS em contagem - MOSTRANDO`,
-          );
-        } else {
-          console.log(
-            `✅ [${new Date().toISOString()}] Item ${item.id} (${item.title}) concluído - OCULTANDO - itemsPendingRemoval:`,
-            Array.from(itemsPendingRemoval),
-          );
-        }
-        return show;
+        return itemsPendingRemoval.has(item.id);
       }
       return true;
     },
@@ -2153,75 +1391,57 @@ export default function ProductFlowKanban() {
   // 🎯 UNIFIED STAGES - Agrupa stages por nome
   // ===========================================================================
   const unifiedStages = useMemo(() => {
-    console.log("🔄 Recalculando unifiedStages com refreshKey:", refreshKey);
-    console.log("📋 itemsPendingRemoval:", Array.from(itemsPendingRemoval));
-
     const stageGroups: Record<string, FlowStage> = {};
 
     boards.forEach((board) => {
       const flowColor = board.color || "#D35400";
       const flowName = board.name;
 
-      console.log(`📊 Processando board: ${board.name}`); // 🔥 ADICIONE
+      board.stages.forEach(
+        (stage: {
+          name: string;
+          id: any;
+          order: any;
+          color: any;
+          allowedRole: any;
+          defaultDays: any;
+          items: any[];
+        }) => {
+          const key = stage.name.toUpperCase();
 
-      board.stages.forEach((stage) => {
-        console.log(
-          `  Stage: ${stage.name} - defaultDays: ${stage.defaultDays}`,
-        ); // 🔥 ADICIONE
+          if (!stageGroups[key]) {
+            stageGroups[key] = {
+              id: stage.id,
+              name: stage.name,
+              order: stage.order,
+              color: stage.color,
+              allowedRole: stage.allowedRole,
+              defaultDays: stage.defaultDays,
+              flowId: board.id,
+              items: [],
+            };
+          }
 
-        const key = stage.name.toUpperCase();
+          const itemsWithMetadata = stage.items
+            .filter((item) => shouldShowItem(item))
+            .map((item) => ({
+              ...item,
+              flowColor,
+              flowName,
+              _originalStageId: item.stageId,
+              _originalFlowId: board.id,
+            }));
 
-        if (!stageGroups[key]) {
-          stageGroups[key] = {
-            id: stage.id,
-            name: stage.name,
-            order: stage.order,
-            color: stage.color,
-            allowedRole: stage.allowedRole,
-            defaultDays: stage.defaultDays, // 🔥 GARANTA QUE ESTÁ AQUI
-
-            flowId: board.id,
-            items: [],
-          };
-        }
-
-        // 🔥 Log de quantos itens tinha antes
-        console.log(`Stage ${stage.name} tinha ${stage.items.length} itens`);
-
-        // 🔥 USA A MESMA FUNÇÃO shouldShowItem
-        const itemsWithMetadata = stage.items
-          .filter((item) => {
-            const show = shouldShowItem(item);
-            if (!show && item.status === "CONCLUIDO") {
-              console.log(
-                `❌ Filtrando item ${item.id} (${item.title}) - CONCLUIDO e não está no pending`,
-              );
-            }
-            return show;
-          })
-          .map((item) => ({
-            ...item,
-            flowColor,
-            flowName,
-            _originalStageId: item.stageId,
-            _originalFlowId: board.id,
-          }));
-
-        console.log(
-          `Stage ${stage.name} ficou com ${itemsWithMetadata.length} itens`,
-        );
-
-        stageGroups[key].items.push(...itemsWithMetadata);
-      });
+          stageGroups[key].items.push(...itemsWithMetadata);
+        },
+      );
     });
 
-    const result = Object.values(stageGroups).sort((a, b) => a.order - b.order);
-
-    return result;
-  }, [boards, refreshKey, itemsPendingRemoval, shouldShowItem]);
+    return Object.values(stageGroups).sort((a, b) => a.order - b.order);
+  }, [boards, itemsPendingRemoval, shouldShowItem]);
 
   // ===========================================================================
-  // 🔥 HOOK DE DRAG
+  // 🔥 HOOK DE DRAG (ajustado para usar refreshBoardsAfterAction)
   // ===========================================================================
   const { moveItem, onDragStart, executeMove } = useKanbanDrag({
     items: unifiedStages.flatMap((s) => s.items),
@@ -2229,15 +1449,7 @@ export default function ProductFlowKanban() {
     idField: "stageId",
 
     moveCallback: async (itemId, newStageId, responsibleId, type) => {
-      console.log("🎯 [moveCallback] Iniciando movimento:", {
-        itemId,
-        newStageId,
-        responsibleId,
-        type,
-      });
-
       const payload: any = { newStageId };
-
       if (type === "supplier") {
         payload.supplierId = responsibleId;
       } else if (type === "user") {
@@ -2246,49 +1458,21 @@ export default function ProductFlowKanban() {
 
       try {
         const response = await api.put(`/flow/items/${itemId}/move`, payload);
-        console.log("✅ [moveCallback] Resposta do servidor:", response.data);
-
-        // 🔥 IMPORTANTE: Buscar o nome da stage destino no board original
         const movedItem = response.data;
 
-        // Buscar o board do item
         const itemBoard = boards.find((b) => b.id === movedItem.flowId);
-
         if (itemBoard) {
-          // Buscar a stage pelo ID no board original
-          const targetStage = itemBoard.stages.find((s) => s.id === newStageId);
-
+          const targetStage = itemBoard.stages.find(
+            (s: { id: string }) => s.id === newStageId,
+          );
           if (targetStage) {
             lastMovedItemRef.current = {
               id: itemId,
               targetStageId: newStageId,
-              targetStageName: targetStage.name, // 🔥 Guarda o NOME, não o ID
+              targetStageName: targetStage.name,
             };
-            console.log(
-              "📦 Informações salvas no ref:",
-              lastMovedItemRef.current,
-            );
-          } else {
-            console.error(
-              "❌ Stage destino não encontrada no board original:",
-              {
-                boardId: itemBoard.id,
-                boardName: itemBoard.name,
-                newStageId,
-                availableStages: itemBoard.stages.map((s) => ({
-                  id: s.id,
-                  name: s.name,
-                })),
-              },
-            );
           }
-        } else {
-          console.error(
-            "❌ Board não encontrado para o fluxo:",
-            movedItem.flowId,
-          );
         }
-
         return response.data;
       } catch (error: any) {
         console.error("❌ [moveCallback] Erro:", error);
@@ -2297,75 +1481,27 @@ export default function ProductFlowKanban() {
     },
 
     onRequireResponsible: (itemId, targetStageId, targetStageName) => {
-      console.log("👤 [onRequireResponsible] Requer responsável:", {
-        itemId,
-        targetStageId,
-        targetStageName,
-      });
-
-      // 🔥 ENCONTRA O ITEM PARA PEGAR O FLOW ID
       const item = unifiedStages
         .flatMap((s) => s.items)
         .find((i) => i.id === itemId);
+      if (!item) return;
 
-      if (!item) {
-        console.error("❌ Item não encontrado:", itemId);
-        return;
-      }
-
-      console.log("📦 Item encontrado:", {
-        id: item.id,
-        title: item.title,
-        flowId: item.flowId,
-        currentStageId: item.stageId,
-        quantity: item.quantity,
-      });
-
-      // 🔥 ENCONTRA A STAGE DESTINO
       const targetStage = unifiedStages.find(
         (s) => s.name.toLowerCase() === targetStageName.toLowerCase(),
       );
+      if (!targetStage) return;
 
-      if (!targetStage) {
-        console.error(
-          "❌ [onRequireResponsible] Stage não encontrada:",
-          targetStageName,
-        );
-        return;
-      }
-
-      // ===========================================================================
-      // 🔥 CALCULA AS FLAGS - USA isAfterCorte
-      // ===========================================================================
       const isDistribuicao = checkIfIsDistribuicao(targetStage.name);
-      const isAfterCorte = checkIfIsAfterCorte(
-        // ← FUNÇÃO QUE VERIFICA CORTE
-        targetStageId,
-        item.flowId,
-      );
-
-      console.log("📊 [onRequireResponsible] Flags calculadas:", {
-        itemId: item.id,
-        itemTitle: item.title,
-        flowId: item.flowId,
-        targetStageName: targetStage.name,
-        targetStageId,
-        isAfterCorte, // ← AGORA USA isAfterCorte
-        isDistribuicao,
-      });
-
+      const isAfterCorte = checkIfIsAfterCorte(targetStageId, item.flowId);
       const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
 
       if (isOficina) {
-        console.log(
-          "🏭 [onRequireResponsible] É coluna OFICINA, requer fornecedor",
-        );
         setDragItemId(itemId);
         setDragTargetStage({
           id: targetStageId,
           name: targetStage.name,
           allowedRole: targetStage.allowedRole,
-          isAfterCorte, // ← PASSA isAfterCorte (agora o tipo aceita)
+          isAfterCorte,
           isDistribuicao,
         });
         setIsDragModalOpen(true);
@@ -2378,80 +1514,24 @@ export default function ProductFlowKanban() {
         targetStage.allowedRole !== "null" &&
         targetStage.allowedRole.trim() !== ""
       ) {
-        console.log(
-          `👤 [onRequireResponsible] Requer cargo: ${targetStage.allowedRole}`,
-        );
         setDragItemId(itemId);
         setDragTargetStage({
           id: targetStageId,
           name: targetStage.name,
           allowedRole: targetStage.allowedRole,
-          isAfterCorte, // ← PASSA isAfterCorte
+          isAfterCorte,
           isDistribuicao,
         });
         setIsDragModalOpen(true);
       } else {
-        console.log(
-          "✅ [onRequireResponsible] Sem restrição, movendo diretamente",
-        );
         executeMove(itemId, targetStageId);
       }
     },
 
     onMoveSuccess: async () => {
-      console.log(
-        "🔄 [onMoveSuccess] ========================================",
-      );
       console.log("🔄 [onMoveSuccess] Movimento concluído com sucesso!");
-      console.log("📌 Timestamp:", new Date().toISOString());
-
-      // ===========================================================================
-      // 🧹 LIMPEZA E SINCRONIZAÇÃO IMEDIATA
-      // ===========================================================================
-
-      // Limpamos a referência do último item movido, pois não haverá conclusão automática
-      if (lastMovedItemRef.current) {
-        console.log(
-          "🧹 Limpando lastMovedItemRef:",
-          lastMovedItemRef.current.id,
-        );
-        lastMovedItemRef.current = null;
-      }
-
-      // Verificamos se existem filtros ativos para saber qual método de busca chamar
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeFilterAssignedTo !== "all" ||
-        activeFilterSupplier !== "all" ||
-        activeFilterProductRef ||
-        activeColumnNameFilter;
-
-      console.log("📊 Atualizando board. Filtros ativos:", !!hasFilters);
-
-      try {
-        if (hasFilters) {
-          await fetchFilteredBoards();
-        } else {
-          await fetchSelectedBoards();
-        }
-
-        // Forçamos a atualização da chave de renderização para garantir que a UI reflita o banco
-        setRefreshKey((prev) => prev + 1);
-
-        console.log("✅ [onMoveSuccess] Boards atualizados com sucesso!");
-      } catch (error) {
-        console.error(
-          "❌ [onMoveSuccess] Erro ao atualizar boards após movimento:",
-          error,
-        );
-      }
-
-      console.log(
-        "🔄 [onMoveSuccess] ========================================\n",
-      );
+      lastMovedItemRef.current = null;
+      await refreshBoardsAfterAction();
     },
 
     onMoveError: (error) => {
@@ -2462,62 +1542,26 @@ export default function ProductFlowKanban() {
   const handleDragWithResponsible = async (
     responsibleId: string,
     type: "user" | "supplier",
-    quantity?: number, // 🔥 RECEBE QUANTIDADE DO MODAL
+    quantity?: number,
   ) => {
     if (!dragItemId || !dragTargetStage) return;
 
-    // toast.loading("Movendo item...", { id: "drag-move" });
-
     try {
-      // 🔥 PASSO 1: Se tiver quantidade, atualizar o item primeiro
       if (quantity !== undefined) {
-        console.log(`📝 [DRAG] Atualizando quantidade para: ${quantity}`);
-        await api.put(`/flow/items/${dragItemId}`, {
-          quantity: quantity,
-        });
+        await api.put(`/flow/items/${dragItemId}`, { quantity });
       }
 
-      // 🔥 PASSO 2: Mover o item com os parâmetros
-      console.log(`🎯 [DRAG] Movendo item para: ${dragTargetStage.name}`, {
-        responsibleId,
-        type,
-      });
-
       await executeMove(dragItemId, dragTargetStage.id, responsibleId, type);
-
-      // toast.success(`Item movido para "${dragTargetStage.name}"!`, {
-      //   id: "drag-move",
-      // });
 
       setIsDragModalOpen(false);
       setDragItemId(null);
       setDragTargetStage(null);
-
-      // 🔥 PASSO 3: Recarregar boards
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
-      }
+      await refreshBoardsAfterAction();
     } catch (error: any) {
       console.error("❌ [DRAG] Erro ao mover item:", error);
-
       let errorMsg = "Erro ao mover item.";
-
-      if (error.response?.data?.message) {
-        errorMsg = error.response.data.message;
-      } else if (error.message) {
-        errorMsg = error.message;
-      }
-
-      // toast.error(errorMsg, { id: "drag-move" });
+      if (error.response?.data?.message) errorMsg = error.response.data.message;
+      toast.error(errorMsg);
     }
   };
 
@@ -2526,16 +1570,14 @@ export default function ProductFlowKanban() {
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
     );
 
-  // Verifica se há filtro de referência ativo
   const hasActiveProductRefFilter =
     activeFilterProductRef && activeFilterProductRef.trim() !== "";
-
-  // Verifica se não há itens no board filtrado
   const hasNoItemsAfterFilter = boards.every((board) =>
-    board.stages.every((stage) => stage.items.length === 0),
+    board.stages.every(
+      (stage: { items: string | any[] }) => stage.items.length === 0,
+    ),
   );
 
-  // Efeito para mostrar o toast quando a condição for atendida
   useEffect(() => {
     if (
       hasActiveProductRefFilter &&
@@ -2545,27 +1587,14 @@ export default function ProductFlowKanban() {
     ) {
       toast.info(
         "Nenhum item encontrado. A referência pode ainda não ter sido criada ou já foi finalizada.",
-        {
-          duration: 5000, // 5 segundos
-          icon: <Package className="h-4 w-4" />,
-        },
+        { duration: 5000, icon: <Package className="h-4 w-4" /> },
       );
       setHasShownEmptyRefToast(true);
     }
-
-    // Reseta o estado quando o filtro muda ou quando há itens
     if (!hasActiveProductRefFilter || !hasNoItemsAfterFilter) {
       setHasShownEmptyRefToast(false);
     }
   }, [hasActiveProductRefFilter, hasNoItemsAfterFilter, loading]);
-
-  if (loading && boards.length === 0) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
-        <Loader2 className="animate-spin text-[#D35400]" size={32} />
-      </div>
-    );
-  }
 
   const hasActiveFilters =
     activeFilterStartDate ||
@@ -2580,17 +1609,12 @@ export default function ProductFlowKanban() {
   const calculateDaysRemaining = (deadlineDate: string): number => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const deadline = new Date(deadlineDate);
     deadline.setHours(0, 0, 0, 0);
-
     const diffTime = deadline.getTime() - today.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  // ===========================================================================
-  // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE É DISTRIBUIÇÃO
-  // ===========================================================================
   const checkIfIsDistribuicao = (stageName: string): boolean => {
     const DISTRIBUICAO_KEYWORDS = [
       "distribuição",
@@ -2603,72 +1627,13 @@ export default function ProductFlowKanban() {
     );
   };
 
-  // ===========================================================================
-  // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS DISTRIBUIÇÃO
-  // ===========================================================================
-  const checkIfIsAfterDistribuicao = (
-    stageId: string,
-    flowId: string,
-  ): boolean => {
-    // 1. Encontra o board do fluxo específico
-    const board = boards.find((b) => b.id === flowId);
-    if (!board) {
-      console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
-      return false;
-    }
-
-    // 2. Ordena todas as etapas do fluxo
-    const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
-
-    console.log(
-      `📊 [checkIfIsAfterDistribuicao] Stages do fluxo ${flowId}:`,
-      sortedStages.map((s) => ({ id: s.id, name: s.name, order: s.order })),
+  if (loading && boards.length === 0) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
+        <Loader2 className="animate-spin text-[#D35400]" size={32} />
+      </div>
     );
-
-    // 3. Palavras-chave para identificar a etapa de Distribuição
-    const DISTRIBUICAO_KEYWORDS = [
-      "distribuição",
-      "distribuicao",
-      "expedição",
-      "expedicao",
-    ];
-
-    // 4. Encontra o índice da etapa de Distribuição
-    const distribuicaoIndex = sortedStages.findIndex((stage) =>
-      DISTRIBUICAO_KEYWORDS.some((keyword) =>
-        stage.name.toLowerCase().includes(keyword.toLowerCase()),
-      ),
-    );
-
-    // Se não encontrar etapa de Distribuição, retorna false
-    if (distribuicaoIndex === -1) {
-      console.log(
-        `ℹ️ Nenhuma etapa de Distribuição encontrada no fluxo ${flowId}`,
-      );
-      return false;
-    }
-
-    // 5. Encontra o índice da etapa que estamos verificando
-    const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
-
-    // Se não encontrar a etapa, retorna false
-    if (stageIndex === -1) {
-      console.warn(`⚠️ Stage ${stageId} não encontrada no fluxo ${flowId}`);
-      return false;
-    }
-
-    const isAfter = stageIndex > distribuicaoIndex;
-
-    console.log(`📊 [checkIfIsAfterDistribuicao] Resultado:`, {
-      stageName: sortedStages[stageIndex].name,
-      distribuicaoName: sortedStages[distribuicaoIndex].name,
-      stageIndex,
-      distribuicaoIndex,
-      isAfter,
-    });
-
-    return isAfter;
-  };
+  }
 
   return (
     <KanbanLayout>
@@ -2683,7 +1648,6 @@ export default function ProductFlowKanban() {
           setStageAllowedRole("");
           setIsStageModal(true);
         }}
-        // Novas props para o seletor de fluxos
         flows={flows}
         selectedFlowIds={selectedFlowIds}
         onToggleFlow={toggleFlow}
@@ -2702,30 +1666,13 @@ export default function ProductFlowKanban() {
           setItemToDelete({ type: "template", id });
           setDeleteModalOpen(true);
         }}
-        // rightContent={
-        //   !canManageRef ? (
-        //     <div className="flex items-center gap-2">
-        //       <div className="text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded flex items-center gap-1">
-        //         <Lock size={10} />
-        //         Referências: apenas leitura
-        //       </div>
-        //     </div>
-        //   ) : undefined
-        // }
       />
-      {/* {!canManageRef && (
-        <div className="text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded">
-          <Lock size={10} className="inline mr-1" />
-          Referências: apenas leitura
-        </div>
-      )} */}
 
       <KanbanFilter>
         <div className="grid gap-1 min-w-[200px]">
           <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
             Filtrar por Coluna
           </label>
-
           <Popover
             open={openColumnSelector}
             onOpenChange={setOpenColumnSelector}
@@ -2746,7 +1693,6 @@ export default function ProductFlowKanban() {
                 <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
-
             <PopoverContent className="w-[250px] p-0" align="start">
               <Command>
                 <CommandInput
@@ -2758,7 +1704,6 @@ export default function ProductFlowKanban() {
                     Nenhuma coluna encontrada.
                   </CommandEmpty>
                   <CommandGroup>
-                    {/* Opção para limpar/ver todas */}
                     <CommandItem
                       value=""
                       onSelect={() => {
@@ -2779,14 +1724,11 @@ export default function ProductFlowKanban() {
                       </div>
                       Todas as colunas
                     </CommandItem>
-
-                    {/* Lista dinâmica de colunas */}
                     {columnOptions.map((option) => (
                       <CommandItem
                         key={option}
                         value={option}
                         onSelect={(currentValue) => {
-                          // currentValue vem em lowercase do Command
                           setColumnNameFilter(
                             currentValue === columnNameFilter ? "" : option,
                           );
@@ -2896,7 +1838,7 @@ export default function ProductFlowKanban() {
             onClick={toggleUpcomingFilter}
           >
             <Clock className="w-3 h-3 mr-2" />
-            Próximos a vencer ({notificationDays} dias) {/* 🔥 DINÂMICO */}
+            Próximos a vencer ({notificationDays} dias)
           </Button>
         </div>
 
@@ -2946,6 +1888,7 @@ export default function ProductFlowKanban() {
           </Button>
         )}
       </KanbanFilter>
+
       {activeColumnNameFilter && (
         <div className="px-4 py-2 mb-4 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm">
@@ -2969,12 +1912,12 @@ export default function ProductFlowKanban() {
           </Button>
         </div>
       )}
+
       <KanbanBoard>
         {hasActiveProductRefFilter && hasNoItemsAfterFilter ? (
           <div className="flex flex-col items-center justify-center w-full py-16 px-4">
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-8 max-w-md text-center">
               <Package className="h-12 w-12 text-orange-300 mx-auto mb-4" />
-
               <p className="text-sm text-gray-600 mb-4">
                 A referência{" "}
                 <span className="font-bold text-orange-600">
@@ -2982,7 +1925,6 @@ export default function ProductFlowKanban() {
                 </span>{" "}
                 não foi criada ou já foi finalizada.
               </p>
-
               <Button
                 variant="outline"
                 size="sm"
@@ -2995,84 +1937,42 @@ export default function ProductFlowKanban() {
             </div>
           </div>
         ) : (
-          // Seu código existente do KanbanBoard
           unifiedStages.map((stage, index) => {
             const hasPermission = canUserEditStage(stage);
-            // const filteredItems = filterColumnItems(stage);
-
-            const filteredItems = filterColumnItems(stage); // ✅ USA O FILTRO
-
+            const filteredItems = filterColumnItems(stage);
             const isOverdueActive =
               activeColumnFilter.columnId === stage.id &&
               activeColumnFilter.filterType === "overdue";
-
             const isUpcomingActive =
               activeColumnFilter.columnId === stage.id &&
               activeColumnFilter.filterType === "upcoming";
 
             return (
               <KanbanColumn
-                key={`${stage.id}-${refreshKey}-${itemsPendingRemoval.size}`} // 🔥 CHAVE DINÂMICA
+                key={stage.id}
                 id={stage.id}
                 title={stage.name}
-                count={filteredItems.length} // ✅ USA filteredItems (já inclui todos os filtros)
+                count={filteredItems.length}
                 color={stage.color}
                 isFirstColumn={index === 0}
-                defaultDays={stage.defaultDays} // 🔥 PASSA OS DIAS PADRÃO
+                defaultDays={stage.defaultDays}
                 onDropItem={(itemId) => {
                   const allItems = unifiedStages.flatMap((s) => s.items);
                   const draggingItem = allItems.find((i) => i.id === itemId);
+                  if (!draggingItem) return;
 
-                  if (!draggingItem) {
-                    console.error("❌ Item não encontrado:", itemId);
-                    return;
-                  }
-
-                  console.log("🎯 Drop - Item sendo movido:", {
-                    itemId: draggingItem.id,
-                    title: draggingItem.title,
-                    flowName: draggingItem.flowName,
-                    flowColor: draggingItem.flowColor,
-                    currentStage: draggingItem.stageId,
-                    targetStageName: stage.name,
-                  });
-
-                  // 🔥 Busca o board do flow ORIGINAL do item
                   const itemBoard = boards.find(
                     (b) => b.id === draggingItem.flowId,
                   );
+                  if (!itemBoard) return;
 
-                  if (!itemBoard) {
-                    console.error(
-                      "❌ Board do item não encontrado:",
-                      draggingItem.flowId,
-                    );
-                    return;
-                  }
-
-                  // Encontra a stage com o mesmo nome no flow original
                   const correctStage = itemBoard.stages.find(
-                    (s) => s.name.toUpperCase() === stage.name.toUpperCase(),
+                    (s: { name: string }) =>
+                      s.name.toUpperCase() === stage.name.toUpperCase(),
                   );
+                  if (!correctStage) return;
 
-                  if (!correctStage) {
-                    console.error("❌ Stage não encontrada no flow original:", {
-                      stageName: stage.name,
-                      flowName: itemBoard.name,
-                      availableStages: itemBoard.stages.map((s) => s.name),
-                    });
-                    return;
-                  }
-
-                  const targetStageId = correctStage.id;
-
-                  console.log("✅ Drop - Stage encontrada:", {
-                    targetStageId,
-                    targetStageName: correctStage.name,
-                    flowName: itemBoard.name,
-                  });
-
-                  moveItem(itemId, targetStageId, stage.name);
+                  moveItem(itemId, correctStage.id, stage.name);
                 }}
                 onAddItem={
                   hasPermission ? () => handleCreateItem(stage.id) : undefined
@@ -3082,7 +1982,7 @@ export default function ProductFlowKanban() {
                   setStageName(stage.name);
                   setStageColor(stage.color || "#2D3436");
                   setStageAllowedRole(stage.allowedRole || "");
-                  setStageDefaultDays(stage.defaultDays ?? 1); // 🔥 CARREGA O VALOR
+                  setStageDefaultDays(stage.defaultDays ?? 1);
                   setIsStageModal(true);
                 }}
                 onDeleteClick={() => {
@@ -3137,81 +2037,68 @@ export default function ProductFlowKanban() {
                   </div>
                 )}
 
-                {filteredItems.map((item) => {
-                  // ✅ USA stage.items (já filtrado)
-                  console.log("Renderizando card:", {
-                    id: item.id,
-                    title: item.title,
-                    status: item.status,
-                    shouldShow: shouldShowItem(item),
-                    itemsPendingRemoval: Array.from(itemsPendingRemoval),
-                  });
-
-                  return (
-                    <KanbanCard
-                      key={item.id}
-                      id={item.id}
-                      title={item.title}
-                      subtitle={item.productRef}
-                      priorityColor={item.flowColor}
-                      dueDate={item.dueDate} // 🔥 ESSENCIAL: Passar a data para o card aqui
-                      coverImage={item.images[0]?.url}
-                      onDragStart={
-                        hasPermission
-                          ? (e) => {
-                              onDragStart(e, item.id);
-                            }
-                          : undefined
-                      }
-                      onDoubleClick={() => {
-                        setEditingItem(item);
-                        setIsModalReadOnly(!hasPermission);
-                        handleEditItem(item);
-                      }}
-                      onEdit={
-                        hasPermission
-                          ? () => {
-                              setEditingItem(item);
-                              setIsModalReadOnly(false);
-                              handleEditItem(item);
-                            }
-                          : undefined
-                      }
-                      onDelete={
-                        hasPermission
-                          ? () => {
-                              setItemToDelete({ type: "item", id: item.id });
-                              setDeleteModalOpen(true);
-                            }
-                          : undefined
-                      }
-                      onComplete={
-                        hasPermission
-                          ? () => handleOpenCompleteModal(item)
-                          : undefined
-                      }
-                      footer={
-                        <div className="flex justify-between items-center w-full">
-                          <span className="text-[10px] text-slate-400 font-bold">
-                            <Package size={10} className="inline mr-1" />
-                            {item.quantity}
-                          </span>
-                          <div
-                            className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
-                            style={{ backgroundColor: item.flowColor }}
-                          >
-                            {item.flowName}
-                          </div>
+                {filteredItems.map((item) => (
+                  <KanbanCard
+                    key={item.id}
+                    id={item.id}
+                    title={item.title}
+                    subtitle={item.productRef}
+                    priorityColor={item.flowColor}
+                    dueDate={item.dueDate}
+                    coverImage={item.images[0]?.url}
+                    onDragStart={
+                      hasPermission ? (e) => onDragStart(e, item.id) : undefined
+                    }
+                    onDoubleClick={() => {
+                      setEditingItem(item);
+                      setIsModalReadOnly(!hasPermission);
+                      handleEditItem(item);
+                    }}
+                    onEdit={
+                      hasPermission
+                        ? () => {
+                            setEditingItem(item);
+                            setIsModalReadOnly(false);
+                            handleEditItem(item);
+                          }
+                        : undefined
+                    }
+                    onDelete={
+                      hasPermission
+                        ? () => {
+                            setItemToDelete({ type: "item", id: item.id });
+                            setDeleteModalOpen(true);
+                          }
+                        : undefined
+                    }
+                    onComplete={
+                      hasPermission
+                        ? () => handleOpenCompleteModal(item)
+                        : undefined
+                    }
+                    footer={
+                      <div className="flex justify-between items-center w-full">
+                        <span className="text-[10px] text-slate-400 font-bold">
+                          <Package size={10} className="inline mr-1" />
+                          {item.quantity}
+                        </span>
+                        <div
+                          className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
+                          style={{ backgroundColor: item.flowColor }}
+                        >
+                          {item.flowName}
                         </div>
-                      }
-                    />
-                  );
-                })}
+                      </div>
+                    }
+                  />
+                ))}
               </KanbanColumn>
             );
           })
         )}
       </KanbanBoard>
+
+      {/* Modais (mesmos do código original) */}
       <FlowItemModal
         isOpen={isItemModal}
         onClose={() => {
@@ -3230,7 +2117,7 @@ export default function ProductFlowKanban() {
         currentUserSystemRole={user?.role}
         isReadOnly={false}
         hasMultipleFlows={selectedFlowIds.length > 1}
-        selectedFlowIds={selectedFlowIds} // 🔥 PASSA O selectedFlowIds
+        selectedFlowIds={selectedFlowIds}
         fetchStagesForFlow={async (flowId) => {
           try {
             const response = await api.get(`/flow/${flowId}/stages`);
@@ -3240,7 +2127,7 @@ export default function ProductFlowKanban() {
             return [];
           }
         }}
-        onDeadlineUpdate={refreshBoardsAfterDeadlineUpdate}
+        onDeadlineUpdate={refreshBoardsAfterAction}
       />
 
       <FlowItemModal
@@ -3248,7 +2135,7 @@ export default function ProductFlowKanban() {
         onClose={() => {
           setIsEditItemModal(false);
           setEditingItem(null);
-          setCurrentItemStages([]); // 🔥 Limpa as stages
+          setCurrentItemStages([]);
           setActiveStageId(null);
         }}
         initialData={editingItem}
@@ -3256,7 +2143,7 @@ export default function ProductFlowKanban() {
         isLoading={isSubmitting || isModalLoading}
         users={users}
         suppliers={suppliers}
-        stages={currentItemStages} // 🔥 PASSA AS STAGES ATUAIS
+        stages={currentItemStages}
         flows={flows}
         initialStageId={activeStageId}
         onAdvance={handleAdvanceItem}
@@ -3269,18 +2156,10 @@ export default function ProductFlowKanban() {
         currentUserSystemRole={user?.role}
         isReadOnly={isModalReadOnly}
         hasMultipleFlows={selectedFlowIds.length > 1}
-        // 🔥 FUNÇÃO PARA BUSCAR STAGES DE UM FLOW (USADA QUANDO MUDA O FLUXO)
         onFlowChange={async (flowId) => {
           try {
-            console.log("🔄 Buscando stages para flow:", flowId);
-
-            setActiveStageId(null);
-
             const response = await api.get(`/flow/${flowId}/stages`);
-            console.log("✅ Stages carregadas:", response.data.length);
-
-            setCurrentItemStages(response.data); // 🔥 ATUALIZA O ESTADO
-
+            setCurrentItemStages(response.data);
             return response.data;
           } catch (error) {
             console.error("Erro ao buscar stages:", error);
@@ -3289,13 +2168,15 @@ export default function ProductFlowKanban() {
           }
         }}
       />
+
       <ConfirmDeleteModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={handleDeleteExecute}
-        loading={isDeleting} // 🔥 AGORA PASSA O ESTADO DE LOADING
+        loading={isDeleting}
         title={`Excluir ${itemToDelete?.type === "item" ? "produto" : itemToDelete?.type === "template" ? "template" : "etapa/fluxo"}?`}
       />
+
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl bg-white rounded-xl">
           <div className="px-6 py-4 border-b sticky top-0 bg-white z-20 flex justify-between items-center">
@@ -3370,6 +2251,7 @@ export default function ProductFlowKanban() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       {/* Modal de Etapa */}
       <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
         <DialogContent className="bg-white">
@@ -3377,7 +2259,6 @@ export default function ProductFlowKanban() {
             <DialogTitle>{editingStage ? "Editar" : "Nova"} Etapa</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4 text-sm font-medium">
-            {/* Nome da Etapa */}
             <div className="space-y-2">
               <Label>Nome da Etapa</Label>
               <Input
@@ -3387,7 +2268,6 @@ export default function ProductFlowKanban() {
               />
             </div>
 
-            {/* 🔥 NOVO CAMPO: Dias Padrão para Conclusão */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Calendar size={16} className="text-orange-500" />
@@ -3405,11 +2285,9 @@ export default function ProductFlowKanban() {
               />
               <p className="text-xs text-muted-foreground">
                 Quantos dias esta etapa normalmente leva para ser concluída?
-                Este valor será usado como padrão para novos itens.
               </p>
             </div>
 
-            {/* Cargo Permitido */}
             <div className="space-y-2">
               <Label>Cargo Permitido (Quem pode mover?)</Label>
               <Select
@@ -3438,7 +2316,6 @@ export default function ProductFlowKanban() {
               </p>
             </div>
 
-            {/* Cor da Etapa */}
             <div className="space-y-2">
               <Label>Cor da Etapa</Label>
               <div className="flex gap-2 items-center">
@@ -3470,6 +2347,8 @@ export default function ProductFlowKanban() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Fluxo */}
       <Dialog open={isFlowModal} onOpenChange={setIsFlowModal}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -3559,6 +2438,8 @@ export default function ProductFlowKanban() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Edição de Fluxo */}
       <Dialog open={isEditFlowModalOpen} onOpenChange={setIsEditFlowModalOpen}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -3647,6 +2528,8 @@ export default function ProductFlowKanban() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Conclusão de Etapa */}
       <CompleteStageModal
         isOpen={isCompleteStageModalOpen}
         onClose={() => {
@@ -3667,6 +2550,8 @@ export default function ProductFlowKanban() {
           completingItem?.quantity ? completingItem.quantity > 0 : false
         }
       />
+
+      {/* Modal de Drag com Responsável */}
       <CompleteStageModal
         isOpen={isDragModalOpen}
         onClose={() => {
@@ -3674,7 +2559,7 @@ export default function ProductFlowKanban() {
           setDragItemId(null);
           setDragTargetStage(null);
         }}
-        onConfirm={handleDragWithResponsible} // 🔥 Agora passa quantity
+        onConfirm={handleDragWithResponsible}
         itemTitle={
           unifiedStages.flatMap((s) => s.items).find((i) => i.id === dragItemId)
             ?.title || ""
@@ -3683,10 +2568,9 @@ export default function ProductFlowKanban() {
           unifiedStages.find((s) => s.items.some((i) => i.id === dragItemId))
             ?.name || ""
         }
-        nextStage={dragTargetStage} // 🔥 AGORA JÁ VEM COM AS FLAGS!
+        nextStage={dragTargetStage}
         isLoading={isSubmitting}
         currentQuantity={
-          // 🔥 Passa a quantidade atual do item
           unifiedStages.flatMap((s) => s.items).find((i) => i.id === dragItemId)
             ?.quantity
         }
@@ -3698,7 +2582,8 @@ export default function ProductFlowKanban() {
             : false
         }
       />
-      {/* 🔥 ALERT DIALOG SIMPLES */}
+
+      {/* Alert Dialog para Template */}
       <AlertDialog
         open={isTemplateAlertOpen}
         onOpenChange={setIsTemplateAlertOpen}
