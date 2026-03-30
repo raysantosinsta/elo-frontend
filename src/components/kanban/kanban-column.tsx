@@ -25,6 +25,9 @@ interface KanbanColumnProps {
   
   // NOVA PROP: indica se é a primeira coluna
   isFirstColumn?: boolean;
+
+  // 🔥 NOVA PROP: controla se o botão de adicionar deve aparecer
+  showAddButton?: boolean;
   
   // Novas props para filtros
   onFilterOverdue?: () => void;
@@ -48,7 +51,7 @@ export function KanbanColumn({
   onDeleteClick,
   onDropItem,
   children,
-  
+  showAddButton = false,
   // NOVA PROP com valor padrão false
   isFirstColumn = false,
   
@@ -116,7 +119,7 @@ export function KanbanColumn({
           )}
 
           {/* 🔥 BOTÃO DE ADICIONAR - SÓ APARECE NA PRIMEIRA COLUNA */}
-          {handleAdd && isFirstColumn && (
+          {handleAdd && (showAddButton || isFirstColumn) && (
             <Button
               variant="ghost"
               size="icon"

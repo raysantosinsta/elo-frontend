@@ -736,6 +736,7 @@ export default function ProductKanban() {
               count={colTasks.length}
               color={isDoneColumn ? "#27AE60" : undefined}
               onDropItem={moveItem}
+              showAddButton={!isDoneColumn}  // 🔥 MOSTRA BOTÃO EM TODAS AS COLUNAS EXCETO CONCLUÍDO
               onAddClick={
                 isDoneColumn ? undefined : () => handleAddTaskFromColumn(col.id)
               }
