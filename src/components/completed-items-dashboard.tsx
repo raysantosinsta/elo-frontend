@@ -293,10 +293,15 @@ export function CompletedItemsDashboard() {
         limit: itemsPerPage,
       });
 
-      // Carregar estatísticas
-      const statsResponse = await api.get(
-        `/flow/completed-items/stats?period=${selectedPeriod}`,
-      );
+      // 🔥 CORREÇÃO: Carregar estatísticas considerando o fluxo selecionado
+      const statsUrl =
+        selectedFlowId !== "all"
+          ? `/flow/completed-items/stats?period=${selectedPeriod}&flowId=${selectedFlowId}`
+          : `/flow/completed-items/stats?period=${selectedPeriod}`;
+
+      console.log("📊 URL das estatísticas:", statsUrl);
+
+      const statsResponse = await api.get(statsUrl);
       setStats(statsResponse.data);
 
       // Carregar fluxos
@@ -650,12 +655,13 @@ export function CompletedItemsDashboard() {
               </div>
             </div>
 
-            {/* Filtro por Fluxo */}
+            {/* Filtro por Fluxo - Única instância */}
             <div className="col-span-1">
               <label className="text-xs text-slate-500 mb-1 block">Fluxo</label>
               <Select
                 value={selectedFlowId}
                 onValueChange={(value) => {
+                  console.log("🏭 Mudando fluxo para:", value);
                   setSelectedFlowId(value);
                   setCurrentPage(1);
                 }}
@@ -675,42 +681,6 @@ export function CompletedItemsDashboard() {
                         {flow.count > 0 && (
                           <Badge variant="secondary" className="ml-2">
                             {flow.count}
-                          </Badge>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Filtro por Responsável */}
-            <div className="col-span-1">
-              <label className="text-xs text-slate-500 mb-1 block">
-                Responsável
-              </label>
-              <Select
-                value={selectedResponsibleId}
-                onValueChange={(value) => {
-                  setSelectedResponsibleId(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger>
-                  <Users size={16} className="mr-2" />
-                  <SelectValue placeholder="Todos">
-                    {getSelectedResponsibleName()}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os responsáveis</SelectItem>
-                  {responsibles.map((responsible) => (
-                    <SelectItem key={responsible.id} value={responsible.id}>
-                      <div className="flex items-center justify-between w-full gap-4">
-                        <span>{responsible.name}</span>
-                        {responsible.count > 0 && (
-                          <Badge variant="secondary" className="ml-2">
-                            {responsible.count}
                           </Badge>
                         )}
                       </div>
@@ -746,18 +716,17 @@ export function CompletedItemsDashboard() {
             </div>
 
             {/* Botão Limpar Filtros */}
-            {hasActiveFilters() && (
-              <div className="col-span-1">
-                <Button
-                  variant="ghost"
-                  onClick={clearFilters}
-                  className="gap-2 text-slate-500 w-full"
-                >
-                  <RotateCcw size={16} />
-                  Limpar filtros
-                </Button>
-              </div>
-            )}
+            <div className="col-span-1">
+              <Button
+                variant="outline"
+                onClick={clearFilters}
+                className="gap-2 w-full"
+                disabled={!hasActiveFilters()}
+              >
+                <RotateCcw size={16} />
+                Limpar filtros
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

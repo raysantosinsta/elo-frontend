@@ -352,7 +352,7 @@ export default function ProductFlowKanban() {
   const [hasShownEmptyRefToast, setHasShownEmptyRefToast] = useState(false);
   const [isCreatingFlow, setIsCreatingFlow] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [columnOptions, setColumnOptions] = useState<string[]>([]);
+  // const [columnOptions, setColumnOptions] = useState<string[]>([]);
 
   // ===========================================================================
   // 🎯 ESTADO PARA ITENS AGUARDANDO REMOÇÃO (3 segundos)
@@ -464,18 +464,17 @@ export default function ProductFlowKanban() {
   };
 
   // useEffect para atualizar as opções de coluna quando os boards mudarem
-  useEffect(() => {
-    const uniqueColumnNames = new Set<string>();
-    boards.forEach((board) => {
-      board.stages.forEach((stage: { name: string }) => {
-        uniqueColumnNames.add(stage.name);
-      });
+const columnOptions = useMemo(() => {
+  const uniqueColumnNames = new Set<string>();
+  boards.forEach((board) => {
+    board.stages.forEach((stage: { name: string }) => {
+      uniqueColumnNames.add(stage.name);
     });
-    const sortedColumns = Array.from(uniqueColumnNames).sort((a, b) =>
-      a.localeCompare(b, "pt-BR"),
-    );
-    setColumnOptions(sortedColumns);
-  }, [boards]);
+  });
+  return Array.from(uniqueColumnNames).sort((a, b) =>
+    a.localeCompare(b, "pt-BR"),
+  );
+}, [boards]);
 
   useEffect(() => {
     console.log("📊 Boards atualizados via useQuery:", {
@@ -1917,7 +1916,7 @@ export default function ProductFlowKanban() {
         {hasActiveProductRefFilter && hasNoItemsAfterFilter ? (
           <div className="flex flex-col items-center justify-center w-full py-16 px-4">
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-8 max-w-md text-center">
-              <Package className="h-12 w-12 text-orange-300 mx-auto mb-4" />
+              <Package className="h-12 w-12 text-orange-300 mx-auto mb-4" /> {/* TODO: verifica qual icone ta errado ao usar css, indentificar e corrigir css */}
               <p className="text-sm text-gray-600 mb-4">
                 A referência{" "}
                 <span className="font-bold text-orange-600">
