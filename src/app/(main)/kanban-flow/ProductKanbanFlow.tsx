@@ -365,6 +365,7 @@ export default function ProductFlowKanban() {
   const [stageDefaultDays, setStageDefaultDays] = useState<number>(1);
   const [openColumnSelector, setOpenColumnSelector] = useState(false);
 
+
   const createItemMutation = useCreateFlowItem();
 
   // ===========================================================================
@@ -1706,7 +1707,7 @@ export default function ProductFlowKanban() {
                 aria-expanded={openColumnSelector}
                 className="h-8 w-full justify-between bg-background pl-8 pr-2 text-xs font-normal border-input hover:bg-accent"
               >
-                <div className="flex items-center gap-2 truncate">
+                <div className="flex items-center gap-2 truncate pl-6 relative">
                   <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
                   <span className="truncate">
                     {columnNameFilter || "Todas as colunas"}
