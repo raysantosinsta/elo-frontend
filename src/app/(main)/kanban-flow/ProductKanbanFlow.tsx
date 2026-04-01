@@ -16,6 +16,7 @@ import {
   Package,
   X,
 } from "lucide-react";
+import { useCreateFlowItem } from "@/hooks/use-create-flow-item";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -364,6 +365,8 @@ export default function ProductFlowKanban() {
   const [stageDefaultDays, setStageDefaultDays] = useState<number>(1);
   const [openColumnSelector, setOpenColumnSelector] = useState(false);
 
+  const createItemMutation = useCreateFlowItem();
+
   // ===========================================================================
   // 🔥 NOVO: HOOK useKanbanBoards
   // ===========================================================================
@@ -464,17 +467,17 @@ export default function ProductFlowKanban() {
   };
 
   // useEffect para atualizar as opções de coluna quando os boards mudarem
-const columnOptions = useMemo(() => {
-  const uniqueColumnNames = new Set<string>();
-  boards.forEach((board) => {
-    board.stages.forEach((stage: { name: string }) => {
-      uniqueColumnNames.add(stage.name);
+  const columnOptions = useMemo(() => {
+    const uniqueColumnNames = new Set<string>();
+    boards.forEach((board) => {
+      board.stages.forEach((stage: { name: string }) => {
+        uniqueColumnNames.add(stage.name);
+      });
     });
-  });
-  return Array.from(uniqueColumnNames).sort((a, b) =>
-    a.localeCompare(b, "pt-BR"),
-  );
-}, [boards]);
+    return Array.from(uniqueColumnNames).sort((a, b) =>
+      a.localeCompare(b, "pt-BR"),
+    );
+  }, [boards]);
 
   useEffect(() => {
     console.log("📊 Boards atualizados via useQuery:", {
@@ -1231,7 +1234,7 @@ const columnOptions = useMemo(() => {
   };
 
   // ===========================================================================
-  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO)
+  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - COM REACT QUERY
   // ===========================================================================
   const handleItemSubmit = async (
     values: any,
@@ -1249,6 +1252,7 @@ const columnOptions = useMemo(() => {
     setIsSubmitting(true);
 
     try {
+      // 🔥 FUNÇÃO DE UPLOAD DE MÍDIA (mantém igual)
       const uploadMedia = async (itemId: string, files: any) => {
         const upload = async (file: File, type: string) => {
           const fd = new FormData();
@@ -1282,7 +1286,7 @@ const columnOptions = useMemo(() => {
         return [];
       };
 
-      // MODO EDIÇÃO
+      // 🔥 MODO EDIÇÃO
       if (editingItem) {
         const updatePayload = {
           ...values,
@@ -1304,7 +1308,7 @@ const columnOptions = useMemo(() => {
 
         toast.success("Item atualizado com sucesso!");
       }
-      // MODO CRIAÇÃO
+      // 🔥 MODO CRIAÇÃO
       else {
         if (!values.flowId || !values.stageId) {
           toast.error("Selecione uma coleção e etapa");
@@ -1347,14 +1351,33 @@ const columnOptions = useMemo(() => {
         toast.success("Item criado com sucesso!");
       }
 
+      // ✅ Fecha os modais
       setIsItemModal(false);
       setIsEditItemModal(false);
       setEditingItem(null);
       setCurrentItemStages([]);
       setActiveStageId(null);
 
-      // 🔥 Atualiza os boards após a ação
-      await refreshBoardsAfterAction();
+      // 🔥🔥🔥 SUBSTITUI O refreshBoardsAfterAction PELO REACT QUERY 🔥🔥🔥
+      // EM VEZ DE refreshBoardsAfterAction(), USA O QUERY CLIENT
+
+      // Invalida todas as queries relevantes
+      queryClient.invalidateQueries({ queryKey: ["kanban-boards"] });
+      queryClient.invalidateQueries({ queryKey: ["all-items"] });
+      queryClient.invalidateQueries({ queryKey: ["all-flows"] });
+
+      // Se tiver um flowId específico, invalida ele também
+      if (values.flowId) {
+        queryClient.invalidateQueries({
+          queryKey: ["flow-board", values.flowId],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["selected-flow", values.flowId],
+        });
+      }
+
+      // Invalida todas as queries que começam com "flow"
+      queryClient.invalidateQueries({ queryKey: ["flow"], exact: false });
     } catch (error: any) {
       console.error("❌ [handleItemSubmit] ERRO:", error);
 
@@ -1916,7 +1939,8 @@ const columnOptions = useMemo(() => {
         {hasActiveProductRefFilter && hasNoItemsAfterFilter ? (
           <div className="flex flex-col items-center justify-center w-full py-16 px-4">
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-8 max-w-md text-center">
-              <Package className="h-12 w-12 text-orange-300 mx-auto mb-4" /> {/* TODO: verifica qual icone ta errado ao usar css, indentificar e corrigir css */}
+              <Package className="h-12 w-12 text-orange-300 mx-auto mb-4" />{" "}
+              {/* TODO: verifica qual icone ta errado ao usar css, indentificar e corrigir css */}
               <p className="text-sm text-gray-600 mb-4">
                 A referência{" "}
                 <span className="font-bold text-orange-600">

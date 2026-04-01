@@ -7,12 +7,16 @@ import {
   AlertCircle,
   AlertTriangle,
   Calendar,
+  CalendarClock,
   Edit,
   EyeOff,
   Factory,
+  History,
+  Info,
   Layers,
   Loader2,
   Lock,
+  Paperclip,
   Plus,
   Trash2,
   User,
@@ -1156,23 +1160,72 @@ export function FlowItemModal({
                     onValueChange={setActiveTab}
                     className="w-full"
                   >
-                    <TabsList className="grid w-full grid-cols-4 mb-6 bg-slate-100 p-1 rounded-lg">
-                      <TabsTrigger value="details" className="py-2.5 text-sm">
-                        Detalhes & Datas
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="stages-deadlines"
-                        className="py-2.5 text-sm"
-                      >
-                        Prazos por Etapa
-                      </TabsTrigger>
-                      <TabsTrigger value="media" className="py-2.5 text-sm">
-                        Mídias & Anexos
-                      </TabsTrigger>
-                      <TabsTrigger value="history" className="py-2.5 text-sm">
-                        Histórico
-                      </TabsTrigger>
-                    </TabsList>
+                   <TabsList className="w-full bg-transparent p-0 mb-6">
+  <div className="grid w-full grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+    {/* Tab 1 - Detalhes */}
+    <TabsTrigger
+      value="details"
+      className={cn(
+        "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
+        "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
+        "data-[state=active]:scale-[1.02]",
+        "hover:bg-orange-100 hover:text-orange-700",
+        "bg-white border border-slate-200 text-slate-600",
+      )}
+    >
+      <Info size={16} className="shrink-0" />
+      <span className="hidden sm:inline">Detalhes & Datas</span>
+      <span className="sm:hidden">Detalhes</span>
+    </TabsTrigger>
+
+    {/* Tab 2 - Prazos por Etapa */}
+    <TabsTrigger
+      value="stages-deadlines"
+      className={cn(
+        "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
+        "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
+        "data-[state=active]:scale-[1.02]",
+        "hover:bg-orange-100 hover:text-orange-700",
+        "bg-white border border-slate-200 text-slate-600",
+      )}
+    >
+      <CalendarClock size={16} className="shrink-0" />
+      <span className="hidden sm:inline">Prazos por Etapa</span>
+      <span className="sm:hidden">Prazos</span>
+    </TabsTrigger>
+
+    {/* Tab 3 - Mídias e Anexos */}
+    <TabsTrigger
+      value="media"
+      className={cn(
+        "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
+        "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
+        "data-[state=active]:scale-[1.02]",
+        "hover:bg-orange-100 hover:text-orange-700",
+        "bg-white border border-slate-200 text-slate-600",
+      )}
+    >
+      <Paperclip size={16} className="shrink-0" />
+      <span className="hidden sm:inline">Mídias & Anexos</span>
+      <span className="sm:hidden">Anexos</span>
+    </TabsTrigger>
+
+    {/* Tab 4 - Histórico */}
+    <TabsTrigger
+      value="history"
+      className={cn(
+        "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
+        "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
+        "data-[state=active]:scale-[1.02]",
+        "hover:bg-orange-100 hover:text-orange-700",
+        "bg-white border border-slate-200 text-slate-600",
+      )}
+    >
+      <History size={16} className="shrink-0" />
+      <span>Histórico</span>
+    </TabsTrigger>
+  </div>
+</TabsList>
 
                     {/* 🔥 NOVO: Banner de Prazo Final (Visível em todas as abas para referência) */}
                     <div className="mb-6 flex items-center justify-between p-4 bg-orange-50 border border-orange-100 rounded-xl">
@@ -1200,7 +1253,7 @@ export function FlowItemModal({
                     </div>
 
                     {/* TAB DETALHES */}
-                    <TabsContent value="details" className="space-y-6">
+                    <TabsContent value="details" className="space-y-6 mt-0">
                       {/* ====================================================== */}
                       {/* 🔥 SEÇÃO 1: QUANDO VEIO DO CLIQUE */}
                       {/* ====================================================== */}
@@ -1612,7 +1665,7 @@ export function FlowItemModal({
                     </TabsContent>
 
                     {/* TAB MÍDIA */}
-                    <TabsContent value="media" className="space-y-6">
+                    <TabsContent value="media" className="space-y-6 mt-0">
                       {/* IMAGENS */}
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
@@ -1954,7 +2007,7 @@ export function FlowItemModal({
                     </TabsContent>
 
                     {/* TAB HISTÓRICO */}
-                    <TabsContent value="history" className="space-y-4">
+                    <TabsContent value="history" className="space-y-4 mt-0">
                       <FlowHistoryModal
                         logs={historyLogs}
                         isLoading={isLoadingHistory}
@@ -1967,7 +2020,7 @@ export function FlowItemModal({
                     {/* 🔥 NOVA TAB DE PRAZOS POR ETAPA */}
                     <TabsContent
                       value="stages-deadlines"
-                      className="h-[calc(100vh-300px)] md:h-[calc(90vh-250px)]"
+                      className="h-[calc(100vh-300px)] md:h-[calc(90vh-250px)] mt-0"
                     >
                       <StagesDeadlineTab
                         itemId={initialData?.id}

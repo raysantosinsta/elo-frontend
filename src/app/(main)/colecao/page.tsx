@@ -19,14 +19,14 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompanySettings } from "@/hooks/use-company-settings";
 import { api } from "@/services/api";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query"; // 👈 ADICIONAR useQueryClient
 import {
   AlertCircle,
   CalendarClock,
   Filter,
   Loader2,
   Package,
-  RefreshCw
+  RefreshCw,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -41,7 +41,7 @@ import {
   YAxis,
 } from "recharts";
 
-// --- INTERFACES ---
+// --- INTERFACES (mantém igual) ---
 
 interface Stage {
   id: string;
@@ -89,15 +89,19 @@ export default function RealTimeFlowDashboard() {
   const { user } = useAuth();
   const [selectedFlowId, setSelectedFlowId] = useState<string>("all");
   const router = useRouter();
+  const queryClient = useQueryClient(); // 👈 ADICIONAR
 
-   // 🔥 NOVO: Buscar configuração da empresa
-  const { data: companySettings, isLoading: loadingSettings } = useCompanySettings(
-    user?.company?.id || ""
-  );
+  // Buscar configuração da empresa
+  const { data: companySettings, isLoading: loadingSettings } =
+    useCompanySettings(user?.company?.id || "");
 
-  const notificationDays = companySettings?.notificationDays ?? 7; // fallback 7
-  // Adicione isso no topo do componente, após as interfaces
-const FINALIZED_STATUSES = ['CONCLUIDO', 'ENTREGUE', 'FINALIZADO', 'CANCELADO'];
+  const notificationDays = companySettings?.notificationDays ?? 7;
+  const FINALIZED_STATUSES = [
+    "CONCLUIDO",
+    "ENTREGUE",
+    "FINALIZADO",
+    "CANCELADO",
+  ];
 
   // --- SERVIÇOS DE BUSCA ---
   const fetchData = async (endpoint: string) => {
@@ -110,7 +114,7 @@ const FINALIZED_STATUSES = ['CONCLUIDO', 'ENTREGUE', 'FINALIZADO', 'CANCELADO'];
     }
   };
 
-  // --- QUERIES (React Query) ---
+  // 🔥 CONFIGURAÇÃO MELHORADA DAS QUERIES
   const {
     data: allFlows = [],
     isLoading: loadingFlows,
@@ -124,6 +128,10 @@ const FINALIZED_STATUSES = ['CONCLUIDO', 'ENTREGUE', 'FINALIZADO', 'CANCELADO'];
       );
     },
     enabled: !!user,
+    staleTime: 0, // 🔥 SEMPRE STALE
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000, // 🔥 ATUALIZA A CADA 30 SEGUNDOS (opcional)
   });
 
   const {
@@ -137,6 +145,9 @@ const FINALIZED_STATUSES = ['CONCLUIDO', 'ENTREGUE', 'FINALIZADO', 'CANCELADO'];
       return await fetchData(`/flow/${selectedFlowId}/board`);
     },
     enabled: !!user && allFlows.length > 0,
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   const {
@@ -153,21 +164,48 @@ const FINALIZED_STATUSES = ['CONCLUIDO', 'ENTREGUE', 'FINALIZADO', 'CANCELADO'];
       return await fetchData(endpoint);
     },
     enabled: !!user && allFlows.length > 0,
-  staleTime: 0, // 🔥 FORÇA SEMPRE BUSCAR DADOS NOVOS
-  refetchOnMount: true, // 🔥 REFETCH AO MONTAR
-  refetchOnWindowFocus: true, // 🔥 REFETCH AO FOCAR NA JANELA
+    staleTime: 0, // 🔥 FORÇA SEMPRE BUSCAR DADOS NOVOS
+    refetchOnMount: true, // 🔥 REFETCH AO MONTAR
+    refetchOnWindowFocus: true, // 🔥 REFETCH AO FOCAR NA JANELA
+    refetchInterval: 10000, // 🔥 ATUALIZA A CADA 10 SEGUNDOS (opcional, mas garante sincronia)
   });
 
-  
+  // 🔥 EFECT PARA ESCUTAR INVALIDAÇÕES E ATUALIZAR AUTOMATICAMENTE
+  // useEffect(() => {
+  //   // Função para forçar refetch quando a query for invalidada
+  //   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+  //     if (event.type === "updated") {
+  //       const query = event.query;
+  //       const queryKey = query.queryKey;
 
-  // --- LÓGICA DE FILTRAGEM (O React Compiler otimiza isso automaticamente) ---
+  //       // Se alguma query relacionada foi invalidada, faz refetch
+  //       if (
+  //         queryKey[0] === "kanban-boards" ||
+  //         queryKey[0] === "all-items" ||
+  //         queryKey[0] === "all-flows" ||
+  //         queryKey[0] === "flow-board" ||
+  //         queryKey[0] === "selected-flow"
+  //       ) {
+  //         console.log(
+  //           "🔄 [Dashboard] Detectada invalidação, atualizando dados...",
+  //         );
+  //         refetchItems();
+  //         refetchSelected();
+  //       }
+  //     }
+  //   });
+
+  //   return () => unsubscribe();
+  // }, [queryClient, refetchItems, refetchSelected]);
+
+  // --- LÓGICA DE FILTRAGEM ---
   const today = new Date();
   const todayStr = today.toISOString().split("T")[0];
   const notificationLimit = new Date();
   notificationLimit.setDate(today.getDate() + notificationDays);
   const notificationLimitStr = notificationLimit.toISOString().split("T")[0];
 
- const overdueItems = allItems.filter((item) => {
+  const overdueItems = allItems.filter((item) => {
     if (!item.dueDate || FINALIZED_STATUSES.includes(item.status)) return false;
     return item.dueDate.split("T")[0] < todayStr;
   });
@@ -178,54 +216,59 @@ const FINALIZED_STATUSES = ['CONCLUIDO', 'ENTREGUE', 'FINALIZADO', 'CANCELADO'];
     return date >= todayStr && date <= notificationLimitStr;
   });
 
-useEffect(() => {
-  if (allItems.length > 0) {
-    const finalizedItems = allItems.filter(item => 
-      FINALIZED_STATUSES.includes(item.status)
-    );
-    console.log(`📊 Total de itens: ${allItems.length}`);
-    console.log(`📊 Itens FINALIZADOS (${FINALIZED_STATUSES.join(', ')}): ${finalizedItems.length}`);
-    console.log(`📊 Atrasados: ${overdueItems.length}`);
-    console.log(`📊 Próximos 7 dias: ${upcomingItems.length}`);
-    
-    if (finalizedItems.length > 0) {
-      console.warn('⚠️ ATENÇÃO: Itens finalizados sendo retornados!');
-      console.log('Status encontrados:', [...new Set(allItems.map(i => i.status))]);
+  // 🔥 CALCULA ITENS EM PRODUÇÃO (remove os finalizados)
+  const productionItems = allItems.filter((item) => {
+    return !FINALIZED_STATUSES.includes(item.status);
+  });
+
+  useEffect(() => {
+    if (allItems.length > 0) {
+      const finalizedItems = allItems.filter((item) =>
+        FINALIZED_STATUSES.includes(item.status),
+      );
+      console.log(`📊 Total de itens: ${allItems.length}`);
+      console.log(`📊 Itens FINALIZADOS: ${finalizedItems.length}`);
+      console.log(`📊 Atrasados: ${overdueItems.length}`);
+      console.log(
+        `📊 Próximos ${notificationDays} dias: ${upcomingItems.length}`,
+      );
+      console.log(`📊 Em Produção: ${productionItems.length}`);
     }
-  }
-}, [allItems, overdueItems, upcomingItems]);
+  }, [
+    allItems,
+    overdueItems,
+    upcomingItems,
+    productionItems,
+    notificationDays,
+  ]);
 
   const handleCardClick = (filterType: "overdue" | "upcoming") => {
     const params = new URLSearchParams();
 
-    // 1. Define o tipo de filtro
     params.set("filter", filterType);
     params.set("dateType", "dueDate");
 
-    // 2. Seleciona os itens baseados no filtro para extrair os IDs de fluxo
     const sourceItems = filterType === "overdue" ? overdueItems : upcomingItems;
 
-    // 3. Extrai IDs únicos de fluxos que possuem itens nesse estado
     const uniqueFlowIds = Array.from(
-      new Set(sourceItems.map((item) => item.flow?.id).filter(Boolean))
+      new Set(sourceItems.map((item) => item.flow?.id).filter(Boolean)),
     );
 
-    console.log(`🔗 [Dashboard] Redirecionando. Filtro: ${filterType}, Fluxos afetados:`, uniqueFlowIds);
+    console.log(
+      `🔗 [Dashboard] Redirecionando. Filtro: ${filterType}, Fluxos afetados:`,
+      uniqueFlowIds,
+    );
 
-    // 4. Lógica de navegação
     if (selectedFlowId !== "all") {
-      // Se o usuário já filtrou o Dashboard por um fluxo específico, mantém só ele
       params.set("flowId", selectedFlowId);
     } else if (uniqueFlowIds.length > 0) {
-      // Se está em "Todos os Fluxos", envia a lista de quem tem itens atrasados
       params.set("flowIds", uniqueFlowIds.join(","));
     }
 
-    // Se for "upcoming", já envia o range de datas
     if (filterType === "upcoming") {
       const todayStr = new Date().toISOString().split("T")[0];
       const target = new Date();
-      target.setDate(target.getDate() + notificationDays); // 🔥 USAR notificationDays
+      target.setDate(target.getDate() + notificationDays);
       const targetStr = target.toISOString().split("T")[0];
       params.set("startDate", todayStr);
       params.set("endDate", targetStr);
@@ -238,7 +281,12 @@ useEffect(() => {
   const chartData = (selectedFlow?.stages || [])
     .map((s) => ({
       name: s.name,
-      total: s.items?.length || s._count?.items || 0,
+      total:
+        s.items?.filter(
+          (item: any) => !FINALIZED_STATUSES.includes(item.status),
+        )?.length ||
+        s._count?.items ||
+        0,
       color: s.color || "#3b82f6",
       order: s.order,
     }))
@@ -254,13 +302,17 @@ useEffect(() => {
     const stages = selectedFlow.stages;
     const lastStage = [...stages].sort((a, b) => b.order - a.order)[0];
 
-    const totalItems = stages.reduce(
-      (acc, s) =>
-        s.id === lastStage.id
-          ? acc
-          : acc + (s.items?.length || s._count?.items || 0),
-      0,
-    );
+    const totalItems = stages.reduce((acc, s) => {
+      // 🔥 SÓ CONTA ITENS NÃO FINALIZADOS
+      const itemsCount =
+        s.items?.filter(
+          (item: any) => !FINALIZED_STATUSES.includes(item.status),
+        )?.length ||
+        s._count?.items ||
+        0;
+
+      return s.id === lastStage.id ? acc : acc + itemsCount;
+    }, 0);
 
     return { totalItems, totalStages: stages.length };
   };
@@ -271,15 +323,20 @@ useEffect(() => {
     const stageGroups: Record<string, Stage> = {};
     flows.forEach((f) => {
       f.stages?.forEach((s) => {
+        const nonFinalizedItems =
+          s.items?.filter(
+            (item: any) => !FINALIZED_STATUSES.includes(item.status),
+          ) || [];
+
         if (!stageGroups[s.name]) {
           stageGroups[s.name] = {
             ...s,
-            items: [...(s.items || [])],
-            _count: { items: s.items?.length || 0 },
+            items: [...nonFinalizedItems],
+            _count: { items: nonFinalizedItems.length },
           };
         } else {
-          stageGroups[s.name].items.push(...(s.items || []));
-          stageGroups[s.name]._count!.items += s.items?.length || 0;
+          stageGroups[s.name].items.push(...nonFinalizedItems);
+          stageGroups[s.name]._count!.items += nonFinalizedItems.length;
         }
       });
     });
@@ -298,11 +355,16 @@ useEffect(() => {
       name: "Todos os Fluxos",
       color: "#64748b",
       itemCount: allFlows.reduce((acc, f) => {
-        // Soma os itens de todos os fluxos
-        const flowTotal = f.stages?.reduce(
-          (sum, stage) => sum + (stage.items?.length || stage._count?.items || 0),
-          0
-        ) || 0;
+        const flowTotal =
+          f.stages?.reduce((sum, stage) => {
+            const itemsCount =
+              stage.items?.filter(
+                (item: any) => !FINALIZED_STATUSES.includes(item.status),
+              )?.length ||
+              stage._count?.items ||
+              0;
+            return sum + itemsCount;
+          }, 0) || 0;
         return acc + flowTotal;
       }, 0),
     },
@@ -310,12 +372,26 @@ useEffect(() => {
       id: f.id,
       name: f.name,
       color: f.color,
-      itemCount: f.stages?.reduce(
-        (acc, stage) => acc + (stage.items?.length || stage._count?.items || 0),
-        0
-      ) || 0,
+      itemCount:
+        f.stages?.reduce((acc, stage) => {
+          const itemsCount =
+            stage.items?.filter(
+              (item: any) => !FINALIZED_STATUSES.includes(item.status),
+            )?.length ||
+            stage._count?.items ||
+            0;
+          return acc + itemsCount;
+        }, 0) || 0,
     })),
   ];
+
+  // 🔥 FUNÇÃO DE ATUALIZAÇÃO MANUAL (opcional, sem reload da página)
+  const handleManualRefresh = () => {
+    console.log("🔄 [Dashboard] Atualização manual solicitada");
+    refetchSelected();
+    refetchItems();
+    // 🔥 REMOVEU O window.location.reload()
+  };
 
   if (loadingFlows || loadingItems)
     return (
@@ -367,11 +443,7 @@ useEffect(() => {
             </SelectContent>
           </Select>
           <button
-            onClick={() => {
-              refetchSelected();
-              refetchItems();
-               window.location.reload();
-            }}
+            onClick={handleManualRefresh} // 🔥 AGORA SEM RECARREGAR A PÁGINA
             className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-slate-50 shadow-sm text-sm font-medium"
           >
             <RefreshCw className="h-4 w-4" /> Atualizar
@@ -388,15 +460,15 @@ useEffect(() => {
           subtitle="Itens com prazo vencido"
         />
         <MetricCard
-          title={`Vencem em ${notificationDays} dias`} // 🔥 DINÂMICO
+          title={`Vencem em ${notificationDays} dias`}
           value={upcomingItems.length}
           icon={<CalendarClock className="h-5 w-5 text-yellow-500" />}
           onClick={() => handleCardClick("upcoming")}
-          subtitle={`Próximos ${notificationDays} dias`} // 🔥 DINÂMICO
+          subtitle={`Próximos ${notificationDays} dias`}
         />
         <MetricCard
           title="Em Produção"
-          value={metrics.totalItems}
+          value={productionItems.length} // 🔥 USA productionItems
           icon={<Package className="h-5 w-5 text-blue-500" />}
           subtitle="Total em andamento"
         />
