@@ -173,8 +173,9 @@ export function CompanyFormModal({
   >("basic");
 
   // 🔥 Busca dados dinâmicos do banco (notificações)
+  const companyId = initialData?.id; // Pode ser undefined
   const { data: settings, isLoading: isLoadingSettings } = useCompanySettings(
-    initialData?.id || "",
+    companyId as string, // Type assertion, mas o hook já trata undefined
   );
 
   const form = useForm<CompanyFormValues>({
@@ -289,8 +290,11 @@ export function CompanyFormModal({
   const currentNotificationDays = form.watch("notificationDays") || 7;
 
   // 🔥 Determina se deve mostrar skeleton no input de dias
-  const shouldShowSkeleton =
-    !!(activeTab === "notifications" && initialData && isLoadingSettings);
+  const shouldShowSkeleton = !!(
+    activeTab === "notifications" &&
+    initialData &&
+    isLoadingSettings
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

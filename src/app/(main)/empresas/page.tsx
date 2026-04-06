@@ -1,39 +1,29 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query"; // 🔥 IMPORTA
 import {
-  Plus,
-  MoreHorizontal,
-  Building2,
-  MapPin,
-  Phone,
-  Edit,
-  Trash2,
-  Power,
-  Loader2,
   AlertTriangle,
+  Building2,
+  Edit,
+  Loader2,
+  MapPin,
+  MoreHorizontal,
+  Phone,
+  Plus,
+  Power,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 // Serviços e Contextos
-import { api } from "@/services/api";
-import { useError } from "@/contexts/error-context";
 import { useAuth } from "@/contexts/AuthContext";
+import { useError } from "@/contexts/error-context";
+import { api } from "@/services/api";
 
 // Componentes UI
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +34,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -211,7 +211,9 @@ export default function CompanyManagementPage() {
       if (cnpjClean && cnpjClean.length === 14 && cnpjClean !== originalCnpj) {
         payload.cnpj = cnpjClean;
       } else {
-        console.log("🔍 [CompanyManagementPage] CNPJ idêntico ou inválido, não enviando no payload");
+        console.log(
+          "🔍 [CompanyManagementPage] CNPJ idêntico ou inválido, não enviando no payload",
+        );
         delete payload.cnpj; // Garante que não vá string vazia
       }
     } else if (cnpjClean && cnpjClean.length === 14) {
@@ -222,31 +224,33 @@ export default function CompanyManagementPage() {
 
     try {
       if (editingCompany) {
-        
-        const response = await api.patch(`/companies/${editingCompany.id}`, payload);
-  
-  console.log("✅ Resposta real do Banco de Dados:", response.data);
-  // Se o log abaixo mostrar notificationDays: 2, o erro é 100% no seu Backend
-  if (response.data.notificationDays !== payload.notificationDays) {
-    console.error("❌ ERRO: O banco não persistiu o valor correto!");
-  }
-        console.log('📡 [CompanyManagementPage] Resposta API:', response.data);
+        const response = await api.patch(
+          `/companies/${editingCompany.id}`,
+          payload,
+        );
+
+        console.log("✅ Resposta real do Banco de Dados:", response.data);
+        // Se o log abaixo mostrar notificationDays: 2, o erro é 100% no seu Backend
+        if (response.data.notificationDays !== payload.notificationDays) {
+          console.error("❌ ERRO: O banco não persistiu o valor correto!");
+        }
+        console.log("📡 [CompanyManagementPage] Resposta API:", response.data);
 
         // 🔥 PASSO CRUCIAL 1: Invalida o cache do React Query para o Hook useCompanySettings
         // Isso força o 'NotificationTab' a buscar o valor novo (ex: 3)
-        await queryClient.invalidateQueries({ 
-          queryKey: ['company-settings', editingCompany.id] 
+        await queryClient.invalidateQueries({
+          queryKey: ["company-settings", editingCompany.id],
         });
 
         // 🔥 PASSO CRUCIAL 2: Dispara o evento customizado que seu hook useCompanySettings está escutando
         window.dispatchEvent(
           new CustomEvent("companyUpdated", {
             detail: { companyId: editingCompany.id, updatedAt: new Date() },
-          })
+          }),
         );
 
         toast.success("Empresa atualizada com sucesso!");
-        
+
         // Atualiza a listagem da tabela
         await fetchCompanies();
       } else {
@@ -259,7 +263,8 @@ export default function CompanyManagementPage() {
       handleCloseModal();
     } catch (error: any) {
       console.error("❌ Erro ao salvar:", error);
-      const errorMsg = error.response?.data?.message || "Erro ao salvar empresa";
+      const errorMsg =
+        error.response?.data?.message || "Erro ao salvar empresa";
       toast.error(errorMsg);
     } finally {
       setIsFormLoading(false);
