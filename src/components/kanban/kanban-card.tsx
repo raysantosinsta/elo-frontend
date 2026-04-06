@@ -5,11 +5,21 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useProductRefPermission } from "@/hooks/use-product-ref-permission";
 import { cn } from "@/lib/utils";
-import { Edit, Eye, MoreHorizontal, Trash2, CheckCircle2, EyeOff, Lock, Clock } from "lucide-react";
+import {
+  Edit,
+  Eye,
+  MoreHorizontal,
+  Trash2,
+  CheckCircle2,
+  EyeOff,
+  Lock,
+  Clock,
+  AlertTriangle,
+} from "lucide-react";
 import React, { useMemo } from "react";
 
 export interface KanbanCardProps {
@@ -17,23 +27,24 @@ export interface KanbanCardProps {
   title: string;
   subtitle?: string;
   tags?: React.ReactNode;
-  statusLabel?: string; 
-  statusColor?: string; 
+  statusLabel?: string;
+  statusColor?: string;
   priorityColor?: string;
-  coverImage?: string; 
-  imagesCount?: number; 
+  coverImage?: string;
+  imagesCount?: number;
   dueDate?: string;
   footer?: React.ReactNode;
   children?: React.ReactNode;
-  
+  finalComment?: string; // 🔥 ADICIONADO
+
   // Ações
   onView?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-  onComplete?: () => void; 
+  onComplete?: () => void;
 
-  onDoubleClick?: () => void; 
-  onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void; 
+  onDoubleClick?: () => void;
+  onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
   extraMenuItems?: React.ReactNode;
 }
 
@@ -51,16 +62,20 @@ export function KanbanCard({
   onView,
   onEdit,
   onDelete,
-  onComplete, 
+  onComplete,
   onDoubleClick,
   onDragStart,
   extraMenuItems,
-  children
+  finalComment, // 🔥 ADICIONADO
+  children,
 }: KanbanCardProps) {
-
   const { canViewRef, canManageRef } = useProductRefPermission();
-  
-  const hasActions = onComplete || onView || onEdit || onDelete || extraMenuItems;
+
+  const hasActions =
+    onComplete || onView || onEdit || onDelete || extraMenuItems;
+
+  // 🔥 VERIFICA SE TEM COMENTÁRIO DE ERRO
+  const hasErrorComment = finalComment && statusLabel !== "Concluído";
 
   const renderSubtitle = () => {
     if (!subtitle) return null;
@@ -72,14 +87,16 @@ export function KanbanCard({
         </p>
       );
     }
-    // Se não pode ver (nunca acontece, porque canViewRef é true para todos)
   };
 
   // Helper para formatar a data compacta no card
   const formattedDate = useMemo(() => {
     if (!dueDate) return null;
     try {
-      return new Date(dueDate).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' });
+      return new Date(dueDate).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+      });
     } catch {
       return null;
     }
@@ -88,46 +105,56 @@ export function KanbanCard({
   return (
     <Card
       draggable={!!onDragStart}
-      onDragStart={(e) => onDragStart ? onDragStart(e) : e.preventDefault()}
+      onDragStart={(e) => (onDragStart ? onDragStart(e) : e.preventDefault())}
       onDoubleClick={onDoubleClick}
       className={cn(
         "cursor-grab active:cursor-grabbing group transition-all duration-200",
         "border-l-[4px] bg-white hover:shadow-md select-none relative rounded-lg overflow-hidden flex flex-col",
-        "mb-2 w-full" // 🔥 Garante largura total dentro da coluna
+        "mb-2 w-full",
+        hasErrorComment && "border-l-red-500", // 🔥 BORDA VERMELHA SE TIVER ERRO
       )}
-      style={{ borderLeftColor: priorityColor }}
+      style={{ borderLeftColor: hasErrorComment ? "#EF4444" : priorityColor }}
     >
-
       {/* 🖼️ IMAGEM MAIS COMPACTA */}
       {coverImage && (
         <div className="w-full h-24 flex-shrink-0 overflow-hidden bg-slate-100">
-          <img 
-            src={coverImage} 
-            alt={title} 
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+          <img
+            src={coverImage}
+            alt={title}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
             onError={(e) => {
-              e.currentTarget.parentElement!.style.display = 'none';
+              e.currentTarget.parentElement!.style.display = "none";
             }}
           />
         </div>
       )}
 
-      <div className="p-3 flex flex-col flex-1"> {/* 🔥 padding um pouco maior para melhor legibilidade */}
-        
+      <div className="p-3 flex flex-col flex-1">
         {/* Status e Menu - LINHA SUPERIOR */}
-        <div className="flex justify-between items-start gap-1 mb-2"> {/* 🔥 mb-2 para mais espaço */}
-          
+        <div className="flex justify-between items-start gap-1 mb-2">
           {/* Status e Tags - LADO ESQUERDO */}
           <div className="flex flex-wrap gap-1 items-center min-h-[24px] flex-1">
             {statusLabel && (
-              <span 
+              <span
                 className="text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase leading-none inline-flex items-center"
-                style={{ color: statusColor, backgroundColor: `${statusColor}15` }}
+                style={{
+                  color: statusColor,
+                  backgroundColor: `${statusColor}15`,
+                }}
               >
                 {statusLabel}
               </span>
             )}
+
+            {/* 🔥 BADGE DE COMENTÁRIO DE ERRO */}
+            {hasErrorComment && (
+              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white uppercase leading-none inline-flex items-center gap-1">
+                <AlertTriangle size={8} />
+                Com erro
+              </span>
+            )}
+
             {tags}
           </div>
 
@@ -140,17 +167,16 @@ export function KanbanCard({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                
                 {onComplete && (
                   <>
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={(e) => {
                         e.stopPropagation();
                         onComplete();
-                      }} 
+                      }}
                       className="text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50 font-bold cursor-pointer text-sm py-2"
                     >
-                      <CheckCircle2 className="w-4 h-4 mr-2"/> 
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
                       Concluir Etapa
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -158,20 +184,29 @@ export function KanbanCard({
                 )}
 
                 {onView && (
-                  <DropdownMenuItem onClick={onView} className="cursor-pointer text-sm py-2">
-                    <Eye className="w-4 h-4 mr-2"/> Ver
+                  <DropdownMenuItem
+                    onClick={onView}
+                    className="cursor-pointer text-sm py-2"
+                  >
+                    <Eye className="w-4 h-4 mr-2" /> Ver
                   </DropdownMenuItem>
                 )}
-                
+
                 {onEdit && (
-                  <DropdownMenuItem onClick={onEdit} className="cursor-pointer text-sm py-2">
-                    <Edit className="w-4 h-4 mr-2"/> Editar
+                  <DropdownMenuItem
+                    onClick={onEdit}
+                    className="cursor-pointer text-sm py-2"
+                  >
+                    <Edit className="w-4 h-4 mr-2" /> Editar
                   </DropdownMenuItem>
                 )}
-                
+
                 {onDelete && (
-                  <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer text-sm py-2">
-                    <Trash2 className="w-4 h-4 mr-2"/> Excluir
+                  <DropdownMenuItem
+                    onClick={onDelete}
+                    className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer text-sm py-2"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Excluir
                   </DropdownMenuItem>
                 )}
 
@@ -185,7 +220,7 @@ export function KanbanCard({
         <h4 className="font-semibold text-sm text-slate-800 line-clamp-2 leading-snug group-hover:text-[#D35400] transition-colors mb-1">
           {title}
         </h4>
-        
+
         {/* Subtítulo - MAIS VISÍVEL */}
         {renderSubtitle()}
 
@@ -193,7 +228,9 @@ export function KanbanCard({
         {formattedDate && (
           <div className="flex items-center gap-1.5 mt-2 text-[#D35400] bg-orange-50 w-fit px-2 py-0.5 rounded border border-orange-100">
             <Clock size={10} className="font-bold" />
-            <span className="text-[10px] font-bold">Prazo: {formattedDate}</span>
+            <span className="text-[10px] font-bold">
+              Prazo: {formattedDate}
+            </span>
           </div>
         )}
 
