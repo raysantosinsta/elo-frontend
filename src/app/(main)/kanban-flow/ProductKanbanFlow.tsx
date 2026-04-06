@@ -2,6 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import { useCreateFlowItem } from "@/hooks/use-create-flow-item";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Calendar,
@@ -14,16 +16,16 @@ import {
   Loader2,
   Lock,
   Package,
+  Plus,
   X,
 } from "lucide-react";
-import { useCreateFlowItem } from "@/hooks/use-create-flow-item";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSwipeable } from "react-swipeable";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query"; // 🔥 NOVO
 
 import { useCompanySettings } from "@/hooks/use-company-settings";
-import { useKanbanBoards } from "@/hooks/use-kanban-boards"; // 🔥 NOVO
+import { useKanbanBoards } from "@/hooks/use-kanban-boards";
 
 // --- Infraestrutura ---
 import { useAuth } from "@/contexts/AuthContext";
@@ -72,11 +74,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -84,6 +81,11 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 // --- CONSTANTES ---
@@ -177,7 +179,16 @@ export default function ProductFlowKanban() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const queryClient = useQueryClient(); // 🔥 NOVO
+  const queryClient = useQueryClient();
+
+  // --- Estados Mobile ---
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileFilterDrawerOpen, setIsMobileFilterDrawerOpen] =
+    useState(false);
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(
+    null,
+  );
 
   // 🔥 Buscar configuração da empresa
   const {
@@ -347,13 +358,10 @@ export default function ProductFlowKanban() {
 
   const [allStages, setAllStages] = useState<FlowStage[]>([]);
 
-  // 🔥 REMOVIDO refreshKey - não é mais necessário com useQuery
-
   // Verifica se a condição para mostrar o toast já foi disparada
   const [hasShownEmptyRefToast, setHasShownEmptyRefToast] = useState(false);
   const [isCreatingFlow, setIsCreatingFlow] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  // const [columnOptions, setColumnOptions] = useState<string[]>([]);
 
   // ===========================================================================
   // 🎯 ESTADO PARA ITENS AGUARDANDO REMOÇÃO (3 segundos)
@@ -364,7 +372,6 @@ export default function ProductFlowKanban() {
 
   const [stageDefaultDays, setStageDefaultDays] = useState<number>(1);
   const [openColumnSelector, setOpenColumnSelector] = useState(false);
-
 
   const createItemMutation = useCreateFlowItem();
 
@@ -668,7 +675,6 @@ export default function ProductFlowKanban() {
         id: toastId,
       });
 
-      // 🔥 Atualiza os boards após a ação
       await refreshBoardsAfterAction();
 
       setIsCompleteStageModalOpen(false);
@@ -854,9 +860,8 @@ export default function ProductFlowKanban() {
       params.set("endDate", limitStr);
       params.set("filter", "upcoming");
     } else if (tempFilterOverdue) {
-      // 🔥 CORREÇÃO: Enviar como boolean no formato que o backend espera
       params.set("isOverdue", "true");
-      params.set("filter", "overdue"); // Também envia o filter
+      params.set("filter", "overdue");
     } else if (tempFilterDateType) {
       params.set("dateType", tempFilterDateType);
     }
@@ -874,10 +879,8 @@ export default function ProductFlowKanban() {
 
     router.push(`?${params.toString()}`);
 
-    // Aguarda um pouco para o router atualizar
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // 🔥 Atualiza os boards com os novos filtros
     await invalidateBoards();
     setIsFiltering(false);
   };
@@ -1019,7 +1022,6 @@ export default function ProductFlowKanban() {
       setDeadline("");
       toast.success("Fluxo criado!");
 
-      // 🔥 Atualiza os boards
       await refreshBoardsAfterAction();
     } catch (error) {
       toast.error("Erro ao criar fluxo");
@@ -1088,7 +1090,6 @@ export default function ProductFlowKanban() {
       toast.success("Fluxo atualizado com sucesso!");
       setIsEditFlowModalOpen(false);
 
-      // 🔥 Atualiza os boards
       await refreshBoardsAfterAction();
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Erro ao atualizar fluxo");
@@ -1253,7 +1254,6 @@ export default function ProductFlowKanban() {
     setIsSubmitting(true);
 
     try {
-      // 🔥 FUNÇÃO DE UPLOAD DE MÍDIA (mantém igual)
       const uploadMedia = async (itemId: string, files: any) => {
         const upload = async (file: File, type: string) => {
           const fd = new FormData();
@@ -1287,7 +1287,6 @@ export default function ProductFlowKanban() {
         return [];
       };
 
-      // 🔥 MODO EDIÇÃO
       if (editingItem) {
         const updatePayload = {
           ...values,
@@ -1308,9 +1307,7 @@ export default function ProductFlowKanban() {
         }
 
         toast.success("Item atualizado com sucesso!");
-      }
-      // 🔥 MODO CRIAÇÃO
-      else {
+      } else {
         if (!values.flowId || !values.stageId) {
           toast.error("Selecione uma coleção e etapa");
           setIsSubmitting(false);
@@ -1352,22 +1349,16 @@ export default function ProductFlowKanban() {
         toast.success("Item criado com sucesso!");
       }
 
-      // ✅ Fecha os modais
       setIsItemModal(false);
       setIsEditItemModal(false);
       setEditingItem(null);
       setCurrentItemStages([]);
       setActiveStageId(null);
 
-      // 🔥🔥🔥 SUBSTITUI O refreshBoardsAfterAction PELO REACT QUERY 🔥🔥🔥
-      // EM VEZ DE refreshBoardsAfterAction(), USA O QUERY CLIENT
-
-      // Invalida todas as queries relevantes
       queryClient.invalidateQueries({ queryKey: ["kanban-boards"] });
       queryClient.invalidateQueries({ queryKey: ["all-items"] });
       queryClient.invalidateQueries({ queryKey: ["all-flows"] });
 
-      // Se tiver um flowId específico, invalida ele também
       if (values.flowId) {
         queryClient.invalidateQueries({
           queryKey: ["flow-board", values.flowId],
@@ -1377,7 +1368,6 @@ export default function ProductFlowKanban() {
         });
       }
 
-      // Invalida todas as queries que começam com "flow"
       queryClient.invalidateQueries({ queryKey: ["flow"], exact: false });
     } catch (error: any) {
       console.error("❌ [handleItemSubmit] ERRO:", error);
@@ -1653,264 +1643,282 @@ export default function ProductFlowKanban() {
   if (loading && boards.length === 0) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
-        <Loader2 className="animate-spin text-[#D35400]" size={32} />
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin text-[#D35400]" size={40} />
+          <p className="text-slate-500 text-sm animate-pulse">Carregando...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <KanbanLayout>
-      <KanbanHeader
-        title="Esteira de Produção"
-        icon={<Factory size={20} />}
-        onAddFlow={() => setIsFlowModal(true)}
-        onAddStage={() => {
-          setEditingStage(null);
-          setStageName("");
-          setStageColor("#2D3436");
-          setStageAllowedRole("");
-          setIsStageModal(true);
-        }}
-        flows={flows}
-        selectedFlowIds={selectedFlowIds}
-        onToggleFlow={toggleFlow}
-        onEditFlow={openEditModal}
-        onDeleteFlow={(id) => {
-          setItemToDelete({ type: "stage", id });
-          setDeleteModalOpen(true);
-        }}
-        calculateDaysRemaining={calculateDaysRemaining}
-        templates={templates}
-        selectedTemplateId={selectedTemplateId}
-        onSelectTemplate={setSelectedTemplateId}
-        onApplyTemplate={handleApplyTemplate}
-        onSaveTemplate={handleSaveTemplate}
-        onDeleteTemplate={(id) => {
-          setItemToDelete({ type: "template", id });
-          setDeleteModalOpen(true);
-        }}
-      />
+      {/* Header com menu mobile */}
+      <div className="relative">
+        <KanbanHeader
+          title="Esteira de Produção"
+          icon={<Factory size={20} />}
+          onAddFlow={() => setIsFlowModal(true)}
+          onAddStage={() => {
+            setEditingStage(null);
+            setStageName("");
+            setStageColor("#2D3436");
+            setStageAllowedRole("");
+            setIsStageModal(true);
+          }}
+          flows={flows}
+          selectedFlowIds={selectedFlowIds}
+          onToggleFlow={toggleFlow}
+          onEditFlow={openEditModal}
+          onDeleteFlow={(id) => {
+            setItemToDelete({ type: "stage", id });
+            setDeleteModalOpen(true);
+          }}
+          calculateDaysRemaining={calculateDaysRemaining}
+          templates={templates}
+          selectedTemplateId={selectedTemplateId}
+          onSelectTemplate={setSelectedTemplateId}
+          onApplyTemplate={handleApplyTemplate}
+          onSaveTemplate={handleSaveTemplate}
+          onDeleteTemplate={(id) => {
+            setItemToDelete({ type: "template", id });
+            setDeleteModalOpen(true);
+          }}
+        />
 
-      <KanbanFilter>
-        <div className="grid gap-1 min-w-[200px]">
-          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-            Filtrar por Coluna
-          </label>
-          <Popover
-            open={openColumnSelector}
-            onOpenChange={setOpenColumnSelector}
-          >
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={openColumnSelector}
-                className="h-8 w-full justify-between bg-background pl-8 pr-2 text-xs font-normal border-input hover:bg-accent"
-              >
-                <div className="flex items-center gap-2 truncate pl-6 relative">
-                  <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
-                  <span className="truncate">
-                    {columnNameFilter || "Todas as colunas"}
-                  </span>
-                </div>
-                <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[250px] p-0" align="start">
-              <Command>
-                <CommandInput
-                  placeholder="Buscar etapa..."
-                  className="h-8 text-xs"
-                />
-                <CommandList className="max-h-[300px]">
-                  <CommandEmpty className="py-3 text-center text-xs text-slate-500">
-                    Nenhuma coluna encontrada.
-                  </CommandEmpty>
-                  <CommandGroup>
-                    <CommandItem
-                      value=""
-                      onSelect={() => {
-                        setColumnNameFilter("");
-                        setOpenColumnSelector(false);
-                      }}
-                      className="text-xs cursor-pointer"
-                    >
-                      <div
-                        className={cn(
-                          "mr-2 flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-primary",
-                          !columnNameFilter
-                            ? "bg-primary text-primary-foreground"
-                            : "opacity-50",
-                        )}
-                      >
-                        {!columnNameFilter && <Check className="h-3 w-3" />}
-                      </div>
-                      Todas as colunas
-                    </CommandItem>
-                    {columnOptions.map((option) => (
+        {/* Botão de filtro mobile */}
+        <button
+          className="fixed bottom-20 right-6 z-50 md:hidden bg-white rounded-full shadow-lg p-3 border border-slate-200 touch-feedback"
+          onClick={() => setIsMobileFilterDrawerOpen(true)}
+          aria-label="Abrir filtros"
+        >
+          <FilterIcon size={20} className="text-orange-600" />
+        </button>
+      </div>
+
+      {/* Filtros Desktop (escondido no mobile) */}
+      <div className="hidden md:block">
+        <KanbanFilter>
+          <div className="grid gap-1 min-w-[200px]">
+            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+              Filtrar por Coluna
+            </label>
+            <Popover
+              open={openColumnSelector}
+              onOpenChange={setOpenColumnSelector}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={openColumnSelector}
+                  className="h-8 w-full justify-between bg-background pl-8 pr-2 text-xs font-normal border-input hover:bg-accent"
+                >
+                  <div className="flex items-center gap-2 truncate pl-6 relative">
+                    <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
+                    <span className="truncate">
+                      {columnNameFilter || "Todas as colunas"}
+                    </span>
+                  </div>
+                  <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[250px] p-0" align="start">
+                <Command>
+                  <CommandInput
+                    placeholder="Buscar etapa..."
+                    className="h-8 text-xs"
+                  />
+                  <CommandList className="max-h-[300px]">
+                    <CommandEmpty className="py-3 text-center text-xs text-slate-500">
+                      Nenhuma coluna encontrada.
+                    </CommandEmpty>
+                    <CommandGroup>
                       <CommandItem
-                        key={option}
-                        value={option}
-                        onSelect={(currentValue) => {
-                          setColumnNameFilter(
-                            currentValue === columnNameFilter ? "" : option,
-                          );
+                        value=""
+                        onSelect={() => {
+                          setColumnNameFilter("");
                           setOpenColumnSelector(false);
                         }}
                         className="text-xs cursor-pointer"
                       >
-                        <Check
+                        <div
                           className={cn(
-                            "mr-2 h-3 w-3 text-orange-600",
-                            columnNameFilter === option
-                              ? "opacity-100"
-                              : "opacity-0",
+                            "mr-2 flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-primary",
+                            !columnNameFilter
+                              ? "bg-primary text-primary-foreground"
+                              : "opacity-50",
                           )}
-                        />
-                        {option}
+                        >
+                          {!columnNameFilter && <Check className="h-3 w-3" />}
+                        </div>
+                        Todas as colunas
                       </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-        </div>
-
-        <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-            Responsável
-          </label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
-            value={tempFilterAssignedTo}
-            onChange={(e) => setTempFilterAssignedTo(e.target.value)}
-          >
-            <option value="all">Todos</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-            Oficina
-          </label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
-            value={tempFilterSupplier}
-            onChange={(e) => setTempFilterSupplier(e.target.value)}
-          >
-            <option value="all">Todas</option>
-            <option value="internal">Produção Interna</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="grid gap-1 min-w-[180px]">
-          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-            Referência do Produto
-          </label>
-          <div className="relative">
-            <Input
-              type="text"
-              placeholder="Buscar por ref..."
-              className="h-8 text-xs pl-8 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-              value={tempFilterProductRef}
-              onChange={(e) => setTempFilterProductRef(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleFilterClick();
-                }
-              }}
-            />
-            <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400" />
+                      {columnOptions.map((option) => (
+                        <CommandItem
+                          key={option}
+                          value={option}
+                          onSelect={(currentValue) => {
+                            setColumnNameFilter(
+                              currentValue === columnNameFilter ? "" : option,
+                            );
+                            setOpenColumnSelector(false);
+                          }}
+                          className="text-xs cursor-pointer"
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-3 w-3 text-orange-600",
+                              columnNameFilter === option
+                                ? "opacity-100"
+                                : "opacity-0",
+                            )}
+                          />
+                          {option}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
-        </div>
 
-        <div className="flex items-end gap-2">
-          <Button
-            size="sm"
-            variant={tempFilterOverdue ? "destructive" : "outline"}
-            className={`h-8 text-xs font-medium ${
-              tempFilterOverdue
-                ? "bg-red-500 text-white hover:bg-red-600"
-                : "text-foreground"
-            }`}
-            onClick={toggleOverdueFilter}
-          >
-            <AlertTriangle className="w-3 h-3 mr-2" />
-            Atrasados
-          </Button>
+          <div className="grid gap-1 min-w-[140px]">
+            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+              Responsável
+            </label>
+            <select
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+              value={tempFilterAssignedTo}
+              onChange={(e) => setTempFilterAssignedTo(e.target.value)}
+            >
+              <option value="all">Todos</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <Button
-            size="sm"
-            variant={tempFilterUpcoming ? "default" : "outline"}
-            className={`h-8 text-xs font-medium ${
-              tempFilterUpcoming
-                ? "bg-orange-600 text-white hover:bg-orange-700"
-                : "text-foreground"
-            }`}
-            onClick={toggleUpcomingFilter}
-          >
-            <Clock className="w-3 h-3 mr-2" />
-            Próximos a vencer ({notificationDays} dias)
-          </Button>
-        </div>
+          <div className="grid gap-1 min-w-[140px]">
+            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+              Oficina
+            </label>
+            <select
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+              value={tempFilterSupplier}
+              onChange={(e) => setTempFilterSupplier(e.target.value)}
+            >
+              <option value="all">Todas</option>
+              <option value="internal">Produção Interna</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="default"
-            className="h-8 text-xs font-medium min-w-[100px] bg-orange-600 hover:bg-orange-700 text-white"
-            onClick={handleFilterClick}
-            disabled={isFiltering}
-          >
-            {isFiltering ? (
-              <>
-                <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Filtrando...
-              </>
-            ) : (
-              <>
-                <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
-              </>
+          <div className="grid gap-1 min-w-[180px]">
+            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+              Referência do Produto
+            </label>
+            <div className="relative">
+              <Input
+                type="text"
+                placeholder="Buscar por ref..."
+                className="h-8 text-xs pl-8 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                value={tempFilterProductRef}
+                onChange={(e) => setTempFilterProductRef(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleFilterClick();
+                  }
+                }}
+              />
+              <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400" />
+            </div>
+          </div>
+
+          <div className="flex items-end gap-2">
+            <Button
+              size="sm"
+              variant={tempFilterOverdue ? "destructive" : "outline"}
+              className={`h-8 text-xs font-medium touch-feedback ${
+                tempFilterOverdue
+                  ? "bg-red-500 text-white hover:bg-red-600"
+                  : "text-foreground"
+              }`}
+              onClick={toggleOverdueFilter}
+            >
+              <AlertTriangle className="w-3 h-3 mr-2" />
+              Atrasados
+            </Button>
+
+            <Button
+              size="sm"
+              variant={tempFilterUpcoming ? "default" : "outline"}
+              className={`h-8 text-xs font-medium touch-feedback ${
+                tempFilterUpcoming
+                  ? "bg-orange-600 text-white hover:bg-orange-700"
+                  : "text-foreground"
+              }`}
+              onClick={toggleUpcomingFilter}
+            >
+              <Clock className="w-3 h-3 mr-2" />
+              Próximos a vencer ({notificationDays} dias)
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="default"
+              className="h-8 text-xs font-medium min-w-[100px] bg-orange-600 hover:bg-orange-700 text-white touch-feedback"
+              onClick={handleFilterClick}
+              disabled={isFiltering}
+            >
+              {isFiltering ? (
+                <>
+                  <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Filtrando...
+                </>
+              ) : (
+                <>
+                  <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
+                </>
+              )}
+            </Button>
+
+            {hasActiveFilters && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                onClick={handleClearFilters}
+                title="Limpar Filtros"
+              >
+                <X className="w-4 h-4" />
+              </Button>
             )}
-          </Button>
+          </div>
 
-          {hasActiveFilters && (
+          {activeColumnFilter.columnId && (
             <Button
               size="sm"
               variant="ghost"
-              className="h-8 w-8 p-0 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-              onClick={handleClearFilters}
-              title="Limpar Filtros"
+              className="h-8 text-xs text-slate-500 hover:text-red-600"
+              onClick={() =>
+                setActiveColumnFilter({ columnId: null, filterType: null })
+              }
             >
-              <X className="w-4 h-4" />
+              <X className="w-3 h-3 mr-1" />
+              Limpar Filtro da Coluna
             </Button>
           )}
-        </div>
-
-        {activeColumnFilter.columnId && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 text-xs text-slate-500 hover:text-red-600"
-            onClick={() =>
-              setActiveColumnFilter({ columnId: null, filterType: null })
-            }
-          >
-            <X className="w-3 h-3 mr-1" />
-            Limpar Filtro da Coluna
-          </Button>
-        )}
-      </KanbanFilter>
+        </KanbanFilter>
+      </div>
 
       {activeColumnNameFilter && (
         <div className="px-4 py-2 mb-4 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
@@ -1940,8 +1948,7 @@ export default function ProductFlowKanban() {
         {hasActiveProductRefFilter && hasNoItemsAfterFilter ? (
           <div className="flex flex-col items-center justify-center w-full py-16 px-4">
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-8 max-w-md text-center">
-              <Package className="h-12 w-12 text-orange-300 mx-auto mb-4" />{" "}
-              {/* TODO: verifica qual icone ta errado ao usar css, indentificar e corrigir css */}
+              <Package className="h-12 w-12 text-orange-300 mx-auto mb-4" />
               <p className="text-sm text-gray-600 mb-4">
                 A referência{" "}
                 <span className="font-bold text-orange-600">
@@ -1961,166 +1968,321 @@ export default function ProductFlowKanban() {
             </div>
           </div>
         ) : (
-          unifiedStages.map((stage, index) => {
-            const hasPermission = canUserEditStage(stage);
-            const filteredItems = filterColumnItems(stage);
-            const isOverdueActive =
-              activeColumnFilter.columnId === stage.id &&
-              activeColumnFilter.filterType === "overdue";
-            const isUpcomingActive =
-              activeColumnFilter.columnId === stage.id &&
-              activeColumnFilter.filterType === "upcoming";
+          <div className="flex overflow-x-auto pb-4 gap-4 scroll-smooth snap-x snap-mandatory md:overflow-x-visible md:snap-none">
+            {unifiedStages.map((stage, index) => {
+              const hasPermission = canUserEditStage(stage);
+              const filteredItems = filterColumnItems(stage);
+              const isOverdueActive =
+                activeColumnFilter.columnId === stage.id &&
+                activeColumnFilter.filterType === "overdue";
+              const isUpcomingActive =
+                activeColumnFilter.columnId === stage.id &&
+                activeColumnFilter.filterType === "upcoming";
 
-            return (
-              <KanbanColumn
-                key={stage.id}
-                id={stage.id}
-                title={stage.name}
-                count={filteredItems.length}
-                color={stage.color}
-                isFirstColumn={index === 0}
-                defaultDays={stage.defaultDays}
-                onDropItem={(itemId) => {
-                  const allItems = unifiedStages.flatMap((s) => s.items);
-                  const draggingItem = allItems.find((i) => i.id === itemId);
-                  if (!draggingItem) return;
+              return (
+                <KanbanColumn
+                  key={stage.id}
+                  id={stage.id}
+                  title={stage.name}
+                  count={filteredItems.length}
+                  color={stage.color}
+                  isFirstColumn={index === 0}
+                  defaultDays={stage.defaultDays}
+                  className="min-w-[280px] md:min-w-0 snap-start"
+                  onDropItem={(itemId) => {
+                    const allItems = unifiedStages.flatMap((s) => s.items);
+                    const draggingItem = allItems.find((i) => i.id === itemId);
+                    if (!draggingItem) return;
 
-                  const itemBoard = boards.find(
-                    (b) => b.id === draggingItem.flowId,
-                  );
-                  if (!itemBoard) return;
+                    const itemBoard = boards.find(
+                      (b) => b.id === draggingItem.flowId,
+                    );
+                    if (!itemBoard) return;
 
-                  const correctStage = itemBoard.stages.find(
-                    (s: { name: string }) =>
-                      s.name.toUpperCase() === stage.name.toUpperCase(),
-                  );
-                  if (!correctStage) return;
+                    const correctStage = itemBoard.stages.find(
+                      (s: { name: string }) =>
+                        s.name.toUpperCase() === stage.name.toUpperCase(),
+                    );
+                    if (!correctStage) return;
 
-                  moveItem(itemId, correctStage.id, stage.name);
-                }}
-                onAddItem={
-                  hasPermission ? () => handleCreateItem(stage.id) : undefined
-                }
-                onEditClick={() => {
-                  setEditingStage(stage);
-                  setStageName(stage.name);
-                  setStageColor(stage.color || "#2D3436");
-                  setStageAllowedRole(stage.allowedRole || "");
-                  setStageDefaultDays(stage.defaultDays ?? 1);
-                  setIsStageModal(true);
-                }}
-                onDeleteClick={() => {
-                  setItemToDelete({ type: "stage", id: stage.id });
-                  setDeleteModalOpen(true);
-                }}
-                onFilterOverdue={() => handleColumnFilterOverdue(stage.id)}
-                onFilterUpcoming={() => handleColumnFilterUpcoming(stage.id)}
-                isOverdueFilterActive={isOverdueActive}
-                isUpcomingFilterActive={isUpcomingActive}
-                filterDisabled={false}
-              >
-                {!hasPermission && (
-                  <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
-                    <Lock size={10} /> Somente Leitura
-                  </div>
-                )}
+                    moveItem(itemId, correctStage.id, stage.name);
+                  }}
+                  onAddItem={
+                    hasPermission ? () => handleCreateItem(stage.id) : undefined
+                  }
+                  onEditClick={() => {
+                    setEditingStage(stage);
+                    setStageName(stage.name);
+                    setStageColor(stage.color || "#2D3436");
+                    setStageAllowedRole(stage.allowedRole || "");
+                    setStageDefaultDays(stage.defaultDays ?? 1);
+                    setIsStageModal(true);
+                  }}
+                  onDeleteClick={() => {
+                    setItemToDelete({ type: "stage", id: stage.id });
+                    setDeleteModalOpen(true);
+                  }}
+                  onFilterOverdue={() => handleColumnFilterOverdue(stage.id)}
+                  onFilterUpcoming={() => handleColumnFilterUpcoming(stage.id)}
+                  isOverdueFilterActive={isOverdueActive}
+                  isUpcomingFilterActive={isUpcomingActive}
+                  filterDisabled={false}
+                >
+                  {!hasPermission && (
+                    <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
+                      <Lock size={10} /> Somente Leitura
+                    </div>
+                  )}
 
-                {(isOverdueActive || isUpcomingActive) && (
-                  <div
-                    className="mb-2 p-1 text-[8px] font-bold uppercase text-center rounded bg-opacity-20 flex items-center justify-center gap-1"
-                    style={{
-                      backgroundColor: isOverdueActive
-                        ? "#ef444420"
-                        : "#f59e0b20",
-                      color: isOverdueActive ? "#ef4444" : "#f59e0b",
-                      border: `1px solid ${isOverdueActive ? "#ef4444" : "#f59e0b"}30`,
-                    }}
-                  >
-                    {isOverdueActive ? (
-                      <>
-                        <AlertTriangle size={10} />
-                        Filtrando: Atrasados
-                      </>
-                    ) : (
-                      <>
-                        <Clock size={10} />
-                        Filtrando: Proximos a vencer (7 dias)
-                      </>
-                    )}
-                    <button
-                      className="ml-1 hover:opacity-70"
-                      onClick={() =>
-                        setActiveColumnFilter({
-                          columnId: null,
-                          filterType: null,
-                        })
-                      }
+                  {(isOverdueActive || isUpcomingActive) && (
+                    <div
+                      className="mb-2 p-1 text-[8px] font-bold uppercase text-center rounded bg-opacity-20 flex items-center justify-center gap-1"
+                      style={{
+                        backgroundColor: isOverdueActive
+                          ? "#ef444420"
+                          : "#f59e0b20",
+                        color: isOverdueActive ? "#ef4444" : "#f59e0b",
+                        border: `1px solid ${isOverdueActive ? "#ef4444" : "#f59e0b"}30`,
+                      }}
                     >
-                      <X size={10} />
-                    </button>
-                  </div>
-                )}
+                      {isOverdueActive ? (
+                        <>
+                          <AlertTriangle size={10} />
+                          Filtrando: Atrasados
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={10} />
+                          Filtrando: Proximos a vencer (7 dias)
+                        </>
+                      )}
+                      <button
+                        className="ml-1 hover:opacity-70"
+                        onClick={() =>
+                          setActiveColumnFilter({
+                            columnId: null,
+                            filterType: null,
+                          })
+                        }
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  )}
 
-                {filteredItems.map((item) => (
-                  <KanbanCard
-                    key={item.id}
-                    id={item.id}
-                    title={item.title}
-                    subtitle={item.productRef}
-                    priorityColor={item.flowColor}
-                    dueDate={item.dueDate}
-                    coverImage={item.images[0]?.url}
-                    onDragStart={
-                      hasPermission ? (e) => onDragStart(e, item.id) : undefined
-                    }
-                    onDoubleClick={() => {
-                      setEditingItem(item);
-                      setIsModalReadOnly(!hasPermission);
-                      handleEditItem(item);
-                    }}
-                    onEdit={
-                      hasPermission
-                        ? () => {
-                            setEditingItem(item);
-                            setIsModalReadOnly(false);
-                            handleEditItem(item);
-                          }
-                        : undefined
-                    }
-                    onDelete={
-                      hasPermission
-                        ? () => {
-                            setItemToDelete({ type: "item", id: item.id });
-                            setDeleteModalOpen(true);
-                          }
-                        : undefined
-                    }
-                    onComplete={
-                      hasPermission
-                        ? () => handleOpenCompleteModal(item)
-                        : undefined
-                    }
-                    footer={
-                      <div className="flex justify-between items-center w-full">
-                        <span className="text-[10px] text-slate-400 font-bold">
-                          <Package size={10} className="inline mr-1" />
-                          {item.quantity}
-                        </span>
-                        <div
-                          className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
-                          style={{ backgroundColor: item.flowColor }}
-                        >
-                          {item.flowName}
+                  {filteredItems.map((item) => (
+                    <KanbanCard
+                      key={item.id}
+                      id={item.id}
+                      title={item.title}
+                      subtitle={item.productRef}
+                      priorityColor={item.flowColor}
+                      dueDate={item.dueDate}
+                      coverImage={item.images[0]?.url}
+                      onDragStart={
+                        hasPermission
+                          ? (e) => onDragStart(e, item.id)
+                          : undefined
+                      }
+                      onDoubleClick={() => {
+                        setEditingItem(item);
+                        setIsModalReadOnly(!hasPermission);
+                        handleEditItem(item);
+                      }}
+                      onEdit={
+                        hasPermission
+                          ? () => {
+                              setEditingItem(item);
+                              setIsModalReadOnly(false);
+                              handleEditItem(item);
+                            }
+                          : undefined
+                      }
+                      onDelete={
+                        hasPermission
+                          ? () => {
+                              setItemToDelete({ type: "item", id: item.id });
+                              setDeleteModalOpen(true);
+                            }
+                          : undefined
+                      }
+                      onComplete={
+                        hasPermission
+                          ? () => handleOpenCompleteModal(item)
+                          : undefined
+                      }
+                      footer={
+                        <div className="flex justify-between items-center w-full">
+                          <span className="text-[10px] text-slate-400 font-bold">
+                            <Package size={10} className="inline mr-1" />
+                            {item.quantity}
+                          </span>
+                          <div
+                            className="px-2 py-0.5 rounded-full text-[8px] font-bold text-white uppercase"
+                            style={{ backgroundColor: item.flowColor }}
+                          >
+                            {item.flowName}
+                          </div>
                         </div>
-                      </div>
-                    }
-                  />
-                ))}
-              </KanbanColumn>
-            );
-          })
+                      }
+                    />
+                  ))}
+                </KanbanColumn>
+              );
+            })}
+          </div>
         )}
       </KanbanBoard>
+
+      {/* FAB para mobile */}
+      {/* <div className="fixed bottom-6 right-6 z-50 md:hidden">
+        <button
+          onClick={() => {
+            const firstStageId = unifiedStages[0]?.id;
+            if (firstStageId) handleCreateItem(firstStageId);
+          }}
+          className="w-14 h-14 rounded-full bg-orange-600 text-white shadow-lg 
+                     active:scale-95 transition-transform duration-200
+                     flex items-center justify-center hover:bg-orange-700 touch-feedback"
+          aria-label="Criar novo item"
+        >
+          <Plus size={24} />
+        </button>
+      </div> */}
+
+      {/* Bottom Sheet de Filtros Mobile */}
+      {isMobileFilterDrawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/50 transition-opacity"
+            onClick={() => setIsMobileFilterDrawerOpen(false)}
+          />
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl 
+                          transform transition-transform duration-300 animate-slide-up
+                          max-h-[80vh] overflow-y-auto"
+          >
+            <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
+              <h3 className="font-bold text-lg">Filtros</h3>
+              <button
+                onClick={() => setIsMobileFilterDrawerOpen(false)}
+                className="p-2 touch-feedback"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-bold">Coluna</label>
+                <select
+                  className="w-full p-3 border rounded-lg text-base"
+                  value={columnNameFilter}
+                  onChange={(e) => setColumnNameFilter(e.target.value)}
+                >
+                  <option value="">Todas as colunas</option>
+                  {columnOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold">Responsável</label>
+                <select
+                  className="w-full p-3 border rounded-lg text-base"
+                  value={tempFilterAssignedTo}
+                  onChange={(e) => setTempFilterAssignedTo(e.target.value)}
+                >
+                  <option value="all">Todos</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold">Oficina</label>
+                <select
+                  className="w-full p-3 border rounded-lg text-base"
+                  value={tempFilterSupplier}
+                  onChange={(e) => setTempFilterSupplier(e.target.value)}
+                >
+                  <option value="all">Todas</option>
+                  <option value="internal">Produção Interna</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold">
+                  Referência do Produto
+                </label>
+                <input
+                  type="text"
+                  placeholder="Buscar por ref..."
+                  className="w-full p-3 border rounded-lg text-base"
+                  value={tempFilterProductRef}
+                  onChange={(e) => setTempFilterProductRef(e.target.value)}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  className={`flex-1 py-3 rounded-lg font-medium transition-all touch-feedback ${
+                    tempFilterOverdue
+                      ? "bg-red-500 text-white"
+                      : "bg-slate-100 text-slate-700"
+                  }`}
+                  onClick={toggleOverdueFilter}
+                >
+                  Atrasados
+                </button>
+                <button
+                  className={`flex-1 py-3 rounded-lg font-medium transition-all touch-feedback ${
+                    tempFilterUpcoming
+                      ? "bg-orange-600 text-white"
+                      : "bg-slate-100 text-slate-700"
+                  }`}
+                  onClick={toggleUpcomingFilter}
+                >
+                  Próximos ({notificationDays}d)
+                </button>
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <button
+                  className="flex-1 py-3 bg-orange-600 text-white rounded-lg font-bold touch-feedback"
+                  onClick={() => {
+                    handleFilterClick();
+                    setIsMobileFilterDrawerOpen(false);
+                  }}
+                >
+                  Aplicar Filtros
+                </button>
+                {hasActiveFilters && (
+                  <button
+                    className="px-4 py-3 bg-slate-100 rounded-lg touch-feedback"
+                    onClick={() => {
+                      handleClearFilters();
+                      setIsMobileFilterDrawerOpen(false);
+                    }}
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modais (mesmos do código original) */}
       <FlowItemModal

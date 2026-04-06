@@ -22,22 +22,19 @@ interface KanbanColumnProps {
   onDeleteClick?: () => void;
   onDropItem: (itemId: string, columnId: string) => void;
   children: React.ReactNode;
-  
-  // NOVA PROP: indica se é a primeira coluna
-  isFirstColumn?: boolean;
 
-  // 🔥 NOVA PROP: controla se o botão de adicionar deve aparecer
+  isFirstColumn?: boolean;
   showAddButton?: boolean;
-  
-  // Novas props para filtros
+
+  // 🔥 Tornar as props OBRIGATÓRIAS ou usar valores padrão
   onFilterOverdue?: () => void;
   onFilterUpcoming?: () => void;
   isOverdueFilterActive?: boolean;
   isUpcomingFilterActive?: boolean;
   filterDisabled?: boolean;
-  
-  // 🔥 NOVA PROP: dias padrão para exibir
+
   defaultDays?: number;
+  className?: string;
 }
 
 export function KanbanColumn({
@@ -52,20 +49,15 @@ export function KanbanColumn({
   onDropItem,
   children,
   showAddButton = false,
-  // NOVA PROP com valor padrão false
   isFirstColumn = false,
-  
-  // Novas props com valores padrão
   onFilterOverdue,
   onFilterUpcoming,
   isOverdueFilterActive = false,
   isUpcomingFilterActive = false,
   filterDisabled = false,
-  
-  // 🔥 NOVA PROP
   defaultDays,
+  className = "",
 }: KanbanColumnProps) {
-  
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const itemId = e.dataTransfer.getData("itemId");
@@ -74,10 +66,19 @@ export function KanbanColumn({
 
   const handleAdd = onAddItem || onAddClick;
 
+  // 🔥 Funções de fallback para evitar erro quando não fornecidas
+  const handleFilterOverdue = () => {
+    if (onFilterOverdue) onFilterOverdue();
+  };
+
+  const handleFilterUpcoming = () => {
+    if (onFilterUpcoming) onFilterUpcoming();
+  };
+
   return (
     <div
-      className="w-[280px] flex-shrink-0 flex flex-col h-full rounded-lg bg-gray-100/50 border border-gray-200 transition-colors"
-      style={{ height: "100%" }} // 🔥 Garante que a coluna ocupe 100% da altura disponível
+      className={`w-[280px] flex-shrink-0 flex flex-col h-full rounded-lg bg-gray-100/50 border border-gray-200 transition-colors ${className}`}
+      style={{ height: "100%" }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
     >
@@ -96,29 +97,29 @@ export function KanbanColumn({
               {count}
             </Badge>
           </div>
-          
-          {/* 🔥 EXIBE OS DIAS PADRÃO DA ETAPA */}
+
           {defaultDays !== undefined && defaultDays > 0 && (
             <div className="flex items-center gap-1 text-[9px] text-white/80 mt-0.5">
               <Calendar className="w-2.5 h-2.5" />
-              <span>Padrão: {defaultDays} {defaultDays === 1 ? 'dia' : 'dias'}</span>
+              <span>
+                Padrão: {defaultDays} {defaultDays === 1 ? "dia" : "dias"}
+              </span>
             </div>
           )}
         </div>
 
         <div className="flex items-center gap-0.5">
-          {/* ÍCONES DE FILTRO */}
+          {/* 🔥 Verifica se as funções existem antes de renderizar */}
           {onFilterOverdue && onFilterUpcoming && (
             <ColumnFilterIcons
-              onFilterOverdue={onFilterOverdue}
-              onFilterUpcoming={onFilterUpcoming}
+              onFilterOverdue={handleFilterOverdue}
+              onFilterUpcoming={handleFilterUpcoming}
               isOverdueActive={isOverdueFilterActive}
               isUpcomingActive={isUpcomingFilterActive}
               disabled={filterDisabled}
             />
           )}
 
-          {/* 🔥 BOTÃO DE ADICIONAR - SÓ APARECE NA PRIMEIRA COLUNA */}
           {handleAdd && (showAddButton || isFirstColumn) && (
             <Button
               variant="ghost"
@@ -129,8 +130,7 @@ export function KanbanColumn({
               <Plus className="w-3 h-3" />
             </Button>
           )}
-          
-          {/* Menu de Opções */}
+
           {(onEditClick || onDeleteClick) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -162,7 +162,6 @@ export function KanbanColumn({
         </div>
       </div>
 
-      {/* Corpo da Coluna - Área com rolagem vertical */}
       <div className="p-2 overflow-y-auto flex-1 space-y-2 custom-scrollbar min-h-[100px]">
         {children}
         {React.Children.count(children) === 0 && (
