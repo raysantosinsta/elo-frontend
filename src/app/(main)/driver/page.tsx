@@ -54,6 +54,10 @@ export default function DriverPage() {
   >(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(true);
 
+  // --- NOVO ESTADO: Controle de chegada ao destino ---
+  const [hasArrivedAtDestination, setHasArrivedAtDestination] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
+
   // --- TIMER ---
   const [timeRemainingString, setTimeRemainingString] =
     useState<string>("--:--");
@@ -79,12 +83,14 @@ export default function DriverPage() {
   const [newTaskDate, setNewTaskDate] = useState("");
 
   const watchIdRef = useRef<number | null>(null);
+  const arrivalCheckRef = useRef<NodeJS.Timeout | null>(null);
 
   // 1. Carrega a rota do LocalStorage
   useEffect(() => {
     try {
       const storedRoute = localStorage.getItem("rotaAtiva");
       const savedIndex = localStorage.getItem("rotaIndex");
+      const savedArrivalState = localStorage.getItem("hasArrivedAtDestination");
 
       if (storedRoute) {
         const parsedRoute: RoutePoint[] = JSON.parse(storedRoute);
@@ -98,13 +104,26 @@ export default function DriverPage() {
             !isNaN(Number(p.lng)),
         );
 
-        console.log("📍 Rota Carregada:", validRoute); // DEBUG: Veja no console se tem 2 itens
+        console.log("📍 Rota Carregada:", validRoute);
 
         if (validRoute.length > 0) {
           setRoutePoints(validRoute);
           if (savedIndex) {
             const idx = Number(savedIndex);
             setCurrentStopIndex(idx < validRoute.length ? idx : 0);
+          }
+
+          // Recupera estado de chegada se existir
+          if (savedArrivalState) {
+            setHasArrivedAtDestination(savedArrivalState === "true");
+          }
+
+          // Se é o primeiro ponto e não chegou, marca como não chegou
+          if (
+            currentStopIndex === 0 &&
+            (!savedArrivalState || savedArrivalState === "false")
+          ) {
+            setHasArrivedAtDestination(false);
           }
         } else {
           toast.error("Rota inválida ou sem coordenadas.");
@@ -119,6 +138,7 @@ export default function DriverPage() {
       router.push("/route-planner");
     } finally {
       setIsLoadingRoute(false);
+      setIsFirstLoad(false);
     }
   }, [router]);
 
@@ -161,7 +181,87 @@ export default function DriverPage() {
     return () => clearInterval(intervalId);
   }, []);
 
-  // 3. Monitora GPS Real
+  // 3. FUNÇÃO PARA VERIFICAR SE CHEGOU AO DESTINO (GEOFENCING)
+  const checkArrivalAtDestination = () => {
+    if (!currentPosition || !currentTask) return;
+
+    const distance = calculateDistance(
+      currentPosition[0],
+      currentPosition[1],
+      currentTask.lat,
+      currentTask.lng,
+    );
+
+    const ARRIVAL_RADIUS_METERS = 50; // Ajustável conforme necessidade
+
+    if (distance <= ARRIVAL_RADIUS_METERS && !hasArrivedAtDestination) {
+      setHasArrivedAtDestination(true);
+      localStorage.setItem("hasArrivedAtDestination", "true");
+      toast.success(`✅ Você chegou em: ${currentTask.title}`);
+    } else if (
+      distance > ARRIVAL_RADIUS_METERS &&
+      hasArrivedAtDestination &&
+      !isModalOpen
+    ) {
+      setHasArrivedAtDestination(false);
+      localStorage.setItem("hasArrivedAtDestination", "false");
+    }
+  };
+
+  // Função auxiliar para calcular distância entre dois pontos (Haversine formula)
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number => {
+    const R = 6371000; // Raio da Terra em METROS
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const currentTask = routePoints[currentStopIndex];
+
+  // 4. MONITORAMENTO DE POSIÇÃO E VERIFICAÇÃO DE CHEGADA
+  useEffect(() => {
+    if (!currentPosition || !currentTask) return;
+
+    // Verifica imediatamente
+    checkArrivalAtDestination();
+
+    // Configura verificação periódica (a cada 5 segundos)
+    if (arrivalCheckRef.current) {
+      clearInterval(arrivalCheckRef.current);
+    }
+
+    arrivalCheckRef.current = setInterval(() => {
+      checkArrivalAtDestination();
+    }, 5000); // Verifica a cada 5 segundos
+
+    return () => {
+      if (arrivalCheckRef.current) {
+        clearInterval(arrivalCheckRef.current);
+      }
+    };
+  }, [currentPosition, currentTask, hasArrivedAtDestination]);
+
+  // 5. RESETAR ESTADO DE CHEGADA AO MUDAR DE DESTINO
+  useEffect(() => {
+    // Reset ao mudar de parada
+    setHasArrivedAtDestination(false);
+    localStorage.setItem("hasArrivedAtDestination", "false");
+    console.log("🔄 Mudou de destino, resetando estado de chegada");
+  }, [currentStopIndex]);
+
+  // 6. Monitora GPS Real
   useEffect(() => {
     if (!navigator.geolocation || !isGPSActive) return;
 
@@ -220,6 +320,8 @@ export default function DriverPage() {
         setCurrentPosition([endLat, endLng]);
         setIsSimulating(false);
         toast.success("Você chegou ao destino (Simulação)!");
+        // Força verificação de chegada
+        setTimeout(() => checkArrivalAtDestination(), 100);
       }
     }, speed);
   };
@@ -232,11 +334,20 @@ export default function DriverPage() {
   useEffect(() => {
     return () => {
       if (simulationInterval.current) clearInterval(simulationInterval.current);
+      if (arrivalCheckRef.current) clearInterval(arrivalCheckRef.current);
     };
   }, []);
 
   // --- HANDLERS DO MODAL ---
   const handleOpenModal = (type: "COMPLETED" | "FAILED") => {
+    // Só permite abrir modal se chegou ao destino
+    if (!hasArrivedAtDestination) {
+      toast.warning(
+        "Você ainda não chegou ao destino para finalizar a visita.",
+      );
+      return;
+    }
+
     setActionType(type);
     setComment("");
     const today = new Date().toISOString().split("T")[0];
@@ -254,15 +365,6 @@ export default function DriverPage() {
         "Por favor, descreva o motivo do problema.",
       );
       return;
-    }
-    if (
-      actionType === "COMPLETED" &&
-      !newTaskTitle.trim() &&
-      routePoints.length === 0
-    ) {
-      // Lógica ajustada
-      // Apenas valida titulo se for criar nova tarefa OBRIGATÓRIA, aqui é opcional na maioria dos fluxos
-      // Se for obrigatório criar próxima tarefa, mantenha a validação
     }
 
     setIsSubmitting(true);
@@ -351,11 +453,13 @@ export default function DriverPage() {
         localStorage.removeItem("rotaIndex");
         localStorage.removeItem("rotaStartTime");
         localStorage.removeItem("rotaTotalDuration");
+        localStorage.removeItem("hasArrivedAtDestination");
         toast.success("Rota finalizada com sucesso!");
         router.push("/Kanban");
       } else {
         setCurrentStopIndex(nextIndex);
         localStorage.setItem("rotaIndex", String(nextIndex));
+        localStorage.removeItem("hasArrivedAtDestination"); // Reset para nova parada
         setIsModalOpen(false);
       }
     } catch (error) {
@@ -381,7 +485,6 @@ export default function DriverPage() {
   }
 
   // 2. Validação se existe tarefa atual
-  const currentTask = routePoints[currentStopIndex];
   if (!currentTask) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-4 p-4 text-center">
@@ -401,6 +504,23 @@ export default function DriverPage() {
       </div>
     );
   }
+
+  // 3. LÓGICA DE EXIBIÇÃO DOS BOTÕES
+  // Regras:
+  // - Início da rota (primeiro destino e não chegou) → NÃO mostra botões
+  // - Durante navegação (qualquer destino sem ter chegado) → NÃO mostra botões
+  // - Ao chegar nos destinos (hasArrivedAtDestination = true) → MOSTRA botões
+  // - Após concluir (modal fechado e avançou) → ocultar novamente
+
+  const shouldShowButtons = hasArrivedAtDestination && !isModalOpen;
+
+  console.log("🎯 Estado dos botões:", {
+    hasArrivedAtDestination,
+    isModalOpen,
+    shouldShowButtons,
+    currentStopIndex,
+    currentTaskTitle: currentTask.title,
+  });
 
   return (
     <div className="relative h-screen w-full flex flex-col bg-slate-100 overflow-hidden">
@@ -457,6 +577,13 @@ export default function DriverPage() {
             <MapPin size={14} className="text-blue-500 shrink-0" />
             <span className="truncate">{currentTask.endereco}</span>
           </div>
+
+          {hasArrivedAtDestination && (
+            <div className="mt-2 text-xs font-semibold text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1 inline-flex items-center gap-1">
+              <CheckCircle size={12} />
+              <span>Chegou ao destino</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -471,28 +598,30 @@ export default function DriverPage() {
         />
       </div>
 
-      {/* FOOTER ACTIONS */}
-      <div className="z-[500] bg-white p-6 rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] border-t border-slate-100">
-        <h3 className="text-center text-slate-400 text-xs font-semibold uppercase mb-4 tracking-wider">
-          Ações da Visita
-        </h3>
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => handleOpenModal("FAILED")}
-            className="flex flex-col items-center justify-center p-4 rounded-xl bg-red-50 text-red-600 border border-red-100 active:scale-95 transition-all hover:bg-red-100"
-          >
-            <AlertTriangle size={24} className="mb-1" />
-            <span className="font-bold">Problema</span>
-          </button>
-          <button
-            onClick={() => handleOpenModal("COMPLETED")}
-            className="flex flex-col items-center justify-center p-4 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 active:scale-95 transition-all hover:bg-emerald-100"
-          >
-            <CheckCircle size={24} className="mb-1" />
-            <span className="font-bold">Concluir</span>
-          </button>
+      {/* FOOTER ACTIONS - SÓ MOSTRA QUANDO CHEGAR AO DESTINO */}
+      {shouldShowButtons && (
+        <div className="z-[500] bg-white p-6 rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] border-t border-slate-100 animate-in slide-in-from-bottom-5">
+          <h3 className="text-center text-slate-400 text-xs font-semibold uppercase mb-4 tracking-wider">
+            Ações da Visita
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => handleOpenModal("FAILED")}
+              className="flex flex-col items-center justify-center p-4 rounded-xl bg-red-50 text-red-600 border border-red-100 active:scale-95 transition-all hover:bg-red-100"
+            >
+              <AlertTriangle size={24} className="mb-1" />
+              <span className="font-bold">Indicar erro</span>
+            </button>
+            <button
+              onClick={() => handleOpenModal("COMPLETED")}
+              className="flex flex-col items-center justify-center p-4 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 active:scale-95 transition-all hover:bg-emerald-100"
+            >
+              <CheckCircle size={24} className="mb-1" />
+              <span className="font-bold">Concluir</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* --- MODAL --- */}
       {isModalOpen && (
