@@ -224,8 +224,6 @@ function SidebarContent({
   const { user } = useAuth();
 
   // LOG 1: Verificar o usuário
-  console.log("🔍 [Sidebar] Usuário atual:", user);
-  console.log("🔍 [Sidebar] Role do usuário:", user?.role);
 
   const [userToggledMenus, setUserToggledMenus] = useState<
     Record<string, boolean>
@@ -236,73 +234,64 @@ function SidebarContent({
   };
 
   // LOG 2: Verificar todos os itens do menu antes do filtro
-  useEffect(() => {
-    console.log(
-      "📋 [Sidebar] Todos os itens do menu:",
-      menuItems.map((item) => item.title),
-    );
-  }, []);
+  // useEffect(() => {
+  //   console.log(
+  //     "📋 [Sidebar] Todos os itens do menu:",
+  //     menuItems.map((item) => item.title),
+  //   );
+  // }, []);
 
   // --- 2. LÓGICA DE PERMISSÕES PARA MASTER ---
   const filteredMenuItems = useMemo(() => {
     if (!user) {
-      console.log("⚠️ [Sidebar] Usuário não encontrado");
       return [];
     }
 
-    console.log("🎯 [Sidebar] Filtrando itens para role:", user.role);
 
     // 👇 SE FOR MASTER, MOSTRA APENAS OS ITENS ESPECÍFICOS
     if (user.role === "MASTER") {
-      console.log("👑 [Sidebar] Usuário MASTER - filtrando itens específicos");
       
       const masterItems = menuItems.filter((item) => {
         // Lista de títulos permitidos para MASTER
         const allowedTitles = ["Empresas", "Usuários", "Dashboard", "Audit"];
         
         if (allowedTitles.includes(item.title)) {
-          console.log(`✅ Item MASTER permitido: ${item.title}`);
           return true;
         }
         
-        console.log(`❌ Item MASTER bloqueado: ${item.title}`);
         return false;
       });
       
-      console.log(
-        "📊 [Sidebar] Itens para MASTER:",
-        masterItems.map((item) => item.title),
-      );
+      // console.log(
+      //   "📊 [Sidebar] Itens para MASTER:",
+      //   masterItems.map((item) => item.title),
+      // );
       return masterItems;
     }
 
     // Para outros usuários (ADMIN, EMPLOYER)
     const filtered = menuItems.filter((item) => {
       // LOG 3: Verificar cada item
-      console.log(`📌 Verificando item: ${item.title}`);
 
       // Se for ADMIN, mostra todos os itens
       if (user.role === "ADMIN") {
-        console.log(`✅ Item ${item.title} liberado para ADMIN`);
         return true;
       }
 
       // Para EMPLOYER, remove alguns itens
       if (user.role === "EMPLOYER") {
         if (item.href === "/empresas" || item.href === "/users") {
-          console.log(`❌ Item ${item.title} removido para EMPLOYER`);
           return false;
         }
       }
 
-      console.log(`✅ Item ${item.title} mantido`);
       return true;
     });
 
-    console.log(
-      "📊 [Sidebar] Itens após filtro:",
-      filtered.map((item) => item.title),
-    );
+    // console.log(
+    //   "📊 [Sidebar] Itens após filtro:",
+    //   filtered.map((item) => item.title),
+    // );
     return filtered;
   }, [user]);
 
