@@ -58,7 +58,6 @@ export default function DriverMap({ route, myLocation, currentStopIndex }: Drive
   // --- EFEITO: BUSCAR ROTA REAL (OSRM) ---
   useEffect(() => {
     if (!myLocation || remainingRoute.length === 0) {
-        setRoadPath([]);
         return;
     }
 

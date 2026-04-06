@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Edit, MoreVertical, Plus, Trash2 } from "lucide-react";
+import { Calendar, Edit, MoreVertical, Plus, Trash2 } from "lucide-react";
 import React from "react";
 import { ColumnFilterIcons } from "./column-filter-icons";
 
@@ -22,16 +22,19 @@ interface KanbanColumnProps {
   onDeleteClick?: () => void;
   onDropItem: (itemId: string, columnId: string) => void;
   children: React.ReactNode;
-  
-  // NOVA PROP: indica se é a primeira coluna
+
   isFirstColumn?: boolean;
-  
-  // Novas props para filtros
+  showAddButton?: boolean;
+
+  // 🔥 Tornar as props OBRIGATÓRIAS ou usar valores padrão
   onFilterOverdue?: () => void;
   onFilterUpcoming?: () => void;
   isOverdueFilterActive?: boolean;
   isUpcomingFilterActive?: boolean;
   filterDisabled?: boolean;
+
+  defaultDays?: number;
+  className?: string;
 }
 
 export function KanbanColumn({
@@ -45,18 +48,16 @@ export function KanbanColumn({
   onDeleteClick,
   onDropItem,
   children,
-  
-  // NOVA PROP com valor padrão false
+  showAddButton = false,
   isFirstColumn = false,
-  
-  // Novas props com valores padrão
   onFilterOverdue,
   onFilterUpcoming,
   isOverdueFilterActive = false,
   isUpcomingFilterActive = false,
   filterDisabled = false,
+  defaultDays,
+  className = "",
 }: KanbanColumnProps) {
-  
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const itemId = e.dataTransfer.getData("itemId");
@@ -65,41 +66,61 @@ export function KanbanColumn({
 
   const handleAdd = onAddItem || onAddClick;
 
+  // 🔥 Funções de fallback para evitar erro quando não fornecidas
+  const handleFilterOverdue = () => {
+    if (onFilterOverdue) onFilterOverdue();
+  };
+
+  const handleFilterUpcoming = () => {
+    if (onFilterUpcoming) onFilterUpcoming();
+  };
+
   return (
     <div
-      className="w-[260px] flex-shrink-0 flex flex-col h-full max-h-[calc(100vh-140px)] rounded-lg bg-gray-100/50 border border-gray-200 transition-colors"
+      className={`w-[280px] flex-shrink-0 flex flex-col h-full rounded-lg bg-gray-100/50 border border-gray-200 transition-colors ${className}`}
+      style={{ height: "100%" }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
     >
-      {/* Header da Coluna */}
+      {/* Header da Coluna - FIXO */}
       <div
-        className="px-3 py-2 rounded-t-lg flex justify-between items-center text-white shadow-sm"
+        className="px-3 py-2 rounded-t-lg flex justify-between items-center text-white shadow-sm flex-shrink-0"
         style={{ backgroundColor: color }}
       >
-        <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide truncate">
-          {title}
-          <Badge
-            variant="secondary"
-            className="bg-white/20 text-white border-0 hover:bg-white/30 text-[9px] h-4 px-1"
-          >
-            {count}
-          </Badge>
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide truncate">
+            {title}
+            <Badge
+              variant="secondary"
+              className="bg-white/20 text-white border-0 hover:bg-white/30 text-[9px] h-4 px-1"
+            >
+              {count}
+            </Badge>
+          </div>
+
+          {defaultDays !== undefined && defaultDays > 0 && (
+            <div className="flex items-center gap-1 text-[9px] text-white/80 mt-0.5">
+              <Calendar className="w-2.5 h-2.5" />
+              <span>
+                Padrão: {defaultDays} {defaultDays === 1 ? "dia" : "dias"}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-0.5">
-          {/* ÍCONES DE FILTRO */}
+          {/* 🔥 Verifica se as funções existem antes de renderizar */}
           {onFilterOverdue && onFilterUpcoming && (
             <ColumnFilterIcons
-              onFilterOverdue={onFilterOverdue}
-              onFilterUpcoming={onFilterUpcoming}
+              onFilterOverdue={handleFilterOverdue}
+              onFilterUpcoming={handleFilterUpcoming}
               isOverdueActive={isOverdueFilterActive}
               isUpcomingActive={isUpcomingFilterActive}
               disabled={filterDisabled}
             />
           )}
 
-          {/* 🔥 BOTÃO DE ADICIONAR - SÓ APARECE NA PRIMEIRA COLUNA */}
-          {handleAdd && isFirstColumn && (
+          {handleAdd && (showAddButton || isFirstColumn) && (
             <Button
               variant="ghost"
               size="icon"
@@ -109,8 +130,7 @@ export function KanbanColumn({
               <Plus className="w-3 h-3" />
             </Button>
           )}
-          
-          {/* Menu de Opções */}
+
           {(onEditClick || onDeleteClick) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -142,12 +162,11 @@ export function KanbanColumn({
         </div>
       </div>
 
-      {/* Corpo da Coluna */}
-      <div className="p-2 overflow-y-auto flex-1 space-y-2 custom-scrollbar">
+      <div className="p-2 overflow-y-auto flex-1 space-y-2 custom-scrollbar min-h-[100px]">
         {children}
         {React.Children.count(children) === 0 && (
           <div className="h-16 border-2 border-dashed border-gray-300 rounded flex items-center justify-center text-gray-400 text-xs">
-            Vazio
+            Arraste itens para cá
           </div>
         )}
       </div>

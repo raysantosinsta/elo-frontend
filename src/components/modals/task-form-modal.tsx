@@ -4,6 +4,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  AlertTriangle,
   CheckCircle2,
   Edit,
   ImageIcon,
@@ -375,7 +376,7 @@ export function TaskFormModal({
       complement,
       id,
       scheduledAt, // <--- Extraia scheduledAt aqui
-      dueDate,     // <--- Extraia dueDate aqui
+      dueDate, // <--- Extraia dueDate aqui
       ...taskFields
     } = values;
     const hasAddress = street || city || (finalLat && finalLon);
@@ -472,6 +473,7 @@ export function TaskFormModal({
                       </FormItem>
                     )}
                   />
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
@@ -560,6 +562,26 @@ export function TaskFormModal({
                             ))}
                           </SelectContent>
                         </Select>
+                      </FormItem>
+                    )}
+                  />
+                  {/* 🔥 CAMPO DE COMENTÁRIO DE ERRO - SEMPRE VISÍVEL */}
+                  <FormField
+                    control={form.control}
+                    name="finalComment"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-600 flex items-center gap-2">
+                          <AlertTriangle size={14} /> Comentario Final
+                        </FormLabel>
+                        <FormControl>
+                          <Textarea
+                            className="resize-none h-20 border-red-200 focus:border-red-400"
+                            placeholder="Descreva o motivo do erro (opcional)..."
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
                       </FormItem>
                     )}
                   />

@@ -736,6 +736,7 @@ export default function ProductKanban() {
               count={colTasks.length}
               color={isDoneColumn ? "#27AE60" : undefined}
               onDropItem={moveItem}
+              showAddButton={!isDoneColumn} // 🔥 MOSTRA BOTÃO EM TODAS AS COLUNAS EXCETO CONCLUÍDO
               onAddClick={
                 isDoneColumn ? undefined : () => handleAddTaskFromColumn(col.id)
               }
@@ -759,6 +760,16 @@ export default function ProductKanban() {
             >
               {colTasks.map((task) => {
                 const statusConfig = getStatusConfig(task.status);
+
+                // 🔥 LOG PARA VERIFICAR
+                console.log("Task:", {
+                  id: task.id,
+                  title: task.title,
+                  finalComment: task.finalComment,
+                  status: task.status,
+                  hasComment: !!task.finalComment,
+                });
+
                 const totalAttachments =
                   (task.taskImages?.length || 0) +
                   (task.taskVideos?.length || 0) +
@@ -772,6 +783,7 @@ export default function ProductKanban() {
                     priorityColor={getPriorityColor(task.priority)}
                     statusLabel={statusConfig.label}
                     statusColor={statusConfig.color}
+                    finalComment={task.finalComment}
                     coverImage={
                       task.taskImages && task.taskImages.length > 0
                         ? task.taskImages[0].url
@@ -994,6 +1006,17 @@ export default function ProductKanban() {
                   "Nenhuma descrição detalhada fornecida para esta tarefa."}
               </div>
             </div>
+
+            {previewTask?.finalComment && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-gray-600 flex items-center gap-2 uppercase tracking-tight text-[11px]">
+                  <AlertTriangle size={14} /> Comentário Final
+                </h4>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap bg-red-50/50 p-4 rounded-xl border border-red-100 min-h-[80px] leading-relaxed">
+                  {previewTask.finalComment}
+                </div>
+              </div>
+            )}
 
             {previewTask?.taskAddress && (
               <div className="bg-orange-50/30 p-4 rounded-xl border border-orange-100 space-y-2">

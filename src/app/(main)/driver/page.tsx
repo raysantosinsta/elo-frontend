@@ -12,7 +12,7 @@ import {
   Loader2,
   MapPin,
   Navigation,
-  Play
+  Play,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -49,11 +49,18 @@ export default function DriverPage() {
   // --- ESTADOS ---
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
-  const [currentPosition, setCurrentPosition] = useState<[number, number] | null>(null);
+  const [currentPosition, setCurrentPosition] = useState<
+    [number, number] | null
+  >(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(true);
 
+  // --- NOVO ESTADO: Controle de chegada ao destino ---
+  const [hasArrivedAtDestination, setHasArrivedAtDestination] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
+
   // --- TIMER ---
-  const [timeRemainingString, setTimeRemainingString] = useState<string>("--:--");
+  const [timeRemainingString, setTimeRemainingString] =
+    useState<string>("--:--");
   const [isLate, setIsLate] = useState(false);
 
   // --- SIMULAÇÃO ---
@@ -63,7 +70,9 @@ export default function DriverPage() {
 
   // --- MODAL ---
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [actionType, setActionType] = useState<"COMPLETED" | "FAILED">("COMPLETED");
+  const [actionType, setActionType] = useState<"COMPLETED" | "FAILED">(
+    "COMPLETED",
+  );
   const [comment, setComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -74,28 +83,47 @@ export default function DriverPage() {
   const [newTaskDate, setNewTaskDate] = useState("");
 
   const watchIdRef = useRef<number | null>(null);
+  const arrivalCheckRef = useRef<NodeJS.Timeout | null>(null);
 
   // 1. Carrega a rota do LocalStorage
   useEffect(() => {
     try {
       const storedRoute = localStorage.getItem("rotaAtiva");
       const savedIndex = localStorage.getItem("rotaIndex");
+      const savedArrivalState = localStorage.getItem("hasArrivedAtDestination");
 
       if (storedRoute) {
         const parsedRoute: RoutePoint[] = JSON.parse(storedRoute);
-        
+
         // Validação: Garante que os pontos têm coordenadas válidas
-        const validRoute = parsedRoute.filter(p => 
-          p.lat !== undefined && p.lng !== undefined && !isNaN(Number(p.lat)) && !isNaN(Number(p.lng))
+        const validRoute = parsedRoute.filter(
+          (p) =>
+            p.lat !== undefined &&
+            p.lng !== undefined &&
+            !isNaN(Number(p.lat)) &&
+            !isNaN(Number(p.lng)),
         );
 
-        console.log("📍 Rota Carregada:", validRoute); // DEBUG: Veja no console se tem 2 itens
+        console.log("📍 Rota Carregada:", validRoute);
 
         if (validRoute.length > 0) {
           setRoutePoints(validRoute);
           if (savedIndex) {
             const idx = Number(savedIndex);
             setCurrentStopIndex(idx < validRoute.length ? idx : 0);
+          }
+
+          // Recupera estado de chegada se existir
+          if (savedArrivalState) {
+            setHasArrivedAtDestination(savedArrivalState === "true");
+          }
+
+          // Se é o primeiro ponto e não chegou, marca como não chegou
+          if (
+            currentStopIndex === 0 &&
+            (!savedArrivalState || savedArrivalState === "false")
+          ) {
+            setHasArrivedAtDestination(false);
           }
         } else {
           toast.error("Rota inválida ou sem coordenadas.");
@@ -110,6 +138,7 @@ export default function DriverPage() {
       router.push("/route-planner");
     } finally {
       setIsLoadingRoute(false);
+      setIsFirstLoad(false);
     }
   }, [router]);
 
@@ -143,8 +172,8 @@ export default function DriverPage() {
       const h = Math.floor(sec / 3600);
       const m = Math.floor((sec % 3600) / 60);
       const s = Math.floor(sec % 60);
-      if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
-      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+      return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
     };
 
     updateTimer();
@@ -152,22 +181,105 @@ export default function DriverPage() {
     return () => clearInterval(intervalId);
   }, []);
 
-  // 3. Monitora GPS Real
+  // 3. FUNÇÃO PARA VERIFICAR SE CHEGOU AO DESTINO (GEOFENCING)
+  const checkArrivalAtDestination = () => {
+    if (!currentPosition || !currentTask) return;
+
+    const distance = calculateDistance(
+      currentPosition[0],
+      currentPosition[1],
+      currentTask.lat,
+      currentTask.lng,
+    );
+
+    const ARRIVAL_RADIUS_METERS = 50; // Ajustável conforme necessidade
+
+    if (distance <= ARRIVAL_RADIUS_METERS && !hasArrivedAtDestination) {
+      setHasArrivedAtDestination(true);
+      localStorage.setItem("hasArrivedAtDestination", "true");
+      toast.success(`✅ Você chegou em: ${currentTask.title}`);
+    } else if (
+      distance > ARRIVAL_RADIUS_METERS &&
+      hasArrivedAtDestination &&
+      !isModalOpen
+    ) {
+      setHasArrivedAtDestination(false);
+      localStorage.setItem("hasArrivedAtDestination", "false");
+    }
+  };
+
+  // Função auxiliar para calcular distância entre dois pontos (Haversine formula)
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number => {
+    const R = 6371000; // Raio da Terra em METROS
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const currentTask = routePoints[currentStopIndex];
+
+  // 4. MONITORAMENTO DE POSIÇÃO E VERIFICAÇÃO DE CHEGADA
+  useEffect(() => {
+    if (!currentPosition || !currentTask) return;
+
+    // Verifica imediatamente
+    checkArrivalAtDestination();
+
+    // Configura verificação periódica (a cada 5 segundos)
+    if (arrivalCheckRef.current) {
+      clearInterval(arrivalCheckRef.current);
+    }
+
+    arrivalCheckRef.current = setInterval(() => {
+      checkArrivalAtDestination();
+    }, 5000); // Verifica a cada 5 segundos
+
+    return () => {
+      if (arrivalCheckRef.current) {
+        clearInterval(arrivalCheckRef.current);
+      }
+    };
+  }, [currentPosition, currentTask, hasArrivedAtDestination]);
+
+  // 5. RESETAR ESTADO DE CHEGADA AO MUDAR DE DESTINO
+  useEffect(() => {
+    // Reset ao mudar de parada
+    setHasArrivedAtDestination(false);
+    localStorage.setItem("hasArrivedAtDestination", "false");
+    console.log("🔄 Mudou de destino, resetando estado de chegada");
+  }, [currentStopIndex]);
+
+  // 6. Monitora GPS Real
   useEffect(() => {
     if (!navigator.geolocation || !isGPSActive) return;
-    
+
     // Pega posição inicial rápida
     navigator.geolocation.getCurrentPosition(
-        (pos) => setCurrentPosition([pos.coords.latitude, pos.coords.longitude]),
-        (err) => console.warn("GPS Init Error:", err)
+      (pos) => setCurrentPosition([pos.coords.latitude, pos.coords.longitude]),
+      (err) => console.warn("GPS Init Error:", err),
     );
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => setCurrentPosition([pos.coords.latitude, pos.coords.longitude]),
       (err) => console.error("GPS Error:", err),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
-    return () => { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); };
+    return () => {
+      if (watchIdRef.current)
+        navigator.geolocation.clearWatch(watchIdRef.current);
+    };
   }, [isGPSActive]);
 
   // --- SIMULAÇÃO ---
@@ -188,8 +300,10 @@ export default function DriverPage() {
     const steps = 150;
     const speed = 20;
     let step = 0;
-    const startLat = currentPosition[0], startLng = currentPosition[1];
-    const endLat = destination.lat, endLng = destination.lng;
+    const startLat = currentPosition[0],
+      startLng = currentPosition[1];
+    const endLat = destination.lat,
+      endLng = destination.lng;
 
     if (simulationInterval.current) clearInterval(simulationInterval.current);
 
@@ -201,23 +315,39 @@ export default function DriverPage() {
       setCurrentPosition([newLat, newLng]);
 
       if (step >= steps) {
-        if (simulationInterval.current) clearInterval(simulationInterval.current);
+        if (simulationInterval.current)
+          clearInterval(simulationInterval.current);
         setCurrentPosition([endLat, endLng]);
         setIsSimulating(false);
         toast.success("Você chegou ao destino (Simulação)!");
+        // Força verificação de chegada
+        setTimeout(() => checkArrivalAtDestination(), 100);
       }
     }, speed);
   };
 
   const resumeRealGPS = () => {
-      setIsGPSActive(true);
-      toast.info("GPS em tempo real ativado.");
+    setIsGPSActive(true);
+    toast.info("GPS em tempo real ativado.");
   };
-  
-  useEffect(() => { return () => { if (simulationInterval.current) clearInterval(simulationInterval.current); }; }, []);
+
+  useEffect(() => {
+    return () => {
+      if (simulationInterval.current) clearInterval(simulationInterval.current);
+      if (arrivalCheckRef.current) clearInterval(arrivalCheckRef.current);
+    };
+  }, []);
 
   // --- HANDLERS DO MODAL ---
   const handleOpenModal = (type: "COMPLETED" | "FAILED") => {
+    // Só permite abrir modal se chegou ao destino
+    if (!hasArrivedAtDestination) {
+      toast.warning(
+        "Você ainda não chegou ao destino para finalizar a visita.",
+      );
+      return;
+    }
+
     setActionType(type);
     setComment("");
     const today = new Date().toISOString().split("T")[0];
@@ -230,12 +360,11 @@ export default function DriverPage() {
 
   const confirmFinalization = async () => {
     if (!comment && actionType === "FAILED") {
-      showError("Campo Obrigatório", "Por favor, descreva o motivo do problema.");
+      showError(
+        "Campo Obrigatório",
+        "Por favor, descreva o motivo do problema.",
+      );
       return;
-    }
-    if (actionType === "COMPLETED" && !newTaskTitle.trim() && routePoints.length === 0) { // Lógica ajustada
-       // Apenas valida titulo se for criar nova tarefa OBRIGATÓRIA, aqui é opcional na maioria dos fluxos
-       // Se for obrigatório criar próxima tarefa, mantenha a validação
     }
 
     setIsSubmitting(true);
@@ -244,11 +373,15 @@ export default function DriverPage() {
     try {
       // 1. Atualiza a tarefa ATUAL
       if (actionType === "FAILED") {
-        const formattedDate = rescheduleDate ? `${rescheduleDate}T12:00:00` : undefined;
+        const formattedDate = rescheduleDate
+          ? `${rescheduleDate}T12:00:00`
+          : undefined;
         await api.patch(`/routes/tasks/${task.id}/finalize`, {
           status: "FAILED",
           finalComment: comment,
-          scheduledAt: formattedDate ? new Date(formattedDate).toISOString() : undefined,
+          scheduledAt: formattedDate
+            ? new Date(formattedDate).toISOString()
+            : undefined,
         });
         toast.error("Tarefa marcada com problema.");
       } else {
@@ -261,40 +394,53 @@ export default function DriverPage() {
         // 2. Cria a NOVA tarefa (se preenchido)
         if (newTaskTitle) {
           if (!task.columnId) {
-             toast.error("Erro ao criar próxima tarefa: Coluna não identificada.");
+            toast.error(
+              "Erro ao criar próxima tarefa: Coluna não identificada.",
+            );
           } else {
-              const newDateFormatted = newTaskDate ? `${newTaskDate}T09:00:00` : undefined;
-              
-              const addressPayload = task.taskAddress ? {
-                cep: task.taskAddress.cep,
-                endereco: task.taskAddress.endereco,
-                numero: task.taskAddress.numero,
-                bairro: task.taskAddress.bairro,
-                cidade: task.taskAddress.cidade,
-                estado: task.taskAddress.estado,
-                complemento: task.taskAddress.complemento || "",
-                latitude: Number(task.taskAddress.latitude),
-                longitude: Number(task.taskAddress.longitude)
-              } : {
-                 cep: "00000-000",
-                 endereco: task.endereco.split(',')[0],
-                 numero: task.endereco.split(',')[1] || 'S/N',
-                 bairro: "N/A", cidade: "N/A", estado: "UF",
-                 latitude: Number(task.lat), longitude: Number(task.lng)
-              };
-    
-              const finalDescription = `${newTaskDescription}\n\n> Histórico: ${comment || "Sem observações na conclusão anterior."}`;
-    
-              await api.post('/tasks', {
-                title: newTaskTitle,
-                columnId: task.columnId,
-                description: finalDescription.trim(),
-                assignedToId: task.userAssigned?.id || task.userAssignedId,
-                scheduledAt: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
-                dueDate: newDateFormatted ? new Date(newDateFormatted).toISOString() : undefined,
-                address: addressPayload
-              });
-              toast.success("Próxima visita agendada.");
+            const newDateFormatted = newTaskDate
+              ? `${newTaskDate}T09:00:00`
+              : undefined;
+
+            const addressPayload = task.taskAddress
+              ? {
+                  cep: task.taskAddress.cep,
+                  endereco: task.taskAddress.endereco,
+                  numero: task.taskAddress.numero,
+                  bairro: task.taskAddress.bairro,
+                  cidade: task.taskAddress.cidade,
+                  estado: task.taskAddress.estado,
+                  complemento: task.taskAddress.complemento || "",
+                  latitude: Number(task.taskAddress.latitude),
+                  longitude: Number(task.taskAddress.longitude),
+                }
+              : {
+                  cep: "00000-000",
+                  endereco: task.endereco.split(",")[0],
+                  numero: task.endereco.split(",")[1] || "S/N",
+                  bairro: "N/A",
+                  cidade: "N/A",
+                  estado: "UF",
+                  latitude: Number(task.lat),
+                  longitude: Number(task.lng),
+                };
+
+            const finalDescription = `${newTaskDescription}\n\n> Histórico: ${comment || "Sem observações na conclusão anterior."}`;
+
+            await api.post("/tasks", {
+              title: newTaskTitle,
+              columnId: task.columnId,
+              description: finalDescription.trim(),
+              assignedToId: task.userAssigned?.id || task.userAssignedId,
+              scheduledAt: newDateFormatted
+                ? new Date(newDateFormatted).toISOString()
+                : undefined,
+              dueDate: newDateFormatted
+                ? new Date(newDateFormatted).toISOString()
+                : undefined,
+              address: addressPayload,
+            });
+            toast.success("Próxima visita agendada.");
           }
         }
       }
@@ -307,14 +453,15 @@ export default function DriverPage() {
         localStorage.removeItem("rotaIndex");
         localStorage.removeItem("rotaStartTime");
         localStorage.removeItem("rotaTotalDuration");
+        localStorage.removeItem("hasArrivedAtDestination");
         toast.success("Rota finalizada com sucesso!");
         router.push("/Kanban");
       } else {
         setCurrentStopIndex(nextIndex);
         localStorage.setItem("rotaIndex", String(nextIndex));
+        localStorage.removeItem("hasArrivedAtDestination"); // Reset para nova parada
         setIsModalOpen(false);
       }
-
     } catch (error) {
       console.error("Erro na finalização:", error);
       toast.error("Erro ao finalizar tarefa.");
@@ -327,26 +474,53 @@ export default function DriverPage() {
 
   // 1. Loading Inicial
   if (isLoadingRoute) {
-      return (
-        <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-2">
-            <Loader2 className="animate-spin text-blue-600" size={40} />
-            <span className="text-slate-600 font-medium">Preparando navegação...</span>
-        </div>
-      );
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-2">
+        <Loader2 className="animate-spin text-blue-600" size={40} />
+        <span className="text-slate-600 font-medium">
+          Preparando navegação...
+        </span>
+      </div>
+    );
   }
 
   // 2. Validação se existe tarefa atual
-  const currentTask = routePoints[currentStopIndex];
   if (!currentTask) {
-      return (
-        <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-4 p-4 text-center">
-            <AlertTriangle className="text-amber-500" size={48} />
-            <h2 className="text-xl font-bold text-slate-800">Nenhuma tarefa ativa</h2>
-            <p className="text-slate-500">A rota parece estar vazia ou foi concluída.</p>
-            <button onClick={() => router.push('/')} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Voltar ao Início</button>
-        </div>
-      );
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-4 p-4 text-center">
+        <AlertTriangle className="text-amber-500" size={48} />
+        <h2 className="text-xl font-bold text-slate-800">
+          Nenhuma tarefa ativa
+        </h2>
+        <p className="text-slate-500">
+          A rota parece estar vazia ou foi concluída.
+        </p>
+        <button
+          onClick={() => router.push("/")}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+        >
+          Voltar ao Início
+        </button>
+      </div>
+    );
   }
+
+  // 3. LÓGICA DE EXIBIÇÃO DOS BOTÕES
+  // Regras:
+  // - Início da rota (primeiro destino e não chegou) → NÃO mostra botões
+  // - Durante navegação (qualquer destino sem ter chegado) → NÃO mostra botões
+  // - Ao chegar nos destinos (hasArrivedAtDestination = true) → MOSTRA botões
+  // - Após concluir (modal fechado e avançou) → ocultar novamente
+
+  const shouldShowButtons = hasArrivedAtDestination && !isModalOpen;
+
+  console.log("🎯 Estado dos botões:", {
+    hasArrivedAtDestination,
+    isModalOpen,
+    shouldShowButtons,
+    currentStopIndex,
+    currentTaskTitle: currentTask.title,
+  });
 
   return (
     <div className="relative h-screen w-full flex flex-col bg-slate-100 overflow-hidden">
@@ -355,7 +529,10 @@ export default function DriverPage() {
         <div className="bg-white/95 backdrop-blur shadow-lg rounded-2xl p-4 border border-slate-200 pointer-events-auto">
           <div className="flex justify-between items-start mb-2">
             <div className="flex items-center gap-2">
-              <button onClick={() => router.back()} className="text-slate-400 hover:text-slate-600 p-1">
+              <button
+                onClick={() => router.back()}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
                 <ArrowLeft size={20} />
               </button>
               <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase">
@@ -363,113 +540,187 @@ export default function DriverPage() {
               </span>
             </div>
             <div className="flex gap-2 items-center">
-              <div className={`flex items-center gap-1 px-2 py-1.5 rounded-full border text-[10px] font-bold shadow-sm transition-colors ${isLate ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' : 'bg-slate-800 text-white border-slate-700'}`}>
-                  <Clock size={10} />
-                  <span>{timeRemainingString} {isLate ? 'ATRASADO' : ''}</span>
+              <div
+                className={`flex items-center gap-1 px-2 py-1.5 rounded-full border text-[10px] font-bold shadow-sm transition-colors ${isLate ? "bg-red-50 text-red-600 border-red-200 animate-pulse" : "bg-slate-800 text-white border-slate-700"}`}
+              >
+                <Clock size={10} />
+                <span>
+                  {timeRemainingString} {isLate ? "ATRASADO" : ""}
+                </span>
               </div>
               {!isGPSActive && !isSimulating && (
-                <button onClick={resumeRealGPS} className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] px-2 py-1.5 rounded-full font-bold border border-slate-200">
+                <button
+                  onClick={resumeRealGPS}
+                  className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] px-2 py-1.5 rounded-full font-bold border border-slate-200"
+                >
                   <Navigation size={10} /> GPS OFF
                 </button>
               )}
               {!isSimulating && (
-                <button onClick={startSimulation} className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] px-3 py-1.5 rounded-full font-bold shadow-sm active:scale-95">
-                  <Play size={10} fill="currentColor" /> {currentStopIndex > 0 && !isGPSActive ? "PRÓX" : "SIM"}
+                <button
+                  onClick={startSimulation}
+                  className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] px-3 py-1.5 rounded-full font-bold shadow-sm active:scale-95"
+                >
+                  <Play size={10} fill="currentColor" />{" "}
+                  {currentStopIndex > 0 && !isGPSActive ? "PRÓX" : "SIM"}
                 </button>
               )}
             </div>
           </div>
-          <h2 className="font-bold text-lg text-slate-800 leading-tight line-clamp-1" title={currentTask.title}>{currentTask.title}</h2>
+          <h2
+            className="font-bold text-lg text-slate-800 leading-tight line-clamp-1"
+            title={currentTask.title}
+          >
+            {currentTask.title}
+          </h2>
           <div className="flex items-center gap-1 mt-1 text-slate-500 text-sm">
             <MapPin size={14} className="text-blue-500 shrink-0" />
             <span className="truncate">{currentTask.endereco}</span>
           </div>
+
+          {hasArrivedAtDestination && (
+            <div className="mt-2 text-xs font-semibold text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1 inline-flex items-center gap-1">
+              <CheckCircle size={12} />
+              <span>Chegou ao destino</span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* MAPA */}
       <div className="flex-1 z-0 relative">
         {/* Passamos o array completo de routePoints para o Mapa decidir como desenhar */}
-        <DriverMap 
-            route={routePoints} 
-            myLocation={currentPosition} 
-            currentStopIndex={currentStopIndex} 
+        <DriverMap
+          route={routePoints}
+          myLocation={currentPosition}
+          currentStopIndex={currentStopIndex}
+          key={`${routePoints.length}-${currentStopIndex}`}
         />
       </div>
 
-      {/* FOOTER ACTIONS */}
-      <div className="z-[500] bg-white p-6 rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] border-t border-slate-100">
-        <h3 className="text-center text-slate-400 text-xs font-semibold uppercase mb-4 tracking-wider">
-          Ações da Visita
-        </h3>
-        <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => handleOpenModal("FAILED")} className="flex flex-col items-center justify-center p-4 rounded-xl bg-red-50 text-red-600 border border-red-100 active:scale-95 transition-all hover:bg-red-100">
-            <AlertTriangle size={24} className="mb-1" />
-            <span className="font-bold">Problema</span>
-          </button>
-          <button onClick={() => handleOpenModal("COMPLETED")} className="flex flex-col items-center justify-center p-4 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 active:scale-95 transition-all hover:bg-emerald-100">
-            <CheckCircle size={24} className="mb-1" />
-            <span className="font-bold">Concluir</span>
-          </button>
+      {/* FOOTER ACTIONS - SÓ MOSTRA QUANDO CHEGAR AO DESTINO */}
+      {shouldShowButtons && (
+        <div className="z-[500] bg-white p-6 rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] border-t border-slate-100 animate-in slide-in-from-bottom-5">
+          <h3 className="text-center text-slate-400 text-xs font-semibold uppercase mb-4 tracking-wider">
+            Ações da Visita
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => handleOpenModal("FAILED")}
+              className="flex flex-col items-center justify-center p-4 rounded-xl bg-red-50 text-red-600 border border-red-100 active:scale-95 transition-all hover:bg-red-100"
+            >
+              <AlertTriangle size={24} className="mb-1" />
+              <span className="font-bold">Indicar erro</span>
+            </button>
+            <button
+              onClick={() => handleOpenModal("COMPLETED")}
+              className="flex flex-col items-center justify-center p-4 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 active:scale-95 transition-all hover:bg-emerald-100"
+            >
+              <CheckCircle size={24} className="mb-1" />
+              <span className="font-bold">Concluir</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* --- MODAL --- */}
       {isModalOpen && (
         <div className="absolute inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="text-center mb-4">
-              <h3 className={`text-xl font-bold ${actionType === "COMPLETED" ? "text-emerald-600" : "text-red-600"}`}>
-                {actionType === "COMPLETED" ? "Tarefa Concluída!" : "Reportar Problema"}
+              <h3
+                className={`text-xl font-bold ${actionType === "COMPLETED" ? "text-emerald-600" : "text-red-600"}`}
+              >
+                {actionType === "COMPLETED"
+                  ? "Tarefa Concluída!"
+                  : "Reportar Problema"}
               </h3>
             </div>
-            
+
             {actionType === "FAILED" && (
-                <div className="mb-4 bg-red-50 p-3 rounded-xl border border-red-100">
-                    <label className="text-xs font-bold text-red-700 mb-1 block uppercase">Reagendar Para</label>
-                    <input type="date" className="w-full p-2 bg-white rounded-lg border border-red-200" value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} />
-                </div>
+              <div className="mb-4 bg-red-50 p-3 rounded-xl border border-red-100">
+                <label className="text-xs font-bold text-red-700 mb-1 block uppercase">
+                  Reagendar Para
+                </label>
+                <input
+                  type="date"
+                  className="w-full p-2 bg-white rounded-lg border border-red-200"
+                  value={rescheduleDate}
+                  onChange={(e) => setRescheduleDate(e.target.value)}
+                />
+              </div>
             )}
 
             {actionType === "COMPLETED" && (
-                <div className="mb-4 bg-emerald-50 p-4 rounded-xl border border-emerald-100 space-y-3">
-                    <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider border-b border-emerald-200 pb-2 mb-2">
-                        Criar Próxima Tarefa
-                    </h4>
-                    <div>
-                        <label className="text-[10px] font-bold text-emerald-600 block mb-1">Título</label>
-                        <input type="text" placeholder="Ex: Retorno ao Cliente" className="w-full p-2 rounded-lg border border-emerald-200 text-sm" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-emerald-600 block mb-1">Descrição (Opcional)</label>
-                        <textarea placeholder="Detalhes..." className="w-full p-2 rounded-lg border border-emerald-200 text-sm min-h-[60px]" value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)} />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-emerald-600 block mb-1">Data Agendamento</label>
-                        <input type="date" className="w-full p-2 rounded-lg border border-emerald-200 text-sm" value={newTaskDate} onChange={(e) => setNewTaskDate(e.target.value)} />
-                    </div>
+              <div className="mb-4 bg-emerald-50 p-4 rounded-xl border border-emerald-100 space-y-3">
+                <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider border-b border-emerald-200 pb-2 mb-2">
+                  Criar Próxima Tarefa
+                </h4>
+                <div>
+                  <label className="text-[10px] font-bold text-emerald-600 block mb-1">
+                    Título
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Retorno ao Cliente"
+                    className="w-full p-2 rounded-lg border border-emerald-200 text-sm"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                  />
                 </div>
+                <div>
+                  <label className="text-[10px] font-bold text-emerald-600 block mb-1">
+                    Descrição (Opcional)
+                  </label>
+                  <textarea
+                    placeholder="Detalhes..."
+                    className="w-full p-2 rounded-lg border border-emerald-200 text-sm min-h-[60px]"
+                    value={newTaskDescription}
+                    onChange={(e) => setNewTaskDescription(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-emerald-600 block mb-1">
+                    Data Agendamento
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full p-2 rounded-lg border border-emerald-200 text-sm"
+                    value={newTaskDate}
+                    onChange={(e) => setNewTaskDate(e.target.value)}
+                  />
+                </div>
+              </div>
             )}
 
             <div>
-                <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                    {actionType === "COMPLETED" ? "Comentário da Finalização (Atual)" : "Motivo do Problema"}
-                </label>
-                <textarea 
-                    value={comment} 
-                    onChange={(e) => setComment(e.target.value)} 
-                    className="w-full p-3 border border-slate-300 rounded-xl mb-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
-                    placeholder="Escreva aqui..." 
-                />
+              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                {actionType === "COMPLETED"
+                  ? "Comentário da Finalização (Atual)"
+                  : "Motivo do Problema"}
+              </label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-xl mb-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="Escreva aqui..."
+              />
             </div>
 
             <div className="flex gap-3">
-                <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200">
-                    Cancelar
-                </button>
-                <button onClick={confirmFinalization} disabled={isSubmitting} className={`flex-1 py-3 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-all ${actionType === "COMPLETED" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}>
-                    {isSubmitting ? "Salvando..." : "Confirmar"}
-                </button>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmFinalization}
+                disabled={isSubmitting}
+                className={`flex-1 py-3 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-all ${actionType === "COMPLETED" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}
+              >
+                {isSubmitting ? "Salvando..." : "Confirmar"}
+              </button>
             </div>
           </div>
         </div>

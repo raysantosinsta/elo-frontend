@@ -2,9 +2,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import { useCreateFlowItem } from "@/hooks/use-create-flow-item";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Calendar,
+  Check,
+  ChevronDown,
   Clock,
   Factory,
   Filter as FilterIcon,
@@ -12,11 +16,16 @@ import {
   Loader2,
   Lock,
   Package,
+  Plus,
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSwipeable } from "react-swipeable";
 import { toast } from "sonner";
+
+import { useCompanySettings } from "@/hooks/use-company-settings";
+import { useKanbanBoards } from "@/hooks/use-kanban-boards";
 
 // --- Infraestrutura ---
 import { useAuth } from "@/contexts/AuthContext";
@@ -64,7 +73,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-// import { useProductRefPermission } from "@/hooks/use-product-ref-permission";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 // --- CONSTANTES ---
 const PROFESSIONAL_ROLES = [
@@ -126,8 +148,9 @@ interface FlowStage {
   order: number;
   color?: string;
   allowedRole?: string;
-  items: FlowItem[];
+  defaultDays?: number;
   flowId: string;
+  items: FlowItem[];
 }
 
 export interface ProductFlow {
@@ -156,7 +179,53 @@ export default function ProductFlowKanban() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
-  // const { canManageRef, canViewRef } = useProductRefPermission();
+  const queryClient = useQueryClient();
+
+  // --- Estados Mobile ---
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileFilterDrawerOpen, setIsMobileFilterDrawerOpen] =
+    useState(false);
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+
+  // 🔥 Buscar configuração da empresa
+  const {
+    data: companySettings,
+    isLoading: loadingSettings,
+    refetch: refetchSettings,
+  } = useCompanySettings(user?.company?.id || "");
+
+  const notificationDays = companySettings?.notificationDays ?? 7;
+
+  // 🔥 LOG do notificationDays
+  useEffect(() => {
+    console.log("🔍 [ProductFlowKanban] notificationDays:", notificationDays);
+  }, [notificationDays]);
+
+  // 🔥 Forçar atualização dos filtros quando notificationDays mudar
+  useEffect(() => {
+    if (tempFilterUpcoming && notificationDays) {
+      const today = new Date();
+      const todayUTC = new Date(
+        Date.UTC(
+          today.getUTCFullYear(),
+          today.getUTCMonth(),
+          today.getUTCDate(),
+        ),
+      );
+      const notificationLimit = new Date(todayUTC);
+      notificationLimit.setUTCDate(todayUTC.getUTCDate() + notificationDays);
+
+      const todayStr = todayUTC.toISOString().split("T")[0];
+      const limitStr = notificationLimit.toISOString().split("T")[0];
+
+      setTempFilterStartDate(todayStr);
+      setTempFilterEndDate(limitStr);
+      handleFilterClick();
+    }
+  }, [notificationDays]);
 
   // ===========================================================================
   // 🔥 REF PARA CONTROLAR PRIMEIRA RENDERIZAÇÃO
@@ -166,11 +235,9 @@ export default function ProductFlowKanban() {
   // --- Estados de Dados ---
   const [flows, setFlows] = useState<ProductFlow[]>([]);
   const [selectedFlowIds, setSelectedFlowIds] = useState<string[]>([]);
-  const [boards, setBoards] = useState<ProductFlow[]>([]);
   const [templates, setTemplates] = useState<FlowTemplate[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // --- Estados de Modais ---
   const [isFlowModal, setIsFlowModal] = useState(false);
@@ -257,13 +324,13 @@ export default function ProductFlowKanban() {
   const [isCompleteStageModalOpen, setIsCompleteStageModalOpen] =
     useState(false);
   const [completingItem, setCompletingItem] = useState<FlowItem | null>(null);
- const [nextStageForCompletion, setNextStageForCompletion] = useState<{
-  id: string;
-  name: string;
-  allowedRole?: string | null;
-  isAfterCorte: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
-  isDistribuicao: boolean;
-} | null>(null);
+  const [nextStageForCompletion, setNextStageForCompletion] = useState<{
+    id: string;
+    name: string;
+    allowedRole?: string | null;
+    isAfterCorte: boolean;
+    isDistribuicao: boolean;
+  } | null>(null);
 
   // ===========================================================================
   // 🎯 ESTADOS PARA MODAL DE ARRASTAR
@@ -271,12 +338,12 @@ export default function ProductFlowKanban() {
   const [isDragModalOpen, setIsDragModalOpen] = useState(false);
   const [dragItemId, setDragItemId] = useState<string | null>(null);
   const [dragTargetStage, setDragTargetStage] = useState<{
-  id: string;
-  name: string;
-  allowedRole?: string | null;
-  isAfterCorte?: boolean; // 🔥 MUDOU DE isAfterDistribuicao PARA isAfterCorte
-  isDistribuicao?: boolean;
-} | null>(null);
+    id: string;
+    name: string;
+    allowedRole?: string | null;
+    isAfterCorte?: boolean;
+    isDistribuicao?: boolean;
+  } | null>(null);
 
   // ===========================================================================
   // 🎯 ESTADO PARA ARMAZENAR STAGES DO ITEM SENDO EDITADO
@@ -291,17 +358,10 @@ export default function ProductFlowKanban() {
 
   const [allStages, setAllStages] = useState<FlowStage[]>([]);
 
-  const [refreshKey, setRefreshKey] = useState(0);
-
   // Verifica se a condição para mostrar o toast já foi disparada
   const [hasShownEmptyRefToast, setHasShownEmptyRefToast] = useState(false);
-  // Adicione este useState no início do seu componente (antes do handleCreateFlow)
   const [isCreatingFlow, setIsCreatingFlow] = useState(false);
-
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Adicione este useState para armazenar as opções de colunas
-  const [columnOptions, setColumnOptions] = useState<string[]>([]);
 
   // ===========================================================================
   // 🎯 ESTADO PARA ITENS AGUARDANDO REMOÇÃO (3 segundos)
@@ -310,67 +370,69 @@ export default function ProductFlowKanban() {
     new Set(),
   );
 
+  const [stageDefaultDays, setStageDefaultDays] = useState<number>(1);
+  const [openColumnSelector, setOpenColumnSelector] = useState(false);
+
+  const createItemMutation = useCreateFlowItem();
+
   // ===========================================================================
-// 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS CORTE
-// ===========================================================================
-const checkIfIsAfterCorte = (
-  stageId: string,
-  flowId: string,
-): boolean => {
-  // 1. Encontra o board do fluxo específico
-  const board = boards.find((b) => b.id === flowId);
-  if (!board) {
-    console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
-    return false;
-  }
-
-  // 2. Ordena todas as etapas do fluxo
-  const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
-
-  console.log(
-    `📊 [checkIfIsAfterCorte] Stages do fluxo ${flowId}:`,
-    sortedStages.map((s) => ({ id: s.id, name: s.name, order: s.order })),
-  );
-
-  // 3. Palavras-chave para identificar a etapa de Corte
-  const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
-
-  // 4. Encontra o índice da etapa de Corte
-  const corteIndex = sortedStages.findIndex((stage) =>
-    CORTE_KEYWORDS.some((keyword) =>
-      stage.name.toLowerCase().includes(keyword.toLowerCase()),
-    ),
-  );
-
-  // Se não encontrar etapa de Corte, retorna false
-  if (corteIndex === -1) {
-    console.log(
-      `ℹ️ Nenhuma etapa de Corte encontrada no fluxo ${flowId}`,
-    );
-    return false;
-  }
-
-  // 5. Encontra o índice da etapa que estamos verificando
-  const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
-
-  // Se não encontrar a etapa, retorna false
-  if (stageIndex === -1) {
-    console.warn(`⚠️ Stage ${stageId} não encontrada no fluxo ${flowId}`);
-    return false;
-  }
-
-  const isAfter = stageIndex > corteIndex;
-
-  console.log(`📊 [checkIfIsAfterCorte] Resultado:`, {
-    stageName: sortedStages[stageIndex].name,
-    corteName: sortedStages[corteIndex].name,
-    stageIndex,
-    corteIndex,
-    isAfter,
+  // 🔥 NOVO: HOOK useKanbanBoards
+  // ===========================================================================
+  const {
+    boards,
+    isLoading: loading,
+    invalidateBoards,
+    refetch: refetchBoards,
+  } = useKanbanBoards({
+    selectedFlowIds,
+    filters: {
+      startDate: activeFilterStartDate,
+      endDate: activeFilterEndDate,
+      dateType: activeFilterDateType,
+      isOverdue: activeFilterOverdue,
+      isUpcoming: activeFilterUpcoming,
+      assignedToId: activeFilterAssignedTo,
+      supplierId: activeFilterSupplier,
+      productRef: activeFilterProductRef,
+      stageName: activeColumnNameFilter,
+    },
+    enabled: true,
   });
 
-  return isAfter;
-};
+  // ===========================================================================
+  // 🔥 FUNÇÃO AUXILIAR PARA ATUALIZAR BOARDS APÓS AÇÕES
+  // ===========================================================================
+  const refreshBoardsAfterAction = useCallback(async () => {
+    console.log("🔄 [refreshBoardsAfterAction] Invalidando cache de boards");
+    await invalidateBoards();
+  }, [invalidateBoards]);
+
+  // ===========================================================================
+  // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS CORTE
+  // ===========================================================================
+  const checkIfIsAfterCorte = (stageId: string, flowId: string): boolean => {
+    const board = boards.find((b) => b.id === flowId);
+    if (!board) {
+      console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
+      return false;
+    }
+
+    const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
+    const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
+
+    const corteIndex = sortedStages.findIndex((stage) =>
+      CORTE_KEYWORDS.some((keyword) =>
+        stage.name.toLowerCase().includes(keyword.toLowerCase()),
+      ),
+    );
+
+    if (corteIndex === -1) return false;
+
+    const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
+    if (stageIndex === -1) return false;
+
+    return stageIndex > corteIndex;
+  };
 
   // ===========================================================================
   // 🔥 REF PARA GUARDAR O ÚLTIMO ITEM MOVIDO
@@ -389,117 +451,54 @@ const checkIfIsAfterCorte = (
       "🔄 itemsPendingRemoval mudou:",
       Array.from(itemsPendingRemoval),
     );
-
-    // 🔥 Não precisa mais forçar refresh aqui
-    // O unifiedStages já depende de itemsPendingRemoval
-  }, [itemsPendingRemoval]); // Apenas log, sem setRefreshKey
+  }, [itemsPendingRemoval]);
 
   const startItemRemovalTimer = (itemId: string) => {
     console.log(
-      `⏰ [${new Date().toISOString()}] Iniciando contagem de 3 segundos para remover item ${itemId}`,
+      `⏰ Iniciando contagem de 3 segundos para remover item ${itemId}`,
     );
 
-    // 🔥 Salva o status atual do item para debug
-    const currentItem = unifiedStages
-      .flatMap((s) => s.items)
-      .find((i) => i.id === itemId);
-    console.log(`📊 Status atual do item:`, {
-      id: currentItem?.id,
-      title: currentItem?.title,
-      status: currentItem?.status,
-      stageId: currentItem?.stageId,
-    });
-
-    // 🔥 Adiciona item ao set de pendentes
     setItemsPendingRemoval((prev) => {
-      console.log(
-        `📋 [${new Date().toISOString()}] itemsPendingRemoval ANTES:`,
-        Array.from(prev),
-      );
       const newSet = new Set(prev);
       newSet.add(itemId);
-      console.log(
-        `📋 [${new Date().toISOString()}] itemsPendingRemoval DEPOIS:`,
-        Array.from(newSet),
-      );
       return newSet;
     });
 
-    // Timer para remover após 3 segundos
     setTimeout(() => {
-      console.log(
-        `✅ [${new Date().toISOString()}] Removendo item ${itemId} da tela após 3 segundos`,
-      );
-
-      // 🔥 Verifica o status do item novamente
-      const itemAfterDelay = unifiedStages
-        .flatMap((s) => s.items)
-        .find((i) => i.id === itemId);
-      console.log(`📊 Status do item após 3s:`, {
-        id: itemAfterDelay?.id,
-        title: itemAfterDelay?.title,
-        status: itemAfterDelay?.status,
-        stageId: itemAfterDelay?.stageId,
-      });
-
-      // 🔥 Remove do set
+      console.log(`✅ Removendo item ${itemId} da tela após 3 segundos`);
       setItemsPendingRemoval((prev) => {
-        console.log(
-          `📋 [${new Date().toISOString()}] itemsPendingRemoval ANTES da remoção:`,
-          Array.from(prev),
-        );
         const newSet = new Set(prev);
         newSet.delete(itemId);
-        console.log(
-          `📋 [${new Date().toISOString()}] itemsPendingRemoval DEPOIS da remoção:`,
-          Array.from(newSet),
-        );
         return newSet;
       });
     }, 3000);
   };
 
   // useEffect para atualizar as opções de coluna quando os boards mudarem
-  useEffect(() => {
-    // Extrai nomes únicos de colunas de todos os boards
+  const columnOptions = useMemo(() => {
     const uniqueColumnNames = new Set<string>();
-
     boards.forEach((board) => {
-      board.stages.forEach((stage) => {
+      board.stages.forEach((stage: { name: string }) => {
         uniqueColumnNames.add(stage.name);
       });
     });
-
-    // Converte para array e ordena
-    const sortedColumns = Array.from(uniqueColumnNames).sort((a, b) =>
+    return Array.from(uniqueColumnNames).sort((a, b) =>
       a.localeCompare(b, "pt-BR"),
     );
-
-    setColumnOptions(sortedColumns);
   }, [boards]);
 
   useEffect(() => {
-    console.log("📊 Boards atualizados:", {
+    console.log("📊 Boards atualizados via useQuery:", {
       quantidade: boards.length,
       flows: boards.map((b) => ({
         id: b.id,
         name: b.name,
         stages: b.stages.length,
-        items: b.stages.reduce((acc, s) => acc + s.items.length, 0),
+        items: b.stages.reduce(
+          (acc: any, s: { items: string | any[] }) => acc + s.items.length,
+          0,
+        ),
       })),
-    });
-
-    // Log dos itens para verificar cores
-    boards.forEach((board) => {
-      board.stages.forEach((stage) => {
-        stage.items.forEach((item) => {
-          console.log(`🎨 Item ${item.id} - ${item.title}:`, {
-            flowColor: item.flowColor,
-            flowName: item.flowName,
-            stage: stage.name,
-          });
-        });
-      });
     });
   }, [boards]);
 
@@ -507,7 +506,6 @@ const checkIfIsAfterCorte = (
   useEffect(() => {
     const loadAllStages = async () => {
       if (selectedFlowIds.length === 0) return;
-
       try {
         const stagesPromises = selectedFlowIds.map((flowId) =>
           api.get(`/flow/${flowId}/stages`).then((res) => res.data),
@@ -519,210 +517,152 @@ const checkIfIsAfterCorte = (
         console.error("Erro ao carregar todas as stages:", error);
       }
     };
-
     loadAllStages();
   }, [selectedFlowIds]);
 
-  // ===========================================================================
-  // 🎯 FUNÇÃO DE EDIÇÃO DE ITEM
-  // ===========================================================================
   const handleEditItem = async (item: FlowItem) => {
-    console.log("📝 Abrindo modal de edição para item:", item.id);
-
+    console.log("📝 Buscando detalhes completos do item:", item.id);
     setIsModalLoading(true);
-    setEditingItem(item);
 
     try {
-      let itemBoard = boards.find((b) => b.id === item.flowId);
+      const response = await api.get(`/flow/items/${item.id}`);
+      const fullItemData = response.data;
+      setEditingItem(fullItemData);
 
+      let itemBoard = boards.find((b) => b.id === fullItemData.flowId);
       if (!itemBoard) {
         console.log("🔄 Board não encontrado localmente, buscando da API...");
-        const response = await api.get(`/flow/${item.flowId}/board`);
-        itemBoard = response.data;
+        const boardResponse = await api.get(
+          `/flow/${fullItemData.flowId}/board`,
+        );
+        itemBoard = boardResponse.data;
       }
 
       if (!itemBoard) {
-        throw new Error("Board não encontrado");
+        throw new Error("Não foi possível encontrar a coleção deste item.");
       }
 
-      setCurrentItemStages(itemBoard.stages);
+      const stagesWithDefaults = itemBoard.stages.map((stage: any) => ({
+        ...stage,
+        defaultDays: stage.defaultDays,
+      }));
 
-      const stage = itemBoard.stages.find((s) => s.id === item.stageId);
-      setIsModalReadOnly(stage ? !canUserEditStage(stage) : true);
+      setCurrentItemStages(stagesWithDefaults);
+      const currentStage = stagesWithDefaults.find(
+        (s: { id: any }) => s.id === fullItemData.stageId,
+      );
+      setIsModalReadOnly(currentStage ? !canUserEditStage(currentStage) : true);
 
       setTimeout(() => {
         setIsEditItemModal(true);
         setIsModalLoading(false);
       }, 50);
-    } catch (error) {
-      console.error("❌ Erro ao carregar board:", error);
-      toast.error("Erro ao carregar dados do fluxo");
+    } catch (error: any) {
+      console.error("❌ Erro ao carregar detalhes do item:", error);
+      toast.error("Erro ao carregar mídias e detalhes do item.");
       setIsModalLoading(false);
     }
   };
 
-  // ===========================================================================
-  // 🎯 FUNÇÃO DE CRIAÇÃO DE ITEM - CORRIGIDA
-  // ===========================================================================
   const handleCreateItem = (stageId: string) => {
-    console.log("\n");
-    console.log("=".repeat(80));
-    console.log("🎯 [handleCreateItem] INÍCIO - Stage clicada:", stageId);
-    console.log("=".repeat(80));
-
-    // 🔥 LOG IMPORTANTE 1: Verificar fluxos selecionados
-    console.log("📊 Fluxos selecionados:", {
-      quantidade: selectedFlowIds.length,
-      ids: selectedFlowIds,
-      hasMultipleFlows: selectedFlowIds.length > 1,
-    });
-
     const itemBoard = boards.find((b) =>
-      b.stages.some((s) => s.id === stageId),
+      b.stages.some((s: { id: string }) => s.id === stageId),
     );
-
     if (!itemBoard) {
       console.error("❌ Board não encontrado para stage:", stageId);
-      console.log(
-        "📋 Boards disponíveis:",
-        boards.map((b) => ({
-          id: b.id,
-          name: b.name,
-          stages: b.stages.map((s) => ({ id: s.id, name: s.name })),
-        })),
-      );
       toast.error("Erro ao carregar dados do fluxo");
       return;
     }
 
-    console.log("✅ Board encontrado:", {
-      boardId: itemBoard.id,
-      boardName: itemBoard.name,
-      flowId: itemBoard.id,
-      flowName: itemBoard.name,
-    });
-
-    console.log(
-      "📋 Stages disponíveis no board:",
-      itemBoard.stages.map((s) => ({
-        id: s.id,
-        name: s.name,
-        flowId: s.flowId,
-      })),
+    const stagesWithFlowId = itemBoard.stages.map(
+      (stage: { defaultDays: any }) => ({
+        ...stage,
+        flowId: itemBoard.id,
+        defaultDays: stage.defaultDays,
+      }),
     );
 
-    console.log("🎯 Stage clicada:", {
-      stageId: stageId,
-      stageInfo: itemBoard.stages.find((s) => s.id === stageId),
-    });
-
-    // 🔥 Guarda o stageId que veio do clique
+    const clickedStage = stagesWithFlowId.find(
+      (s: { id: string }) => s.id === stageId,
+    );
     setActiveStageId(stageId);
-    console.log("💾 activeStageId setado para:", stageId);
-
-    // Guarda as stages do board para referência
-    setCurrentItemStages(itemBoard.stages);
-    console.log(
-      "💾 currentItemStages setado com",
-      itemBoard.stages.length,
-      "stages",
-    );
-
-    console.log("🔄 Abrindo modal em 50ms...");
+    setCurrentItemStages(stagesWithFlowId);
 
     setTimeout(() => {
-      console.log("⏰ Timeout executado - abrindo modal");
       setIsModalReadOnly(false);
       setIsItemModal(true);
-      console.log("✅ Modal aberto");
     }, 50);
   };
 
-const handleOpenCompleteModal = (item: FlowItem) => {
-  const currentBoard = boards.find((b) => b.id === item.flowId);
-  if (!currentBoard) return;
+  const handleOpenCompleteModal = (item: FlowItem) => {
+    const currentBoard = boards.find((b) => b.id === item.flowId);
+    if (!currentBoard) {
+      toast.error("Fluxo não encontrado.");
+      return;
+    }
 
-  // Ordena todas as etapas do fluxo
-  const allStages = [...currentBoard.stages].sort(
-    (a, b) => a.order - b.order,
-  );
+    const allStages = [...currentBoard.stages].sort(
+      (a, b) => a.order - b.order,
+    );
+    const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
+    const nextStage = allStages[currentIndex + 1];
 
-  const currentIndex = allStages.findIndex((s) => s.id === item.stageId);
-  const nextStage = allStages[currentIndex + 1];
+    if (!nextStage) {
+      toast.promise(handleAdvanceItem(item), {
+        loading: `Finalizando "${item.title}"...`,
+        success: () => `Item "${item.title}" concluído com sucesso!`,
+        error: (err) =>
+          err?.response?.data?.message || "Erro ao finalizar item.",
+      });
+      return;
+    }
 
-  if (!nextStage) {
-    handleAdvanceItem(item);
-    return;
-  }
+    const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
+    const DISTRIBUICAO_KEYWORDS = [
+      "distribuição",
+      "distribuicao",
+      "expedição",
+      "expedicao",
+    ];
 
-  // 🔥 PALAVRAS-CHAVE PARA CORTE
-  const CORTE_KEYWORDS = ["corte", "cortador", "cortar", "cut"];
-  
-  // 🔥 PALAVRAS-CHAVE PARA DISTRIBUIÇÃO
-  const DISTRIBUICAO_KEYWORDS = [
-    "distribuição",
-    "distribuicao",
-    "expedição",
-    "expedicao",
-  ];
+    const corteIndex = allStages.findIndex((s) =>
+      CORTE_KEYWORDS.some((keyword) =>
+        s.name.toLowerCase().includes(keyword.toLowerCase()),
+      ),
+    );
 
-  // 🔥 Encontra o índice da etapa de CORTE
-  const corteIndex = allStages.findIndex((s) =>
-    CORTE_KEYWORDS.some((keyword) =>
-      s.name.toLowerCase().includes(keyword.toLowerCase()),
-    ),
-  );
+    const isDistribuicao = DISTRIBUICAO_KEYWORDS.some((keyword) =>
+      nextStage.name.toLowerCase().includes(keyword.toLowerCase()),
+    );
 
-  // 🔥 Verifica se a próxima etapa é Distribuição
-  const isDistribuicao = DISTRIBUICAO_KEYWORDS.some((keyword) =>
-    nextStage.name.toLowerCase().includes(keyword.toLowerCase()),
-  );
+    const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
 
-  // 🔥 Está depois do CORTE?
-  const isAfterCorte = corteIndex !== -1 && currentIndex + 1 > corteIndex;
+    setCompletingItem(item);
+    setNextStageForCompletion({
+      id: nextStage.id,
+      name: nextStage.name,
+      allowedRole: nextStage.allowedRole,
+      isAfterCorte,
+      isDistribuicao,
+    });
+    setIsCompleteStageModalOpen(true);
+  };
 
-  console.log("🔍 ===== DEBUG DO MODAL DE CONCLUSÃO =====");
-  console.log("📦 Item:", item.title);
-  console.log("🎯 Próxima etapa:", nextStage.name);
-  console.log("📐 Corte index:", corteIndex);
-  console.log("📐 isAfterCorte:", isAfterCorte);
-  console.log("📐 isDistribuicao:", isDistribuicao);
-
-  setCompletingItem(item);
-  setNextStageForCompletion({
-    id: nextStage.id,
-    name: nextStage.name,
-    allowedRole: nextStage.allowedRole,
-    isAfterCorte, // 🔥 USA isAfterCorte
-    isDistribuicao,
-  });
-
-  setIsCompleteStageModalOpen(true);
-};
-  // ===========================================================================
-  // 🎯 FUNÇÃO PARA CONCLUIR COM RESPONSÁVEL - CORRIGIDA (ADICIONA QUANTIDADE)
-  // ===========================================================================
   const handleCompleteWithResponsible = async (
     responsibleId: string,
     type: "user" | "supplier",
-    quantity?: number, // 🔥 ADICIONA O PARÂMETRO QUANTIDADE (OPCIONAL)
+    quantity?: number,
   ) => {
     if (!completingItem || !nextStageForCompletion) return;
 
     const toastId = toast.loading("Concluindo etapa...");
 
     try {
-      // 🔥 PASSO 1: Se tiver quantidade, atualizar o item primeiro
       if (quantity !== undefined) {
-        console.log(`📝 [COMPLETE] Atualizando quantidade para: ${quantity}`);
-        await api.put(`/flow/items/${completingItem.id}`, {
-          quantity: quantity,
-        });
+        await api.put(`/flow/items/${completingItem.id}`, { quantity });
       }
 
-      // 🔥 PASSO 2: Mover o item
       const payload: any = { newStageId: nextStageForCompletion.id };
-
       if (type === "user") {
         payload.assignedToId = responsibleId;
       } else {
@@ -735,18 +675,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         id: toastId,
       });
 
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
-      }
+      await refreshBoardsAfterAction();
 
       setIsCompleteStageModalOpen(false);
       setCompletingItem(null);
@@ -754,10 +683,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     } catch (error: any) {
       const errorMsg =
         error.response?.data?.message || "Erro ao concluir etapa.";
-      toast.error(errorMsg, {
-        id: toastId,
-        duration: 4000,
-      });
+      toast.error(errorMsg, { id: toastId, duration: 4000 });
     }
   };
 
@@ -767,21 +693,11 @@ const handleOpenCompleteModal = (item: FlowItem) => {
   const canUserEditStage = useCallback(
     (stage: FlowStage) => {
       if (!user) return false;
-
       const systemRole = (user as any).role || "";
       if (["MASTER", "ADMIN", "MANAGER"].includes(systemRole)) return true;
-
       if (!stage.allowedRole || stage.allowedRole.trim() === "") return true;
-
       const userRole = user.professionalRole?.toLowerCase() || "";
       const requiredRole = stage.allowedRole.toLowerCase();
-
-      console.log("🔍 [FRONTEND] Comparação de cargo:", {
-        userProfessionalRole: user.professionalRole,
-        stageAllowedRole: stage.allowedRole,
-        match: user.professionalRole === stage.allowedRole,
-      });
-
       return userRole.includes(requiredRole);
     },
     [user],
@@ -816,14 +732,9 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     }
   };
 
-  // ===========================================================================
-  // 🔄 FUNÇÕES DE FILTRO POR COLUNA
-  // ===========================================================================
   const filterColumnItems = (stage: FlowStage) => {
-    // 🔥 O stage já vem filtrado do unifiedStages!
     let items = stage.items;
 
-    // 🔥 FILTRO 2: Se tiver filtro ativo na coluna (overdue/upcoming)
     if (
       activeColumnFilter.columnId === stage.id &&
       activeColumnFilter.filterType
@@ -851,7 +762,6 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         return true;
       });
     }
-
     return items;
   };
 
@@ -867,452 +777,67 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     const supplierParam = searchParams.get("supplierId");
     const productRefParam = searchParams.get("productRef");
     const stageNameParam = searchParams.get("stageName");
+    const flowIdParam = searchParams.get("flowId");
+    const flowIdsParam = searchParams.get("flowIds");
 
-    if (filterParam === "overdue") {
-      setTempFilterOverdue(true);
-      setTempFilterUpcoming(false);
-    } else if (filterParam === "upcoming") {
-      setTempFilterUpcoming(true);
-      setTempFilterOverdue(false);
+    let idsFromUrl: string[] = [];
+    if (flowIdsParam) {
+      idsFromUrl = flowIdsParam.split(",").filter(Boolean);
+    } else if (flowIdParam) {
+      idsFromUrl = [flowIdParam];
     }
 
-    // 🔥 Se for filtro upcoming, sempre usa dueDate
-    if (filterParam === "upcoming") {
-      setTempFilterDateType("dueDate");
-    } else if (typeParam === "productionStartedAt" || typeParam === "dueDate") {
-      setTempFilterDateType(typeParam);
+    if (idsFromUrl.length > 0) {
+      setSelectedFlowIds((prev) => {
+        const isSame =
+          prev.length === idsFromUrl.length &&
+          prev.every((id, idx) => id === idsFromUrl[idx]);
+        if (isSame) return prev;
+        return idsFromUrl;
+      });
     }
 
-    if (startDateParam) {
-      setTempFilterStartDate(startDateParam.split("T")[0]);
-    }
+    const isOverdue = filterParam === "overdue";
+    const isUpcoming = filterParam === "upcoming";
 
-    if (endDateParam) {
-      setTempFilterEndDate(endDateParam.split("T")[0]);
-    }
+    setTempFilterOverdue(isOverdue);
+    setActiveFilterOverdue(isOverdue);
+    setTempFilterUpcoming(isUpcoming);
+    setActiveFilterUpcoming(isUpcoming);
 
-    if (assignedParam) {
-      setTempFilterAssignedTo(assignedParam);
-    }
+    const finalDateType = isUpcoming
+      ? "dueDate"
+      : typeParam === "productionStartedAt" || typeParam === "dueDate"
+        ? typeParam
+        : "productionStartedAt";
 
-    if (supplierParam) {
-      setTempFilterSupplier(supplierParam);
-    }
+    const finalStartDate = startDateParam ? startDateParam.split("T")[0] : "";
+    const finalEndDate = endDateParam ? endDateParam.split("T")[0] : "";
 
-    if (productRefParam) {
-      setTempFilterProductRef(productRefParam);
-    }
+    setTempFilterDateType(finalDateType);
+    setActiveFilterDateType(finalDateType);
+    setTempFilterStartDate(finalStartDate);
+    setActiveFilterStartDate(finalStartDate);
+    setTempFilterEndDate(finalEndDate);
+    setActiveFilterEndDate(finalEndDate);
 
-    if (stageNameParam) {
-      setColumnNameFilter(stageNameParam);
-    }
+    const finalAssigned = assignedParam || "all";
+    const finalSupplier = supplierParam || "all";
+    const finalRef = productRefParam || "";
+    const finalColumn = stageNameParam || "";
 
-    // 🔥 Atualiza os filtros ativos
-    setActiveFilterDateType(
-      filterParam === "upcoming"
-        ? "dueDate"
-        : typeParam === "productionStartedAt" || typeParam === "dueDate"
-          ? typeParam
-          : "dueDate", // 🔥 Muda o padrão para dueDate
-    );
-    setActiveFilterStartDate(
-      startDateParam ? startDateParam.split("T")[0] : "",
-    );
-    setActiveFilterEndDate(endDateParam ? endDateParam.split("T")[0] : "");
-    setActiveFilterOverdue(filterParam === "overdue");
-    setActiveFilterUpcoming(filterParam === "upcoming");
-    setActiveFilterAssignedTo(assignedParam || "all");
-    setActiveFilterSupplier(supplierParam || "all");
-    setActiveFilterProductRef(productRefParam || "");
-    setActiveColumnNameFilter(stageNameParam || "");
+    setTempFilterAssignedTo(finalAssigned);
+    setActiveFilterAssignedTo(finalAssigned);
+    setTempFilterSupplier(finalSupplier);
+    setActiveFilterSupplier(finalSupplier);
+    setTempFilterProductRef(finalRef);
+    setActiveFilterProductRef(finalRef);
+    setColumnNameFilter(finalColumn);
+    setActiveColumnNameFilter(finalColumn);
   }, [searchParams]);
 
-  const fetchSelectedBoards = useCallback(async () => {
-    console.log(
-      `📡 [${new Date().toISOString()}] fetchSelectedBoards INICIADO`,
-    );
-
-    if (selectedFlowIds.length === 0) {
-      console.log("⚠️ Nenhum fluxo selecionado");
-      setBoards([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const validFlowIds = selectedFlowIds.filter((id) =>
-        flows.some((flow) => flow.id === id),
-      );
-
-      if (validFlowIds.length === 0) {
-        console.log("⚠️ Nenhum fluxo válido");
-        setBoards([]);
-        setLoading(false);
-        return;
-      }
-
-      console.log("📡 Buscando boards:", validFlowIds);
-      const promises = validFlowIds.map((id) => api.get(`/flow/${id}/board`));
-
-      const results = await Promise.all(promises);
-      const newBoards = results.map((r) => r.data);
-
-      // 🔥 Log detalhado dos itens
-      console.log(`📊 [${new Date().toISOString()}] NOVOS BOARDS CARREGADOS:`);
-      newBoards.forEach((board) => {
-        console.log(`  Board: ${board.name}`);
-        board.stages.forEach((stage: any) => {
-          console.log(`    Stage: ${stage.name} (${stage.items.length} itens)`);
-          stage.items.forEach((item: any) => {
-            console.log(
-              `      - Item ${item.id}: ${item.title} | status: ${item.status}`,
-            );
-          });
-        });
-      });
-
-      setBoards(newBoards);
-      console.log(
-        `✅ [${new Date().toISOString()}] fetchSelectedBoards CONCLUÍDO`,
-      );
-    } catch (error: any) {
-      console.error("❌ Erro ao carregar quadros:", error);
-      toast.error("Erro ao carregar quadros");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedFlowIds, flows]);
-
-  const fetchFilteredBoards = useCallback(
-    async (paramsFromUrl?: URLSearchParams) => {
-      console.log("\n" + "=".repeat(80));
-      console.log("🚀 [fetchFilteredBoards] INICIANDO");
-      console.log("=".repeat(80));
-
-      if (selectedFlowIds.length === 0) {
-        console.log("⚠️ Nenhum fluxo selecionado");
-        setBoards([]);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setIsFiltering(true);
-
-      // 🔥 Cria um controller para timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.error("❌ Timeout após 15 segundos");
-        controller.abort();
-      }, 15000);
-
-      try {
-        const params =
-          paramsFromUrl || new URLSearchParams(window.location.search);
-
-        const startDate = params.get("startDate");
-        const endDate = params.get("endDate");
-        const dateType = params.get("dateType");
-        const filter = params.get("filter");
-        const assignedToId = params.get("assignedToId");
-        const supplierId = params.get("supplierId");
-        const productRef = params.get("productRef");
-        const stageName = params.get("stageName");
-
-        console.log("🔍 Parâmetros da URL:", {
-          startDate,
-          endDate,
-          dateType,
-          filter,
-          assignedToId,
-          supplierId,
-          productRef,
-          stageName,
-          selectedFlowIds,
-        });
-
-        setActiveFilterStartDate(startDate?.split("T")[0] || "");
-        setActiveFilterEndDate(endDate?.split("T")[0] || "");
-        setActiveFilterDateType(
-          (dateType as "productionStartedAt" | "dueDate") ||
-            "productionStartedAt",
-        );
-        setActiveFilterOverdue(filter === "overdue");
-        setActiveFilterUpcoming(filter === "upcoming");
-        setActiveFilterAssignedTo(assignedToId || "all");
-        setActiveFilterSupplier(supplierId || "all");
-        setActiveFilterProductRef(productRef || "");
-        setActiveColumnNameFilter(stageName || "");
-        setColumnNameFilter(stageName || "");
-
-        const baseQueryParams = new URLSearchParams();
-
-        if (startDate) {
-          const startDateTime = new Date(startDate);
-          startDateTime.setUTCHours(0, 0, 0, 0);
-          baseQueryParams.set("startDate", startDateTime.toISOString());
-          console.log("📅 startDate convertido:", startDateTime.toISOString());
-        }
-
-        if (endDate) {
-          const endDateTime = new Date(endDate);
-          endDateTime.setUTCHours(23, 59, 59, 999);
-          baseQueryParams.set("endDate", endDateTime.toISOString());
-          console.log("📅 endDate convertido:", endDateTime.toISOString());
-        }
-
-        if (dateType) {
-          baseQueryParams.set("dateType", dateType);
-        }
-
-        if (filter === "overdue") {
-          baseQueryParams.set("isOverdue", "true");
-          console.log("⚠️ Filtro: Atrasados");
-        }
-        if (filter === "upcoming") {
-          baseQueryParams.set("isUpcoming", "true");
-          console.log("⏰ Filtro: Próximos 7 dias");
-        }
-
-        if (assignedToId && assignedToId !== "all") {
-          baseQueryParams.set("assignedToId", assignedToId);
-          console.log("👤 Filtro por responsável:", assignedToId);
-        }
-
-        if (supplierId && supplierId !== "all") {
-          baseQueryParams.set("supplierId", supplierId);
-          console.log("🏭 Filtro por oficina:", supplierId);
-        }
-
-        if (productRef && productRef.trim() !== "") {
-          baseQueryParams.set("productRef", productRef.trim());
-          console.log("📦 Filtro por referência:", productRef.trim());
-        }
-
-        console.log("\n📡 Query params finais:", baseQueryParams.toString());
-
-        if (stageName && stageName.trim() !== "") {
-          console.log(`\n🎯 Filtrando por nome da coluna: "${stageName}"`);
-          baseQueryParams.set("stageName", stageName.trim());
-
-          const boardsPromises = selectedFlowIds.map(async (flowId) => {
-            const url = `/flow/${flowId}/filtered-board?${baseQueryParams.toString()}`;
-            console.log(`📡 Requisição para: ${url}`);
-
-            try {
-              const response = await api.get(url, {
-                signal: controller.signal,
-              });
-
-              console.log(`✅ Board ${flowId} filtrado:`, {
-                flowName: response.data.name,
-                stagesCount: response.data.stages?.length || 0,
-                itemsCount:
-                  response.data.stages?.reduce(
-                    (acc: number, s: any) => acc + s.items.length,
-                    0,
-                  ) || 0,
-              });
-
-              return response.data;
-            } catch (error: any) {
-              console.error(`❌ Erro ao filtrar board ${flowId}:`, {
-                status: error.response?.status,
-                data: error.response?.data,
-                message: error.message,
-              });
-
-              console.log(
-                `📡 Buscando board vazio como fallback para ${flowId}`,
-              );
-              const emptyBoard = await api.get(`/flow/${flowId}/board`);
-              return {
-                ...emptyBoard.data,
-                stages: [],
-              };
-            }
-          });
-
-          const filteredBoards = await Promise.all(boardsPromises);
-          console.log(
-            `\n✅ Total de boards processados: ${filteredBoards.length}`,
-          );
-          setBoards(filteredBoards);
-
-          toast.success(`Filtrando apenas itens da coluna: "${stageName}"`);
-        } else {
-          console.log("\n🌐 Filtrando itens globalmente");
-
-          const itemsUrl = `/flow/filter/items?${baseQueryParams.toString()}`;
-          console.log(`📡 Buscando itens filtrados: ${itemsUrl}`);
-
-          const itemsResponse = await api.get(itemsUrl, {
-            signal: controller.signal,
-          });
-          const filteredItems = itemsResponse.data;
-
-          console.log(
-            `✅ Itens filtrados recebidos: ${filteredItems?.length || 0}`,
-          );
-
-          if (filteredItems?.length > 0) {
-            console.log(
-              "📋 Primeiros 3 itens:",
-              filteredItems.slice(0, 3).map((i: any) => ({
-                id: i.id,
-                title: i.title,
-                dueDate: i.dueDate,
-                flowName: i.flow?.name,
-              })),
-            );
-          } else {
-            console.log("⚠️ Nenhum item encontrado com os filtros aplicados");
-          }
-
-          const boardsPromises = selectedFlowIds.map(async (flowId) => {
-            try {
-              console.log(
-                `📡 Buscando board ${flowId} para combinar com itens filtrados`,
-              );
-              const boardRes = await api.get(`/flow/${flowId}/board`);
-              const board = boardRes.data;
-
-              console.log(`✅ Board ${flowId} carregado:`, {
-                name: board.name,
-                stages: board.stages.length,
-                totalItems: board.stages.reduce(
-                  (acc: number, s: any) => acc + s.items.length,
-                  0,
-                ),
-              });
-
-              const filteredBoard = {
-                ...board,
-                stages: board.stages.map((stage: FlowStage) => {
-                  const originalCount = stage.items.length;
-                  const filteredStageItems = stage.items
-                    .filter((item: FlowItem) =>
-                      filteredItems.some(
-                        (filteredItem: FlowItem) => filteredItem.id === item.id,
-                      ),
-                    )
-                    .map((item: FlowItem) => {
-                      const filteredItem = filteredItems.find(
-                        (fi: FlowItem) => fi.id === item.id,
-                      );
-
-                      // 🔥 Pega as informações do flow do filteredItem se disponível
-                      const flowInfo = filteredItem?.flow || board;
-
-                      return {
-                        ...item,
-                        flowColor: flowInfo.color || board.color || "#D35400",
-                        flowName: flowInfo.name || board.name,
-                        ...(filteredItem && {
-                          dueDate: filteredItem.dueDate,
-                          assignedTo: filteredItem.assignedTo,
-                          supplier: filteredItem.supplier,
-                          status: filteredItem.status,
-                        }),
-                      };
-                    });
-
-                  console.log(
-                    `   Stage "${stage.name}": ${originalCount} -> ${filteredStageItems.length} itens`,
-                  );
-
-                  return {
-                    ...stage,
-                    items: filteredStageItems,
-                  };
-                }),
-              };
-
-              return filteredBoard;
-            } catch (error: any) {
-              console.error(`❌ Erro ao carregar board ${flowId}:`, {
-                status: error.response?.status,
-                message: error.message,
-              });
-              return null;
-            }
-          });
-
-          console.log("\n⏳ Aguardando todas as promises...");
-          const results = await Promise.all(boardsPromises);
-          const filteredBoards = results.filter((board) => board !== null);
-
-          console.log(
-            `\n✅ Boards processados: ${filteredBoards.length} de ${selectedFlowIds.length}`,
-          );
-
-          // Log do resultado final
-          filteredBoards.forEach((board) => {
-            const totalItems = board.stages.reduce(
-              (acc: number, s: any) => acc + s.items.length,
-              0,
-            );
-            console.log(
-              `📊 Board "${board.name}": ${totalItems} itens no total`,
-            );
-          });
-
-          setBoards(filteredBoards);
-        }
-
-        clearTimeout(timeoutId);
-        console.log("\n✅ [fetchFilteredBoards] FINALIZADO COM SUCESSO");
-        console.log("=".repeat(80) + "\n");
-      } catch (error: any) {
-        clearTimeout(timeoutId);
-
-        console.error("\n❌ [fetchFilteredBoards] ERRO:");
-        console.error("=".repeat(40));
-
-        if (error.name === "AbortError" || error.code === "ECONNABORTED") {
-          console.error(
-            "⏰ Timeout: A requisição demorou muito para responder",
-          );
-          toast.error("O filtro está demorando muito. Tente novamente.");
-        } else if (error.response?.status === 401) {
-          console.error("🔐 Erro de autenticação, tentando novamente em 1s...");
-          setTimeout(async () => {
-            try {
-              const params =
-                paramsFromUrl || new URLSearchParams(window.location.search);
-              await fetchFilteredBoards(params);
-            } catch (retryError) {
-              console.error("❌ Falha na segunda tentativa:", retryError);
-              toast.error("Erro de autenticação. Faça login novamente.");
-            }
-          }, 1000);
-        } else {
-          console.error("Mensagem:", error.message);
-          console.error("Status:", error.response?.status);
-          console.error("Data:", error.response?.data);
-          console.error("Stack:", error.stack);
-
-          const errorMessage =
-            error.response?.data?.message ||
-            error.message ||
-            "Erro ao aplicar filtros";
-
-          toast.error(errorMessage);
-        }
-
-        // Tenta carregar os boards sem filtro como fallback
-        await fetchSelectedBoards();
-      } finally {
-        setLoading(false);
-        setIsFiltering(false);
-        console.log("🏁 Estado de loading resetado");
-      }
-    },
-    [selectedFlowIds, fetchSelectedBoards],
-  );
-
   // ===========================================================================
-  // 🔥 FUNÇÃO handleFilterClick
+  // 🔥 FUNÇÃO handleFilterClick (modificada para usar invalidateBoards)
   // ===========================================================================
   const handleFilterClick = async () => {
     setIsFiltering(true);
@@ -1323,20 +848,27 @@ const handleOpenCompleteModal = (item: FlowItem) => {
       params.set("stageName", columnNameFilter.trim());
     }
 
-    // Se o filtro de próximos 7 dias estiver ativo, sempre usa dueDate
     if (tempFilterUpcoming) {
-      params.set("dateType", "dueDate");
-      setTempFilterDateType("dueDate"); // <-- GARANTE A SINCRONIA
+      const today = new Date();
+      const notificationLimit = new Date(today);
+      notificationLimit.setDate(today.getDate() + notificationDays);
+
+      const todayStr = today.toISOString().split("T")[0];
+      const limitStr = notificationLimit.toISOString().split("T")[0];
+
+      params.set("startDate", todayStr);
+      params.set("endDate", limitStr);
+      params.set("filter", "upcoming");
+    } else if (tempFilterOverdue) {
+      params.set("isOverdue", "true");
+      params.set("filter", "overdue");
     } else if (tempFilterDateType) {
       params.set("dateType", tempFilterDateType);
     }
 
     if (tempFilterStartDate) params.set("startDate", tempFilterStartDate);
     if (tempFilterEndDate) params.set("endDate", tempFilterEndDate);
-
     if (tempFilterOverdue) params.set("filter", "overdue");
-    if (tempFilterUpcoming) params.set("filter", "upcoming");
-
     if (tempFilterAssignedTo !== "all")
       params.set("assignedToId", tempFilterAssignedTo);
     if (tempFilterSupplier !== "all")
@@ -1344,13 +876,15 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     if (tempFilterProductRef && tempFilterProductRef.trim() !== "") {
       params.set("productRef", tempFilterProductRef.trim());
     }
-    console.log("🔍 Parâmetros do filtro:", params.toString());
+
     router.push(`?${params.toString()}`);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    await invalidateBoards();
+    setIsFiltering(false);
   };
 
-  // ===========================================================================
-  // 🔥 FUNÇÃO handleClearFilters
-  // ===========================================================================
   const handleClearFilters = async () => {
     setTempFilterStartDate("");
     setTempFilterEndDate("");
@@ -1366,7 +900,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     router.push("/kanban-flow");
 
     await new Promise((resolve) => setTimeout(resolve, 100));
-    await fetchSelectedBoards();
+    await invalidateBoards();
   };
 
   const toggleOverdueFilter = () => {
@@ -1388,33 +922,28 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     } else {
       setTempFilterUpcoming(true);
       setTempFilterOverdue(false);
-
-      // 🔥 FORÇA O TIPO DE DATA PARA dueDate
       setTempFilterDateType("dueDate");
 
-      // Calcula as datas para os próximos 7 dias
       const today = new Date();
-      const sevenDaysFromNow = new Date(today);
-      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+      const todayUTC = new Date(
+        Date.UTC(
+          today.getUTCFullYear(),
+          today.getUTCMonth(),
+          today.getUTCDate(),
+        ),
+      );
 
-      // Formata as datas no formato ISO (YYYY-MM-DD)
-      const todayStr = today.toISOString().split("T")[0];
-      const sevenDaysStr = sevenDaysFromNow.toISOString().split("T")[0];
+      const notificationLimit = new Date(todayUTC);
+      notificationLimit.setUTCDate(todayUTC.getUTCDate() + notificationDays);
 
-      console.log("📅 Filtro Próximos 7 dias:", {
-        hoje: todayStr,
-        daqui7dias: sevenDaysStr,
-        dateType: "dueDate",
-      });
+      const todayStr = todayUTC.toISOString().split("T")[0];
+      const limitStr = notificationLimit.toISOString().split("T")[0];
 
       setTempFilterStartDate(todayStr);
-      setTempFilterEndDate(sevenDaysStr);
+      setTempFilterEndDate(limitStr);
     }
   };
 
-  // ===========================================================================
-  // 🔄 FUNÇÕES DE DADOS INICIAIS
-  // ===========================================================================
   const fetchInitialData = useCallback(async () => {
     if (!user?.company?.id) return;
     try {
@@ -1428,74 +957,24 @@ const handleOpenCompleteModal = (item: FlowItem) => {
       setUsers(uRes.data);
       setSuppliers(sRes.data.data || sRes.data);
       setTemplates(tRes.data);
-      if (fRes.data.length > 0 && selectedFlowIds.length === 0)
+
+      const hasFlowsInUrl =
+        searchParams.get("flowIds") || searchParams.get("flowId");
+
+      if (
+        fRes.data.length > 0 &&
+        selectedFlowIds.length === 0 &&
+        !hasFlowsInUrl
+      ) {
         setSelectedFlowIds([fRes.data[0].id]);
+      }
     } catch {
       toast.error("Erro ao carregar dados iniciais");
     }
-  }, [user?.company?.id, selectedFlowIds.length]);
+  }, [user?.company?.id, searchParams, selectedFlowIds.length]);
 
   // ===========================================================================
-  // 🎯 EFEITO PRINCIPAL
-  // ===========================================================================
-  useEffect(() => {
-    if (selectedFlowIds.length === 0) {
-      setBoards([]);
-      setLoading(false);
-      return;
-    }
-
-    const hasFilters =
-      activeFilterStartDate ||
-      activeFilterEndDate ||
-      activeFilterOverdue ||
-      activeFilterUpcoming ||
-      activeFilterAssignedTo !== "all" ||
-      activeFilterSupplier !== "all" ||
-      activeFilterProductRef ||
-      activeColumnNameFilter;
-
-    console.log("🔄 useEffect executado", {
-      isFirstRender: isFirstRender.current,
-      hasFilters,
-      selectedFlowIds,
-    });
-
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      console.log("🚀 Primeira renderização - ignorando");
-
-      if (hasFilters) {
-        const params = new URLSearchParams(window.location.search);
-        fetchFilteredBoards(params);
-      } else {
-        fetchSelectedBoards();
-      }
-      return;
-    }
-
-    if (hasFilters) {
-      const params = new URLSearchParams(window.location.search);
-      fetchFilteredBoards(params);
-    } else {
-      fetchSelectedBoards();
-    }
-  }, [
-    activeFilterStartDate,
-    activeFilterEndDate,
-    activeFilterOverdue,
-    activeFilterUpcoming,
-    activeFilterAssignedTo,
-    activeFilterSupplier,
-    activeFilterProductRef,
-    activeColumnNameFilter,
-    selectedFlowIds,
-    fetchFilteredBoards,
-    fetchSelectedBoards,
-  ]);
-
-  // ===========================================================================
-  // 🎯 EFEITO INICIAL
+  // 🎯 EFEITO PRINCIPAL - Carrega dados iniciais
   // ===========================================================================
   useEffect(() => {
     fetchInitialData();
@@ -1505,34 +984,15 @@ const handleOpenCompleteModal = (item: FlowItem) => {
   // 🎯 FUNÇÃO DE AVANÇAR ITEM
   // ===========================================================================
   const handleAdvanceItem = async (item: FlowItem) => {
-    // toast.loading("Avançando item...", { id: "advance-toast" });
-
     try {
       await api.post(`/flow/items/${item.id}/advance`);
-
-      // toast.success(`Item "${item.title}" movido para próxima etapa!`, {
-      //   id: "advance-toast",
-      // });
-
       setIsPreviewModal(false);
       setIsEditItemModal(false);
-
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
-      }
+      await refreshBoardsAfterAction();
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || "Erro ao mover item.";
-      // toast.error(errorMsg, { id: "advance-toast" });
       console.log(errorMsg);
+      throw error;
     }
   };
 
@@ -1561,6 +1021,8 @@ const handleOpenCompleteModal = (item: FlowItem) => {
       setNewFlowColor("#D35400");
       setDeadline("");
       toast.success("Fluxo criado!");
+
+      await refreshBoardsAfterAction();
     } catch (error) {
       toast.error("Erro ao criar fluxo");
       console.error("Erro ao criar fluxo:", error);
@@ -1627,6 +1089,8 @@ const handleOpenCompleteModal = (item: FlowItem) => {
 
       toast.success("Fluxo atualizado com sucesso!");
       setIsEditFlowModalOpen(false);
+
+      await refreshBoardsAfterAction();
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Erro ao atualizar fluxo");
     } finally {
@@ -1679,7 +1143,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         `/flow/${selectedFlowIds[0]}/apply-template/${selectedTemplateId}`,
       );
       toast.success("Etapas aplicadas!");
-      fetchSelectedBoards();
+      await refreshBoardsAfterAction();
     } catch {
       toast.error("Erro ao aplicar template");
     }
@@ -1689,23 +1153,17 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     try {
       await api.delete(`/flow/${flowId}`);
 
-      // 1. Remove da lista de fluxos
       setFlows((prev) => prev.filter((f) => f.id !== flowId));
-
-      // 2. Remove dos selecionados
       setSelectedFlowIds((prev) => {
         const newSelectedIds = prev.filter((id) => id !== flowId);
-
-        // 3. Se não houver mais fluxos, limpa os boards
         if (newSelectedIds.length === 0) {
-          setBoards([]);
-          setLoading(false);
+          // O useQuery vai lidar com o estado vazio
         }
-
         return newSelectedIds;
       });
 
       toast.success("Fluxo removido");
+      await refreshBoardsAfterAction();
     } catch (error) {
       toast.error("Erro ao excluir fluxo");
       console.error(error);
@@ -1713,7 +1171,6 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     }
   };
 
-  // E no handleDeleteExecute:
   const handleDeleteExecute = async () => {
     if (!itemToDelete) return;
 
@@ -1723,7 +1180,6 @@ const handleOpenCompleteModal = (item: FlowItem) => {
       const { type, id } = itemToDelete;
 
       if (type === "stage" && flows.some((f) => f.id === id)) {
-        // É um fluxo
         await handleDeleteFlow(id);
       } else if (type === "template") {
         await api.delete(`/flow/templates/${id}`);
@@ -1735,22 +1191,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           type === "item" ? `/flow/items/${id}` : `/flow/stages/${id}`,
         );
         toast.success("Excluído!");
-
-        // Recarrega os boards após excluir item/stage
-        const hasFilters =
-          activeFilterStartDate ||
-          activeFilterEndDate ||
-          activeFilterOverdue ||
-          activeFilterUpcoming ||
-          activeColumnNameFilter;
-
-        if (selectedFlowIds.length > 0) {
-          if (hasFilters) {
-            await fetchFilteredBoards();
-          } else {
-            await fetchSelectedBoards();
-          }
-        }
+        await refreshBoardsAfterAction();
       }
     } catch (error) {
       toast.error("Erro ao excluir");
@@ -1773,6 +1214,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         stageAllowedRole === "all" || !stageAllowedRole
           ? null
           : stageAllowedRole,
+      defaultDays: stageDefaultDays,
     };
 
     try {
@@ -1784,56 +1226,24 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         toast.success("Etapa criada");
       }
       setIsStageModal(false);
-      fetchSelectedBoards();
-    } catch {
-      toast.error("Erro ao salvar etapa");
+      await refreshBoardsAfterAction();
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || "Erro ao salvar etapa";
+      toast.error(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   // ===========================================================================
-  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
-  // ===========================================================================
-  // ===========================================================================
-  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - CORRIGIDA
+  // 🎯 FUNÇÃO DE SUBMIT DO ITEM (CRIAÇÃO/EDIÇÃO) - COM REACT QUERY
   // ===========================================================================
   const handleItemSubmit = async (
     values: any,
     files: any,
     removedMedia: any,
   ): Promise<void> => {
-    // ===========================================================================
-    // 🔥 LOG 1: INÍCIO DO PROCESSO
-    // ===========================================================================
-    console.log("\n");
-    console.log("=".repeat(80));
     console.log("🎯 [handleItemSubmit] INICIANDO SUBMIT DO ITEM");
-    console.log("=".repeat(80));
-    console.log("📦 Modo:", editingItem ? "EDIÇÃO" : "CRIAÇÃO");
-    console.log("📦 Values recebidos:", {
-      title: values.title,
-      description: values.description,
-      productRef: values.productRef,
-      quantity: values.quantity,
-      status: values.status,
-      flowId: values.flowId,
-      stageId: values.stageId,
-      assignedToId: values.assignedToId,
-      supplierId: values.supplierId,
-      dueDate: values.dueDate,
-      productionStartedAt: values.productionStartedAt,
-      deliveryAt: values.deliveryAt,
-      orderNumber: values.orderNumber,
-      priority: values.priority,
-    });
-    console.log("📦 Files:", {
-      images: files.images?.length || 0,
-      audios: files.audios?.length || 0,
-      videos: files.videos?.length || 0,
-    });
-    console.log("📦 Removed Media:", removedMedia);
-    console.log("📌 activeStageId:", activeStageId);
 
     if (selectedFlowIds.length === 0) {
       console.error("❌ Nenhum fluxo selecionado");
@@ -1844,31 +1254,16 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     setIsSubmitting(true);
 
     try {
-      // ===========================================================================
-      // 🔥 FUNÇÃO DE UPLOAD DE MÍDIA
-      // ===========================================================================
       const uploadMedia = async (itemId: string, files: any) => {
-        console.log("\n📤 Iniciando upload de mídias para item:", itemId);
-
         const upload = async (file: File, type: string) => {
-          console.log(`📤 Fazendo upload de ${type}:`, {
-            nome: file.name,
-            tamanho: file.size,
-            tipo: file.type,
-          });
-
           const fd = new FormData();
           fd.append("file", file);
-
           try {
             const response = await api.post(
               `/flow/items/${itemId}/media/${type}`,
               fd,
-              {
-                headers: { "Content-Type": "multipart/form-data" },
-              },
+              { headers: { "Content-Type": "multipart/form-data" } },
             );
-            console.log(`✅ Upload de ${type} concluído:`, response.data);
             return response.data;
           } catch (error) {
             console.error(`❌ Erro no upload de ${type}:`, error);
@@ -1877,46 +1272,22 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         };
 
         const promises = [];
-
         if (files.images?.length > 0) {
-          console.log(`📸 ${files.images.length} imagem(ns) para upload`);
-          for (const f of files.images) {
-            promises.push(upload(f, "image"));
-          }
+          for (const f of files.images) promises.push(upload(f, "image"));
         }
-
         if (files.audios?.length > 0) {
-          console.log(`🎵 ${files.audios.length} áudio(s) para upload`);
-          for (const f of files.audios) {
-            promises.push(upload(f, "audio"));
-          }
+          for (const f of files.audios) promises.push(upload(f, "audio"));
         }
-
         if (files.videos?.length > 0) {
-          console.log(`🎬 ${files.videos.length} vídeo(s) para upload`);
-          for (const f of files.videos) {
-            promises.push(upload(f, "video"));
-          }
+          for (const f of files.videos) promises.push(upload(f, "video"));
         }
-
         if (promises.length > 0) {
-          console.log(`⏳ Aguardando ${promises.length} upload(s)...`);
-          const results = await Promise.all(promises);
-          console.log("✅ Todos os uploads concluídos:", results.length);
-          return results;
+          return await Promise.all(promises);
         }
-
-        console.log("📭 Nenhuma mídia para upload");
         return [];
       };
 
-      // ===========================================================================
-      // 🔥 MODO EDIÇÃO
-      // ===========================================================================
       if (editingItem) {
-        console.log("\n✏️ Modo EDIÇÃO - Item:", editingItem.id);
-
-        // Prepara payload para edição
         const updatePayload = {
           ...values,
           removeImageIds: removedMedia.images,
@@ -1924,20 +1295,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           removeAudioIds: removedMedia.audios,
         };
 
-        console.log("📦 Payload de edição:", {
-          ...updatePayload,
-          removeImageIds: updatePayload.removeImageIds?.length || 0,
-          removeVideoIds: updatePayload.removeVideoIds?.length || 0,
-          removeAudioIds: updatePayload.removeAudioIds?.length || 0,
-        });
-
-        console.log("📡 Enviando PUT para:", `/flow/items/${editingItem.id}`);
-
-        const startTime = Date.now();
         await api.put(`/flow/items/${editingItem.id}`, updatePayload);
-        const endTime = Date.now();
-
-        console.log(`✅ Item atualizado em ${endTime - startTime}ms`);
 
         if (
           files &&
@@ -1945,49 +1303,17 @@ const handleOpenCompleteModal = (item: FlowItem) => {
             files.audios?.length > 0 ||
             files.videos?.length > 0)
         ) {
-          console.log(
-            "\n📤 Fazendo upload de novas mídias para o item editado...",
-          );
           await uploadMedia(editingItem.id, files);
         }
 
         toast.success("Item atualizado com sucesso!");
-      }
-
-      // ===========================================================================
-      // 🔥 MODO CRIAÇÃO - CORRIGIDO (SEM VALIDAÇÃO COM currentItemStages)
-      // ===========================================================================
-      else {
-        console.log("\n🆕 Modo CRIAÇÃO - Novo Item");
-
-        // 🔥 VALIDAÇÕES MÍNIMAS
-        if (!values.flowId) {
-          console.error("❌ flowId não informado");
-          toast.error("Selecione uma coleção");
+      } else {
+        if (!values.flowId || !values.stageId) {
+          toast.error("Selecione uma coleção e etapa");
           setIsSubmitting(false);
           return;
         }
 
-        if (!values.stageId) {
-          console.error("❌ stageId não informado nos values");
-          toast.error("Selecione uma etapa");
-          setIsSubmitting(false);
-          return;
-        }
-
-        // 🔥 IMPORTANTE: REMOVIDA a validação com currentItemStages
-        // O modal já validou que a stage existe no flow selecionado
-        // e buscou o ID correto
-
-        console.log("🔍 VERIFICAÇÃO DE STAGE (validação pelo modal):");
-        console.log("   flowId enviado:", values.flowId);
-        console.log("   stageId enviado:", values.stageId);
-        console.log("   activeStageId (ignorado):", activeStageId);
-        console.log(
-          "   ⚠️ Validação com currentItemStages foi REMOVIDA - confiamos no modal",
-        );
-
-        // 🔥 Prepara payload para criação
         const createPayload = {
           title: values.title,
           description: values.description || null,
@@ -2007,36 +1333,9 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           priority: values.priority || 3,
         };
 
-        console.log("\n📡 Enviando POST para /flow/items");
-        console.log("📦 Payload completo:", createPayload);
-
-        const startTime = Date.now();
-
-        let response;
-        try {
-          response = await api.post(`/flow/items`, createPayload);
-          console.log("✅ Resposta da API:", response.data);
-        } catch (apiError: any) {
-          console.error("❌ Erro na requisição:", {
-            status: apiError.response?.status,
-            statusText: apiError.response?.statusText,
-            data: apiError.response?.data,
-            message: apiError.message,
-          });
-          throw apiError;
-        }
-
-        const endTime = Date.now();
+        const response = await api.post(`/flow/items`, createPayload);
         const newItem = response.data;
 
-        console.log(`✅ Item criado em ${endTime - startTime}ms:`, {
-          id: newItem.id,
-          title: newItem.title,
-          stageId: newItem.stageId,
-          flowId: newItem.flowId,
-        });
-
-        // Upload de mídias se houver
         if (
           newItem?.id &&
           files &&
@@ -2044,17 +1343,11 @@ const handleOpenCompleteModal = (item: FlowItem) => {
             files.audios?.length > 0 ||
             files.videos?.length > 0)
         ) {
-          console.log("\n📤 Fazendo upload de mídias para o novo item...");
           await uploadMedia(newItem.id, files);
         }
 
         toast.success("Item criado com sucesso!");
       }
-
-      // ===========================================================================
-      // 🔥 LIMPEZA DE ESTADOS
-      // ===========================================================================
-      console.log("\n🧹 Limpando estados e fechando modais...");
 
       setIsItemModal(false);
       setIsEditItemModal(false);
@@ -2062,66 +1355,24 @@ const handleOpenCompleteModal = (item: FlowItem) => {
       setCurrentItemStages([]);
       setActiveStageId(null);
 
-      // ===========================================================================
-      // 🔥 ATUALIZAÇÃO DO BOARD
-      // ===========================================================================
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
+      queryClient.invalidateQueries({ queryKey: ["kanban-boards"] });
+      queryClient.invalidateQueries({ queryKey: ["all-items"] });
+      queryClient.invalidateQueries({ queryKey: ["all-flows"] });
 
-      console.log("🔍 Verificando filtros ativos:", {
-        activeFilterStartDate,
-        activeFilterEndDate,
-        activeFilterOverdue,
-        activeFilterUpcoming,
-        activeColumnNameFilter,
-        hasFilters,
-      });
-
-      console.log("🔄 Atualizando board...");
-
-      const boardStartTime = Date.now();
-
-      if (hasFilters) {
-        console.log("📊 Aplicando filtros antes de atualizar...");
-        await fetchFilteredBoards();
-      } else {
-        console.log("📊 Buscando boards selecionados...");
-        await fetchSelectedBoards();
+      if (values.flowId) {
+        queryClient.invalidateQueries({
+          queryKey: ["flow-board", values.flowId],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["selected-flow", values.flowId],
+        });
       }
 
-      const boardEndTime = Date.now();
-      console.log(`✅ Board atualizado em ${boardEndTime - boardStartTime}ms`);
-
-      console.log("\n🎯 [handleItemSubmit] FINALIZADO COM SUCESSO");
-      console.log("=".repeat(80));
-      console.log("\n");
+      queryClient.invalidateQueries({ queryKey: ["flow"], exact: false });
     } catch (error: any) {
-      // ===========================================================================
-      // 🔥 TRATAMENTO DE ERROS
-      // ===========================================================================
-      console.error("\n");
-      console.error("=".repeat(80));
-      console.error("❌ [handleItemSubmit] ERRO");
-      console.error("=".repeat(80));
-      console.error("Detalhes do erro:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          data: error.config?.data ? JSON.parse(error.config.data) : null,
-        },
-      });
+      console.error("❌ [handleItemSubmit] ERRO:", error);
 
-      // Mensagens de erro amigáveis
       let errorMessage = "Erro ao salvar item";
-
       if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       } else if (error.response?.status === 400) {
@@ -2131,48 +1382,18 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         errorMessage = "Sessão expirada. Faça login novamente.";
       } else if (error.response?.status === 403) {
         errorMessage = "Você não tem permissão para realizar esta ação.";
-      } else if (error.response?.status === 404) {
-        errorMessage = "Recurso não encontrado.";
-      } else if (error.response?.status === 500) {
-        errorMessage = "Erro interno do servidor. Tente novamente mais tarde.";
       }
 
-      // 🔥 LOG DO ERRO MAS NÃO BLOQUEIA COM MENSAGEM ESPECÍFICA
-      if (error.response?.data?.message?.includes("Etapa inválida")) {
-        console.error("🔍 ERRO DO BACKEND: Etapa inválida");
-        console.error("   - flowId enviado:", values?.flowId);
-        console.error("   - stageId enviado:", values?.stageId);
-        console.error("   - activeStageId:", activeStageId);
-        console.error(
-          "   ⚠️ Isso indica que o modal não encontrou o ID correto",
-        );
-      }
-
-      // toast.error(errorMessage);
-
-      console.error("=".repeat(80));
-      console.error("\n");
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
-      console.log("🏁 isSubmitting set to false");
     }
   };
 
   const shouldShowItem = useCallback(
     (item: FlowItem): boolean => {
       if (item.status === "CONCLUIDO") {
-        const show = itemsPendingRemoval.has(item.id);
-        if (show) {
-          console.log(
-            `⏰ [${new Date().toISOString()}] Item ${item.id} (${item.title}) concluído MAS em contagem - MOSTRANDO`,
-          );
-        } else {
-          console.log(
-            `✅ [${new Date().toISOString()}] Item ${item.id} (${item.title}) concluído - OCULTANDO - itemsPendingRemoval:`,
-            Array.from(itemsPendingRemoval),
-          );
-        }
-        return show;
+        return itemsPendingRemoval.has(item.id);
       }
       return true;
     },
@@ -2183,67 +1404,57 @@ const handleOpenCompleteModal = (item: FlowItem) => {
   // 🎯 UNIFIED STAGES - Agrupa stages por nome
   // ===========================================================================
   const unifiedStages = useMemo(() => {
-    console.log("🔄 Recalculando unifiedStages com refreshKey:", refreshKey);
-    console.log("📋 itemsPendingRemoval:", Array.from(itemsPendingRemoval));
-
     const stageGroups: Record<string, FlowStage> = {};
 
     boards.forEach((board) => {
       const flowColor = board.color || "#D35400";
       const flowName = board.name;
 
-      board.stages.forEach((stage) => {
-        const key = stage.name.toUpperCase();
+      board.stages.forEach(
+        (stage: {
+          name: string;
+          id: any;
+          order: any;
+          color: any;
+          allowedRole: any;
+          defaultDays: any;
+          items: any[];
+        }) => {
+          const key = stage.name.toUpperCase();
 
-        if (!stageGroups[key]) {
-          stageGroups[key] = {
-            id: stage.id,
-            name: stage.name,
-            order: stage.order,
-            color: stage.color,
-            allowedRole: stage.allowedRole,
-            flowId: board.id,
-            items: [],
-          };
-        }
+          if (!stageGroups[key]) {
+            stageGroups[key] = {
+              id: stage.id,
+              name: stage.name,
+              order: stage.order,
+              color: stage.color,
+              allowedRole: stage.allowedRole,
+              defaultDays: stage.defaultDays,
+              flowId: board.id,
+              items: [],
+            };
+          }
 
-        // 🔥 Log de quantos itens tinha antes
-        console.log(`Stage ${stage.name} tinha ${stage.items.length} itens`);
+          const itemsWithMetadata = stage.items
+            .filter((item) => shouldShowItem(item))
+            .map((item) => ({
+              ...item,
+              flowColor,
+              flowName,
+              _originalStageId: item.stageId,
+              _originalFlowId: board.id,
+            }));
 
-        // 🔥 USA A MESMA FUNÇÃO shouldShowItem
-        const itemsWithMetadata = stage.items
-          .filter((item) => {
-            const show = shouldShowItem(item);
-            if (!show && item.status === "CONCLUIDO") {
-              console.log(
-                `❌ Filtrando item ${item.id} (${item.title}) - CONCLUIDO e não está no pending`,
-              );
-            }
-            return show;
-          })
-          .map((item) => ({
-            ...item,
-            flowColor,
-            flowName,
-            _originalStageId: item.stageId,
-            _originalFlowId: board.id,
-          }));
-
-        console.log(
-          `Stage ${stage.name} ficou com ${itemsWithMetadata.length} itens`,
-        );
-
-        stageGroups[key].items.push(...itemsWithMetadata);
-      });
+          stageGroups[key].items.push(...itemsWithMetadata);
+        },
+      );
     });
 
-    const result = Object.values(stageGroups).sort((a, b) => a.order - b.order);
-
-    return result;
-  }, [boards, refreshKey, itemsPendingRemoval, shouldShowItem]);
+    return Object.values(stageGroups).sort((a, b) => a.order - b.order);
+  }, [boards, itemsPendingRemoval, shouldShowItem]);
 
   // ===========================================================================
-  // 🔥 HOOK DE DRAG
+  // 🔥 HOOK DE DRAG (ajustado para usar refreshBoardsAfterAction)
   // ===========================================================================
   const { moveItem, onDragStart, executeMove } = useKanbanDrag({
     items: unifiedStages.flatMap((s) => s.items),
@@ -2251,15 +1462,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     idField: "stageId",
 
     moveCallback: async (itemId, newStageId, responsibleId, type) => {
-      console.log("🎯 [moveCallback] Iniciando movimento:", {
-        itemId,
-        newStageId,
-        responsibleId,
-        type,
-      });
-
       const payload: any = { newStageId };
-
       if (type === "supplier") {
         payload.supplierId = responsibleId;
       } else if (type === "user") {
@@ -2268,49 +1471,21 @@ const handleOpenCompleteModal = (item: FlowItem) => {
 
       try {
         const response = await api.put(`/flow/items/${itemId}/move`, payload);
-        console.log("✅ [moveCallback] Resposta do servidor:", response.data);
-
-        // 🔥 IMPORTANTE: Buscar o nome da stage destino no board original
         const movedItem = response.data;
 
-        // Buscar o board do item
         const itemBoard = boards.find((b) => b.id === movedItem.flowId);
-
         if (itemBoard) {
-          // Buscar a stage pelo ID no board original
-          const targetStage = itemBoard.stages.find((s) => s.id === newStageId);
-
+          const targetStage = itemBoard.stages.find(
+            (s: { id: string }) => s.id === newStageId,
+          );
           if (targetStage) {
             lastMovedItemRef.current = {
               id: itemId,
               targetStageId: newStageId,
-              targetStageName: targetStage.name, // 🔥 Guarda o NOME, não o ID
+              targetStageName: targetStage.name,
             };
-            console.log(
-              "📦 Informações salvas no ref:",
-              lastMovedItemRef.current,
-            );
-          } else {
-            console.error(
-              "❌ Stage destino não encontrada no board original:",
-              {
-                boardId: itemBoard.id,
-                boardName: itemBoard.name,
-                newStageId,
-                availableStages: itemBoard.stages.map((s) => ({
-                  id: s.id,
-                  name: s.name,
-                })),
-              },
-            );
           }
-        } else {
-          console.error(
-            "❌ Board não encontrado para o fluxo:",
-            movedItem.flowId,
-          );
         }
-
         return response.data;
       } catch (error: any) {
         console.error("❌ [moveCallback] Erro:", error);
@@ -2318,269 +1493,58 @@ const handleOpenCompleteModal = (item: FlowItem) => {
       }
     },
 
-  onRequireResponsible: (itemId, targetStageId, targetStageName) => {
-  console.log("👤 [onRequireResponsible] Requer responsável:", {
-    itemId,
-    targetStageId,
-    targetStageName,
-  });
+    onRequireResponsible: (itemId, targetStageId, targetStageName) => {
+      const item = unifiedStages
+        .flatMap((s) => s.items)
+        .find((i) => i.id === itemId);
+      if (!item) return;
 
-  // 🔥 ENCONTRA O ITEM PARA PEGAR O FLOW ID
-  const item = unifiedStages
-    .flatMap((s) => s.items)
-    .find((i) => i.id === itemId);
+      const targetStage = unifiedStages.find(
+        (s) => s.name.toLowerCase() === targetStageName.toLowerCase(),
+      );
+      if (!targetStage) return;
 
-  if (!item) {
-    console.error("❌ Item não encontrado:", itemId);
-    return;
-  }
+      const isDistribuicao = checkIfIsDistribuicao(targetStage.name);
+      const isAfterCorte = checkIfIsAfterCorte(targetStageId, item.flowId);
+      const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
 
-  console.log("📦 Item encontrado:", {
-    id: item.id,
-    title: item.title,
-    flowId: item.flowId,
-    currentStageId: item.stageId,
-    quantity: item.quantity,
-  });
+      if (isOficina) {
+        setDragItemId(itemId);
+        setDragTargetStage({
+          id: targetStageId,
+          name: targetStage.name,
+          allowedRole: targetStage.allowedRole,
+          isAfterCorte,
+          isDistribuicao,
+        });
+        setIsDragModalOpen(true);
+        return;
+      }
 
-  // 🔥 ENCONTRA A STAGE DESTINO
-  const targetStage = unifiedStages.find(
-    (s) => s.name.toLowerCase() === targetStageName.toLowerCase(),
-  );
-
-  if (!targetStage) {
-    console.error(
-      "❌ [onRequireResponsible] Stage não encontrada:",
-      targetStageName,
-    );
-    return;
-  }
-
-  // ===========================================================================
-  // 🔥 CALCULA AS FLAGS - USA isAfterCorte
-  // ===========================================================================
-  const isDistribuicao = checkIfIsDistribuicao(targetStage.name);
-  const isAfterCorte = checkIfIsAfterCorte( // ← FUNÇÃO QUE VERIFICA CORTE
-    targetStageId,
-    item.flowId,
-  );
-
-  console.log("📊 [onRequireResponsible] Flags calculadas:", {
-    itemId: item.id,
-    itemTitle: item.title,
-    flowId: item.flowId,
-    targetStageName: targetStage.name,
-    targetStageId,
-    isAfterCorte, // ← AGORA USA isAfterCorte
-    isDistribuicao,
-  });
-
-  const isOficina = targetStage.name?.trim().toLowerCase() === "oficina";
-
-  if (isOficina) {
-    console.log(
-      "🏭 [onRequireResponsible] É coluna OFICINA, requer fornecedor",
-    );
-    setDragItemId(itemId);
-    setDragTargetStage({
-      id: targetStageId,
-      name: targetStage.name,
-      allowedRole: targetStage.allowedRole,
-      isAfterCorte, // ← PASSA isAfterCorte (agora o tipo aceita)
-      isDistribuicao,
-    });
-    setIsDragModalOpen(true);
-    return;
-  }
-
-  if (
-    targetStage?.allowedRole &&
-    targetStage.allowedRole !== "all" &&
-    targetStage.allowedRole !== "null" &&
-    targetStage.allowedRole.trim() !== ""
-  ) {
-    console.log(
-      `👤 [onRequireResponsible] Requer cargo: ${targetStage.allowedRole}`,
-    );
-    setDragItemId(itemId);
-    setDragTargetStage({
-      id: targetStageId,
-      name: targetStage.name,
-      allowedRole: targetStage.allowedRole,
-      isAfterCorte, // ← PASSA isAfterCorte
-      isDistribuicao,
-    });
-    setIsDragModalOpen(true);
-  } else {
-    console.log(
-      "✅ [onRequireResponsible] Sem restrição, movendo diretamente",
-    );
-    executeMove(itemId, targetStageId);
-  }
-},
+      if (
+        targetStage?.allowedRole &&
+        targetStage.allowedRole !== "all" &&
+        targetStage.allowedRole !== "null" &&
+        targetStage.allowedRole.trim() !== ""
+      ) {
+        setDragItemId(itemId);
+        setDragTargetStage({
+          id: targetStageId,
+          name: targetStage.name,
+          allowedRole: targetStage.allowedRole,
+          isAfterCorte,
+          isDistribuicao,
+        });
+        setIsDragModalOpen(true);
+      } else {
+        executeMove(itemId, targetStageId);
+      }
+    },
 
     onMoveSuccess: async () => {
-      console.log(
-        "🔄 [onMoveSuccess] ========================================",
-      );
       console.log("🔄 [onMoveSuccess] Movimento concluído com sucesso!");
-      console.log("📌 Timestamp:", new Date().toISOString());
-      console.log(
-        "🔄 [onMoveSuccess] ========================================",
-      );
-
-      // ===========================================================================
-      // 🔥 PASSO 1: PEGAR O ÚLTIMO ITEM MOVIDO DO REF
-      // ===========================================================================
-      const lastMoved = lastMovedItemRef.current;
-      console.log("📦 lastMovedItemRef.current:", lastMoved);
-
-      // ===========================================================================
-      // 🔥 PASSO 2: SE TIVER ITEM MOVIDO, VERIFICAR SE É ÚLTIMA ETAPA
-      // ===========================================================================
-      if (lastMoved) {
-        console.log("📦 Último item movido:", {
-          id: lastMoved.id,
-          targetStageName: lastMoved.targetStageName,
-          targetStageId: lastMoved.targetStageId,
-        });
-
-        // 🔥 Buscar a última etapa no unifiedStages (comparação por NOME)
-        const lastStage = unifiedStages[unifiedStages.length - 1];
-
-        console.log("🎯 Última etapa no unifiedStages:", {
-          name: lastStage?.name,
-          id: lastStage?.id,
-        });
-
-        console.log("🎯 Target stage name:", lastMoved.targetStageName);
-
-        const isLastStage =
-          lastStage && lastMoved.targetStageName === lastStage.name;
-        console.log("🎯 É última etapa?", isLastStage);
-
-        // ===========================================================================
-        // 🔥 PASSO 3: SE FOR ÚLTIMA ETAPA, INICIAR CONTAGEM REGRESSIVA
-        // ===========================================================================
-        if (isLastStage) {
-          console.log(
-            "⏰ É a última etapa! Iniciando contagem de 3 segundos...",
-          );
-
-          // Inicia contagem de 3 segundos (item fica visível na tela)
-          console.log("⏰ Chamando startItemRemovalTimer para:", lastMoved.id);
-          startItemRemovalTimer(lastMoved.id);
-
-          // ===========================================================================
-          // 🔥 PASSO 4: AGENDAR BUSCA DOS BOARDS APÓS 10 SEGUNDOS
-          // ===========================================================================
-          const buscaAgendada = Date.now() + 10000;
-          console.log(
-            `⏰ Agendando busca para daqui 10s (${new Date(buscaAgendada).toISOString()})`,
-          );
-
-          setTimeout(async () => {
-            console.log("\n" + "=".repeat(50));
-            console.log(
-              `🔄 EXECUTANDO BUSCA AGENDADA para item ${lastMoved.id} em ${new Date().toISOString()}`,
-            );
-            console.log("=".repeat(50));
-
-            try {
-              // Verificar se existem filtros ativos
-              const hasFilters =
-                activeFilterStartDate ||
-                activeFilterEndDate ||
-                activeFilterOverdue ||
-                activeFilterUpcoming ||
-                activeColumnNameFilter;
-
-              console.log("📊 hasFilters:", hasFilters);
-              console.log("📊 activeFilterStartDate:", activeFilterStartDate);
-              console.log("📊 activeFilterEndDate:", activeFilterEndDate);
-              console.log("📊 activeFilterOverdue:", activeFilterOverdue);
-              console.log("📊 activeFilterUpcoming:", activeFilterUpcoming);
-              console.log("📊 activeColumnNameFilter:", activeColumnNameFilter);
-
-              // Buscar boards com ou sem filtros
-              if (hasFilters) {
-                console.log("📊 Aplicando filtros na busca pós-conclusão...");
-                await fetchFilteredBoards();
-              } else {
-                console.log(
-                  "📊 Buscando boards selecionados na pós-conclusão...",
-                );
-                await fetchSelectedBoards();
-              }
-
-              // Forçar recálculo do unifiedStages
-              console.log("✅ fetch concluído, chamando setRefreshKey");
-              setRefreshKey((prev) => {
-                console.log(`🔄 RefreshKey: ${prev} -> ${prev + 1}`);
-                return prev + 1;
-              });
-
-              console.log(
-                `✅ Boards atualizados após conclusão do item ${lastMoved.id}!`,
-              );
-            } catch (error: any) {
-              console.error("❌ Erro ao buscar boards após conclusão:", error);
-              console.error("❌ Status:", error.response?.status);
-              console.error("❌ Data:", error.response?.data);
-              console.error("❌ Message:", error.message);
-            }
-          }, 10000); // 10 segundos
-        } else {
-          console.log("⏭️ Não é a última etapa, ignorando contagem");
-        }
-
-        // ===========================================================================
-        // 🔥 PASSO 5: LIMPAR O REF (DEPOIS DE USAR)
-        // ===========================================================================
-        console.log("🧹 Limpando lastMovedItemRef");
-        lastMovedItemRef.current = null;
-      } else {
-        console.log("⚠️ Nenhum item encontrado no ref");
-      }
-
-      // ===========================================================================
-      // 🔥 PASSO 6: PRIMEIRA BUSCA IMEDIATA (já existente)
-      // ===========================================================================
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      console.log("\n📊 Primeira busca imediata:");
-      console.log("📊 hasFilters:", hasFilters);
-
-      try {
-        if (hasFilters) {
-          console.log(
-            "📊 [onMoveSuccess] Aplicando filtros antes de atualizar...",
-          );
-          await fetchFilteredBoards();
-        } else {
-          console.log("📊 [onMoveSuccess] Buscando boards selecionados...");
-          await fetchSelectedBoards();
-        }
-
-        console.log("✅ Primeira busca concluída, chamando setRefreshKey");
-        setRefreshKey((prev) => {
-          console.log(`🔄 RefreshKey: ${prev} -> ${prev + 1}`);
-          return prev + 1;
-        });
-
-        console.log("✅ [onMoveSuccess] Boards recarregados com sucesso!");
-      } catch (error) {
-        console.error("❌ [onMoveSuccess] Erro ao recarregar boards:", error);
-      }
-
-      console.log(
-        "🔄 [onMoveSuccess] ========================================\n",
-      );
+      lastMovedItemRef.current = null;
+      await refreshBoardsAfterAction();
     },
 
     onMoveError: (error) => {
@@ -2591,62 +1555,26 @@ const handleOpenCompleteModal = (item: FlowItem) => {
   const handleDragWithResponsible = async (
     responsibleId: string,
     type: "user" | "supplier",
-    quantity?: number, // 🔥 RECEBE QUANTIDADE DO MODAL
+    quantity?: number,
   ) => {
     if (!dragItemId || !dragTargetStage) return;
 
-    // toast.loading("Movendo item...", { id: "drag-move" });
-
     try {
-      // 🔥 PASSO 1: Se tiver quantidade, atualizar o item primeiro
       if (quantity !== undefined) {
-        console.log(`📝 [DRAG] Atualizando quantidade para: ${quantity}`);
-        await api.put(`/flow/items/${dragItemId}`, {
-          quantity: quantity,
-        });
+        await api.put(`/flow/items/${dragItemId}`, { quantity });
       }
 
-      // 🔥 PASSO 2: Mover o item com os parâmetros
-      console.log(`🎯 [DRAG] Movendo item para: ${dragTargetStage.name}`, {
-        responsibleId,
-        type,
-      });
-
       await executeMove(dragItemId, dragTargetStage.id, responsibleId, type);
-
-      // toast.success(`Item movido para "${dragTargetStage.name}"!`, {
-      //   id: "drag-move",
-      // });
 
       setIsDragModalOpen(false);
       setDragItemId(null);
       setDragTargetStage(null);
-
-      // 🔥 PASSO 3: Recarregar boards
-      const hasFilters =
-        activeFilterStartDate ||
-        activeFilterEndDate ||
-        activeFilterOverdue ||
-        activeFilterUpcoming ||
-        activeColumnNameFilter;
-
-      if (hasFilters) {
-        await fetchFilteredBoards();
-      } else {
-        await fetchSelectedBoards();
-      }
+      await refreshBoardsAfterAction();
     } catch (error: any) {
       console.error("❌ [DRAG] Erro ao mover item:", error);
-
       let errorMsg = "Erro ao mover item.";
-
-      if (error.response?.data?.message) {
-        errorMsg = error.response.data.message;
-      } else if (error.message) {
-        errorMsg = error.message;
-      }
-
-      // toast.error(errorMsg, { id: "drag-move" });
+      if (error.response?.data?.message) errorMsg = error.response.data.message;
+      toast.error(errorMsg);
     }
   };
 
@@ -2655,16 +1583,14 @@ const handleOpenCompleteModal = (item: FlowItem) => {
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
     );
 
-  // Verifica se há filtro de referência ativo
   const hasActiveProductRefFilter =
     activeFilterProductRef && activeFilterProductRef.trim() !== "";
-
-  // Verifica se não há itens no board filtrado
   const hasNoItemsAfterFilter = boards.every((board) =>
-    board.stages.every((stage) => stage.items.length === 0),
+    board.stages.every(
+      (stage: { items: string | any[] }) => stage.items.length === 0,
+    ),
   );
 
-  // Efeito para mostrar o toast quando a condição for atendida
   useEffect(() => {
     if (
       hasActiveProductRefFilter &&
@@ -2674,27 +1600,14 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     ) {
       toast.info(
         "Nenhum item encontrado. A referência pode ainda não ter sido criada ou já foi finalizada.",
-        {
-          duration: 5000, // 5 segundos
-          icon: <Package className="h-4 w-4" />,
-        },
+        { duration: 5000, icon: <Package className="h-4 w-4" /> },
       );
       setHasShownEmptyRefToast(true);
     }
-
-    // Reseta o estado quando o filtro muda ou quando há itens
     if (!hasActiveProductRefFilter || !hasNoItemsAfterFilter) {
       setHasShownEmptyRefToast(false);
     }
   }, [hasActiveProductRefFilter, hasNoItemsAfterFilter, loading]);
-
-  if (loading && boards.length === 0) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
-        <Loader2 className="animate-spin text-[#D35400]" size={32} />
-      </div>
-    );
-  }
 
   const hasActiveFilters =
     activeFilterStartDate ||
@@ -2709,17 +1622,12 @@ const handleOpenCompleteModal = (item: FlowItem) => {
   const calculateDaysRemaining = (deadlineDate: string): number => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const deadline = new Date(deadlineDate);
     deadline.setHours(0, 0, 0, 0);
-
     const diffTime = deadline.getTime() - today.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  // ===========================================================================
-  // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE É DISTRIBUIÇÃO
-  // ===========================================================================
   const checkIfIsDistribuicao = (stageName: string): boolean => {
     const DISTRIBUICAO_KEYWORDS = [
       "distribuição",
@@ -2732,295 +1640,286 @@ const handleOpenCompleteModal = (item: FlowItem) => {
     );
   };
 
-  // ===========================================================================
-  // 🔥 FUNÇÃO AUXILIAR PARA VERIFICAR SE ESTÁ APÓS DISTRIBUIÇÃO
-  // ===========================================================================
-  const checkIfIsAfterDistribuicao = (
-    stageId: string,
-    flowId: string,
-  ): boolean => {
-    // 1. Encontra o board do fluxo específico
-    const board = boards.find((b) => b.id === flowId);
-    if (!board) {
-      console.warn(`⚠️ Board não encontrado para flowId: ${flowId}`);
-      return false;
-    }
-
-    // 2. Ordena todas as etapas do fluxo
-    const sortedStages = [...board.stages].sort((a, b) => a.order - b.order);
-
-    console.log(
-      `📊 [checkIfIsAfterDistribuicao] Stages do fluxo ${flowId}:`,
-      sortedStages.map((s) => ({ id: s.id, name: s.name, order: s.order })),
+  if (loading && boards.length === 0) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-[#F5F0E6]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin text-[#D35400]" size={40} />
+          <p className="text-slate-500 text-sm animate-pulse">Carregando...</p>
+        </div>
+      </div>
     );
-
-    // 3. Palavras-chave para identificar a etapa de Distribuição
-    const DISTRIBUICAO_KEYWORDS = [
-      "distribuição",
-      "distribuicao",
-      "expedição",
-      "expedicao",
-    ];
-
-    // 4. Encontra o índice da etapa de Distribuição
-    const distribuicaoIndex = sortedStages.findIndex((stage) =>
-      DISTRIBUICAO_KEYWORDS.some((keyword) =>
-        stage.name.toLowerCase().includes(keyword.toLowerCase()),
-      ),
-    );
-
-    // Se não encontrar etapa de Distribuição, retorna false
-    if (distribuicaoIndex === -1) {
-      console.log(
-        `ℹ️ Nenhuma etapa de Distribuição encontrada no fluxo ${flowId}`,
-      );
-      return false;
-    }
-
-    // 5. Encontra o índice da etapa que estamos verificando
-    const stageIndex = sortedStages.findIndex((s) => s.id === stageId);
-
-    // Se não encontrar a etapa, retorna false
-    if (stageIndex === -1) {
-      console.warn(`⚠️ Stage ${stageId} não encontrada no fluxo ${flowId}`);
-      return false;
-    }
-
-    const isAfter = stageIndex > distribuicaoIndex;
-
-    console.log(`📊 [checkIfIsAfterDistribuicao] Resultado:`, {
-      stageName: sortedStages[stageIndex].name,
-      distribuicaoName: sortedStages[distribuicaoIndex].name,
-      stageIndex,
-      distribuicaoIndex,
-      isAfter,
-    });
-
-    return isAfter;
-  };
+  }
 
   return (
     <KanbanLayout>
-      <KanbanHeader
-        title="Esteira de Produção"
-        icon={<Factory size={20} />}
-        onAddFlow={() => setIsFlowModal(true)}
-        onAddStage={() => {
-          setEditingStage(null);
-          setStageName("");
-          setStageColor("#2D3436");
-          setStageAllowedRole("");
-          setIsStageModal(true);
-        }}
-        // Novas props para o seletor de fluxos
-        flows={flows}
-        selectedFlowIds={selectedFlowIds}
-        onToggleFlow={toggleFlow}
-        onEditFlow={openEditModal}
-        onDeleteFlow={(id) => {
-          setItemToDelete({ type: "stage", id });
-          setDeleteModalOpen(true);
-        }}
-        calculateDaysRemaining={calculateDaysRemaining}
-        templates={templates}
-        selectedTemplateId={selectedTemplateId}
-        onSelectTemplate={setSelectedTemplateId}
-        onApplyTemplate={handleApplyTemplate}
-        onSaveTemplate={handleSaveTemplate}
-        onDeleteTemplate={(id) => {
-          setItemToDelete({ type: "template", id });
-          setDeleteModalOpen(true);
-        }}
-        // rightContent={
-        //   !canManageRef ? (
-        //     <div className="flex items-center gap-2">
-        //       <div className="text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded flex items-center gap-1">
-        //         <Lock size={10} />
-        //         Referências: apenas leitura
-        //       </div>
-        //     </div>
-        //   ) : undefined
-        // }
-      />
-      {/* {!canManageRef && (
-        <div className="text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded">
-          <Lock size={10} className="inline mr-1" />
-          Referências: apenas leitura
-        </div>
-      )} */}
+      {/* Header com menu mobile */}
+      <div className="relative">
+        <KanbanHeader
+          title="Esteira de Produção"
+          icon={<Factory size={20} />}
+          onAddFlow={() => setIsFlowModal(true)}
+          onAddStage={() => {
+            setEditingStage(null);
+            setStageName("");
+            setStageColor("#2D3436");
+            setStageAllowedRole("");
+            setIsStageModal(true);
+          }}
+          flows={flows}
+          selectedFlowIds={selectedFlowIds}
+          onToggleFlow={toggleFlow}
+          onEditFlow={openEditModal}
+          onDeleteFlow={(id) => {
+            setItemToDelete({ type: "stage", id });
+            setDeleteModalOpen(true);
+          }}
+          calculateDaysRemaining={calculateDaysRemaining}
+          templates={templates}
+          selectedTemplateId={selectedTemplateId}
+          onSelectTemplate={setSelectedTemplateId}
+          onApplyTemplate={handleApplyTemplate}
+          onSaveTemplate={handleSaveTemplate}
+          onDeleteTemplate={(id) => {
+            setItemToDelete({ type: "template", id });
+            setDeleteModalOpen(true);
+          }}
+        />
 
-      <KanbanFilter>
-        <div className="grid gap-1 min-w-[180px]">
-          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-            Filtrar por Coluna
-          </label>
-          <div className="relative">
-            <select
-              className="flex h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 py-1 text-xs text-foreground appearance-none"
-              value={columnNameFilter}
-              onChange={(e) => setColumnNameFilter(e.target.value)}
+        {/* Botão de filtro mobile */}
+        <button
+          className="fixed bottom-20 right-6 z-50 md:hidden bg-white rounded-full shadow-lg p-3 border border-slate-200 touch-feedback"
+          onClick={() => setIsMobileFilterDrawerOpen(true)}
+          aria-label="Abrir filtros"
+        >
+          <FilterIcon size={20} className="text-orange-600" />
+        </button>
+      </div>
+
+      {/* Filtros Desktop (escondido no mobile) */}
+      <div className="hidden md:block">
+        <KanbanFilter>
+          <div className="grid gap-1 min-w-[200px]">
+            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+              Filtrar por Coluna
+            </label>
+            <Popover
+              open={openColumnSelector}
+              onOpenChange={setOpenColumnSelector}
             >
-              <option value="">Todas as colunas</option>
-              {columnOptions.map((columnName) => (
-                <option key={columnName} value={columnName}>
-                  {columnName}
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={openColumnSelector}
+                  className="h-8 w-full justify-between bg-background pl-8 pr-2 text-xs font-normal border-input hover:bg-accent"
+                >
+                  <div className="flex items-center gap-2 truncate pl-6 relative">
+                    <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
+                    <span className="truncate">
+                      {columnNameFilter || "Todas as colunas"}
+                    </span>
+                  </div>
+                  <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[250px] p-0" align="start">
+                <Command>
+                  <CommandInput
+                    placeholder="Buscar etapa..."
+                    className="h-8 text-xs"
+                  />
+                  <CommandList className="max-h-[300px]">
+                    <CommandEmpty className="py-3 text-center text-xs text-slate-500">
+                      Nenhuma coluna encontrada.
+                    </CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value=""
+                        onSelect={() => {
+                          setColumnNameFilter("");
+                          setOpenColumnSelector(false);
+                        }}
+                        className="text-xs cursor-pointer"
+                      >
+                        <div
+                          className={cn(
+                            "mr-2 flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-primary",
+                            !columnNameFilter
+                              ? "bg-primary text-primary-foreground"
+                              : "opacity-50",
+                          )}
+                        >
+                          {!columnNameFilter && <Check className="h-3 w-3" />}
+                        </div>
+                        Todas as colunas
+                      </CommandItem>
+                      {columnOptions.map((option) => (
+                        <CommandItem
+                          key={option}
+                          value={option}
+                          onSelect={(currentValue) => {
+                            setColumnNameFilter(
+                              currentValue === columnNameFilter ? "" : option,
+                            );
+                            setOpenColumnSelector(false);
+                          }}
+                          className="text-xs cursor-pointer"
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-3 w-3 text-orange-600",
+                              columnNameFilter === option
+                                ? "opacity-100"
+                                : "opacity-0",
+                            )}
+                          />
+                          {option}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="grid gap-1 min-w-[140px]">
+            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+              Responsável
+            </label>
+            <select
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+              value={tempFilterAssignedTo}
+              onChange={(e) => setTempFilterAssignedTo(e.target.value)}
+            >
+              <option value="all">Todos</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
                 </option>
               ))}
             </select>
-            <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400 pointer-events-none" />
-            {/* Seta do select */}
-            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
-              <svg
-                className="w-3 h-3 text-slate-500 dark:text-slate-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
+          </div>
+
+          <div className="grid gap-1 min-w-[140px]">
+            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+              Oficina
+            </label>
+            <select
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+              value={tempFilterSupplier}
+              onChange={(e) => setTempFilterSupplier(e.target.value)}
+            >
+              <option value="all">Todas</option>
+              <option value="internal">Produção Interna</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid gap-1 min-w-[180px]">
+            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+              Referência do Produto
+            </label>
+            <div className="relative">
+              <Input
+                type="text"
+                placeholder="Buscar por ref..."
+                className="h-8 text-xs pl-8 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                value={tempFilterProductRef}
+                onChange={(e) => setTempFilterProductRef(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleFilterClick();
+                  }
+                }}
+              />
+              <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400" />
             </div>
           </div>
-        </div>
 
-        <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-            Responsável
-          </label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
-            value={tempFilterAssignedTo}
-            onChange={(e) => setTempFilterAssignedTo(e.target.value)}
-          >
-            <option value="all">Todos</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div className="flex items-end gap-2">
+            <Button
+              size="sm"
+              variant={tempFilterOverdue ? "destructive" : "outline"}
+              className={`h-8 text-xs font-medium touch-feedback ${
+                tempFilterOverdue
+                  ? "bg-red-500 text-white hover:bg-red-600"
+                  : "text-foreground"
+              }`}
+              onClick={toggleOverdueFilter}
+            >
+              <AlertTriangle className="w-3 h-3 mr-2" />
+              Atrasados
+            </Button>
 
-        <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-            Oficina
-          </label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
-            value={tempFilterSupplier}
-            onChange={(e) => setTempFilterSupplier(e.target.value)}
-          >
-            <option value="all">Todas</option>
-            <option value="internal">Produção Interna</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="grid gap-1 min-w-[180px]">
-          <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
-            Referência do Produto
-          </label>
-          <div className="relative">
-            <Input
-              type="text"
-              placeholder="Buscar por ref..."
-              className="h-8 text-xs pl-8 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-              value={tempFilterProductRef}
-              onChange={(e) => setTempFilterProductRef(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleFilterClick();
-                }
-              }}
-            />
-            <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400" />
+            <Button
+              size="sm"
+              variant={tempFilterUpcoming ? "default" : "outline"}
+              className={`h-8 text-xs font-medium touch-feedback ${
+                tempFilterUpcoming
+                  ? "bg-orange-600 text-white hover:bg-orange-700"
+                  : "text-foreground"
+              }`}
+              onClick={toggleUpcomingFilter}
+            >
+              <Clock className="w-3 h-3 mr-2" />
+              Próximos a vencer ({notificationDays} dias)
+            </Button>
           </div>
-        </div>
 
-        <div className="flex items-end gap-2">
-          <Button
-            size="sm"
-            variant={tempFilterOverdue ? "destructive" : "outline"}
-            className={`h-8 text-xs font-medium ${
-              tempFilterOverdue
-                ? "bg-red-500 text-white hover:bg-red-600"
-                : "text-foreground"
-            }`}
-            onClick={toggleOverdueFilter}
-          >
-            <AlertTriangle className="w-3 h-3 mr-2" />
-            Atrasados
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="default"
+              className="h-8 text-xs font-medium min-w-[100px] bg-orange-600 hover:bg-orange-700 text-white touch-feedback"
+              onClick={handleFilterClick}
+              disabled={isFiltering}
+            >
+              {isFiltering ? (
+                <>
+                  <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Filtrando...
+                </>
+              ) : (
+                <>
+                  <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
+                </>
+              )}
+            </Button>
 
-          <Button
-            size="sm"
-            variant={tempFilterUpcoming ? "default" : "outline"}
-            className={`h-8 text-xs font-medium ${
-              tempFilterUpcoming
-                ? "bg-orange-600 text-white hover:bg-orange-700"
-                : "text-foreground"
-            }`}
-            onClick={toggleUpcomingFilter}
-          >
-            <Clock className="w-3 h-3 mr-2" />
-            Próximos a vencer (7 dias)
-          </Button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="default"
-            className="h-8 text-xs font-medium min-w-[100px] bg-orange-600 hover:bg-orange-700 text-white"
-            onClick={handleFilterClick}
-            disabled={isFiltering}
-          >
-            {isFiltering ? (
-              <>
-                <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Filtrando...
-              </>
-            ) : (
-              <>
-                <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
-              </>
+            {hasActiveFilters && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                onClick={handleClearFilters}
+                title="Limpar Filtros"
+              >
+                <X className="w-4 h-4" />
+              </Button>
             )}
-          </Button>
+          </div>
 
-          {hasActiveFilters && (
+          {activeColumnFilter.columnId && (
             <Button
               size="sm"
               variant="ghost"
-              className="h-8 w-8 p-0 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-              onClick={handleClearFilters}
-              title="Limpar Filtros"
+              className="h-8 text-xs text-slate-500 hover:text-red-600"
+              onClick={() =>
+                setActiveColumnFilter({ columnId: null, filterType: null })
+              }
             >
-              <X className="w-4 h-4" />
+              <X className="w-3 h-3 mr-1" />
+              Limpar Filtro da Coluna
             </Button>
           )}
-        </div>
+        </KanbanFilter>
+      </div>
 
-        {activeColumnFilter.columnId && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 text-xs text-slate-500 hover:text-red-600"
-            onClick={() =>
-              setActiveColumnFilter({ columnId: null, filterType: null })
-            }
-          >
-            <X className="w-3 h-3 mr-1" />
-            Limpar Filtro da Coluna
-          </Button>
-        )}
-      </KanbanFilter>
       {activeColumnNameFilter && (
         <div className="px-4 py-2 mb-4 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm">
@@ -3044,12 +1943,12 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           </Button>
         </div>
       )}
+
       <KanbanBoard>
         {hasActiveProductRefFilter && hasNoItemsAfterFilter ? (
           <div className="flex flex-col items-center justify-center w-full py-16 px-4">
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-8 max-w-md text-center">
               <Package className="h-12 w-12 text-orange-300 mx-auto mb-4" />
-
               <p className="text-sm text-gray-600 mb-4">
                 A referência{" "}
                 <span className="font-bold text-orange-600">
@@ -3057,7 +1956,6 @@ const handleOpenCompleteModal = (item: FlowItem) => {
                 </span>{" "}
                 não foi criada ou já foi finalizada.
               </p>
-
               <Button
                 variant="outline"
                 size="sm"
@@ -3070,169 +1968,120 @@ const handleOpenCompleteModal = (item: FlowItem) => {
             </div>
           </div>
         ) : (
-          // Seu código existente do KanbanBoard
-          unifiedStages.map((stage, index) => {
-            const hasPermission = canUserEditStage(stage);
-            // const filteredItems = filterColumnItems(stage);
+          <div className="flex overflow-x-auto pb-4 gap-4 scroll-smooth snap-x snap-mandatory md:overflow-x-visible md:snap-none">
+            {unifiedStages.map((stage, index) => {
+              const hasPermission = canUserEditStage(stage);
+              const filteredItems = filterColumnItems(stage);
+              const isOverdueActive =
+                activeColumnFilter.columnId === stage.id &&
+                activeColumnFilter.filterType === "overdue";
+              const isUpcomingActive =
+                activeColumnFilter.columnId === stage.id &&
+                activeColumnFilter.filterType === "upcoming";
 
-            const filteredItems = filterColumnItems(stage); // ✅ USA O FILTRO
+              return (
+                <KanbanColumn
+                  key={stage.id}
+                  id={stage.id}
+                  title={stage.name}
+                  count={filteredItems.length}
+                  color={stage.color}
+                  isFirstColumn={index === 0}
+                  defaultDays={stage.defaultDays}
+                  className="min-w-[280px] md:min-w-0 snap-start"
+                  onDropItem={(itemId) => {
+                    const allItems = unifiedStages.flatMap((s) => s.items);
+                    const draggingItem = allItems.find((i) => i.id === itemId);
+                    if (!draggingItem) return;
 
-            const isOverdueActive =
-              activeColumnFilter.columnId === stage.id &&
-              activeColumnFilter.filterType === "overdue";
-
-            const isUpcomingActive =
-              activeColumnFilter.columnId === stage.id &&
-              activeColumnFilter.filterType === "upcoming";
-
-            return (
-              <KanbanColumn
-                key={`${stage.id}-${refreshKey}-${itemsPendingRemoval.size}`} // 🔥 CHAVE DINÂMICA
-                id={stage.id}
-                title={stage.name}
-                count={filteredItems.length} // ✅ USA filteredItems (já inclui todos os filtros)
-                color={stage.color}
-                isFirstColumn={index === 0}
-                onDropItem={(itemId) => {
-                  const allItems = unifiedStages.flatMap((s) => s.items);
-                  const draggingItem = allItems.find((i) => i.id === itemId);
-
-                  if (!draggingItem) {
-                    console.error("❌ Item não encontrado:", itemId);
-                    return;
-                  }
-
-                  console.log("🎯 Drop - Item sendo movido:", {
-                    itemId: draggingItem.id,
-                    title: draggingItem.title,
-                    flowName: draggingItem.flowName,
-                    flowColor: draggingItem.flowColor,
-                    currentStage: draggingItem.stageId,
-                    targetStageName: stage.name,
-                  });
-
-                  // 🔥 Busca o board do flow ORIGINAL do item
-                  const itemBoard = boards.find(
-                    (b) => b.id === draggingItem.flowId,
-                  );
-
-                  if (!itemBoard) {
-                    console.error(
-                      "❌ Board do item não encontrado:",
-                      draggingItem.flowId,
+                    const itemBoard = boards.find(
+                      (b) => b.id === draggingItem.flowId,
                     );
-                    return;
+                    if (!itemBoard) return;
+
+                    const correctStage = itemBoard.stages.find(
+                      (s: { name: string }) =>
+                        s.name.toUpperCase() === stage.name.toUpperCase(),
+                    );
+                    if (!correctStage) return;
+
+                    moveItem(itemId, correctStage.id, stage.name);
+                  }}
+                  onAddItem={
+                    hasPermission ? () => handleCreateItem(stage.id) : undefined
                   }
+                  onEditClick={() => {
+                    setEditingStage(stage);
+                    setStageName(stage.name);
+                    setStageColor(stage.color || "#2D3436");
+                    setStageAllowedRole(stage.allowedRole || "");
+                    setStageDefaultDays(stage.defaultDays ?? 1);
+                    setIsStageModal(true);
+                  }}
+                  onDeleteClick={() => {
+                    setItemToDelete({ type: "stage", id: stage.id });
+                    setDeleteModalOpen(true);
+                  }}
+                  onFilterOverdue={() => handleColumnFilterOverdue(stage.id)}
+                  onFilterUpcoming={() => handleColumnFilterUpcoming(stage.id)}
+                  isOverdueFilterActive={isOverdueActive}
+                  isUpcomingFilterActive={isUpcomingActive}
+                  filterDisabled={false}
+                >
+                  {!hasPermission && (
+                    <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
+                      <Lock size={10} /> Somente Leitura
+                    </div>
+                  )}
 
-                  // Encontra a stage com o mesmo nome no flow original
-                  const correctStage = itemBoard.stages.find(
-                    (s) => s.name.toUpperCase() === stage.name.toUpperCase(),
-                  );
-
-                  if (!correctStage) {
-                    console.error("❌ Stage não encontrada no flow original:", {
-                      stageName: stage.name,
-                      flowName: itemBoard.name,
-                      availableStages: itemBoard.stages.map((s) => s.name),
-                    });
-                    return;
-                  }
-
-                  const targetStageId = correctStage.id;
-
-                  console.log("✅ Drop - Stage encontrada:", {
-                    targetStageId,
-                    targetStageName: correctStage.name,
-                    flowName: itemBoard.name,
-                  });
-
-                  moveItem(itemId, targetStageId, stage.name);
-                }}
-                onAddItem={
-                  hasPermission ? () => handleCreateItem(stage.id) : undefined
-                }
-                onEditClick={() => {
-                  setEditingStage(stage);
-                  setStageName(stage.name);
-                  setStageColor(stage.color || "#2D3436");
-                  setStageAllowedRole(stage.allowedRole || "");
-                  setIsStageModal(true);
-                }}
-                onDeleteClick={() => {
-                  setItemToDelete({ type: "stage", id: stage.id });
-                  setDeleteModalOpen(true);
-                }}
-                onFilterOverdue={() => handleColumnFilterOverdue(stage.id)}
-                onFilterUpcoming={() => handleColumnFilterUpcoming(stage.id)}
-                isOverdueFilterActive={isOverdueActive}
-                isUpcomingFilterActive={isUpcomingActive}
-                filterDisabled={false}
-              >
-                {!hasPermission && (
-                  <div className="text-[10px] text-center text-slate-400 py-1 flex items-center justify-center gap-1 bg-slate-50 mb-2 rounded border border-dashed">
-                    <Lock size={10} /> Somente Leitura
-                  </div>
-                )}
-
-                {(isOverdueActive || isUpcomingActive) && (
-                  <div
-                    className="mb-2 p-1 text-[8px] font-bold uppercase text-center rounded bg-opacity-20 flex items-center justify-center gap-1"
-                    style={{
-                      backgroundColor: isOverdueActive
-                        ? "#ef444420"
-                        : "#f59e0b20",
-                      color: isOverdueActive ? "#ef4444" : "#f59e0b",
-                      border: `1px solid ${isOverdueActive ? "#ef4444" : "#f59e0b"}30`,
-                    }}
-                  >
-                    {isOverdueActive ? (
-                      <>
-                        <AlertTriangle size={10} />
-                        Filtrando: Atrasados
-                      </>
-                    ) : (
-                      <>
-                        <Clock size={10} />
-                        Filtrando: Proximos a vencer (7 dias)
-                      </>
-                    )}
-                    <button
-                      className="ml-1 hover:opacity-70"
-                      onClick={() =>
-                        setActiveColumnFilter({
-                          columnId: null,
-                          filterType: null,
-                        })
-                      }
+                  {(isOverdueActive || isUpcomingActive) && (
+                    <div
+                      className="mb-2 p-1 text-[8px] font-bold uppercase text-center rounded bg-opacity-20 flex items-center justify-center gap-1"
+                      style={{
+                        backgroundColor: isOverdueActive
+                          ? "#ef444420"
+                          : "#f59e0b20",
+                        color: isOverdueActive ? "#ef4444" : "#f59e0b",
+                        border: `1px solid ${isOverdueActive ? "#ef4444" : "#f59e0b"}30`,
+                      }}
                     >
-                      <X size={10} />
-                    </button>
-                  </div>
-                )}
+                      {isOverdueActive ? (
+                        <>
+                          <AlertTriangle size={10} />
+                          Filtrando: Atrasados
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={10} />
+                          Filtrando: Proximos a vencer (7 dias)
+                        </>
+                      )}
+                      <button
+                        className="ml-1 hover:opacity-70"
+                        onClick={() =>
+                          setActiveColumnFilter({
+                            columnId: null,
+                            filterType: null,
+                          })
+                        }
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  )}
 
-                {filteredItems.map((item) => {
-                  // ✅ USA stage.items (já filtrado)
-                  console.log("Renderizando card:", {
-                    id: item.id,
-                    title: item.title,
-                    status: item.status,
-                    shouldShow: shouldShowItem(item),
-                    itemsPendingRemoval: Array.from(itemsPendingRemoval),
-                  });
-
-                  return (
+                  {filteredItems.map((item) => (
                     <KanbanCard
                       key={item.id}
                       id={item.id}
                       title={item.title}
                       subtitle={item.productRef}
                       priorityColor={item.flowColor}
+                      dueDate={item.dueDate}
                       coverImage={item.images[0]?.url}
                       onDragStart={
                         hasPermission
-                          ? (e) => {
-                              onDragStart(e, item.id);
-                            }
+                          ? (e) => onDragStart(e, item.id)
                           : undefined
                       }
                       onDoubleClick={() => {
@@ -3277,13 +2126,165 @@ const handleOpenCompleteModal = (item: FlowItem) => {
                         </div>
                       }
                     />
-                  );
-                })}
-              </KanbanColumn>
-            );
-          })
+                  ))}
+                </KanbanColumn>
+              );
+            })}
+          </div>
         )}
       </KanbanBoard>
+
+      {/* FAB para mobile */}
+      {/* <div className="fixed bottom-6 right-6 z-50 md:hidden">
+        <button
+          onClick={() => {
+            const firstStageId = unifiedStages[0]?.id;
+            if (firstStageId) handleCreateItem(firstStageId);
+          }}
+          className="w-14 h-14 rounded-full bg-orange-600 text-white shadow-lg 
+                     active:scale-95 transition-transform duration-200
+                     flex items-center justify-center hover:bg-orange-700 touch-feedback"
+          aria-label="Criar novo item"
+        >
+          <Plus size={24} />
+        </button>
+      </div> */}
+
+      {/* Bottom Sheet de Filtros Mobile */}
+      {isMobileFilterDrawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/50 transition-opacity"
+            onClick={() => setIsMobileFilterDrawerOpen(false)}
+          />
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl 
+                          transform transition-transform duration-300 animate-slide-up
+                          max-h-[80vh] overflow-y-auto"
+          >
+            <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
+              <h3 className="font-bold text-lg">Filtros</h3>
+              <button
+                onClick={() => setIsMobileFilterDrawerOpen(false)}
+                className="p-2 touch-feedback"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-bold">Coluna</label>
+                <select
+                  className="w-full p-3 border rounded-lg text-base"
+                  value={columnNameFilter}
+                  onChange={(e) => setColumnNameFilter(e.target.value)}
+                >
+                  <option value="">Todas as colunas</option>
+                  {columnOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold">Responsável</label>
+                <select
+                  className="w-full p-3 border rounded-lg text-base"
+                  value={tempFilterAssignedTo}
+                  onChange={(e) => setTempFilterAssignedTo(e.target.value)}
+                >
+                  <option value="all">Todos</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold">Oficina</label>
+                <select
+                  className="w-full p-3 border rounded-lg text-base"
+                  value={tempFilterSupplier}
+                  onChange={(e) => setTempFilterSupplier(e.target.value)}
+                >
+                  <option value="all">Todas</option>
+                  <option value="internal">Produção Interna</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold">
+                  Referência do Produto
+                </label>
+                <input
+                  type="text"
+                  placeholder="Buscar por ref..."
+                  className="w-full p-3 border rounded-lg text-base"
+                  value={tempFilterProductRef}
+                  onChange={(e) => setTempFilterProductRef(e.target.value)}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  className={`flex-1 py-3 rounded-lg font-medium transition-all touch-feedback ${
+                    tempFilterOverdue
+                      ? "bg-red-500 text-white"
+                      : "bg-slate-100 text-slate-700"
+                  }`}
+                  onClick={toggleOverdueFilter}
+                >
+                  Atrasados
+                </button>
+                <button
+                  className={`flex-1 py-3 rounded-lg font-medium transition-all touch-feedback ${
+                    tempFilterUpcoming
+                      ? "bg-orange-600 text-white"
+                      : "bg-slate-100 text-slate-700"
+                  }`}
+                  onClick={toggleUpcomingFilter}
+                >
+                  Próximos ({notificationDays}d)
+                </button>
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <button
+                  className="flex-1 py-3 bg-orange-600 text-white rounded-lg font-bold touch-feedback"
+                  onClick={() => {
+                    handleFilterClick();
+                    setIsMobileFilterDrawerOpen(false);
+                  }}
+                >
+                  Aplicar Filtros
+                </button>
+                {hasActiveFilters && (
+                  <button
+                    className="px-4 py-3 bg-slate-100 rounded-lg touch-feedback"
+                    onClick={() => {
+                      handleClearFilters();
+                      setIsMobileFilterDrawerOpen(false);
+                    }}
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modais (mesmos do código original) */}
       <FlowItemModal
         isOpen={isItemModal}
         onClose={() => {
@@ -3302,7 +2303,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         currentUserSystemRole={user?.role}
         isReadOnly={false}
         hasMultipleFlows={selectedFlowIds.length > 1}
-        // 🔥 Passa a função de busca
+        selectedFlowIds={selectedFlowIds}
         fetchStagesForFlow={async (flowId) => {
           try {
             const response = await api.get(`/flow/${flowId}/stages`);
@@ -3312,6 +2313,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
             return [];
           }
         }}
+        onDeadlineUpdate={refreshBoardsAfterAction}
       />
 
       <FlowItemModal
@@ -3339,19 +2341,11 @@ const handleOpenCompleteModal = (item: FlowItem) => {
         currentUserRole={user?.professionalRole}
         currentUserSystemRole={user?.role}
         isReadOnly={isModalReadOnly}
-        // 🔥 NOVA PROP: indica se tem múltiplos fluxos selecionados
         hasMultipleFlows={selectedFlowIds.length > 1}
         onFlowChange={async (flowId) => {
           try {
-            console.log("🔄 Buscando stages para flow:", flowId);
-
-            setActiveStageId(null);
-
             const response = await api.get(`/flow/${flowId}/stages`);
-            console.log("✅ Stages carregadas:", response.data.length);
-
             setCurrentItemStages(response.data);
-
             return response.data;
           } catch (error) {
             console.error("Erro ao buscar stages:", error);
@@ -3360,13 +2354,15 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           }
         }}
       />
+
       <ConfirmDeleteModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={handleDeleteExecute}
-        loading={isDeleting} // 🔥 AGORA PASSA O ESTADO DE LOADING
+        loading={isDeleting}
         title={`Excluir ${itemToDelete?.type === "item" ? "produto" : itemToDelete?.type === "template" ? "template" : "etapa/fluxo"}?`}
       />
+
       <Dialog open={isPreviewModal} onOpenChange={setIsPreviewModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl bg-white rounded-xl">
           <div className="px-6 py-4 border-b sticky top-0 bg-white z-20 flex justify-between items-center">
@@ -3441,6 +2437,8 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Etapa */}
       <Dialog open={isStageModal} onOpenChange={setIsStageModal}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -3454,6 +2452,26 @@ const handleOpenCompleteModal = (item: FlowItem) => {
                 onChange={(e) => setStageName(e.target.value)}
                 placeholder="Ex: Pilotagem"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Calendar size={16} className="text-orange-500" />
+                Dias Padrão para Conclusão
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={stageDefaultDays}
+                onChange={(e) =>
+                  setStageDefaultDays(parseInt(e.target.value) || 0)
+                }
+                placeholder="Ex: 3"
+                className="h-10"
+              />
+              <p className="text-xs text-muted-foreground">
+                Quantos dias esta etapa normalmente leva para ser concluída?
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -3515,6 +2533,8 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Fluxo */}
       <Dialog open={isFlowModal} onOpenChange={setIsFlowModal}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -3604,6 +2624,8 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Edição de Fluxo */}
       <Dialog open={isEditFlowModalOpen} onOpenChange={setIsEditFlowModalOpen}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -3692,6 +2714,8 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Conclusão de Etapa */}
       <CompleteStageModal
         isOpen={isCompleteStageModalOpen}
         onClose={() => {
@@ -3712,6 +2736,8 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           completingItem?.quantity ? completingItem.quantity > 0 : false
         }
       />
+
+      {/* Modal de Drag com Responsável */}
       <CompleteStageModal
         isOpen={isDragModalOpen}
         onClose={() => {
@@ -3719,7 +2745,7 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           setDragItemId(null);
           setDragTargetStage(null);
         }}
-        onConfirm={handleDragWithResponsible} // 🔥 Agora passa quantity
+        onConfirm={handleDragWithResponsible}
         itemTitle={
           unifiedStages.flatMap((s) => s.items).find((i) => i.id === dragItemId)
             ?.title || ""
@@ -3728,10 +2754,9 @@ const handleOpenCompleteModal = (item: FlowItem) => {
           unifiedStages.find((s) => s.items.some((i) => i.id === dragItemId))
             ?.name || ""
         }
-        nextStage={dragTargetStage} // 🔥 AGORA JÁ VEM COM AS FLAGS!
+        nextStage={dragTargetStage}
         isLoading={isSubmitting}
         currentQuantity={
-          // 🔥 Passa a quantidade atual do item
           unifiedStages.flatMap((s) => s.items).find((i) => i.id === dragItemId)
             ?.quantity
         }
@@ -3743,7 +2768,8 @@ const handleOpenCompleteModal = (item: FlowItem) => {
             : false
         }
       />
-      {/* 🔥 ALERT DIALOG SIMPLES */}
+
+      {/* Alert Dialog para Template */}
       <AlertDialog
         open={isTemplateAlertOpen}
         onOpenChange={setIsTemplateAlertOpen}

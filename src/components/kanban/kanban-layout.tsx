@@ -7,10 +7,17 @@ interface KanbanLayoutProps {
 
 export function KanbanLayout({ children, className }: KanbanLayoutProps) {
   return (
-    // h-screen: Trava a altura na tela inteira
-    // overflow-hidden: Impede que a tela inteira role, forçando a rolagem apenas dentro do Board
-    <div className={`h-screen flex flex-col overflow-hidden font-sans bg-[#F5F0E6] ${className}`}>
+    <div 
+      className={cn(
+        "flex flex-col h-screen overflow-hidden bg-[#F5F0E6] font-sans",
+        className
+      )}
+    >
       {children}
     </div>
   );
+}
+
+function cn(...classes: any[]) {
+  return classes.filter(Boolean).join(' ');
 }

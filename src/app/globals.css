@@ -1,14 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import 'leaflet/dist/leaflet.css';
-
+@import "leaflet/dist/leaflet.css";
 
 .leaflet-container {
   height: 100%;
   width: 100%;
   border-radius: 0.5rem;
 }
-
 
 @custom-variant dark (&:is(.dark *));
 
@@ -195,5 +193,48 @@
 
   .leaflet-edit-marker-selected {
     @apply !border-transparent !bg-transparent;
+  }
+
+  /* Animações mobile */
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  /* Touch feedback */
+  .touch-feedback {
+    transition: transform 0.1s ease;
+  }
+
+  .touch-feedback:active {
+    transform: scale(0.97);
+  }
+
+  /* Scroll suave para mobile */
+  .snap-x {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .snap-start {
+    scroll-snap-align: start;
+  }
+
+  /* Previne zoom em double-tap em inputs mobile */
+  @media (max-width: 768px) {
+    input,
+    select,
+    textarea,
+    button {
+      font-size: 16px !important;
+    }
   }
 }
