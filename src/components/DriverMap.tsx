@@ -2,164 +2,187 @@
 
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import 'leaflet/dist/leaflet.css';
 
-// --- ÍCONES (Mantém igual) ---
-const iconUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png';
-const shadowUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png';
-const carIconUrl = 'https://cdn-icons-png.flaticon.com/512/3097/3097180.png';
+// --- ÍCONES ---
+const iconUrls = {
+  default: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+  shadow: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+  car: 'https://cdn-icons-png.flaticon.com/512/3097/3097180.png',
+  green: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+  red: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png'
+};
 
-const defaultIcon = L.icon({
-  iconUrl: iconUrl,
-  shadowUrl: shadowUrl,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41]
-});
+const defaultIcon = L.icon({ iconUrl: iconUrls.default, shadowUrl: iconUrls.shadow, iconSize: [25, 41], iconAnchor: [12, 41] });
+const activeIcon = L.icon({ iconUrl: iconUrls.red, shadowUrl: iconUrls.shadow, iconSize: [25, 41], iconAnchor: [12, 41] });
+const visitedIcon = L.icon({ iconUrl: iconUrls.green, shadowUrl: iconUrls.shadow, iconSize: [25, 41], iconAnchor: [12, 41] });
+const driverIcon = L.icon({ iconUrl: iconUrls.car, iconSize: [40, 40], iconAnchor: [20, 20] });
 
-const activeIcon = L.icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-  shadowUrl: shadowUrl,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41]
-});
-
-const driverIcon = L.icon({
-  iconUrl: carIconUrl,
-  iconSize: [40, 40],
-  iconAnchor: [20, 20]
-});
-
-// Componente para recentralizar
 function RecenterMap({ location }: { location: [number, number] }) {
   const map = useMap();
+  const lastLoc = useRef<string>("");
+
   useEffect(() => {
-    map.flyTo(location, 16, { animate: true });
+    const locString = location.join(',');
+    if (lastLoc.current !== locString) {
+      map.flyTo(location, map.getZoom(), { animate: true, duration: 1 });
+      lastLoc.current = locString;
+    }
   }, [location, map]);
   return null;
 }
 
-interface DriverMapProps {
-  route: { lat: number; lng: number; title: string }[];
-  myLocation: [number, number] | null;
-  currentStopIndex: number;
+interface RouteStop {
+  id?: string;
+  name?: string;
+  address: string;
+  city: string;
+  state: string;
+  latitude: number;
+  longitude: number;
 }
 
-export default function DriverMap({ route, myLocation, currentStopIndex }: DriverMapProps) {
-  const defaultCenter: [number, number] = [-23.55052, -46.633309]; 
-  const initialCenter = myLocation || (route[0] ? [route[0].lat, route[0].lng] : defaultCenter);
+interface RouteMapProps {
+  stops: RouteStop[];
+  currentStopIndex: number;
+  myLocation: [number, number] | null;
+  visitedStops?: string[];
+  onStopClick?: (stop: RouteStop, index: number) => void;
+}
 
-  // Estado para guardar o desenho da rua
+export default function RouteMap({ 
+  stops, 
+  currentStopIndex, 
+  myLocation, 
+  visitedStops = [],
+  onStopClick 
+}: RouteMapProps) {
   const [roadPath, setRoadPath] = useState<[number, number][]>([]);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
-  // Pega as paradas restantes
-  const remainingRoute = route.slice(currentStopIndex);
+  const initialCenter = useMemo<[number, number]>(() => {
+    if (myLocation) return myLocation;
+    if (stops[0]) return [stops[0].latitude, stops[0].longitude];
+    return [-23.5505, -46.6333];
+  }, []);
 
-  // --- EFEITO: BUSCAR ROTA REAL (OSRM) ---
+  // PEGA TODAS AS PARADAS QUE AINDA NÃO FORAM VISITADAS
+  const remainingStops = useMemo(() => {
+    return stops.filter((stop, index) => !visitedStops.includes(stop.id || String(index)));
+  }, [stops, visitedStops]);
+
   useEffect(() => {
-    if (!myLocation || remainingRoute.length === 0) {
-        return;
+    // Se não tiver localização ou não houver mais paradas, limpa o caminho
+    if (!myLocation || remainingStops.length === 0) {
+      setRoadPath([]);
+      return;
     }
 
-    const fetchRoadGeometry = async () => {
-        try {
-            // 1. Define os pontos chaves: [Meu Carro, Destino 1, Destino 2 (se houver)]
-            // Limitamos a 2 destinos para não poluir demais o mapa ou estourar a API grátis
-            const nextStops = remainingRoute.slice(0, 2); 
-            
-            const points = [
-                { lat: myLocation[0], lng: myLocation[1] }, // Inicio: Carro
-                ...nextStops // Meio/Fim: Próximas paradas
-            ];
+    const fetchFullRoute = async () => {
+      setIsLoadingRoute(true);
+      try {
+        // Monta a sequência: Minha Localização -> Parada 1 -> Parada 2 -> Parada N...
+        const points = [
+          `${myLocation[1]},${myLocation[0]}`, // Long,Lat do motorista
+          ...remainingStops.map(s => `${s.longitude},${s.latitude}`)
+        ];
 
-            // 2. Constrói a string da URL: "lon,lat;lon,lat;lon,lat"
-            const coordinatesString = points
-                .map(p => `${p.lng},${p.lat}`)
-                .join(';');
-            
-            // 3. Chama a API do OSRM
-            const response = await fetch(
-                `https://router.project-osrm.org/route/v1/driving/${coordinatesString}?overview=full&geometries=geojson`
-            );
-            
-            const data = await response.json();
+        const coordinatesString = points.join(';');
+        
+        // OSRM com overview=full retorna a geometria detalhada passando por todos os pontos
+        const response = await fetch(
+          `https://router.project-osrm.org/route/v1/driving/${coordinatesString}?overview=full&geometries=geojson`
+        );
+        
+        const data = await response.json();
 
-            if (data.routes && data.routes.length > 0) {
-                // A API retorna [lng, lat], o Leaflet quer [lat, lng]. Invertemos:
-                const coordinates = data.routes[0].geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
-                setRoadPath(coordinates);
-            }
-        } catch (error) {
-            console.error("Erro ao buscar rota na rua:", error);
-            // Fallback: Linha Reta se a API falhar
-            setRoadPath([
-               myLocation,
-               [remainingRoute[0].lat, remainingRoute[0].lng] as [number, number]
-            ]);
+        if (data.routes?.[0]) {
+          const coordinates = data.routes[0].geometry.coordinates.map(
+            (coord: number[]) => [coord[1], coord[0]] as [number, number]
+          );
+          setRoadPath(coordinates);
         }
+      } catch (error) {
+        console.error("Erro ao traçar rota completa:", error);
+        // Fallback: Linha reta entre os pontos caso a API falhe
+        const fallbackPath: [number, number][] = [
+            myLocation,
+            ...remainingStops.map(s => [s.latitude, s.longitude] as [number, number])
+        ];
+        setRoadPath(fallbackPath);
+      } finally {
+        setIsLoadingRoute(false);
+      }
     };
 
-    const timer = setTimeout(() => {
-        fetchRoadGeometry();
-    }, 500); 
-
+    // Debounce para não sobrecarregar a API enquanto o motorista se move
+    const timer = setTimeout(fetchFullRoute, 1500); 
     return () => clearTimeout(timer);
-
-  }, [myLocation, remainingRoute]); // Atualiza se andar ou se a lista de paradas mudar
-
-  // Configuração da Linha Azul Tracejada
-  const lineOptions = { 
-    color: '#2563EB', 
-    weight: 6, 
-    opacity: 0.8,
-    dashArray: '10, 15' 
-  };
+  }, [myLocation?.[0], myLocation?.[1], remainingStops]); // Atualiza se mudar posição ou se uma parada for concluída
 
   return (
-    <MapContainer 
-      center={initialCenter as L.LatLngExpression} 
-      zoom={15} 
-      className="w-full h-full" 
-      zoomControl={false}
-    >
-      <TileLayer
-        attribution='&copy; OpenStreetMap'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-
-      {/* Marcadores dos Destinos */}
-      {remainingRoute.map((point, index) => {
-        const isCurrentTarget = index === 0; 
-        return (
-          <Marker
-            key={`${point.lat}-${point.lng}-${index}`}
-            position={[point.lat, point.lng]}
-            icon={isCurrentTarget ? activeIcon : defaultIcon}
-          >
-            <Popup>
-              <strong>{currentStopIndex + index + 1}. {point.title}</strong><br />
-              {isCurrentTarget ? "Destino Atual" : "Próxima parada"}
-            </Popup>
-          </Marker>
-        )
-      })}
-
-      {/* Marcador do Motorista */}
-      {myLocation && (
-        <>
-          <Marker position={myLocation} icon={driverIcon} zIndexOffset={1000} />
-          <RecenterMap location={myLocation} />
-        </>
-      )}
-
-      {/* LINHA AZUL QUE SEGUE A RUA (Mostrando até a 2ª parada) */}
-      {roadPath.length > 0 && (
-        <Polyline 
-          positions={roadPath as L.LatLngExpression[]} 
-          pathOptions={lineOptions} 
+    <div className="relative w-full h-full border rounded-lg overflow-hidden bg-gray-100">
+      <MapContainer 
+        center={initialCenter} 
+        zoom={14} 
+        className="w-full h-full" 
+        style={{ height: '100%', width: '100%' }}
+      >
+        <TileLayer
+          attribution='&copy; OpenStreetMap'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-      )}
 
-    </MapContainer>
+        {stops.map((stop, index) => {
+          const isVisited = visitedStops.includes(stop.id || String(index));
+          const isCurrent = index === currentStopIndex && !isVisited;
+          
+          return (
+            <Marker
+              key={stop.id || index}
+              position={[stop.latitude, stop.longitude]}
+              icon={isVisited ? visitedIcon : isCurrent ? activeIcon : defaultIcon}
+              eventHandlers={{ click: () => onStopClick?.(stop, index) }}
+            >
+              <Popup>
+                <div className="text-sm">
+                  <strong>{index + 1}. {stop.name || 'Parada'}</strong>
+                  <p>{stop.address}</p>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
+
+        {myLocation && (
+          <>
+            <Marker position={myLocation} icon={driverIcon} zIndexOffset={1000} />
+            <RecenterMap location={myLocation} />
+          </>
+        )}
+
+        {/* LINHA DA ROTA COMPLETA */}
+        {roadPath.length > 0 && (
+          <Polyline 
+            positions={roadPath} 
+            pathOptions={{ 
+                color: '#2563EB', 
+                weight: 6, 
+                opacity: 0.6, 
+                dashArray: '1, 10', // Linha pontilhada estilizada
+                lineJoin: 'round'
+            }} 
+          />
+        )}
+      </MapContainer>
+
+      {isLoadingRoute && (
+        <div className="absolute top-4 right-4 bg-white/90 px-3 py-1 rounded-full shadow-md z-[1000] text-[10px] font-bold flex items-center gap-2">
+          <div className="animate-spin h-2 w-2 border-2 border-blue-600 border-t-transparent rounded-full" />
+          ATUALIZANDO TRAJETÓRIA COMPLETA
+        </div>
+      )}
+    </div>
   );
 }

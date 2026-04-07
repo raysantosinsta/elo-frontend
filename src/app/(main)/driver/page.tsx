@@ -1,26 +1,24 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// app/driver/page.tsx
-"use client";
+'use client';
 
-import { api } from "@/services/api";
-import { useError } from "@/contexts/error-context";
+import { useRoutes } from '@/hooks/useRoutes';
 import {
-  ArrowLeft,
   AlertTriangle,
+  ArrowLeft,
+  Calendar,
   CheckCircle,
-  Clock,
+  FileText,
   Loader2,
   MapPin,
   Navigation,
-  Play,
-} from "lucide-react";
-import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+  Play
+} from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
-// Importação Dinâmica do Mapa para evitar erro de 'window is not defined'
-const DriverMap = dynamic(() => import("@/components/DriverMap"), {
+// Importação dinâmica do mapa
+const RouteMap = dynamic(() => import('@/components/DriverMap'), {
   ssr: false,
   loading: () => (
     <div className="h-full w-full flex items-center justify-center bg-slate-100 flex-col gap-2">
@@ -30,267 +28,113 @@ const DriverMap = dynamic(() => import("@/components/DriverMap"), {
   ),
 });
 
-interface RoutePoint {
-  id: string;
-  title: string;
-  lat: number;
-  lng: number;
-  endereco: string;
-  columnId?: string;
-  taskAddress?: any;
-  userAssigned?: { id: string; name: string };
-  userAssignedId?: string;
-}
-
 export default function DriverPage() {
   const router = useRouter();
-  const { showError } = useError();
-
-  // --- ESTADOS ---
-  const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
+  const searchParams = useSearchParams();
+  const routeId = searchParams.get('routeId');
+  
+  const { useGetRouteById, useMarkStopVisited, useUpdateRoute } = useRoutes();
+  const { data: route, isLoading: isLoadingRoute, refetch } = useGetRouteById(routeId || '');
+  const markStopVisited = useMarkStopVisited();
+  const updateRoute = useUpdateRoute();
+  
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
-  const [currentPosition, setCurrentPosition] = useState<
-    [number, number] | null
-  >(null);
-  const [isLoadingRoute, setIsLoadingRoute] = useState(true);
-
-  // --- NOVO ESTADO: Controle de chegada ao destino ---
-  const [hasArrivedAtDestination, setHasArrivedAtDestination] = useState(false);
-  const [isFirstLoad, setIsFirstLoad] = useState(true);
-
-  // --- TIMER ---
-  const [timeRemainingString, setTimeRemainingString] =
-    useState<string>("--:--");
-  const [isLate, setIsLate] = useState(false);
-
-  // --- SIMULAÇÃO ---
+  const [currentPosition, setCurrentPosition] = useState<[number, number] | null>(null);
+  const [visitedStops, setVisitedStops] = useState<string[]>([]);
   const [isGPSActive, setIsGPSActive] = useState(true);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [actionType, setActionType] = useState<'COMPLETED' | 'FAILED'>('COMPLETED');
+  const [comment, setComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  
+  const watchIdRef = useRef<number | null>(null);
   const simulationInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // --- MODAL ---
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [actionType, setActionType] = useState<"COMPLETED" | "FAILED">(
-    "COMPLETED",
-  );
-  const [comment, setComment] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // --- FORM NOVA TAREFA ---
-  const [rescheduleDate, setRescheduleDate] = useState<string>("");
-  const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskDescription, setNewTaskDescription] = useState("");
-  const [newTaskDate, setNewTaskDate] = useState("");
-
-  const watchIdRef = useRef<number | null>(null);
-  const arrivalCheckRef = useRef<NodeJS.Timeout | null>(null);
-
-  // 1. Carrega a rota do LocalStorage
+  // Carregar estado salvo do localStorage
   useEffect(() => {
-    try {
-      const storedRoute = localStorage.getItem("rotaAtiva");
-      const savedIndex = localStorage.getItem("rotaIndex");
-      const savedArrivalState = localStorage.getItem("hasArrivedAtDestination");
-
-      if (storedRoute) {
-        const parsedRoute: RoutePoint[] = JSON.parse(storedRoute);
-
-        // Validação: Garante que os pontos têm coordenadas válidas
-        const validRoute = parsedRoute.filter(
-          (p) =>
-            p.lat !== undefined &&
-            p.lng !== undefined &&
-            !isNaN(Number(p.lat)) &&
-            !isNaN(Number(p.lng)),
-        );
-
-        console.log("📍 Rota Carregada:", validRoute);
-
-        if (validRoute.length > 0) {
-          setRoutePoints(validRoute);
-          if (savedIndex) {
-            const idx = Number(savedIndex);
-            setCurrentStopIndex(idx < validRoute.length ? idx : 0);
-          }
-
-          // Recupera estado de chegada se existir
-          if (savedArrivalState) {
-            setHasArrivedAtDestination(savedArrivalState === "true");
-          }
-
-          // Se é o primeiro ponto e não chegou, marca como não chegou
-          if (
-            currentStopIndex === 0 &&
-            (!savedArrivalState || savedArrivalState === "false")
-          ) {
-            setHasArrivedAtDestination(false);
-          }
-        } else {
-          toast.error("Rota inválida ou sem coordenadas.");
-          router.push("/route-planner");
-        }
-      } else {
-        // Se não tiver rota, volta pro planejador
-        router.push("/route-planner");
-      }
-    } catch (error) {
-      console.error("Erro ao carregar rota:", error);
-      router.push("/route-planner");
-    } finally {
-      setIsLoadingRoute(false);
-      setIsFirstLoad(false);
+    if (routeId) {
+      const savedIndex = localStorage.getItem(`driver_route_${routeId}_index`);
+      const savedVisited = localStorage.getItem(`driver_route_${routeId}_visited`);
+      
+      if (savedIndex) setCurrentStopIndex(parseInt(savedIndex));
+      if (savedVisited) setVisitedStops(JSON.parse(savedVisited));
     }
-  }, [router]);
+  }, [routeId]);
 
-  // 2. CRONÔMETRO
+  // Salvar estado no localStorage
   useEffect(() => {
-    const updateTimer = () => {
-      const storedStartTime = localStorage.getItem("rotaStartTime");
-      const storedDuration = localStorage.getItem("rotaTotalDuration");
-
-      if (!storedStartTime || !storedDuration) return;
-
-      const startTime = new Date(storedStartTime).getTime();
-      const totalDurationMs = Number(storedDuration) * 1000;
-      const now = Date.now();
-
-      const endTime = startTime + totalDurationMs;
-      const remainingMs = endTime - now;
-
-      if (remainingMs <= 0) {
-        setIsLate(true);
-        const overdueSeconds = Math.abs(remainingMs / 1000);
-        setTimeRemainingString(`+${formatSeconds(overdueSeconds)}`);
-      } else {
-        setIsLate(false);
-        const remainingSeconds = remainingMs / 1000;
-        setTimeRemainingString(formatSeconds(remainingSeconds));
-      }
-    };
-
-    const formatSeconds = (sec: number) => {
-      const h = Math.floor(sec / 3600);
-      const m = Math.floor((sec % 3600) / 60);
-      const s = Math.floor(sec % 60);
-      if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
-      return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-    };
-
-    updateTimer();
-    const intervalId = setInterval(updateTimer, 1000);
-    return () => clearInterval(intervalId);
-  }, []);
-
-  // 3. FUNÇÃO PARA VERIFICAR SE CHEGOU AO DESTINO (GEOFENCING)
-  const checkArrivalAtDestination = () => {
-    if (!currentPosition || !currentTask) return;
-
-    const distance = calculateDistance(
-      currentPosition[0],
-      currentPosition[1],
-      currentTask.lat,
-      currentTask.lng,
-    );
-
-    const ARRIVAL_RADIUS_METERS = 50; // Ajustável conforme necessidade
-
-    if (distance <= ARRIVAL_RADIUS_METERS && !hasArrivedAtDestination) {
-      setHasArrivedAtDestination(true);
-      localStorage.setItem("hasArrivedAtDestination", "true");
-      toast.success(`✅ Você chegou em: ${currentTask.title}`);
-    } else if (
-      distance > ARRIVAL_RADIUS_METERS &&
-      hasArrivedAtDestination &&
-      !isModalOpen
-    ) {
-      setHasArrivedAtDestination(false);
-      localStorage.setItem("hasArrivedAtDestination", "false");
+    if (routeId && route) {
+      localStorage.setItem(`driver_route_${routeId}_index`, String(currentStopIndex));
+      localStorage.setItem(`driver_route_${routeId}_visited`, JSON.stringify(visitedStops));
     }
-  };
+  }, [routeId, currentStopIndex, visitedStops, route]);
 
-  // Função auxiliar para calcular distância entre dois pontos (Haversine formula)
-  const calculateDistance = (
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-  ): number => {
-    const R = 6371000; // Raio da Terra em METROS
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
-  const currentTask = routePoints[currentStopIndex];
-
-  // 4. MONITORAMENTO DE POSIÇÃO E VERIFICAÇÃO DE CHEGADA
-  useEffect(() => {
-    if (!currentPosition || !currentTask) return;
-
-    // Verifica imediatamente
-    checkArrivalAtDestination();
-
-    // Configura verificação periódica (a cada 5 segundos)
-    if (arrivalCheckRef.current) {
-      clearInterval(arrivalCheckRef.current);
-    }
-
-    arrivalCheckRef.current = setInterval(() => {
-      checkArrivalAtDestination();
-    }, 5000); // Verifica a cada 5 segundos
-
-    return () => {
-      if (arrivalCheckRef.current) {
-        clearInterval(arrivalCheckRef.current);
-      }
-    };
-  }, [currentPosition, currentTask, hasArrivedAtDestination]);
-
-  // 5. RESETAR ESTADO DE CHEGADA AO MUDAR DE DESTINO
-  useEffect(() => {
-    // Reset ao mudar de parada
-    setHasArrivedAtDestination(false);
-    localStorage.setItem("hasArrivedAtDestination", "false");
-    console.log("🔄 Mudou de destino, resetando estado de chegada");
-  }, [currentStopIndex]);
-
-  // 6. Monitora GPS Real
+  // Monitorar GPS
   useEffect(() => {
     if (!navigator.geolocation || !isGPSActive) return;
 
-    // Pega posição inicial rápida
     navigator.geolocation.getCurrentPosition(
       (pos) => setCurrentPosition([pos.coords.latitude, pos.coords.longitude]),
-      (err) => console.warn("GPS Init Error:", err),
+      (err) => console.warn('GPS Init Error:', err)
     );
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => setCurrentPosition([pos.coords.latitude, pos.coords.longitude]),
-      (err) => console.error("GPS Error:", err),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      (err) => console.error('GPS Error:', err),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
+
     return () => {
-      if (watchIdRef.current)
-        navigator.geolocation.clearWatch(watchIdRef.current);
+      if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
     };
   }, [isGPSActive]);
 
-  // --- SIMULAÇÃO ---
+  const currentStop = route?.stops[currentStopIndex];
+  const totalStops = route?.stops.length || 0;
+  const completedStops = visitedStops.length;
+  const isFinished = completedStops === totalStops && totalStops > 0;
+
+  // Verificar chegada ao destino
+  useEffect(() => {
+    if (!currentPosition || !currentStop) return;
+
+    const distance = calculateDistance(
+      currentPosition[0],
+      currentPosition[1],
+      currentStop.latitude,
+      currentStop.longitude
+    );
+
+    const ARRIVAL_RADIUS_METERS = 50;
+    const isVisited = visitedStops.includes(currentStop.id || String(currentStopIndex));
+
+    if (distance <= ARRIVAL_RADIUS_METERS && !isVisited && !isModalOpen) {
+      toast.success(`✅ Você chegou em: ${currentStop.name || `Parada ${currentStopIndex + 1}`}`);
+      setIsModalOpen(true);
+    }
+  }, [currentPosition, currentStop, visitedStops, isModalOpen, currentStopIndex]);
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371000;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
   const startSimulation = () => {
-    const destination = routePoints[currentStopIndex];
-    if (!currentPosition) {
-      toast.warning("Aguardando sinal de GPS para iniciar simulação.");
+    if (!currentStop) {
+      toast.warning('Destino não encontrado');
       return;
     }
-    if (!destination) {
-      toast.error("Destino não encontrado.");
+
+    if (!currentPosition) {
+      toast.warning('Aguardando sinal de GPS');
       return;
     }
 
@@ -300,10 +144,10 @@ export default function DriverPage() {
     const steps = 150;
     const speed = 20;
     let step = 0;
-    const startLat = currentPosition[0],
-      startLng = currentPosition[1];
-    const endLat = destination.lat,
-      endLng = destination.lng;
+    const startLat = currentPosition[0];
+    const startLng = currentPosition[1];
+    const endLat = currentStop.latitude;
+    const endLng = currentStop.longitude;
 
     if (simulationInterval.current) clearInterval(simulationInterval.current);
 
@@ -315,216 +159,115 @@ export default function DriverPage() {
       setCurrentPosition([newLat, newLng]);
 
       if (step >= steps) {
-        if (simulationInterval.current)
-          clearInterval(simulationInterval.current);
+        if (simulationInterval.current) clearInterval(simulationInterval.current);
         setCurrentPosition([endLat, endLng]);
         setIsSimulating(false);
-        toast.success("Você chegou ao destino (Simulação)!");
-        // Força verificação de chegada
-        setTimeout(() => checkArrivalAtDestination(), 100);
+        toast.success('Simulação concluída!');
       }
     }, speed);
   };
 
   const resumeRealGPS = () => {
     setIsGPSActive(true);
-    toast.info("GPS em tempo real ativado.");
-  };
-
-  useEffect(() => {
-    return () => {
-      if (simulationInterval.current) clearInterval(simulationInterval.current);
-      if (arrivalCheckRef.current) clearInterval(arrivalCheckRef.current);
-    };
-  }, []);
-
-  // --- HANDLERS DO MODAL ---
-  const handleOpenModal = (type: "COMPLETED" | "FAILED") => {
-    // Só permite abrir modal se chegou ao destino
-    if (!hasArrivedAtDestination) {
-      toast.warning(
-        "Você ainda não chegou ao destino para finalizar a visita.",
-      );
-      return;
-    }
-
-    setActionType(type);
-    setComment("");
-    const today = new Date().toISOString().split("T")[0];
-    setRescheduleDate(today);
-    setNewTaskDate(today);
-    setNewTaskTitle("");
-    setNewTaskDescription("");
-    setIsModalOpen(true);
+    setIsSimulating(false);
+    if (simulationInterval.current) clearInterval(simulationInterval.current);
+    toast.info('GPS em tempo real ativado');
   };
 
   const confirmFinalization = async () => {
-    if (!comment && actionType === "FAILED") {
-      showError(
-        "Campo Obrigatório",
-        "Por favor, descreva o motivo do problema.",
-      );
-      return;
-    }
+    if (!currentStop) return;
 
     setIsSubmitting(true);
-    const task = routePoints[currentStopIndex];
-
     try {
-      // 1. Atualiza a tarefa ATUAL
-      if (actionType === "FAILED") {
-        const formattedDate = rescheduleDate
-          ? `${rescheduleDate}T12:00:00`
-          : undefined;
-        await api.patch(`/routes/tasks/${task.id}/finalize`, {
-          status: "FAILED",
-          finalComment: comment,
-          scheduledAt: formattedDate
-            ? new Date(formattedDate).toISOString()
-            : undefined,
-        });
-        toast.error("Tarefa marcada com problema.");
-      } else {
-        await api.patch(`/routes/tasks/${task.id}/finalize`, {
-          status: "COMPLETED",
-          finalComment: comment,
-        });
-        toast.success("Tarefa concluída!");
+      await markStopVisited.mutateAsync({
+        routeId: routeId!,
+        stopId: currentStop.id!,
+        notes: comment
+      });
 
-        // 2. Cria a NOVA tarefa (se preenchido)
-        if (newTaskTitle) {
-          if (!task.columnId) {
-            toast.error(
-              "Erro ao criar próxima tarefa: Coluna não identificada.",
-            );
-          } else {
-            const newDateFormatted = newTaskDate
-              ? `${newTaskDate}T09:00:00`
-              : undefined;
+      const newVisitedStops = [...visitedStops, currentStop.id!];
+      setVisitedStops(newVisitedStops);
 
-            const addressPayload = task.taskAddress
-              ? {
-                  cep: task.taskAddress.cep,
-                  endereco: task.taskAddress.endereco,
-                  numero: task.taskAddress.numero,
-                  bairro: task.taskAddress.bairro,
-                  cidade: task.taskAddress.cidade,
-                  estado: task.taskAddress.estado,
-                  complemento: task.taskAddress.complemento || "",
-                  latitude: Number(task.taskAddress.latitude),
-                  longitude: Number(task.taskAddress.longitude),
-                }
-              : {
-                  cep: "00000-000",
-                  endereco: task.endereco.split(",")[0],
-                  numero: task.endereco.split(",")[1] || "S/N",
-                  bairro: "N/A",
-                  cidade: "N/A",
-                  estado: "UF",
-                  latitude: Number(task.lat),
-                  longitude: Number(task.lng),
-                };
-
-            const finalDescription = `${newTaskDescription}\n\n> Histórico: ${comment || "Sem observações na conclusão anterior."}`;
-
-            await api.post("/tasks", {
-              title: newTaskTitle,
-              columnId: task.columnId,
-              description: finalDescription.trim(),
-              assignedToId: task.userAssigned?.id || task.userAssignedId,
-              scheduledAt: newDateFormatted
-                ? new Date(newDateFormatted).toISOString()
-                : undefined,
-              dueDate: newDateFormatted
-                ? new Date(newDateFormatted).toISOString()
-                : undefined,
-              address: addressPayload,
-            });
-            toast.success("Próxima visita agendada.");
-          }
-        }
-      }
-
-      // Avança para a próxima
       const nextIndex = currentStopIndex + 1;
-      if (nextIndex >= routePoints.length) {
-        // FIM DA ROTA
-        localStorage.removeItem("rotaAtiva");
-        localStorage.removeItem("rotaIndex");
-        localStorage.removeItem("rotaStartTime");
-        localStorage.removeItem("rotaTotalDuration");
-        localStorage.removeItem("hasArrivedAtDestination");
-        toast.success("Rota finalizada com sucesso!");
-        router.push("/Kanban");
+      if (nextIndex >= (route?.stops.length || 0)) {
+        // Finalizar rota
+        await updateRoute.mutateAsync({
+          id: routeId!,
+          data: { status: 'FINISHED' }
+        });
+        
+        localStorage.removeItem(`driver_route_${routeId}_index`);
+        localStorage.removeItem(`driver_route_${routeId}_visited`);
+        
+        toast.success('Rota finalizada com sucesso!');
+        router.push('/routes');
       } else {
         setCurrentStopIndex(nextIndex);
-        localStorage.setItem("rotaIndex", String(nextIndex));
-        localStorage.removeItem("hasArrivedAtDestination"); // Reset para nova parada
-        setIsModalOpen(false);
+        toast.success(`Parada ${currentStopIndex + 1} concluída! Próximo destino.`);
       }
+
+      setIsModalOpen(false);
+      setComment('');
+      refetch();
     } catch (error) {
-      console.error("Erro na finalização:", error);
-      toast.error("Erro ao finalizar tarefa.");
+      console.error('Erro ao finalizar:', error);
+      toast.error('Erro ao finalizar parada');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // --- RENDERIZAÇÃO ---
-
-  // 1. Loading Inicial
   if (isLoadingRoute) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-2">
-        <Loader2 className="animate-spin text-blue-600" size={40} />
-        <span className="text-slate-600 font-medium">
-          Preparando navegação...
-        </span>
+      <div className="h-screen w-full flex items-center justify-center bg-slate-100">
+        <div className="text-center">
+          <Loader2 className="animate-spin text-blue-600 mx-auto mb-4" size={40} />
+          <span className="text-slate-600">Carregando rota...</span>
+        </div>
       </div>
     );
   }
 
-  // 2. Validação se existe tarefa atual
-  if (!currentTask) {
+  if (!route) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-slate-100 flex-col gap-4 p-4 text-center">
-        <AlertTriangle className="text-amber-500" size={48} />
-        <h2 className="text-xl font-bold text-slate-800">
-          Nenhuma tarefa ativa
-        </h2>
-        <p className="text-slate-500">
-          A rota parece estar vazia ou foi concluída.
-        </p>
-        <button
-          onClick={() => router.push("/")}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg"
-        >
-          Voltar ao Início
-        </button>
+      <div className="h-screen w-full flex items-center justify-center bg-slate-100">
+        <div className="text-center">
+          <AlertTriangle className="text-amber-500 mx-auto mb-4" size={48} />
+          <h2 className="text-xl font-bold mb-2">Rota não encontrada</h2>
+          <button
+            onClick={() => router.push('/routes')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+          >
+            Voltar para rotas
+          </button>
+        </div>
       </div>
     );
   }
 
-  // 3. LÓGICA DE EXIBIÇÃO DOS BOTÕES
-  // Regras:
-  // - Início da rota (primeiro destino e não chegou) → NÃO mostra botões
-  // - Durante navegação (qualquer destino sem ter chegado) → NÃO mostra botões
-  // - Ao chegar nos destinos (hasArrivedAtDestination = true) → MOSTRA botões
-  // - Após concluir (modal fechado e avançou) → ocultar novamente
-
-  const shouldShowButtons = hasArrivedAtDestination && !isModalOpen;
-
-  console.log("🎯 Estado dos botões:", {
-    hasArrivedAtDestination,
-    isModalOpen,
-    shouldShowButtons,
-    currentStopIndex,
-    currentTaskTitle: currentTask.title,
-  });
+  if (isFinished) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-slate-100">
+        <div className="text-center bg-white p-8 rounded-2xl shadow-lg max-w-md">
+          <CheckCircle className="text-green-500 mx-auto mb-4" size={64} />
+          <h2 className="text-2xl font-bold mb-2">Rota Finalizada!</h2>
+          <p className="text-gray-600 mb-6">
+            Parabéns! Você completou todas as {totalStops} paradas desta rota.
+          </p>
+          <button
+            onClick={() => router.push('/routes')}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg"
+          >
+            Voltar para rotas
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-screen w-full flex flex-col bg-slate-100 overflow-hidden">
-      {/* HEADER FLUTUANTE */}
+      {/* Header */}
       <div className="absolute top-4 left-4 right-4 z-[500] pointer-events-none">
         <div className="bg-white/95 backdrop-blur shadow-lg rounded-2xl p-4 border border-slate-200 pointer-events-auto">
           <div className="flex justify-between items-start mb-2">
@@ -535,175 +278,88 @@ export default function DriverPage() {
               >
                 <ArrowLeft size={20} />
               </button>
-              <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase">
-                {currentStopIndex + 1}/{routePoints.length}
+              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded-full">
+                {completedStops}/{totalStops}
               </span>
             </div>
-            <div className="flex gap-2 items-center">
-              <div
-                className={`flex items-center gap-1 px-2 py-1.5 rounded-full border text-[10px] font-bold shadow-sm transition-colors ${isLate ? "bg-red-50 text-red-600 border-red-200 animate-pulse" : "bg-slate-800 text-white border-slate-700"}`}
-              >
-                <Clock size={10} />
-                <span>
-                  {timeRemainingString} {isLate ? "ATRASADO" : ""}
-                </span>
-              </div>
+            <div className="flex gap-2">
               {!isGPSActive && !isSimulating && (
                 <button
                   onClick={resumeRealGPS}
-                  className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] px-2 py-1.5 rounded-full font-bold border border-slate-200"
+                  className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-2 py-1.5 rounded-full"
                 >
-                  <Navigation size={10} /> GPS OFF
+                  <Navigation size={12} /> GPS
                 </button>
               )}
               {!isSimulating && (
                 <button
                   onClick={startSimulation}
-                  className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] px-3 py-1.5 rounded-full font-bold shadow-sm active:scale-95"
+                  className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-full"
                 >
-                  <Play size={10} fill="currentColor" />{" "}
-                  {currentStopIndex > 0 && !isGPSActive ? "PRÓX" : "SIM"}
+                  <Play size={12} fill="currentColor" /> Simular
                 </button>
               )}
             </div>
           </div>
-          <h2
-            className="font-bold text-lg text-slate-800 leading-tight line-clamp-1"
-            title={currentTask.title}
-          >
-            {currentTask.title}
+          
+          <h2 className="font-bold text-lg text-slate-800 line-clamp-1">
+            {currentStop?.name || `Parada ${currentStopIndex + 1}`}
           </h2>
+          
           <div className="flex items-center gap-1 mt-1 text-slate-500 text-sm">
             <MapPin size={14} className="text-blue-500 shrink-0" />
-            <span className="truncate">{currentTask.endereco}</span>
+            <span className="truncate">{currentStop?.address}</span>
           </div>
 
-          {hasArrivedAtDestination && (
-            <div className="mt-2 text-xs font-semibold text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1 inline-flex items-center gap-1">
-              <CheckCircle size={12} />
-              <span>Chegou ao destino</span>
-            </div>
-          )}
+          <div className="flex gap-3 mt-2 text-xs text-slate-400">
+            <span className="flex items-center gap-1">
+              <Calendar size={12} /> {currentStop?.city}/{currentStop?.state}
+            </span>
+            <span className="flex items-center gap-1">
+              <FileText size={12} /> CEP: {currentStop?.zipCode}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* MAPA */}
-      <div className="flex-1 z-0 relative">
-        {/* Passamos o array completo de routePoints para o Mapa decidir como desenhar */}
-        <DriverMap
-          route={routePoints}
-          myLocation={currentPosition}
+      {/* Mapa */}
+      <div className="flex-1 z-0">
+        <RouteMap
+          stops={route.stops}
           currentStopIndex={currentStopIndex}
-          key={`${routePoints.length}-${currentStopIndex}`}
+          myLocation={currentPosition}
+          visitedStops={visitedStops}
+          onStopClick={(stop, index) => {
+            if (!visitedStops.includes(stop.id!)) {
+              setCurrentStopIndex(index);
+            }
+          }}
         />
       </div>
 
-      {/* FOOTER ACTIONS - SÓ MOSTRA QUANDO CHEGAR AO DESTINO */}
-      {shouldShowButtons && (
-        <div className="z-[500] bg-white p-6 rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] border-t border-slate-100 animate-in slide-in-from-bottom-5">
-          <h3 className="text-center text-slate-400 text-xs font-semibold uppercase mb-4 tracking-wider">
-            Ações da Visita
-          </h3>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => handleOpenModal("FAILED")}
-              className="flex flex-col items-center justify-center p-4 rounded-xl bg-red-50 text-red-600 border border-red-100 active:scale-95 transition-all hover:bg-red-100"
-            >
-              <AlertTriangle size={24} className="mb-1" />
-              <span className="font-bold">Indicar erro</span>
-            </button>
-            <button
-              onClick={() => handleOpenModal("COMPLETED")}
-              className="flex flex-col items-center justify-center p-4 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 active:scale-95 transition-all hover:bg-emerald-100"
-            >
-              <CheckCircle size={24} className="mb-1" />
-              <span className="font-bold">Concluir</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL --- */}
+      {/* Modal de Finalização */}
       {isModalOpen && (
         <div className="absolute inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
             <div className="text-center mb-4">
-              <h3
-                className={`text-xl font-bold ${actionType === "COMPLETED" ? "text-emerald-600" : "text-red-600"}`}
-              >
-                {actionType === "COMPLETED"
-                  ? "Tarefa Concluída!"
-                  : "Reportar Problema"}
+              <h3 className="text-xl font-bold text-emerald-600">
+                Chegou ao Destino!
               </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Confirme a visita para {currentStop?.name || `Parada ${currentStopIndex + 1}`}
+              </p>
             </div>
 
-            {actionType === "FAILED" && (
-              <div className="mb-4 bg-red-50 p-3 rounded-xl border border-red-100">
-                <label className="text-xs font-bold text-red-700 mb-1 block uppercase">
-                  Reagendar Para
-                </label>
-                <input
-                  type="date"
-                  className="w-full p-2 bg-white rounded-lg border border-red-200"
-                  value={rescheduleDate}
-                  onChange={(e) => setRescheduleDate(e.target.value)}
-                />
-              </div>
-            )}
-
-            {actionType === "COMPLETED" && (
-              <div className="mb-4 bg-emerald-50 p-4 rounded-xl border border-emerald-100 space-y-3">
-                <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider border-b border-emerald-200 pb-2 mb-2">
-                  Criar Próxima Tarefa
-                </h4>
-                <div>
-                  <label className="text-[10px] font-bold text-emerald-600 block mb-1">
-                    Título
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Retorno ao Cliente"
-                    className="w-full p-2 rounded-lg border border-emerald-200 text-sm"
-                    value={newTaskTitle}
-                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-emerald-600 block mb-1">
-                    Descrição (Opcional)
-                  </label>
-                  <textarea
-                    placeholder="Detalhes..."
-                    className="w-full p-2 rounded-lg border border-emerald-200 text-sm min-h-[60px]"
-                    value={newTaskDescription}
-                    onChange={(e) => setNewTaskDescription(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-emerald-600 block mb-1">
-                    Data Agendamento
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full p-2 rounded-lg border border-emerald-200 text-sm"
-                    value={newTaskDate}
-                    onChange={(e) => setNewTaskDate(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div>
+            <div className="mb-4">
               <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                {actionType === "COMPLETED"
-                  ? "Comentário da Finalização (Atual)"
-                  : "Motivo do Problema"}
+                Observações
               </label>
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                className="w-full p-3 border border-slate-300 rounded-xl mb-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="Escreva aqui..."
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="Adicione observações sobre esta visita..."
+                rows={3}
               />
             </div>
 
@@ -712,14 +368,14 @@ export default function DriverPage() {
                 onClick={() => setIsModalOpen(false)}
                 className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200"
               >
-                Cancelar
+                Fechar
               </button>
               <button
                 onClick={confirmFinalization}
                 disabled={isSubmitting}
-                className={`flex-1 py-3 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-all ${actionType === "COMPLETED" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}
+                className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50"
               >
-                {isSubmitting ? "Salvando..." : "Confirmar"}
+                {isSubmitting ? 'Confirmando...' : 'Confirmar Visita'}
               </button>
             </div>
           </div>

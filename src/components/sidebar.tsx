@@ -75,7 +75,7 @@ const menuItems = [
     ],
   },
   { title: "Empresas", href: "/empresas", icon: Home },
-  { title: "Rotas", href: "/route-planner", icon: CarFront },
+  { title: "Rotas", href: "/routes", icon: CarFront },
   { title: "Fornecedores", href: "/suppliers", icon: Factory },
   { title: "Usuários", href: "/users", icon: Users },
   { title: "Audit", href: "/audit", icon: Shield },

@@ -1,22 +1,26 @@
+// lib/api.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { parseCookies, setCookie, destroyCookie } from "nookies";
 
-const API_BASE = process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_NESTJS_API_URL || "http://localhost:3000";
 
 interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
 }
 
-// --- NOVO: Sistema de Observer para Erros ---
-// Isso permite que o React injete a função de abrir o Dialog aqui dentro
-type ErrorHandlerFn = (title: string, message: string, errors?: string[]) => void;
+// --- Sistema de Observer para Erros ---
+type ErrorHandlerFn = (
+  title: string,
+  message: string,
+  errors?: string[],
+) => void;
 let globalErrorHandler: ErrorHandlerFn | null = null;
 
 export const registerGlobalErrorListener = (fn: ErrorHandlerFn) => {
   globalErrorHandler = fn;
 };
-// --------------------------------------------
 
 export const api = axios.create({
   baseURL: API_BASE,
@@ -24,9 +28,11 @@ export const api = axios.create({
   timeout: 60000,
 });
 
+// Interceptor de request para adicionar token
 api.interceptors.request.use((config) => {
   const { access_token: cookieToken } = parseCookies();
-  const localToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const localToken =
+    typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
   const token = cookieToken || localToken;
 
   if (token) {
@@ -53,18 +59,20 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
+// Interceptor de response para refresh token
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<any>) => {
     const originalRequest = error.config as CustomAxiosRequestConfig;
     const status = error.response?.status;
 
-    // --- Lógica de Refresh Token (Mantida a sua, impecável) ---
+    // Lógica de Refresh Token
     if (status === 401 && !originalRequest._retry) {
-      if (originalRequest.url?.includes("/auth/login") || originalRequest.url?.includes("/auth/refresh")) {
-        // Se falhar no login, deixamos o erro passar para o Dialog tratar abaixo
-        // ou retornamos reject se não quisermos dialog no login incorreto
-        // Vamos deixar passar para o Dialog exibir "Credenciais Inválidas"
+      if (
+        originalRequest.url?.includes("/auth/login") ||
+        originalRequest.url?.includes("/auth/refresh")
+      ) {
+        // Se falhar no login, deixamos o erro passar
       } else {
         if (isRefreshing) {
           return new Promise<string>((resolve, reject) => {
@@ -84,20 +92,25 @@ api.interceptors.response.use(
           const refreshToken = localStorage.getItem("refreshToken");
           if (!refreshToken) throw new Error("No refresh token");
 
-          const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
-          
-          const { accessToken: newAccessToken, refreshToken: newRefreshToken } = data;
+          const { data } = await axios.post(`${API_BASE}/auth/refresh`, {
+            refreshToken,
+          });
+
+          const { accessToken: newAccessToken, refreshToken: newRefreshToken } =
+            data;
 
           localStorage.setItem("accessToken", newAccessToken);
-          if (newRefreshToken) localStorage.setItem("refreshToken", newRefreshToken);
-          
+          if (newRefreshToken)
+            localStorage.setItem("refreshToken", newRefreshToken);
+
           setCookie(null, "access_token", newAccessToken, {
             maxAge: 30 * 24 * 60 * 60,
             path: "/",
             sameSite: "lax",
           });
 
-          api.defaults.headers.common["Authorization"] = `Bearer ${newAccessToken}`;
+          api.defaults.headers.common["Authorization"] =
+            `Bearer ${newAccessToken}`;
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
 
           processQueue(null, newAccessToken);
@@ -115,27 +128,249 @@ api.interceptors.response.use(
       }
     }
 
-    // --- NOVO: Captura Genérica de Erros para o Dialog ---
-    // Se chegamos aqui, ou não é 401, ou o refresh falhou, ou é erro de validação (400, 422, 500)
+    // Captura Genérica de Erros para o Dialog
     if (globalErrorHandler) {
-        const errorData = error.response?.data;
-        
-        // Título baseado no status
-        let title = "Erro Inesperado";
-        if (status === 400) title = "Dados Inválidos";
-        if (status === 401) title = "Acesso Negado";
-        if (status === 403) title = "Sem Permissão";
-        if (status === 404) title = "Não Encontrado";
-        if (status === 500) title = "Erro no Servidor";
+      const errorData = error.response?.data;
 
-        // Mensagem e erros detalhados vindos do Backend
-        const message = errorData?.message || error.message || "Ocorreu um erro desconhecido.";
-        const details = errorData?.errors; // Array de strings vindo do filtro do NestJS
+      let title = "Erro Inesperado";
+      if (status === 400) title = "Dados Inválidos";
+      if (status === 401) title = "Acesso Negado";
+      if (status === 403) title = "Sem Permissão";
+      if (status === 404) title = "Não Encontrado";
+      if (status === 409) title = "Conflito";
+      if (status === 422) title = "Dados Inválidos";
+      if (status === 500) title = "Erro no Servidor";
 
-        // Dispara o Dialog - === showError
-        globalErrorHandler(title, message, details);
+      const message =
+        errorData?.message || error.message || "Ocorreu um erro desconhecido.";
+      const details = errorData?.errors;
+
+      globalErrorHandler(title, message, details);
     }
 
     return Promise.reject(error);
-  }
+  },
 );
+
+// =============================================
+// TIPOS PARA AS ROTAS
+// =============================================
+
+// No seu arquivo de tipos (ex: chat.ts ou api.ts)
+export interface RouteStop {
+  id?: string;
+  name?: string;
+  address: string;
+  complement?: string;    // Adicione se não tiver
+  neighborhood?: string;  // Adicione se não tiver
+  city: string;
+  state: string;
+  zipCode: string;
+  latitude: number;
+  longitude: number;
+  notes?: string;
+  order?: number;
+}
+
+export interface Route {
+  userAssignedId?: string | null; // Adicione isso
+  orderBy?: "DISTANCE" | "PRIORITY"; // Adicione isso
+  id: string;
+  title: string;
+  description?: string;
+  routeDate?: string;
+  status: "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELED";
+  totalDistanceMeters?: number;
+  totalDurationSeconds?: number;
+  optimizedAt?: string;
+  stops: RouteStop[];
+  userAssigned?: {
+    id: string;
+    name: string;
+    contact?: string;
+  };
+  userCreate?: {
+    id: string;
+    name: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  formattedDistance?: string;
+  formattedDuration?: string;
+  _count?: {
+    stops: number;
+  };
+}
+
+export interface CreateRouteDto {
+  title: string;
+  description?: string;
+  routeDate?: string;
+  // driverLatitude: number;
+  // driverLongitude: number;
+  stops: Omit<RouteStop, "id" | "order" | "visited" | "visitedAt">[];
+  userAssignedId?: string;
+  orderBy?: "DISTANCE" | "PRIORITY";
+}
+
+export interface UpdateRouteDto {
+  title?: string;
+  description?: string;
+  routeDate?: string;
+  status?: Route["status"];
+  stops?: CreateRouteDto["stops"];
+  userAssignedId?: string;
+  orderBy?: "DISTANCE" | "PRIORITY"; // Adicione esta linha
+}
+
+export interface RouteStats {
+  total: number;
+  byStatus: {
+    scheduled: number;
+    inProgress: number;
+    finished: number;
+    canceled: number;
+  };
+  totalStops: number;
+  totalDistance: number;
+  averageDistancePerRoute: number;
+  lastRoutes: Array<{
+    id: string;
+    title: string;
+    status: Route["status"];
+    stopsCount: number;
+    createdAt: string;
+  }>;
+}
+
+export interface OptimizeRouteDto {
+  driverLatitude: number;
+  driverLongitude: number;
+  taskIds: string[];
+  orderBy?: "DISTANCE" | "PRIORITY";
+}
+
+export interface FinalizeTaskDto {
+  status: "COMPLETED" | "FAILED";
+  finalComment?: string;
+  scheduledAt?: string;
+}
+
+export interface TaskAddress {
+  id: string;
+  cep: string;
+  endereco: string;
+  numero: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  complemento?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface AvailableTask {
+  id: string;
+  title: string;
+  description?: string;
+  status: string;
+  priority: number;
+  scheduledDate?: string;
+  dueDate?: string;
+  taskAddress?: TaskAddress;
+  userAssigned?: {
+    id: string;
+    name: string;
+  };
+  column?: {
+    id: string;
+  };
+}
+
+// =============================================
+// API ROUTES - Rotas sem tarefas
+// =============================================
+
+export const routesApi = {
+  /**
+   * Busca todas as rotas da empresa
+   */
+  getAll: (params?: {
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+  }) => api.get("/routes", { params }),
+
+  /**
+   * Busca uma rota específica por ID
+   */
+  getById: (id: string) => api.get(`/routes/${id}`),
+
+  /**
+   * Cria uma nova rota sem criar tarefas
+   */
+  create: (data: CreateRouteDto) => api.post("/routes", data),
+
+  /**
+   * Atualiza uma rota existente
+   */
+  update: (id: string, data: UpdateRouteDto) =>
+    api.patch(`/routes/${id}`, data),
+
+  /**
+   * Remove uma rota
+   */
+  delete: (id: string) => api.delete(`/routes/${id}`),
+
+  /**
+   * Retorna estatísticas resumidas das rotas
+   */
+  getSummary: () => api.get("/routes/stats/summary"),
+
+  /**
+   * Duplica uma rota existente
+   */
+  duplicate: (id: string, data: { title?: string; routeDate?: string }) =>
+    api.post(`/routes/${id}/duplicate`, data),
+
+  /**
+   * Converte uma rota salva em tarefas reais
+   */
+  convertToTasks: (
+    id: string,
+    data: { columnId?: string; userAssignedId?: string },
+  ) => api.post(`/routes/${id}/convert-to-tasks`, data),
+
+  /**
+   * Marca uma parada como visitada
+   */
+  markStopVisited: (routeId: string, stopId: string, notes?: string) =>
+    api.patch(`/routes/${routeId}/stops/${stopId}/visit`, { notes }),
+
+  // =============================================
+  // ENDPOINTS EXISTENTES - Rotas com tarefas
+  // =============================================
+
+  /**
+   * Busca tarefas disponíveis com localização válida
+   */
+  getAvailableTasks: (params?: {
+    startDate?: string;
+    endDate?: string;
+    assignedToId?: string;
+  }) => api.get("/routes/available-tasks", { params }),
+
+  /**
+   * Otimiza a ordem das tarefas pela melhor rota
+   */
+  optimizeRoute: (data: OptimizeRouteDto) =>
+    api.post("/routes/calculate-best-path", data),
+
+  /**
+   * Finaliza uma tarefa (sucesso/falha) ou reagenda
+   */
+  finalizeTask: (taskId: string, data: FinalizeTaskDto) =>
+    api.patch(`/routes/tasks/${taskId}/finalize`, data),
+};
+
+export default api;
