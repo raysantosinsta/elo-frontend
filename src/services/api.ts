@@ -330,7 +330,7 @@ export const routesApi = {
   /**
    * Duplica uma rota existente
    */
-  duplicate: (id: string, data: { title?: string; routeDate?: string }) =>
+  duplicate: (id: string, data: { title?: string; routeDate?: string; description?: string }) =>
     api.post(`/routes/${id}/duplicate`, data),
 
   /**

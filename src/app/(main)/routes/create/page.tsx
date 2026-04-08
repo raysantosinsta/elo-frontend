@@ -15,6 +15,8 @@ import {
   Trash2Icon,
   Loader2,
   UserIcon,
+  MapPin, 
+  ArrowUpDown
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -60,8 +62,8 @@ const stopSchema = z.object({
   city: z.string().min(1, "Cidade é obrigatória"),
   state: z.string().min(2, "UF é obrigatória").max(2),
   zipCode: z.string().min(8, "CEP inválido"),
-  latitude: z.number().refine((n) => n !== 0, "Valide a localização"),
-  longitude: z.number().refine((n) => n !== 0, "Valide a localização"),
+latitude: z.number().optional().default(0),
+  longitude: z.number().optional().default(0),
   notes: z.string().optional(),
 });
 
@@ -145,46 +147,43 @@ export default function CreateRoutePage() {
     }
   };
 
-  const getCoordinatesFromAddress = async (index: number) => {
-    const stop = form.getValues(`stops.${index}`);
-    if (!stop.address || !stop.city) {
-      toast.warning("Preencha Rua e Cidade.");
-      return;
+  const geocodeStopIfNeeded = async (stop: any, index: number) => {
+  if (stop.latitude && stop.latitude !== 0) return stop;
+  
+  const fullAddress = `${stop.address}, ${stop.name}, ${stop.city}, ${stop.state}, Brasil`;
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(fullAddress)}&format=json&limit=1`,
+    );
+    const data = await response.json();
+    if (data && data.length > 0) {
+      return {
+        ...stop,
+        latitude: parseFloat(data[0].lat),
+        longitude: parseFloat(data[0].lon),
+      };
     }
-    const fullAddress = `${stop.address}, ${stop.name}, ${stop.city}, ${stop.state}, Brasil`;
-    toast.loading("Validando...", { id: `geo-${index}` });
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(fullAddress)}&format=json&limit=1`,
-      );
-      const data = await response.json();
-      if (data && data.length > 0) {
-        form.setValue(`stops.${index}.latitude`, parseFloat(data[0].lat), {
-          shouldValidate: true,
-        });
-        form.setValue(`stops.${index}.longitude`, parseFloat(data[0].lon), {
-          shouldValidate: true,
-        });
-        toast.success("Localização confirmada!", { id: `geo-${index}` });
-      }
-    } catch {
-      toast.error("Erro no serviço de mapas.");
-    }
-  };
+  } catch (error) {
+    console.error("Erro ao geocodificar:", error);
+  }
+  return stop;
+};
 
   const onSubmit = async (data: FormValues) => {
     try {
+
+// Geocodificar automaticamente as paradas sem coordenadas
+    const stopsWithCoords = await Promise.all(
+      data.stops.map((stop, idx) => geocodeStopIfNeeded(stop, idx))
+    );
+
       const payload = {
         title: data.title,
         description: data.description || "",
         routeDate: data.routeDate?.toISOString(),
         userAssignedId: data.userAssignedId || undefined,
         orderBy: data.orderBy,
-        stops: data.stops.map((stop) => ({
-          ...stop,
-          latitude: Number(stop.latitude),
-          longitude: Number(stop.longitude),
-        })),
+        stops: stopsWithCoords,
       };
       await createRoute.mutateAsync(payload as any);
       toast.success("Rota criada!");
@@ -325,10 +324,12 @@ export default function CreateRoutePage() {
                               </FormControl>
                               <SelectContent className="bg-[#2C3E50] border-white/10 text-[#D1D5DB]">
                                 <SelectItem value="DISTANCE">
-                                  Menor Distância
+                                  <MapPin className="w-4 h-4 text-[#D35400] mr-2" />
+                                  Proximidade
                                 </SelectItem>
                                 <SelectItem value="PRIORITY">
-                                  Ordem Manual
+                                  <ArrowUpDown className="w-4 h-4 text-[#D35400] mr-2" />
+                                  Prioridade
                                 </SelectItem>
                               </SelectContent>
                             </Select>
@@ -511,7 +512,7 @@ export default function CreateRoutePage() {
                           </FormItem>
                         )}
                       />
-                      <div className="col-span-2 flex items-end">
+                      {/* <div className="col-span-2 flex items-end">
                         <Button
                           type="button"
                           variant="secondary"
@@ -521,7 +522,7 @@ export default function CreateRoutePage() {
                           <MapPinIcon className="h-4 w-4 mr-2 text-[#D35400]" />{" "}
                           Validar no Mapa
                         </Button>
-                      </div>
+                      </div> */}
                     </div>
                   </Card>
                 ))}

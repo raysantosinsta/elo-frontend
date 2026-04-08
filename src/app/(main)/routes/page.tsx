@@ -65,10 +65,11 @@ const statusText: Record<string, string> = {
 
 export default function RoutesPage() {
   const router = useRouter();
-  const { useGetAllRoutes, useDeleteRoute } = useRoutes();
+  const { useGetAllRoutes, useDeleteRoute, useDuplicateRoute } = useRoutes();
 
   const { data: routes, isLoading, refetch } = useGetAllRoutes();
   const deleteRoute = useDeleteRoute();
+  const duplicateRoute = useDuplicateRoute();
 
   const [searchTerm, setSearchTerm]     = useState('');
   const [deleteId, setDeleteId]         = useState<string | null>(null);
@@ -84,6 +85,40 @@ export default function RoutesPage() {
       } catch {
         toast.error('Erro ao excluir rota.');
       }
+    }
+  };
+
+  const handleDuplicate = async (route: any) => {
+    try {
+      // Criar título para a nova rota
+      const newTitle = `${route.title} (Cópia)`;
+      
+      // Duplicar a rota
+      const result = await duplicateRoute.mutateAsync({
+        id: route.id,
+        data: { title: newTitle }
+      });
+      
+      toast.success('Rota duplicada com sucesso!', {
+        description: `Nova rota: ${newTitle}`,
+      });
+      
+      // Redirecionar para a página de edição da nova rota
+      if (result?.data?.newRoute?.id) {
+        router.push(`/routes/${result.data.newRoute.id}/edit`);
+      } else {
+        // Fallback: buscar a rota duplicada pela lista
+        await refetch();
+        toast.info('Redirecionando para edição...');
+        setTimeout(() => {
+          router.push('/routes');
+        }, 1500);
+      }
+    } catch (error: any) {
+      console.error('Erro ao duplicar rota:', error);
+      toast.error('Erro ao duplicar rota', {
+        description: error?.message || 'Tente novamente mais tarde',
+      });
     }
   };
 
@@ -173,17 +208,19 @@ export default function RoutesPage() {
 
         {/* ── Tabela ─────────────────────────────────────────────────────────── */}
         <Card className="border border-white/10 bg-white/5 shadow-none rounded-xl overflow-hidden">
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-b border-white/10 hover:bg-transparent">
                   <TableHead className="py-4 px-6 text-[#9CA3AF] font-medium">Título</TableHead>
                   <TableHead className="text-[#9CA3AF] font-medium">Status</TableHead>
-                  <TableHead className="text-[#9CA3AF] font-medium">Data</TableHead>
+                  <TableHead className="text-[#9CA3AF] font-medium">Data da Rota</TableHead>
                   <TableHead className="text-center text-[#9CA3AF] font-medium">Paradas</TableHead>
                   <TableHead className="text-[#9CA3AF] font-medium">Distância</TableHead>
                   <TableHead className="text-[#9CA3AF] font-medium">Duração</TableHead>
                   <TableHead className="text-[#9CA3AF] font-medium">Motorista</TableHead>
+                  <TableHead className="text-[#9CA3AF] font-medium min-w-[200px]">Descrição</TableHead>
+                  <TableHead className="text-[#9CA3AF] font-medium">Criado em</TableHead>
                   <TableHead className="w-[50px]" />
                 </TableRow>
               </TableHeader>
@@ -191,7 +228,7 @@ export default function RoutesPage() {
               <TableBody>
                 {filteredRoutes?.length === 0 ? (
                   <TableRow className="hover:bg-transparent border-none">
-                    <TableCell colSpan={8} className="text-center py-20">
+                    <TableCell colSpan={10} className="text-center py-20">
                       <div className="flex flex-col items-center gap-3 text-[#6B7280]">
                         <MapPinIcon className="h-16 w-16 opacity-30" />
                         <p className="text-xl font-medium">Nenhuma rota encontrada</p>
@@ -223,7 +260,7 @@ export default function RoutesPage() {
                         </Badge>
                       </TableCell>
 
-                      {/* Data */}
+                      {/* Data da Rota */}
                       <TableCell className="text-[#9CA3AF]">
                         {route.routeDate
                           ? format(new Date(route.routeDate), 'dd/MM/yyyy', { locale: ptBR })
@@ -248,6 +285,26 @@ export default function RoutesPage() {
                       {/* Motorista */}
                       <TableCell className="text-[#9CA3AF]">
                         {route.userAssigned?.name || 'Não atribuído'}
+                      </TableCell>
+
+                      {/* Descrição */}
+                      <TableCell className="text-[#D1D5DB] max-w-[200px]">
+                        {route.description ? (
+                          <div className="truncate" title={route.description}>
+                            {route.description.length > 50 
+                              ? `${route.description.substring(0, 50)}...` 
+                              : route.description}
+                          </div>
+                        ) : (
+                          <span className="text-[#6B7280] text-sm">-</span>
+                        )}
+                      </TableCell>
+
+                      {/* Data de Criação */}
+                      <TableCell className="text-[#9CA3AF] whitespace-nowrap">
+                        {route.createdAt 
+                          ? format(new Date(route.createdAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })
+                          : '-'}
                       </TableCell>
 
                       {/* Ações */}
@@ -286,9 +343,16 @@ export default function RoutesPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="hover:bg-white/10 focus:bg-white/10 cursor-pointer"
-                              onClick={() => router.push(`/routes/${route.id}/duplicate`)}
+                              onClick={() => router.push(`/driver?routeId=${route.id}`)}
                             >
-                              Duplicar
+                              Iniciar Rota
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="hover:bg-white/10 focus:bg-white/10 cursor-pointer"
+                              onClick={() => handleDuplicate(route)}
+                              disabled={duplicateRoute.isPending}
+                            >
+                              {duplicateRoute.isPending ? 'Duplicando...' : 'Duplicar'}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-white/10" />
                             <DropdownMenuItem

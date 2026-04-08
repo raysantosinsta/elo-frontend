@@ -2,35 +2,27 @@
 // app/routes/[id]/page.tsx
 "use client";
 
-import { useState, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { useRoutes } from "@/hooks/useRoutes";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-  ArrowLeftIcon,
-  CalendarIcon,
-  CheckCircleIcon,
-  CopyIcon,
-  Navigation,
-  Loader2,
-  UserIcon,
-} from "lucide-react";
+import { useRoutes } from "@/hooks/useRoutes";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  ArrowLeftIcon,
+  CalendarDaysIcon,
+  CalendarIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  FileTextIcon,
+  Loader2,
+  MessageSquareIcon,
+  Navigation,
+  RulerIcon,
+  UserIcon,
+} from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { useMemo } from "react";
 
 const statusColors: Record<string, string> = {
   SCHEDULED: "bg-blue-500/20 text-blue-300 border border-blue-500/30",
@@ -57,20 +49,11 @@ export default function RouteDetailsPage() {
 
   const {
     useGetRouteById,
-    useMarkStopVisited,
-    useDuplicateRoute,
     useUpdateRoute,
   } = useRoutes();
 
-  const { data: route, isLoading, refetch } = useGetRouteById(routeId);
-  const markStopVisited = useMarkStopVisited();
-  const duplicateRoute = useDuplicateRoute();
+  const { data: route, isLoading } = useGetRouteById(routeId);
   const updateRoute = useUpdateRoute();
-
-  const [selectedStop, setSelectedStop] = useState<any>(null);
-  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
-  const [duplicateTitle, setDuplicateTitle] = useState("");
-  const [notes, setNotes] = useState("");
 
   const orderedStops = useMemo(() => {
     if (!route?.stops) return [];
@@ -89,36 +72,6 @@ export default function RouteDetailsPage() {
       }
     }
     router.push(`/driver?routeId=${routeId}`);
-  };
-
-  const handleMarkVisited = async (stopId: string, stopNotes?: string) => {
-    try {
-      await markStopVisited.mutateAsync({
-        routeId,
-        stopId,
-        notes: stopNotes || notes,
-      });
-      toast.success("Parada marcada como visitada!");
-      setSelectedStop(null);
-      setNotes("");
-      refetch();
-    } catch (error: any) {
-      toast.error("Erro ao marcar parada");
-    }
-  };
-
-  const handleDuplicate = async () => {
-    try {
-      await duplicateRoute.mutateAsync({
-        id: routeId,
-        data: { title: duplicateTitle || `${route?.title} (Cópia)` },
-      });
-      toast.success("Rota duplicada com sucesso!");
-      setShowDuplicateDialog(false);
-      router.push("/routes");
-    } catch (error: any) {
-      toast.error("Erro ao duplicar rota");
-    }
   };
 
   if (isLoading) {
@@ -198,22 +151,99 @@ export default function RouteDetailsPage() {
               )}
               Navegação
             </Button>
-            <Button
-              onClick={() => setShowDuplicateDialog(true)}
-              className="flex-1 md:flex-none bg-white/5 hover:bg-white/10 text-[#D1D5DB] border border-white/10"
-            >
-              <CopyIcon className="h-4 w-4 mr-2" />
-              Duplicar
-            </Button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-6">
+          {/* ── Cards de Informações da Rota ────────────────────────────────────── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Distância Total */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <RulerIcon className="h-4 w-4 text-[#D35400]" />
+                <span className="text-xs text-[#9CA3AF] uppercase tracking-wider font-semibold">
+                  Distância Total
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-white">
+                {route.formattedDistance || "Não calculado"}
+              </p>
+              <p className="text-xs text-[#6B7280] mt-1">
+                {route.totalDistanceMeters 
+                  ? `${(route.totalDistanceMeters / 1000).toFixed(2)} km` 
+                  : "Distância não calculada"}
+              </p>
+            </div>
+
+            {/* Duração Estimada */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <ClockIcon className="h-4 w-4 text-[#D35400]" />
+                <span className="text-xs text-[#9CA3AF] uppercase tracking-wider font-semibold">
+                  Duração Estimada
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-white">
+                {route.formattedDuration || "Não calculado"}
+              </p>
+              <p className="text-xs text-[#6B7280] mt-1">
+                {route.totalDurationSeconds 
+                  ? `${Math.floor(route.totalDurationSeconds / 60)} minutos` 
+                  : "Tempo não calculado"}
+              </p>
+            </div>
+
+            {/* Data de Criação */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CalendarDaysIcon className="h-4 w-4 text-[#D35400]" />
+                <span className="text-xs text-[#9CA3AF] uppercase tracking-wider font-semibold">
+                  Criado em
+                </span>
+              </div>
+              <p className="text-lg font-bold text-white">
+                {route.createdAt
+                  ? format(new Date(route.createdAt), "dd/MM/yyyy", {
+                      locale: ptBR,
+                    })
+                  : "-"}
+              </p>
+              <p className="text-xs text-[#6B7280] mt-1">
+                {route.createdAt
+                  ? format(new Date(route.createdAt), "HH:mm", {
+                      locale: ptBR,
+                    })
+                  : ""}
+              </p>
+            </div>
+
+            {/* Total de Paradas */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <FileTextIcon className="h-4 w-4 text-[#D35400]" />
+                <span className="text-xs text-[#9CA3AF] uppercase tracking-wider font-semibold">
+                  Total de Paradas
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-white">{totalStops}</p>
+              <p className="text-xs text-[#6B7280] mt-1">
+                {visitedCount} concluídas • {totalStops - visitedCount} restantes
+              </p>
+            </div>
+          </div>
+
           {/* ── Descrição ─────────────────────────────────────────────────────── */}
           {route.description && (
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-sm text-[#D1D5DB]">
-              <strong className="text-[#9CA3AF]">Descrição:</strong>{" "}
-              {route.description}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <FileTextIcon className="h-4 w-4 text-[#D35400]" />
+                <span className="text-xs text-[#9CA3AF] uppercase tracking-wider font-semibold">
+                  Descrição
+                </span>
+              </div>
+              <p className="text-sm text-[#D1D5DB] whitespace-pre-wrap">
+                {route.description}
+              </p>
             </div>
           )}
 
@@ -230,6 +260,11 @@ export default function RouteDetailsPage() {
                 <p className="text-base font-medium text-white">
                   {route.userAssigned.name}
                 </p>
+                {route.userAssigned.contact && (
+                  <p className="text-xs text-[#6B7280] mt-1">
+                    {route.userAssigned.contact}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -238,6 +273,9 @@ export default function RouteDetailsPage() {
           <Card className="border-none shadow-none bg-transparent">
             <CardHeader className="px-0 pt-0">
               <CardTitle className="text-xl text-white">Itinerário</CardTitle>
+              <p className="text-sm text-[#9CA3AF]">
+                Sequência de paradas da rota
+              </p>
             </CardHeader>
             <CardContent className="px-0">
               <div className="space-y-3">
@@ -245,147 +283,76 @@ export default function RouteDetailsPage() {
                   <div
                     key={stop.id || index}
                     className={cn(
-                      "group flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl border transition-all",
+                      "group flex flex-col gap-4 p-4 rounded-xl border transition-all",
                       stop.visited
-                        ? "bg-white/5 border-white/5 opacity-60"
+                        ? "bg-white/5 border-white/5 opacity-80"
                         : "bg-white/5 border-white/10 hover:border-[#D35400]/40",
                     )}
                   >
-                    {/* Indicador numérico */}
-                    <div
-                      className={cn(
-                        "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border-2",
-                        stop.visited
-                          ? "bg-green-500/20 border-green-500/40 text-green-300"
-                          : "bg-[#D35400]/20 border-[#D35400]/50 text-[#D35400]",
-                      )}
-                    >
-                      {stop.visited ? (
-                        <CheckCircleIcon className="h-4 w-4" />
-                      ) : (
-                        index + 1
-                      )}
+                    {/* Cabeçalho da parada */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                      {/* Indicador numérico */}
+                      <div
+                        className={cn(
+                          "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border-2",
+                          stop.visited
+                            ? "bg-green-500/20 border-green-500/40 text-green-300"
+                            : "bg-[#D35400]/20 border-[#D35400]/50 text-[#D35400]",
+                        )}
+                      >
+                        {stop.visited ? (
+                          <CheckCircleIcon className="h-4 w-4" />
+                        ) : (
+                          index + 1
+                        )}
+                      </div>
+
+                      {/* Dados da parada */}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-sm text-white truncate">
+                          {stop.name || `Ponto ${index + 1}`}
+                        </h3>
+                        <p className="text-xs text-[#9CA3AF] truncate">
+                          {stop.address}, {stop.city} - {stop.state}
+                        </p>
+                      </div>
+
+                      {/* Status */}
+                      <div className="flex-shrink-0">
+                        {stop.visited ? (
+                          <Badge className="bg-green-500/20 text-green-300 border border-green-500/30 shadow-none text-xs">
+                            Visitado em {stop.visitedAt ? format(new Date(stop.visitedAt), "dd/MM/yyyy HH:mm", { locale: ptBR }) : ""}
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-none text-xs">
+                            Pendente
+                          </Badge>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Dados da parada */}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-sm text-white truncate">
-                        {stop.name || `Ponto ${index + 1}`}
-                      </h3>
-                      <p className="text-xs text-[#9CA3AF] truncate">
-                        {stop.address}, {stop.city}
-                      </p>
-                    </div>
-
-                    {/* Ação */}
-                    <div className="flex-shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
-                      {stop.visited ? (
-                        <Badge className="bg-green-500/20 text-green-300 border border-green-500/30 shadow-none text-xs">
-                          Visitado
-                        </Badge>
-                      ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => setSelectedStop(stop)}
-                          className="w-full sm:w-auto h-8 text-xs bg-white/5 hover:bg-[#D35400] hover:text-white text-[#D1D5DB] border border-white/10 hover:border-[#D35400] transition-all"
-                          disabled={
-                            route.status === "FINISHED" ||
-                            route.status === "CANCELED"
-                          }
-                        >
-                          Marcar Visitada
-                        </Button>
-                      )}
-                    </div>
+                    {/* Observações da visita - NOVO BLOCO */}
+                    {stop.notes && (
+                      <div className="ml-12 pl-4 border-l-2 border-[#D35400]/30">
+                        <div className="flex items-start gap-2">
+                          <MessageSquareIcon className="h-4 w-4 text-[#D35400] mt-0.5 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-xs text-[#9CA3AF] font-medium mb-1">
+                              Observações da visita:
+                            </p>
+                            <p className="text-sm text-[#D1D5DB] whitespace-pre-wrap">
+                              {stop.notes}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
         </div>
-
-        {/* ── Dialog: Marcar Visitada ────────────────────────────────────────── */}
-        <Dialog
-          open={!!selectedStop}
-          onOpenChange={() => setSelectedStop(null)}
-        >
-          <DialogContent className="bg-[#2C3E50] border border-white/10 text-white">
-            <DialogHeader>
-              <DialogTitle className="text-white">Confirmar Visita</DialogTitle>
-              <DialogDescription className="text-[#9CA3AF]">
-                {selectedStop?.address}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-              <div className="space-y-2">
-                <Label className="text-[#D1D5DB]">Observações da visita</Label>
-                <Textarea
-                  placeholder="Ex: Entregue para recepcionista..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-[#6B7280] focus-visible:ring-[#D35400]"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="ghost"
-                onClick={() => setSelectedStop(null)}
-                className="text-[#D1D5DB] hover:bg-white/10 hover:text-white"
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => handleMarkVisited(selectedStop?.id)}
-                className="bg-[#D35400] hover:bg-[#b84700] text-white border-none"
-              >
-                Registrar
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* ── Dialog: Duplicar ──────────────────────────────────────────────── */}
-        <Dialog
-          open={showDuplicateDialog}
-          onOpenChange={setShowDuplicateDialog}
-        >
-          <DialogContent className="bg-[#2C3E50] border border-white/10 text-white">
-            <DialogHeader>
-              <DialogTitle className="text-white">Duplicar Rota</DialogTitle>
-              <DialogDescription className="text-[#9CA3AF]">
-                Crie uma cópia exata deste itinerário.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-              <div className="space-y-2">
-                <Label className="text-[#D1D5DB]">Nome da nova rota</Label>
-                <Input
-                  placeholder={`${route.title} (Cópia)`}
-                  value={duplicateTitle}
-                  onChange={(e) => setDuplicateTitle(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-[#6B7280] focus-visible:ring-[#D35400]"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="ghost"
-                onClick={() => setShowDuplicateDialog(false)}
-                className="text-[#D1D5DB] hover:bg-white/10 hover:text-white"
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleDuplicate}
-                disabled={duplicateRoute.isPending}
-                className="bg-[#D35400] hover:bg-[#b84700] text-white border-none"
-              >
-                {duplicateRoute.isPending ? "Copiando..." : "Duplicar Rota"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </div>
   );

@@ -112,15 +112,15 @@ export const useRoutes = () => {
   /**
    * Hook personalizado para duplicar uma rota existente
    */
-  const useDuplicateRoute = () =>
-    useMutation({
-      mutationFn: ({ id, data }: { id: string; data: { title?: string; routeDate?: string } }) =>
-        routesApi.duplicate(id, data),
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['routes'] });
-        queryClient.invalidateQueries({ queryKey: ['routes-summary'] });
-      },
-    });
+const useDuplicateRoute = () =>
+  useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { title?: string; routeDate?: string; description?: string } }) =>
+      routesApi.duplicate(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['routes'] });
+      queryClient.invalidateQueries({ queryKey: ['routes-summary'] });
+    },
+  });
 
   /**
    * Hook personalizado para converter uma rota em tarefas
