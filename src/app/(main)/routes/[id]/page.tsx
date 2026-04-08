@@ -20,6 +20,8 @@ import {
   Navigation,
   RulerIcon,
   UserIcon,
+  MapPinIcon,
+  ArrowUpDownIcon,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo } from "react";
@@ -36,6 +38,22 @@ const statusText: Record<string, string> = {
   IN_PROGRESS: "Em Andamento",
   FINISHED: "Finalizada",
   CANCELED: "Cancelada",
+};
+
+// Mapeamento para o tipo de ordenação
+const orderByText: Record<string, string> = {
+  DISTANCE: "Proximidade",
+  PRIORITY: "Prioridade",
+};
+
+const orderByIcon: Record<string, any> = {
+  DISTANCE: MapPinIcon,
+  PRIORITY: ArrowUpDownIcon,
+};
+
+const orderByColor: Record<string, string> = {
+  DISTANCE: "bg-purple-500/20 text-purple-300 border border-purple-500/30",
+  PRIORITY: "bg-amber-500/20 text-amber-300 border border-amber-500/30",
 };
 
 function cn(...classes: (string | boolean | undefined)[]) {
@@ -99,6 +117,10 @@ export default function RouteDetailsPage() {
   const visitedCount =
     route.stops?.filter((stop: any) => stop.visited).length || 0;
   const totalStops = route.stops?.length || 0;
+  
+  // Tipo de ordenação da rota
+  const orderByType = route.orderBy || "DISTANCE";
+  const OrderIcon = orderByIcon[orderByType];
 
   return (
     <div className="min-h-screen bg-[#2C3E50] text-white">
@@ -123,6 +145,15 @@ export default function RouteDetailsPage() {
               >
                 {statusText[route.status as keyof typeof statusText]}
               </Badge>
+              
+              {/* Badge do tipo de ordenação */}
+              <Badge
+                className={`${orderByColor[orderByType]} text-xs font-medium shadow-none flex items-center gap-1`}
+              >
+                {OrderIcon && <OrderIcon className="h-3 w-3" />}
+                {orderByText[orderByType]}
+              </Badge>
+              
               {route.routeDate && (
                 <span className="flex items-center text-sm text-[#9CA3AF]">
                   <CalendarIcon className="h-4 w-4 mr-1" />
@@ -275,6 +306,16 @@ export default function RouteDetailsPage() {
               <CardTitle className="text-xl text-white">Itinerário</CardTitle>
               <p className="text-sm text-[#9CA3AF]">
                 Sequência de paradas da rota
+                {orderByType === "DISTANCE" && (
+                  <span className="ml-2 text-purple-300">
+                    (Ordenado por proximidade)
+                  </span>
+                )}
+                {orderByType === "PRIORITY" && (
+                  <span className="ml-2 text-amber-300">
+                    (Ordenado por prioridade)
+                  </span>
+                )}
               </p>
             </CardHeader>
             <CardContent className="px-0">
@@ -331,7 +372,7 @@ export default function RouteDetailsPage() {
                       </div>
                     </div>
 
-                    {/* Observações da visita - NOVO BLOCO */}
+                    {/* Observações da visita */}
                     {stop.notes && (
                       <div className="ml-12 pl-4 border-l-2 border-[#D35400]/30">
                         <div className="flex items-start gap-2">

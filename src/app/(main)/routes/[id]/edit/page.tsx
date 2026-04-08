@@ -2,7 +2,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeftIcon, Loader2, PlusIcon, Trash2Icon, EditIcon, MapPinIcon } from "lucide-react";
+import { ArrowLeftIcon, Loader2, PlusIcon, Trash2Icon, EditIcon, MapPinIcon, GripVerticalIcon } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { useRoutes } from "@/hooks/useRoutes";
 import { UpdateRouteDto } from "@/services/api";
@@ -77,6 +77,7 @@ export default function EditRoutePage() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [editingStopIndex, setEditingStopIndex] = useState<number | null>(null);
   const [isStopDialogOpen, setIsStopDialogOpen] = useState(false);
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -90,7 +91,7 @@ export default function EditRoutePage() {
     },
   });
 
-  const { fields, append, remove, update } = useFieldArray({
+  const { fields, append, remove, update, move } = useFieldArray({
     control: form.control,
     name: "stops",
   });
@@ -111,6 +112,10 @@ export default function EditRoutePage() {
       neighborhood: "",
     },
   });
+
+  // Observar o tipo de ordenação atual
+  const currentOrderBy = form.watch("orderBy");
+  const isPriorityMode = currentOrderBy === "PRIORITY";
 
   // 1. Carregar Usuários
   useEffect(() => {
@@ -179,7 +184,7 @@ export default function EditRoutePage() {
             ? undefined
             : (data.userAssignedId ?? undefined),
 
-        stops: data.stops.map((s: any) => ({
+        stops: data.stops.map((s: any, index: number) => ({
           name: s.name,
           address: s.address,
           city: s.city,
@@ -190,6 +195,7 @@ export default function EditRoutePage() {
           complement: s.complement ?? undefined,
           neighborhood: s.neighborhood ?? undefined,
           notes: s.notes ?? undefined,
+          order: index + 1, // Salvar a ordem atual
         })),
       };
 
@@ -242,6 +248,42 @@ export default function EditRoutePage() {
     append(newStop);
     toast.success("Parada adicionada!");
     setIsStopDialogOpen(false);
+  };
+
+  // Handlers para Drag and Drop
+  const handleDragStart = (index: number) => {
+    if (!isPriorityMode) return;
+    setDraggedItemIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    if (!isPriorityMode) return;
+    e.preventDefault();
+    
+    if (draggedItemIndex === null || draggedItemIndex === index) return;
+    
+    // Mover o item
+    move(draggedItemIndex, index);
+    setDraggedItemIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItemIndex(null);
+  };
+
+  // Handlers para botões de mover (alternativa sem drag and drop)
+  const handleMoveUp = (index: number) => {
+    if (index > 0) {
+      move(index, index - 1);
+      toast.success("Parada movida para cima");
+    }
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index < fields.length - 1) {
+      move(index, index + 1);
+      toast.success("Parada movida para baixo");
+    }
   };
 
   if (isLoadingRoute || isLoadingUsers) {
@@ -384,10 +426,15 @@ export default function EditRoutePage() {
                                 Menor Distância (Automático)
                               </SelectItem>
                               <SelectItem value="PRIORITY">
-                                Ordem Manual (Prioridade)
+                                Ordem Manual (Prioridade) - Permite reordenar
                               </SelectItem>
                             </SelectContent>
                           </Select>
+                          <p className="text-xs text-muted-foreground">
+                            {isPriorityMode 
+                              ? "✓ Você pode arrastar as paradas para reordenar ou usar os botões ↑ ↓" 
+                              : "ℹ️ No modo 'Menor Distância', a ordem é definida automaticamente pelo sistema"}
+                          </p>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -411,17 +458,29 @@ export default function EditRoutePage() {
                   <CardContent className="text-center py-12">
                     <MapPinIcon className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                     <p className="text-muted-foreground">
-                      Nenhuma parada adicionada. Clique em &ldquo;Adicionar Parada&ldquo; para começar.
+                      Nenhuma parada adicionada. Clique em &ldquo;Adicionar Parada&rdquo; para começar.
                     </p>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="space-y-3">
                   {fields.map((field, index) => (
-                    <Card key={field.id}>
+                    <Card 
+                      key={field.id}
+                      className={`transition-all ${isPriorityMode ? 'cursor-move hover:border-primary/50' : ''}`}
+                      draggable={isPriorityMode}
+                      onDragStart={() => handleDragStart(index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDragEnd={handleDragEnd}
+                    >
                       <CardContent className="pt-6">
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex items-center gap-2">
+                            {isPriorityMode && (
+                              <div className="cursor-grab active:cursor-grabbing">
+                                <GripVerticalIcon className="h-5 w-5 text-muted-foreground" />
+                              </div>
+                            )}
                             <Badge variant="secondary">Parada {index + 1}</Badge>
                             {form.watch(`stops.${index}.name`) && (
                               <span className="font-medium">
@@ -430,6 +489,30 @@ export default function EditRoutePage() {
                             )}
                           </div>
                           <div className="flex gap-2">
+                            {isPriorityMode && (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleMoveUp(index)}
+                                  disabled={index === 0}
+                                  title="Mover para cima"
+                                >
+                                  ↑
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleMoveDown(index)}
+                                  disabled={index === fields.length - 1}
+                                  title="Mover para baixo"
+                                >
+                                  ↓
+                                </Button>
+                              </>
+                            )}
                             <Button
                               type="button"
                               variant="outline"
@@ -474,6 +557,12 @@ export default function EditRoutePage() {
                       </CardContent>
                     </Card>
                   ))}
+                </div>
+              )}
+              
+              {isPriorityMode && fields.length > 1 && (
+                <div className="bg-muted/50 p-3 rounded-lg text-sm text-muted-foreground">
+                  💡 Dica: Você pode arrastar e soltar as paradas para reordenar, ou usar os botões ↑ ↓ para mover.
                 </div>
               )}
             </TabsContent>
