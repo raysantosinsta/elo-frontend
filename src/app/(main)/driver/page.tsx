@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable prefer-const */
 "use client";
 
@@ -69,6 +70,9 @@ export default function DriverPage() {
   const [isCreatingNewRoute, setIsCreatingNewRoute] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
 
+  // Estado para armazenar as paradas otimizadas por proximidade
+  const [optimizedStops, setOptimizedStops] = useState<any[]>([]);
+
   const watchIdRef = useRef<number | null>(null);
   const simulationInterval = useRef<NodeJS.Timeout | null>(null);
 
@@ -120,8 +124,121 @@ export default function DriverPage() {
     };
   }, [isGPSActive]);
 
-  const currentStop = route?.stops[currentStopIndex];
-  const totalStops = route?.stops.length || 0;
+  // Função para calcular distância entre dois pontos (em metros)
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number => {
+    const R = 6371000;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  // 🔥 FUNÇÃO PRINCIPAL: Reordenar paradas por proximidade à localização REAL do motorista
+  const reorderStopsByProximity = (stops: any[], currentLatLng: [number, number], visitedIds: string[]) => {
+    if (!stops.length) return [];
+    
+    // Separar paradas não visitadas
+    const notVisited = stops.filter(stop => !visitedIds.includes(stop.id));
+    const alreadyVisited = stops.filter(stop => visitedIds.includes(stop.id));
+    
+    if (notVisited.length === 0) return alreadyVisited;
+    
+    // Algoritmo do vizinho mais próximo a partir da posição atual
+    const ordered: any[] = [];
+    const remaining = [...notVisited];
+    let currentPos = {
+      lat: currentLatLng[0],
+      lng: currentLatLng[1],
+    };
+    
+    let iteration = 0;
+    const maxIterations = remaining.length;
+    
+    while (remaining.length > 0 && iteration < maxIterations) {
+      iteration++;
+      let nearestIndex = 0;
+      let minDistance = Infinity;
+      
+      for (let i = 0; i < remaining.length; i++) {
+        const stop = remaining[i];
+        const distance = calculateDistance(
+          currentPos.lat,
+          currentPos.lng,
+          stop.latitude,
+          stop.longitude,
+        );
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestIndex = i;
+        }
+      }
+      
+      const nearest = remaining[nearestIndex];
+      ordered.push(nearest);
+      currentPos = {
+        lat: nearest.latitude,
+        lng: nearest.longitude,
+      };
+      remaining.splice(nearestIndex, 1);
+    }
+    
+    // Adicionar qualquer parada restante e as já visitadas no final
+    return [...ordered, ...remaining, ...alreadyVisited];
+  };
+
+  // 🔥 EFEITO: Reordenar paradas quando a localização do GPS mudar ou quando a rota for carregada
+  useEffect(() => {
+    if (!route || !route.stops) {
+      setOptimizedStops([]);
+      return;
+    }
+
+    // Se for PRIORIDADE, manter ordem original
+    if (route.orderBy === "PRIORITY") {
+      setOptimizedStops(route.stops);
+      return;
+    }
+
+    // Se for DISTANCE e temos localização do GPS, reordenar
+    if (route.orderBy === "DISTANCE" && currentPosition) {
+      const reordered = reorderStopsByProximity(route.stops, currentPosition, visitedStops);
+      setOptimizedStops(reordered);
+      
+      // Atualizar o índice atual baseado na nova ordem
+      const currentStopId = route.stops[currentStopIndex]?.id;
+      if (currentStopId) {
+        const newIndex = reordered.findIndex(s => s.id === currentStopId);
+        if (newIndex !== -1 && newIndex !== currentStopIndex) {
+          setCurrentStopIndex(newIndex);
+        }
+      }
+    } 
+    // Se for DISTANCE mas não temos localização ainda, usar ordem original
+    else if (route.orderBy === "DISTANCE" && !currentPosition) {
+      setOptimizedStops(route.stops);
+    }
+    // Outros casos
+    else {
+      setOptimizedStops(route.stops);
+    }
+  }, [route, currentPosition, visitedStops]);
+
+  // Usar stops otimizados ou os originais
+  const displayStops = optimizedStops.length ? optimizedStops : route?.stops || [];
+  const currentStop = displayStops[currentStopIndex];
+  const totalStops = displayStops.length;
   const completedStops = visitedStops.length;
 
   // Verificar se é a última parada
@@ -144,9 +261,7 @@ export default function DriverPage() {
     );
 
     const ARRIVAL_RADIUS_METERS = 50;
-    const isVisited = visitedStops.includes(
-      currentStop.id || String(currentStopIndex),
-    );
+    const isVisited = visitedStops.includes(currentStop.id);
 
     if (distance <= ARRIVAL_RADIUS_METERS && !isVisited && !isModalOpen) {
       toast.success(
@@ -164,25 +279,6 @@ export default function DriverPage() {
     isModalOpen,
     currentStopIndex,
   ]);
-
-  const calculateDistance = (
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-  ): number => {
-    const R = 6371000;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
 
   const startSimulation = () => {
     if (!currentStop) {
@@ -250,7 +346,7 @@ export default function DriverPage() {
       const nextIndex = currentStopIndex + 1;
 
       // Verificar se é a última parada
-      if (nextIndex >= (route?.stops.length || 0)) {
+      if (nextIndex >= totalStops) {
         // Marcar rota como FINALIZADA
         await updateRoute.mutateAsync({
           id: routeId!,
@@ -273,7 +369,7 @@ export default function DriverPage() {
       } else {
         setCurrentStopIndex(nextIndex);
         toast.success(
-          `✅ Parada ${currentStopIndex + 1} concluída! Próximo destino: ${route?.stops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+          `✅ Parada ${currentStopIndex + 1} concluída! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
         );
 
         // Fechar modal e limpar campos
@@ -309,15 +405,14 @@ export default function DriverPage() {
     });
 
     try {
-      // 🔥 IMPORTANTE: Marcar a última parada como visitada com texto padrão "tudo certo"
+      // 🔥 Marcar a última parada como visitada com texto padrão "tudo certo"
       if (currentStop && !visitedStops.includes(currentStop.id!)) {
         await markStopVisited.mutateAsync({
           routeId: routeId!,
           stopId: currentStop.id!,
-          notes: "tudo certo", // ← Texto padrão automático
+          notes: "tudo certo",
         });
 
-        // Atualizar o estado local de paradas visitadas
         const newVisitedStops = [...visitedStops, currentStop.id!];
         setVisitedStops(newVisitedStops);
       }
@@ -326,8 +421,7 @@ export default function DriverPage() {
       const formattedDate = new Date(newRouteDate).toLocaleDateString("pt-BR");
       let newTitle = `${route.title} (Reagendada - ${formattedDate})`;
 
-      // 🔥 O campo "Observações" do modal de agendamento vai para o description da ROTA
-      // (não para o notes da parada)
+      // Observações do modal vão para o description da ROTA
       let description = route.description || "";
       if (newRouteObservations) {
         description = description
@@ -341,7 +435,7 @@ export default function DriverPage() {
         data: {
           title: newTitle,
           routeDate: newRouteDate,
-          description: description, // ← Vai para Route.description
+          description: description,
         },
       });
 
@@ -369,7 +463,7 @@ export default function DriverPage() {
       setNewRouteDate("");
       setNewRouteObservations("");
 
-      // Redirecionar para a lista de rotas após 1.5 segundos
+      // Redirecionar para a lista de rotas
       setTimeout(() => {
         router.push("/routes");
       }, 1500);
@@ -387,16 +481,12 @@ export default function DriverPage() {
   // Efeito para marcar rota como concluída quando todas as paradas forem visitadas
   useEffect(() => {
     const checkAndFinishRoute = async () => {
-      // Verificar se já está finalizando ou se a rota já está finalizada
       if (isFinishing || !route || route.status === "FINISHED") {
         return;
       }
 
-      if (
-        visitedStops.length === route.stops.length &&
-        route.stops.length > 0
-      ) {
-        setIsFinishing(true); // Marcar que está finalizando
+      if (visitedStops.length === totalStops && totalStops > 0) {
+        setIsFinishing(true);
 
         try {
           await updateRoute.mutateAsync({
@@ -417,22 +507,19 @@ export default function DriverPage() {
           }, 2000);
         } catch (error) {
           console.error("Erro ao finalizar rota:", error);
-          setIsFinishing(false); // Reset em caso de erro
+          setIsFinishing(false);
         }
       }
     };
 
     checkAndFinishRoute();
-  }, [visitedStops, route, routeId, updateRoute, router, isFinishing]);
+  }, [visitedStops, totalStops, route, routeId, updateRoute, router, isFinishing]);
 
   if (isLoadingRoute) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-slate-100">
         <div className="text-center">
-          <Loader2
-            className="animate-spin text-blue-600 mx-auto mb-4"
-            size={40}
-          />
+          <Loader2 className="animate-spin text-blue-600 mx-auto mb-4" size={40} />
           <span className="text-slate-600">Carregando rota...</span>
         </div>
       </div>
@@ -533,10 +620,10 @@ export default function DriverPage() {
         </div>
       </div>
 
-      {/* Mapa */}
+      {/* Mapa - usando displayStops otimizadas */}
       <div className="flex-1 z-0">
         <RouteMap
-          stops={route.stops}
+          stops={displayStops}
           currentStopIndex={currentStopIndex}
           myLocation={currentPosition}
           visitedStops={visitedStops}
@@ -553,7 +640,6 @@ export default function DriverPage() {
         <div className="absolute inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
             {!showNewRouteOption ? (
-              // Opção 1: Fluxo atual (confirmar visita)
               <>
                 <div className="text-center mb-4">
                   <h3 className="text-xl font-bold text-emerald-600">
@@ -586,10 +672,7 @@ export default function DriverPage() {
                   >
                     {isSubmitting ? (
                       <>
-                        <Loader2
-                          className="animate-spin inline mr-2"
-                          size={18}
-                        />
+                        <Loader2 className="animate-spin inline mr-2" size={18} />
                         Confirmando...
                       </>
                     ) : (
@@ -597,7 +680,6 @@ export default function DriverPage() {
                     )}
                   </button>
 
-                  {/* Botão para opção de criar nova rota - Só aparece na última parada */}
                   {isLastStop && (
                     <button
                       onClick={() => setShowNewRouteOption(true)}
@@ -617,7 +699,6 @@ export default function DriverPage() {
                 </div>
               </>
             ) : (
-              // Opção 2: Criar nova rota com os mesmos destinos
               <>
                 <div className="text-center mb-4">
                   <h3 className="text-xl font-bold text-blue-600">
@@ -628,7 +709,6 @@ export default function DriverPage() {
                   </p>
                 </div>
 
-                {/* Campo: Data da Nova Rota */}
                 <div className="mb-4">
                   <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
                     Nova Data *
@@ -642,7 +722,6 @@ export default function DriverPage() {
                   />
                 </div>
 
-                {/* Campo: Observações da Nova Rota */}
                 <div className="mb-4">
                   <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
                     Observações
@@ -656,7 +735,6 @@ export default function DriverPage() {
                   />
                 </div>
 
-                {/* Resumo da Rota */}
                 <div className="mb-4 p-3 bg-slate-50 rounded-lg">
                   <p className="text-xs text-slate-500 mb-1">Resumo:</p>
                   <p className="text-sm font-medium text-slate-700 truncate">
