@@ -323,6 +323,8 @@ export default function ProductKanban() {
     ],
   );
 
+
+
   useEffect(() => {
     const filterParam = searchParams.get("filter");
     const typeParam = searchParams.get("filterType");

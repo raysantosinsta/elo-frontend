@@ -51,91 +51,93 @@ const DriverSkeleton = () => (
 );
 
 // 🎯 Componente de Header memoizado
-const DriverHeader = memo(({ 
-  completedStops, 
-  totalStops, 
-  currentStop, 
-  currentStopIndex,
-  isGPSActive,
-  isSimulating,
-  onResumeGPS,
-  onStartSimulation,
-  onBack 
-}: any) => {
-  const progress = totalStops > 0 ? (completedStops / totalStops) * 100 : 0;
-  
-  return (
-    <div className="absolute top-4 left-4 right-4 z-[500] pointer-events-none">
-      <div className="bg-white/95 backdrop-blur shadow-lg rounded-2xl p-4 border border-slate-200 pointer-events-auto transition-all hover:shadow-xl">
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onBack}
-              className="text-slate-400 hover:text-slate-600 p-1 transition-colors"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded-full">
-              {completedStops}/{totalStops}
+const DriverHeader = memo(
+  ({
+    completedStops,
+    totalStops,
+    currentStop,
+    currentStopIndex,
+    isGPSActive,
+    isSimulating,
+    onResumeGPS,
+    onStartSimulation,
+    onBack,
+  }: any) => {
+    const progress = totalStops > 0 ? (completedStops / totalStops) * 100 : 0;
+
+    return (
+      <div className="absolute top-4 left-4 right-4 z-[500] pointer-events-none">
+        <div className="bg-white/95 backdrop-blur shadow-lg rounded-2xl p-4 border border-slate-200 pointer-events-auto transition-all hover:shadow-xl">
+          <div className="flex justify-between items-start mb-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onBack}
+                className="text-slate-400 hover:text-slate-600 p-1 transition-colors"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded-full">
+                {completedStops}/{totalStops}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              {!isGPSActive && !isSimulating && (
+                <button
+                  onClick={onResumeGPS}
+                  className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-2 py-1.5 rounded-full transition-colors"
+                >
+                  <LeafIcon size={12} /> GPS
+                </button>
+              )}
+              {!isSimulating && (
+                <button
+                  onClick={onStartSimulation}
+                  className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-full transition-all active:scale-95"
+                >
+                  <Play size={12} fill="currentColor" /> Simular
+                </button>
+              )}
+            </div>
+          </div>
+
+          <h2 className="font-bold text-lg text-slate-800 line-clamp-1">
+            {currentStop?.name || `Parada ${currentStopIndex + 1}`}
+          </h2>
+
+          <div className="flex items-center gap-1 mt-1 text-slate-500 text-sm">
+            <MapPin size={14} className="text-[#D35400] shrink-0" />
+            <span className="truncate">{currentStop?.address}</span>
+          </div>
+
+          <div className="flex gap-3 mt-2 text-xs text-slate-400">
+            <span className="flex items-center gap-1">
+              <Calendar size={12} /> {currentStop?.city}/{currentStop?.state}
+            </span>
+            <span className="flex items-center gap-1">
+              <FileText size={12} /> CEP: {currentStop?.zipCode}
             </span>
           </div>
-          <div className="flex gap-2">
-            {!isGPSActive && !isSimulating && (
-              <button
-                onClick={onResumeGPS}
-                className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-2 py-1.5 rounded-full transition-colors"
-              >
-                <LeafIcon size={12} /> GPS
-              </button>
-            )}
-            {!isSimulating && (
-              <button
-                onClick={onStartSimulation}
-                className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-full transition-all active:scale-95"
-              >
-                <Play size={12} fill="currentColor" /> Simular
-              </button>
-            )}
-          </div>
-        </div>
 
-        <h2 className="font-bold text-lg text-slate-800 line-clamp-1">
-          {currentStop?.name || `Parada ${currentStopIndex + 1}`}
-        </h2>
-
-        <div className="flex items-center gap-1 mt-1 text-slate-500 text-sm">
-          <MapPin size={14} className="text-[#D35400] shrink-0" />
-          <span className="truncate">{currentStop?.address}</span>
-        </div>
-
-        <div className="flex gap-3 mt-2 text-xs text-slate-400">
-          <span className="flex items-center gap-1">
-            <Calendar size={12} /> {currentStop?.city}/{currentStop?.state}
-          </span>
-          <span className="flex items-center gap-1">
-            <FileText size={12} /> CEP: {currentStop?.zipCode}
-          </span>
-        </div>
-        
-        {/* Barra de progresso */}
-        {totalStops > 0 && (
-          <div className="mt-3">
-            <div className="flex justify-between text-xs text-slate-400 mb-1">
-              <span>Progresso da rota</span>
-              <span>{Math.round(progress)}%</span>
+          {/* Barra de progresso */}
+          {totalStops > 0 && (
+            <div className="mt-3">
+              <div className="flex justify-between text-xs text-slate-400 mb-1">
+                <span>Progresso da rota</span>
+                <span>{Math.round(progress)}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#D35400] rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
             </div>
-            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-[#D35400] rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
-  );
-});
+    );
+  },
+);
 
 DriverHeader.displayName = "DriverHeader";
 
@@ -235,79 +237,86 @@ export default function DriverPage() {
   }, [isGPSActive]);
 
   // Função para calcular distância entre dois pontos (em metros)
-  const calculateDistance = useCallback((
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-  ): number => {
-    const R = 6371000;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }, []);
+  const calculateDistance = useCallback(
+    (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371000;
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    },
+    [],
+  );
 
   // 🔥 FUNÇÃO PRINCIPAL: Reordenar paradas por proximidade
-  const reorderStopsByProximity = useCallback((stops: any[], currentLatLng: [number, number], visitedIds: string[]) => {
-    if (!stops.length) return [];
-    
-    const notVisited = stops.filter(stop => !visitedIds.includes(stop.id));
-    const alreadyVisited = stops.filter(stop => visitedIds.includes(stop.id));
-    
-    if (notVisited.length === 0) return alreadyVisited;
-    
-    const ordered: any[] = [];
-    const remaining = [...notVisited];
-    let currentPos = {
-      lat: currentLatLng[0],
-      lng: currentLatLng[1],
-    };
-    
-    let iteration = 0;
-    const maxIterations = remaining.length;
-    
-    while (remaining.length > 0 && iteration < maxIterations) {
-      iteration++;
-      let nearestIndex = 0;
-      let minDistance = Infinity;
-      
-      for (let i = 0; i < remaining.length; i++) {
-        const stop = remaining[i];
-        const distance = calculateDistance(
-          currentPos.lat,
-          currentPos.lng,
-          stop.latitude,
-          stop.longitude,
-        );
-        
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestIndex = i;
-        }
-      }
-      
-      const nearest = remaining[nearestIndex];
-      ordered.push(nearest);
-      currentPos = {
-        lat: nearest.latitude,
-        lng: nearest.longitude,
+  const reorderStopsByProximity = useCallback(
+    (stops: any[], currentLatLng: [number, number], visitedIds: string[]) => {
+      if (!stops.length) return [];
+
+      // 🔥 IMPORTANTE: Incluir TODAS as paradas, não apenas as não visitadas
+      // Paradas já visitadas vão para o final, mas NÃO são removidas da ordenação
+      const notVisited = stops.filter((stop) => !visitedIds.includes(stop.id));
+      const alreadyVisited = stops.filter((stop) =>
+        visitedIds.includes(stop.id),
+      );
+
+      if (notVisited.length === 0) return alreadyVisited;
+
+      const ordered: any[] = [];
+      const remaining = [...notVisited];
+      let currentPos = {
+        lat: currentLatLng[0],
+        lng: currentLatLng[1],
       };
-      remaining.splice(nearestIndex, 1);
-    }
-    
-    return [...ordered, ...remaining, ...alreadyVisited];
-  }, [calculateDistance]);
+
+      let iteration = 0;
+      const maxIterations = remaining.length;
+
+      while (remaining.length > 0 && iteration < maxIterations) {
+        iteration++;
+        let nearestIndex = 0;
+        let minDistance = Infinity;
+
+        for (let i = 0; i < remaining.length; i++) {
+          const stop = remaining[i];
+          const distance = calculateDistance(
+            currentPos.lat,
+            currentPos.lng,
+            stop.latitude,
+            stop.longitude,
+          );
+
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestIndex = i;
+          }
+        }
+
+        const nearest = remaining[nearestIndex];
+        ordered.push(nearest);
+        currentPos = {
+          lat: nearest.latitude,
+          lng: nearest.longitude,
+        };
+        remaining.splice(nearestIndex, 1);
+      }
+
+      // Adicionar paradas visitadas no final (já foram concluídas)
+      return [...ordered, ...alreadyVisited];
+    },
+    [calculateDistance],
+  );
 
   // 🔥 EFEITO: Reordenar paradas apenas quando necessário
   useEffect(() => {
-    if (!route || !route.stops || isReordering) {
+    if (!route || !route.stops) {
+      setOptimizedStops([]);
       return;
     }
 
@@ -315,82 +324,108 @@ export default function DriverPage() {
     if (route.orderBy === "PRIORITY") {
       if (JSON.stringify(optimizedStops) !== JSON.stringify(route.stops)) {
         setOptimizedStops(route.stops);
+        // Resetar índice para primeira parada
+        setCurrentStopIndex(0);
       }
       return;
     }
 
-    // Se for DISTANCE e temos localização do GPS
-    if (route.orderBy === "DISTANCE" && currentPosition) {
-      // Criar uma chave única baseada nos dados atuais
-      const reorderKey = `${currentPosition[0].toFixed(4)},${currentPosition[1].toFixed(4)}|${visitedStops.join(",")}`;
-      
-      // Só reordenar se a posição mudou significativamente (mais de 50 metros)
-      if (lastReorderedRef.current !== reorderKey) {
-        setIsReordering(true);
-        
-        const reordered = reorderStopsByProximity(route.stops, currentPosition, visitedStops);
-        
-        // Verificar se a ordem realmente mudou
-        const currentOrderIds = optimizedStops.map(s => s.id).join(",");
-        const newOrderIds = reordered.map(s => s.id).join(",");
-        
-        if (currentOrderIds !== newOrderIds) {
-          setOptimizedStops(reordered);
-          
-          // Atualizar o índice atual baseado na nova ordem
-          const currentStopId = route.stops[currentStopIndex]?.id;
-          if (currentStopId) {
-            const newIndex = reordered.findIndex(s => s.id === currentStopId);
-            if (newIndex !== -1 && newIndex !== currentStopIndex) {
-              setCurrentStopIndex(newIndex);
-            }
+    // Se for DISTANCE
+    if (route.orderBy === "DISTANCE") {
+      // Se temos localização do GPS, usar ela
+      if (currentPosition) {
+        const reorderKey = `${currentPosition[0].toFixed(4)},${currentPosition[1].toFixed(4)}|${visitedStops.join(",")}`;
+
+        if (lastReorderedRef.current !== reorderKey && !isReordering) {
+          setIsReordering(true);
+
+          const reordered = reorderStopsByProximity(
+            route.stops,
+            currentPosition,
+            visitedStops,
+          );
+
+          const currentOrderIds = optimizedStops.map((s) => s.id).join(",");
+          const newOrderIds = reordered.map((s) => s.id).join(",");
+
+          if (currentOrderIds !== newOrderIds) {
+            setOptimizedStops(reordered);
+            // 🔥 RESETAR O ÍNDICE PARA A PRIMEIRA PARADA QUANDO A ORDEM MUDAR
+            setCurrentStopIndex(0);
+          } else if (optimizedStops.length === 0) {
+            setOptimizedStops(reordered);
+            setCurrentStopIndex(0);
           }
-        } else if (optimizedStops.length === 0) {
-          setOptimizedStops(reordered);
+
+          lastReorderedRef.current = reorderKey;
+          setIsReordering(false);
         }
-        
-        lastReorderedRef.current = reorderKey;
-        setIsReordering(false);
       }
-    } 
-    // Se for DISTANCE mas não temos localização ainda, usar ordem original
-    else if (route.orderBy === "DISTANCE" && !currentPosition && optimizedStops.length === 0) {
-      setOptimizedStops(route.stops);
+      // 🔥 SE NÃO TEMOS LOCALIZAÇÃO AINDA, USAR A PRIMEIRA PARADA COMO REFERÊNCIA
+      else if (optimizedStops.length === 0) {
+        const firstStopPos = {
+          lat: route.stops[0]?.latitude || 0,
+          lng: route.stops[0]?.longitude || 0,
+        };
+
+        if (firstStopPos.lat !== 0 && firstStopPos.lng !== 0) {
+          const initialPos: [number, number] = [
+            firstStopPos.lat,
+            firstStopPos.lng,
+          ];
+          const reordered = reorderStopsByProximity(
+            route.stops,
+            initialPos,
+            visitedStops,
+          );
+          setOptimizedStops(reordered);
+          setCurrentStopIndex(0);
+        } else {
+          setOptimizedStops(route.stops);
+          setCurrentStopIndex(0);
+        }
+      }
     }
-    // Outros casos
-    else if (optimizedStops.length === 0) {
-      setOptimizedStops(route.stops);
-    }
-  }, [route, currentPosition, visitedStops, currentStopIndex, reorderStopsByProximity, optimizedStops, isReordering]);
+  }, [
+    route,
+    currentPosition,
+    visitedStops,
+    currentStopIndex,
+    reorderStopsByProximity,
+    optimizedStops,
+    isReordering,
+  ]);
 
   // Memoização dos valores derivados
-  const displayStops = useMemo(() => 
-    optimizedStops.length ? optimizedStops : route?.stops || [], 
-    [optimizedStops, route?.stops]
+  const displayStops = useMemo(
+    () => (optimizedStops.length ? optimizedStops : route?.stops || []),
+    [optimizedStops, route?.stops],
   );
-  
+
   const currentStop = displayStops[currentStopIndex];
   const totalStops = displayStops.length;
   const completedStops = visitedStops.length;
   const isLastStop = currentStopIndex === totalStops - 1;
 
   // 🔥 LOG PARA DEBUG
-console.log('🔍 DEBUG - Botão Agendar:', {
-  currentStopIndex,
-  totalStops,
-  isLastStop,
-  isModalOpen,
-  showNewRouteOption
-});
+  console.log("🔍 DEBUG - Botão Agendar:", {
+    currentStopIndex,
+    totalStops,
+    isLastStop,
+    isModalOpen,
+    showNewRouteOption,
+  });
 
-  const isFinished = route?.status === "FINISHED" || (completedStops === totalStops && totalStops > 0);
+  const isFinished =
+    route?.status === "FINISHED" ||
+    (completedStops === totalStops && totalStops > 0);
 
   // Verificar chegada ao destino (apenas quando a parada atual muda)
   const previousStopIdRef = useRef<string>("");
-  
+
   useEffect(() => {
     if (!currentPosition || !currentStop) return;
-    
+
     // Verificar se já estamos processando esta parada
     if (previousStopIdRef.current === currentStop.id) return;
 
@@ -408,17 +443,27 @@ console.log('🔍 DEBUG - Botão Agendar:', {
       previousStopIdRef.current = currentStop.id;
       toast.success(
         `✅ Você chegou em: ${currentStop.name || `Parada ${currentStopIndex + 1}`}`,
-        { duration: 3000 }
+        { duration: 3000 },
       );
       setIsModalOpen(true);
       setShowNewRouteOption(false);
       setNewRouteDate("");
       setNewRouteObservations("");
     }
-  }, [currentPosition, currentStop, visitedStops, isModalOpen, currentStopIndex, calculateDistance]);
+  }, [
+    currentPosition,
+    currentStop,
+    visitedStops,
+    isModalOpen,
+    currentStopIndex,
+    calculateDistance,
+  ]);
 
   const startSimulation = useCallback(() => {
-    if (!currentStop) {
+    // Usar a parada atual da lista otimizada (displayStops)
+    const targetStop = displayStops[currentStopIndex];
+
+    if (!targetStop) {
       toast.warning("Destino não encontrado");
       return;
     }
@@ -431,13 +476,22 @@ console.log('🔍 DEBUG - Botão Agendar:', {
     setIsGPSActive(false);
     setIsSimulating(true);
 
+    // Log para debug
+    console.log("🎯 SIMULAÇÃO - Destino atual:", {
+      name: targetStop.name,
+      lat: targetStop.latitude,
+      lng: targetStop.longitude,
+      currentPos: currentPosition,
+      orderBy: route?.orderBy,
+    });
+
     const steps = 150;
     const speed = 20;
     let step = 0;
     const startLat = currentPosition[0];
     const startLng = currentPosition[1];
-    const endLat = currentStop.latitude;
-    const endLng = currentStop.longitude;
+    const endLat = targetStop.latitude;
+    const endLng = targetStop.longitude;
 
     if (simulationInterval.current) clearInterval(simulationInterval.current);
 
@@ -453,10 +507,12 @@ console.log('🔍 DEBUG - Botão Agendar:', {
           clearInterval(simulationInterval.current);
         setCurrentPosition([endLat, endLng]);
         setIsSimulating(false);
-        toast.success("Simulação concluída!", { duration: 2000 });
+        toast.success(`Simulação concluída! Chegou em: ${targetStop.name}`, {
+          duration: 2000,
+        });
       }
     }, speed);
-  }, [currentStop, currentPosition]);
+  }, [displayStops, currentStopIndex, currentPosition, route?.orderBy]);
 
   const resumeRealGPS = useCallback(() => {
     setIsGPSActive(true);
@@ -478,7 +534,7 @@ console.log('🔍 DEBUG - Botão Agendar:', {
 
       const newVisitedStops = [...visitedStops, currentStop.id!];
       setVisitedStops(newVisitedStops);
-      
+
       // Resetar o tracking da parada
       previousStopIdRef.current = "";
 
@@ -505,7 +561,7 @@ console.log('🔍 DEBUG - Botão Agendar:', {
         setCurrentStopIndex(nextIndex);
         toast.success(
           `✅ Parada ${currentStopIndex + 1} concluída! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
-          { duration: 3000 }
+          { duration: 3000 },
         );
 
         setIsModalOpen(false);
@@ -522,7 +578,19 @@ console.log('🔍 DEBUG - Botão Agendar:', {
     } finally {
       setIsSubmitting(false);
     }
-  }, [currentStop, markStopVisited, routeId, comment, visitedStops, currentStopIndex, totalStops, updateRoute, router, refetch, displayStops]);
+  }, [
+    currentStop,
+    markStopVisited,
+    routeId,
+    comment,
+    visitedStops,
+    currentStopIndex,
+    totalStops,
+    updateRoute,
+    router,
+    refetch,
+    displayStops,
+  ]);
 
   const handleCreateNewRoute = useCallback(async () => {
     if (!route) return;
@@ -533,7 +601,9 @@ console.log('🔍 DEBUG - Botão Agendar:', {
     }
 
     setIsCreatingNewRoute(true);
-    const loadingToast = toast.loading("Criando nova rota...", { duration: Infinity });
+    const loadingToast = toast.loading("Criando nova rota...", {
+      duration: Infinity,
+    });
 
     try {
       if (currentStop && !visitedStops.includes(currentStop.id!)) {
@@ -590,7 +660,18 @@ console.log('🔍 DEBUG - Botão Agendar:', {
     } finally {
       setIsCreatingNewRoute(false);
     }
-  }, [route, newRouteDate, newRouteObservations, currentStop, visitedStops, markStopVisited, duplicateRoute, updateRoute, router, routeId]);
+  }, [
+    route,
+    newRouteDate,
+    newRouteObservations,
+    currentStop,
+    visitedStops,
+    markStopVisited,
+    duplicateRoute,
+    updateRoute,
+    router,
+    routeId,
+  ]);
 
   // Efeito para marcar rota como concluída
   useEffect(() => {
@@ -605,7 +686,10 @@ console.log('🔍 DEBUG - Botão Agendar:', {
           });
           localStorage.removeItem(`driver_route_${routeId}_index`);
           localStorage.removeItem(`driver_route_${routeId}_visited`);
-          toast.success("🎉 Rota finalizada com sucesso!", { duration: 4000, icon: "✅" });
+          toast.success("🎉 Rota finalizada com sucesso!", {
+            duration: 4000,
+            icon: "✅",
+          });
           setTimeout(() => router.push("/routes"), 2000);
         } catch (error) {
           console.error("Erro ao finalizar rota:", error);
@@ -614,7 +698,28 @@ console.log('🔍 DEBUG - Botão Agendar:', {
       }
     };
     checkAndFinishRoute();
-  }, [visitedStops, totalStops, route, routeId, updateRoute, router, isFinishing]);
+  }, [
+    visitedStops,
+    totalStops,
+    route,
+    routeId,
+    updateRoute,
+    router,
+    isFinishing,
+  ]);
+
+  // 🔥 LOG para debug da ordem das paradas
+  useEffect(() => {
+    if (route && displayStops.length > 0) {
+      console.log("📍 ORDEM DAS PARADAS:");
+      console.log(`Tipo de ordenação: ${route.orderBy}`);
+      displayStops.forEach((stop, idx) => {
+        console.log(
+          `  ${idx + 1}. ${stop.name} (${stop.city}) - lat:${stop.latitude}, lng:${stop.longitude}`,
+        );
+      });
+    }
+  }, [route, displayStops]);
 
   // Prefetch da lista de rotas
   const prefetchRoutes = useCallback(() => {
@@ -734,7 +839,10 @@ console.log('🔍 DEBUG - Botão Agendar:', {
                   >
                     {isSubmitting ? (
                       <>
-                        <Loader2 className="animate-spin inline mr-2" size={18} />
+                        <Loader2
+                          className="animate-spin inline mr-2"
+                          size={18}
+                        />
                         Confirmando...
                       </>
                     ) : (
@@ -743,15 +851,16 @@ console.log('🔍 DEBUG - Botão Agendar:', {
                   </button>
 
                   {/* Botão Agendar - aparece na última parada ou quando não há mais paradas */}
-{(currentStopIndex === totalStops - 1 || visitedStops.length === totalStops - 1) && (
-  <button
-    onClick={() => setShowNewRouteOption(true)}
-    className="w-full py-3 border-2 border-blue-600 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
-  >
-    <Copy size={18} />
-    Agendar
-  </button>
-)}
+                  {(currentStopIndex === totalStops - 1 ||
+                    visitedStops.length === totalStops - 1) && (
+                    <button
+                      onClick={() => setShowNewRouteOption(true)}
+                      className="w-full py-3 border-2 border-blue-600 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Copy size={18} />
+                      Agendar
+                    </button>
+                  )}
 
                   <button
                     onClick={() => setIsModalOpen(false)}

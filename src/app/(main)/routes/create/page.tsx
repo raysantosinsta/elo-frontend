@@ -9,16 +9,14 @@ import { z } from "zod";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  CalendarIcon,
+  CalendarDaysIcon,
   MapPinIcon,
-  PlusIcon,
-  Trash2Icon,
   Loader2,
-  UserIcon,
   MapPin, 
   ArrowUpDown,
   CheckCircleIcon,
-  AlertCircleIcon
+  Trash2Icon,
+  UserIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,7 +26,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -54,212 +51,156 @@ import { cn } from "@/lib/utils";
 import { useRoutes } from "@/hooks/useRoutes";
 import { userService } from "@/services/userService";
 import { User } from "@/types/chat";
+import { api } from "@/services/api";
 
 // --- SCHEMA DE VALIDAÇÃO ---
 const stopSchema = z.object({
-  name: z.string().min(1, "Número/Identificação é obrigatório"),
-  address: z.string().min(1, "Endereço é obrigatório"),
-  complement: z.string().optional(),
-  neighborhood: z.string().optional(),
-  city: z.string().min(1, "Cidade é obrigatória"),
-  state: z.string().min(2, "UF é obrigatória").max(2),
-  zipCode: z.string().min(8, "CEP inválido"),
+  id: z.string().optional(),
+  taskId: z.string(),
+  name: z.string(),
+  address: z.string(),
+  city: z.string(),
+  state: z.string(),
   latitude: z.number().optional().default(0),
   longitude: z.number().optional().default(0),
   notes: z.string().optional(),
+  assignedToName: z.string().optional(),
 });
 
 const formSchema = z.object({
-  title: z.string().min(3, "Título muito curto"),
-  description: z.string().optional(),
+  title: z.string().min(3, "Título é obrigatório (mínimo 3 caracteres)"),
   routeDate: z.date().optional(),
   userAssignedId: z.string().optional().nullable(),
   orderBy: z.enum(["DISTANCE", "PRIORITY"]).default("DISTANCE"),
-  stops: z.array(stopSchema).min(1, "Adicione pelo menos uma parada"),
+  stops: z.array(stopSchema).min(1, "Selecione pelo menos uma tarefa"),
 });
 
 type FormValues = z.infer<typeof formSchema>;
 
-// 🎯 Componente de Skeleton para loading
+// 🎯 Interface para Task
+interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  userAssigned?: { id: string; name: string };
+  taskAddress?: {
+    endereco: string;
+    numero?: string;
+    bairro?: string;
+    cidade: string;
+    estado: string;
+    cep: string;
+    latitude?: number;
+    longitude?: number;
+  };
+}
+
+// 🎯 Componente de Skeleton
 const FormSkeleton = () => (
   <div className="space-y-6">
     <div className="h-12 w-full bg-white/10 rounded-lg animate-pulse" />
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className="h-24 bg-white/10 rounded-lg animate-pulse" />
-      <div className="h-24 bg-white/10 rounded-lg animate-pulse" />
-    </div>
-    <div className="h-32 bg-white/10 rounded-lg animate-pulse" />
+    <div className="h-64 bg-white/10 rounded-lg animate-pulse" />
   </div>
 );
 
-// 🎯 Componente de StopItem memoizado
-const StopItem = memo(({ stop, index, onRemove, onZipChange, form, inputStyle, labelStyle }: any) => {
-  return (
-    <Card className="pt-6 px-4 pb-4 space-y-4 bg-white/5 border-white/10">
-      <div className="flex justify-between items-center border-b border-white/10 pb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold bg-[#D35400] text-white px-2 py-1 rounded uppercase tracking-wider">
-            Parada {index + 1}
-          </span>
-          {form.watch(`stops.${index}.latitude`) !== 0 && form.watch(`stops.${index}.longitude`) !== 0 && (
-            <CheckCircleIcon className="h-3 w-3 text-green-400" />
-          )}
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="hover:bg-red-500/10 transition-colors"
-          onClick={() => onRemove(index)}
-        >
-          <Trash2Icon className="h-4 w-4 text-red-500" />
-        </Button>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-        <div className="md:col-span-3">
-          <FormField
-            control={form.control}
-            name={`stops.${index}.zipCode`}
-            render={({ field: f }) => (
-              <FormItem>
-                <FormLabel className={labelStyle}>CEP</FormLabel>
-                <FormControl>
-                  <Input
-                    className={inputStyle}
-                    {...f}
-                    maxLength={8}
-                    onChange={(e) => {
-                      f.onChange(e);
-                      onZipChange(index, e.target.value);
-                    }}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-        <div className="md:col-span-6">
-          <FormField
-            control={form.control}
-            name={`stops.${index}.address`}
-            render={({ field: f }) => (
-              <FormItem>
-                <FormLabel className={labelStyle}>Rua</FormLabel>
-                <FormControl>
-                  <Input className={inputStyle} {...f} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-        <div className="md:col-span-3">
-          <FormField
-            control={form.control}
-            name={`stops.${index}.name`}
-            render={({ field: f }) => (
-              <FormItem>
-                <FormLabel className={labelStyle}>Número</FormLabel>
-                <FormControl>
-                  <Input className={inputStyle} placeholder="123" {...f} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <FormField
-          control={form.control}
-          name={`stops.${index}.city`}
-          render={({ field: f }) => (
-            <FormItem>
-              <FormLabel className={labelStyle}>Cidade</FormLabel>
-              <FormControl>
-                <Input className={inputStyle} {...f} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name={`stops.${index}.state`}
-          render={({ field: f }) => (
-            <FormItem>
-              <FormLabel className={labelStyle}>UF</FormLabel>
-              <FormControl>
-                <Input className={inputStyle} maxLength={2} {...f} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-    </Card>
-  );
-});
-
-StopItem.displayName = 'StopItem';
-
-// 🎯 Componente de Resumo memoizado
-const ReviewSummary = memo(({ form, users, fields }: any) => {
-  const selectedUser = users.find((u: any) => u.id === form.watch("userAssignedId"));
+// 🎯 Componente de Task Item para seleção
+const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
+  const hasLocation = task.taskAddress?.latitude && task.taskAddress?.longitude;
   
   return (
-    <Card className="bg-[#2C3E50] border-white/10 shadow-xl text-[#D1D5DB]">
-      <CardHeader>
-        <CardTitle className="text-white text-xl">Confirmar Criação</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="p-5 bg-white/5 rounded-lg space-y-4 text-sm border border-white/10">
-          <div className="flex justify-between border-b border-white/10 pb-2">
-            <span className="text-white font-semibold">Título:</span>
-            <span className="text-[#D1D5DB]">{form.watch("title") || "Não informado"}</span>
-          </div>
-          <div className="flex justify-between border-b border-white/10 pb-2">
-            <span className="text-white font-semibold">Algoritmo:</span>
-            <span className="text-[#D1D5DB]">
-              {form.watch("orderBy") === "DISTANCE" ? "📍 Proximidade" : "🎯 Prioridade"}
+    <div
+      className={cn(
+        "flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer",
+        isSelected
+          ? "bg-[#D35400]/20 border-[#D35400]/50"
+          : "bg-white/5 border-white/10 hover:border-[#D35400]/30"
+      )}
+      onClick={() => onToggle(task.id)}
+    >
+      <div className="flex-shrink-0 pt-0.5">
+        {isSelected ? (
+          <CheckCircleIcon className="h-5 w-5 text-[#D35400]" />
+        ) : (
+          <div className="w-5 h-5 rounded-full border-2 border-[#9CA3AF]" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h4 className="font-medium text-white truncate">{task.title}</h4>
+          {hasLocation && (
+            <span className="text-xs bg-green-500/20 text-green-300 px-1.5 py-0.5 rounded-full">
+              ✓ Geolocalizada
             </span>
-          </div>
-          <div className="flex justify-between border-b border-white/10 pb-2">
-            <span className="text-white font-semibold">Motorista:</span>
-            <span className="text-[#D1D5DB]">{selectedUser?.name || "Não atribuído"}</span>
-          </div>
-          <div className="flex justify-between border-b border-white/10 pb-2">
-            <span className="text-white font-semibold">Data da Operação:</span>
-            <span className="text-[#D1D5DB]">
-              {form.watch("routeDate")
-                ? format(form.watch("routeDate")!, "dd/MM/yyyy", { locale: ptBR })
-                : "Não definida"}
-            </span>
-          </div>
-          <div className="flex justify-between border-b border-white/10 pb-2">
-            <span className="text-white font-semibold">Total de Paradas:</span>
-            <span className="bg-[#D35400] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-              {fields.length} {fields.length === 1 ? "DESTINO" : "DESTINOS"}
-            </span>
-          </div>
+          )}
         </div>
-
-        <Button
-          type="submit"
-          className="w-full h-14 text-lg font-bold bg-[#D35400] hover:bg-[#E67E22] text-white transition-all shadow-lg active:scale-[0.98]"
-        >
-          Salvar e Gerar Rota
-        </Button>
-
-        <p className="text-center text-[#6B7280] text-xs">
-          Ao confirmar, a rota será enviada para o dispositivo do motorista.
-        </p>
-      </CardContent>
-    </Card>
+        {task.taskAddress && (
+          <p className="text-sm text-[#9CA3AF] truncate mt-0.5">
+            {task.taskAddress.endereco}, {task.taskAddress.cidade}/{task.taskAddress.estado}
+          </p>
+        )}
+        {task.userAssigned && (
+          <p className="text-xs text-[#6B7280] mt-1">
+            Responsável: {task.userAssigned.name}
+          </p>
+        )}
+        {/* 🔥 Descrição da tarefa */}
+        {task.description && (
+          <p className="text-xs text-[#6B7280] mt-1 line-clamp-2 italic">
+            📝 {task.description}
+          </p>
+        )}
+      </div>
+    </div>
   );
 });
 
-ReviewSummary.displayName = 'ReviewSummary';
+TaskItem.displayName = "TaskItem";
+
+// 🎯 Componente de StopItem (parada selecionada)
+const StopItem = memo(({ stop, index, onRemove }: any) => {
+  const handleRemoveClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onRemove(index);
+  };
+
+  return (
+    <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <span className="w-6 h-6 rounded-full bg-[#D35400]/20 text-[#D35400] flex items-center justify-center text-xs font-bold">
+          {index + 1}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-sm font-medium truncate">{stop.name}</p>
+          <p className="text-[#9CA3AF] text-xs truncate">{stop.address}, {stop.city}</p>
+          {stop.assignedToName && (
+            <p className="text-[#6B7280] text-xs truncate mt-0.5">
+              Responsável: {stop.assignedToName}
+            </p>
+          )}
+          {stop.notes && (
+            <p className="text-[#6B7280] text-xs truncate mt-0.5 line-clamp-2 italic">
+              📝 {stop.notes}
+            </p>
+          )}
+        </div>
+        {stop.latitude !== 0 && stop.longitude !== 0 && (
+          <CheckCircleIcon className="h-4 w-4 text-green-400 flex-shrink-0" />
+        )}
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={handleRemoveClick}
+        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 flex-shrink-0"
+        type="button"
+      >
+        <Trash2Icon className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+});
+
+StopItem.displayName = "StopItem";
 
 import { memo } from 'react';
 
@@ -268,16 +209,17 @@ export default function CreateRoutePage() {
   const { useCreateRoute } = useRoutes();
   const createRoute = useCreateRoute();
 
-  const [activeTab, setActiveTab] = useState("basic");
+  const [activeTab, setActiveTab] = useState("tasks");
   const [users, setUsers] = useState<User[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
-  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
 
   const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: "",
-      description: "",
       orderBy: "DISTANCE",
       stops: [],
       userAssignedId: null,
@@ -289,7 +231,7 @@ export default function CreateRoutePage() {
     name: "stops",
   });
 
-  // 🔥 Carregar usuários com cache
+  // 🔥 Carregar usuários
   useEffect(() => {
     async function loadUsers() {
       try {
@@ -304,74 +246,146 @@ export default function CreateRoutePage() {
     loadUsers();
   }, []);
 
-  // 🔥 Debounce do CEP
-  const handleZipCodeChange = useCallback(async (index: number, zip: string) => {
-    const cleanedZip = zip.replace(/\D/g, "");
-    form.setValue(`stops.${index}.zipCode`, cleanedZip);
-    
-    if (cleanedZip.length === 8) {
-      const toastId = `cep-${index}`;
-      toast.loading("Buscando endereço...", { id: toastId });
-      
-      try {
-        const res = await fetch(`https://viacep.com.br/ws/${cleanedZip}/json/`);
-        const data = await res.json();
-        
-        if (!data.erro) {
-          form.setValue(`stops.${index}.address`, data.logradouro, { shouldValidate: true });
-          form.setValue(`stops.${index}.neighborhood`, data.bairro, { shouldValidate: true });
-          form.setValue(`stops.${index}.city`, data.localidade, { shouldValidate: true });
-          form.setValue(`stops.${index}.state`, data.uf, { shouldValidate: true });
-          toast.success("Endereço encontrado!", { id: toastId });
-        } else {
-          toast.error("CEP não encontrado", { id: toastId });
-        }
-      } catch {
-        toast.error("Erro ao consultar CEP.", { id: toastId });
-      }
-    }
-  }, [form]);
-
-  // 🔥 Geocodificação otimizada
-  const geocodeStopIfNeeded = useCallback(async (stop: any) => {
-    if (stop.latitude && stop.latitude !== 0) return stop;
-    
-    const fullAddress = `${stop.address}, ${stop.name}, ${stop.city}, ${stop.state}, Brasil`;
+  // 🔥 Carregar tasks disponíveis (com endereço)
+  const loadAvailableTasks = useCallback(async () => {
+    setIsLoadingTasks(true);
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(fullAddress)}&format=json&limit=1`
-      );
-      const data = await response.json();
-      if (data && data.length > 0) {
-        return {
-          ...stop,
-          latitude: parseFloat(data[0].lat),
-          longitude: parseFloat(data[0].lon),
-        };
+      const response = await api.get("/tasks", {
+        params: { hasLocation: "true", limit: 100 },
+      });
+      const tasks = response.data?.data || [];
+      setAvailableTasks(tasks);
+      
+      if (tasks.length === 0) {
+        toast.info("Nenhuma tarefa com endereço disponível", { duration: 3000 });
+      } else {
+        toast.success(`${tasks.length} tarefas disponíveis`, { duration: 2000 });
       }
     } catch (error) {
-      console.error("Erro ao geocodificar:", error);
+      console.error("Erro ao carregar tasks:", error);
+      toast.error("Erro ao carregar lista de tarefas");
+    } finally {
+      setIsLoadingTasks(false);
     }
-    return stop;
   }, []);
 
+  // Carregar tasks ao entrar na aba
+  useEffect(() => {
+    if (activeTab === "tasks" && availableTasks.length === 0 && !isLoadingTasks) {
+      loadAvailableTasks();
+    }
+  }, [activeTab, availableTasks.length, isLoadingTasks, loadAvailableTasks]);
+
+  // 🔥 Converter task para stop
+  const convertTaskToStop = useCallback((task: Task) => {
+    const address = task.taskAddress;
+    return {
+      taskId: task.id,
+      name: task.title,
+      address: address?.endereco || "",
+      city: address?.cidade || "",
+      state: address?.estado || "",
+      latitude: address?.latitude || 0,
+      longitude: address?.longitude || 0,
+      notes: task.description || "",
+      assignedToName: task.userAssigned?.name || "",
+    };
+  }, []);
+
+  // 🔥 Adicionar tasks selecionadas como paradas
+  const addSelectedTasks = useCallback(() => {
+    const selectedTasks = availableTasks.filter(task => selectedTaskIds.has(task.id));
+    
+    if (selectedTasks.length === 0) {
+      toast.warning("Nenhuma tarefa selecionada");
+      return;
+    }
+
+    const existingTaskIds = new Set(fields.map(f => f.taskId).filter(Boolean));
+    const newTasks = selectedTasks.filter(task => !existingTaskIds.has(task.id));
+    
+    if (newTasks.length === 0) {
+      toast.warning("Todas as tarefas selecionadas já foram adicionadas");
+      return;
+    }
+
+    newTasks.forEach(task => {
+      const stop = convertTaskToStop(task);
+      append(stop);
+    });
+
+    toast.success(`${newTasks.length} tarefa(s) adicionada(s) à rota`);
+    
+    const newSelectedIds = new Set(selectedTaskIds);
+    newTasks.forEach(task => newSelectedIds.delete(task.id));
+    setSelectedTaskIds(newSelectedIds);
+  }, [availableTasks, selectedTaskIds, append, convertTaskToStop, fields]);
+
+  // 🔥 Alternar seleção de task
+  const toggleTaskSelection = useCallback((taskId: string) => {
+    setSelectedTaskIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // 🔥 Remover parada
+  const handleRemoveStop = useCallback((indexToRemove: number) => {
+    if (indexToRemove >= 0 && indexToRemove < fields.length) {
+      remove(indexToRemove);
+      toast.success("Parada removida", { duration: 1500 });
+    }
+  }, [fields.length, remove]);
+
+  // 🔥 Estatísticas
+  const stats = useMemo(() => ({
+    totalStops: fields.length,
+    hasCoordinates: fields.filter(stop => 
+      stop.latitude !== 0 && stop.longitude !== 0
+    ).length,
+  }), [fields]);
+
+  // 🔥 Tasks já adicionadas
+  const addedTaskIds = useMemo(() => new Set(fields.map(f => f.taskId).filter(Boolean)), [fields]);
+  
+  // 🔥 Tasks disponíveis que ainda não foram adicionadas
+  const availableNotAdded = useMemo(() => 
+    availableTasks.filter(task => !addedTaskIds.has(task.id)),
+    [availableTasks, addedTaskIds]
+  );
+
   const onSubmit = useCallback(async (data: FormValues) => {
-    setIsGeocoding(true);
-    const loadingToast = toast.loading("Preparando rota...");
+    if (data.stops.length === 0) {
+      toast.warning("Adicione pelo menos uma parada à rota");
+      return;
+    }
+    
+    const loadingToast = toast.loading("Criando rota...");
     
     try {
-      // Geocodificar automaticamente as paradas sem coordenadas
-      const stopsWithCoords = await Promise.all(
-        data.stops.map((stop) => geocodeStopIfNeeded(stop))
-      );
-
       const payload = {
         title: data.title,
-        description: data.description || "",
+        description: `Rota criada a partir de ${data.stops.length} tarefa(s)`,
         routeDate: data.routeDate?.toISOString(),
-        userAssignedId: data.userAssignedId || undefined,
+        userAssignedId: data.userAssignedId === "none" ? undefined : data.userAssignedId,
         orderBy: data.orderBy,
-        stops: stopsWithCoords,
+        stops: data.stops.map((stop: any) => ({
+          name: stop.name,
+          address: stop.address,
+          complement: "",
+          neighborhood: "",
+          city: stop.city,
+          state: stop.state,
+          zipCode: "",
+          latitude: stop.latitude || 0,
+          longitude: stop.longitude || 0,
+          notes: stop.notes || "",
+        })),
       };
       
       await createRoute.mutateAsync(payload as any);
@@ -391,61 +405,21 @@ export default function CreateRoutePage() {
       toast.error("Erro ao salvar rota.", {
         description: err?.message || "Tente novamente mais tarde",
       });
-    } finally {
-      setIsGeocoding(false);
     }
-  }, [createRoute, geocodeStopIfNeeded, router]);
+  }, [createRoute, router]);
 
-  // 🔥 Adicionar parada com feedback
-  const handleAddStop = useCallback(() => {
-    append({
-      name: "",
-      address: "",
-      city: "",
-      state: "",
-      zipCode: "",
-      latitude: 0,
-      longitude: 0,
-    });
-    toast.success("Nova parada adicionada", { duration: 1500 });
-  }, [append]);
-
-  // 🔥 Remover parada com confirmação
-  const handleRemoveStop = useCallback((index: number) => {
-    if (fields.length === 1) {
-      toast.warning("É necessário pelo menos uma parada");
-      return;
-    }
-    remove(index);
-    toast.success("Parada removida", { duration: 1500 });
-  }, [fields.length, remove]);
-
-  // 🔥 Estatísticas para o resumo
-  const stats = useMemo(() => ({
-    totalStops: fields.length,
-    hasCoordinates: fields.filter((_, idx) => 
-      form.watch(`stops.${idx}.latitude`) !== 0 && form.watch(`stops.${idx}.longitude`) !== 0
-    ).length,
-  }), [fields.length, form]);
-
-  // --- CLASSES DE ESTILO REUTILIZÁVEIS ---
   const inputStyle = "bg-[#2C3E50]/50 border-white/10 text-white placeholder:text-[#6B7280] focus-visible:ring-[#D35400] transition-all";
   const labelStyle = "text-[#D1D5DB]";
   const cardStyle = "bg-[#2C3E50] border-white/10 shadow-xl";
 
-  // 🔥 Prefetch da página de rotas
-  const prefetchRoutes = useCallback(() => {
-    router.prefetch("/routes");
-  }, [router]);
-
   return (
     <div className="min-h-screen bg-[#2C3E50] text-[#D1D5DB] pb-12">
       <div className="container mx-auto py-8 px-4 max-w-5xl">
-        {/* Header com stats */}
+        {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white">Criar Nova Rota</h1>
           <p className="text-[#9CA3AF] mt-1">
-            Preencha as informações abaixo para criar uma rota de entrega
+            Preencha as informações e selecione as tarefas que farão parte da rota
           </p>
           {stats.totalStops > 0 && (
             <div className="flex gap-3 mt-3 text-xs">
@@ -458,46 +432,38 @@ export default function CreateRoutePage() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-3 bg-white/5 border border-white/10">
+              <TabsList className="grid w-full grid-cols-2 bg-white/5 border border-white/10">
                 <TabsTrigger
-                  value="basic"
+                  value="tasks"
                   className="data-[state=active]:bg-[#D35400] data-[state=active]:text-white text-[#9CA3AF] transition-all"
                 >
-                  1. Definições
-                </TabsTrigger>
-                <TabsTrigger
-                  value="stops"
-                  className="data-[state=active]:bg-[#D35400] data-[state=active]:text-white text-[#9CA3AF] transition-all"
-                >
-                  2. Paradas ({fields.length})
+                  1. Selecionar Tarefas
                 </TabsTrigger>
                 <TabsTrigger
                   value="review"
                   className="data-[state=active]:bg-[#D35400] data-[state=active]:text-white text-[#9CA3AF] transition-all"
                 >
-                  3. Revisão
+                  2. Revisão ({stats.totalStops})
                 </TabsTrigger>
               </TabsList>
 
-              {/* ABA DEFINIÇÕES */}
-              <TabsContent value="basic" className="pt-4 space-y-4">
+              {/* ABA SELECIONAR TAREFAS */}
+              <TabsContent value="tasks" className="pt-4 space-y-6">
+                {/* Configurações da Rota */}
                 <Card className={cardStyle}>
-                  <CardHeader>
-                    <CardTitle className="text-white">Informações Gerais</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-4">
+                  <CardContent className="grid gap-4 pt-6">
+                    {/* 🔥 Campo Título */}
                     <FormField
                       control={form.control}
                       name="title"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className={labelStyle}>Título da Rota</FormLabel>
+                          <FormLabel className={labelStyle}>Título da Rota *</FormLabel>
                           <FormControl>
                             <Input
                               className={inputStyle}
-                              placeholder="Ex: Entregas Expressas"
+                              placeholder="Ex: Entregas Zona Sul, Visitas Técnicas..."
                               {...field}
-                              onFocus={prefetchRoutes}
                             />
                           </FormControl>
                           <FormMessage />
@@ -506,13 +472,48 @@ export default function CreateRoutePage() {
                     />
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Data */}
+                      <FormField
+                        control={form.control}
+                        name="routeDate"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-col">
+                            <FormLabel className={labelStyle}>Data</FormLabel>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  className={cn(inputStyle, "pl-3 text-left font-normal justify-start", !field.value && "text-[#9CA3AF]")}
+                                >
+                                  <CalendarDaysIcon className="mr-2 h-4 w-4" />
+                                  {field.value
+                                    ? format(field.value, "PPP", { locale: ptBR })
+                                    : "Escolher data"}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0 border-white/10 bg-[#2C3E50]" align="start">
+                                <Calendar
+                                  mode="single"
+                                  selected={field.value}
+                                  onSelect={field.onChange}
+                                  locale={ptBR}
+                                  className="text-white"
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Responsável */}
                       <FormField
                         control={form.control}
                         name="userAssignedId"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className={cn(labelStyle, "flex items-center gap-2")}>
-                              <UserIcon className="w-4 h-4 text-[#D35400]" /> Atribuir Funcionário
+                              <UserIcon className="w-4 h-4 text-[#D35400]" /> Responsável
                             </FormLabel>
                             <Select
                               onValueChange={field.onChange}
@@ -532,20 +533,18 @@ export default function CreateRoutePage() {
                                 ))}
                               </SelectContent>
                             </Select>
-                            <FormDescription className="text-[#6B7280]">
-                              Defina o responsável pela execução.
-                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
 
+                      {/* Rota Por */}
                       <FormField
                         control={form.control}
                         name="orderBy"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className={labelStyle}>Algoritmo de Rota</FormLabel>
+                            <FormLabel className={labelStyle}>Rota Por</FormLabel>
                             <Select onValueChange={field.onChange} defaultValue={field.value}>
                               <FormControl>
                                 <SelectTrigger className={inputStyle}>
@@ -555,162 +554,207 @@ export default function CreateRoutePage() {
                               <SelectContent className="bg-[#2C3E50] border-white/10 text-[#D1D5DB]">
                                 <SelectItem value="DISTANCE">
                                   <MapPin className="w-4 h-4 text-[#D35400] mr-2 inline" />
-                                  Proximidade (reordenado pelo GPS)
+                                  Proximidade
                                 </SelectItem>
                                 <SelectItem value="PRIORITY">
                                   <ArrowUpDown className="w-4 h-4 text-[#D35400] mr-2 inline" />
-                                  Prioridade (ordem manual)
+                                  Prioridade
                                 </SelectItem>
                               </SelectContent>
                             </Select>
-                            <FormDescription className="text-[#6B7280]">
-                              {field.value === "DISTANCE" 
-                                ? "A rota será reordenada automaticamente com base na localização do motorista" 
-                                : "A ordem das paradas será exatamente como você definir"}
-                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
                     </div>
-
-                    <FormField
-                      control={form.control}
-                      name="routeDate"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel className={labelStyle}>Data da Operação</FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className={cn(inputStyle, "pl-3 text-left font-normal", !field.value && "text-[#9CA3AF]")}
-                              >
-                                {field.value
-                                  ? format(field.value, "PPP", { locale: ptBR })
-                                  : "Escolher data"}
-                                <CalendarIcon className="ml-auto h-4 w-4 text-[#9CA3AF]" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 border-white/10 bg-[#2C3E50]" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                locale={ptBR}
-                                className="text-white"
-                              />
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
                   </CardContent>
                 </Card>
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    className="bg-[#D35400] hover:bg-[#D35400]/80 text-white transition-all active:scale-95"
-                    onClick={() => setActiveTab("stops")}
-                  >
-                    Próximo →
-                  </Button>
-                </div>
-              </TabsContent>
 
-              {/* ABA PARADAS */}
-              <TabsContent value="stops" className="pt-4 space-y-4">
+                {/* Seleção de Tarefas */}
                 <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-lg text-white">Destinos da Rota</h3>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="border-[#D35400] text-[#D35400] hover:bg-[#D35400] hover:text-white transition-all"
-                    onClick={handleAddStop}
-                  >
-                    <PlusIcon className="h-4 w-4 mr-1" /> Adicionar Parada
-                  </Button>
+                  <h3 className="font-bold text-lg text-white">Tarefas com Endereço</h3>
                 </div>
-                
-                {fields.length === 0 ? (
+
+                {isLoadingTasks ? (
+                  <Card className="bg-white/5 border-white/10">
+                    <CardContent className="text-center py-12">
+                      <Loader2 className="animate-spin mx-auto h-8 w-8 text-[#D35400] mb-4" />
+                      <p className="text-[#9CA3AF]">Carregando tarefas...</p>
+                    </CardContent>
+                  </Card>
+                ) : availableNotAdded.length === 0 ? (
                   <Card className="bg-white/5 border-white/10">
                     <CardContent className="text-center py-12">
                       <MapPinIcon className="mx-auto h-12 w-12 text-[#6B7280] mb-4" />
-                      <p className="text-[#9CA3AF]">Nenhuma parada adicionada</p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="mt-4 border-[#D35400] text-[#D35400] hover:bg-[#D35400] hover:text-white"
-                        onClick={handleAddStop}
-                      >
-                        <PlusIcon className="h-4 w-4 mr-1" /> Adicionar primeira parada
-                      </Button>
+                      <p className="text-[#9CA3AF]">
+                        {availableTasks.length === 0 
+                          ? "Nenhuma tarefa com endereço disponível"
+                          : "Todas as tarefas já foram adicionadas à rota"}
+                      </p>
+                      <p className="text-[#6B7280] text-sm mt-1">
+                        {availableTasks.length === 0 
+                          ? "Cadastre tarefas com endereço para utilizá-las na rota"
+                          : `Você já adicionou ${fields.length} tarefa(s)`}
+                      </p>
                     </CardContent>
                   </Card>
                 ) : (
-                  <div className="space-y-3">
-                    {fields.map((field, index) => (
-                      <StopItem
-                        key={field.id}
-                        stop={field}
-                        index={index}
-                        onRemove={handleRemoveStop}
-                        onZipChange={handleZipCodeChange}
-                        form={form}
-                        inputStyle={inputStyle}
-                        labelStyle={labelStyle}
+                  <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+                    {availableNotAdded.map((task) => (
+                      <TaskItem
+                        key={task.id}
+                        task={task}
+                        isSelected={selectedTaskIds.has(task.id)}
+                        onToggle={toggleTaskSelection}
                       />
                     ))}
                   </div>
                 )}
-                
-                <div className="flex justify-between">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="text-[#9CA3AF] hover:text-white transition-colors"
-                    onClick={() => setActiveTab("basic")}
-                  >
-                    ← Voltar
-                  </Button>
-                  <Button
-                    type="button"
-                    className="bg-[#D35400] text-white hover:bg-[#D35400]/80 transition-all active:scale-95"
-                    onClick={() => setActiveTab("review")}
-                    disabled={fields.length === 0}
-                  >
-                    Revisar Rota →
-                  </Button>
+
+                {/* Paradas já adicionadas */}
+                {fields.length > 0 && (
+                  <div className="mt-6">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-semibold text-white">Paradas selecionadas ({fields.length})</h4>
+                    </div>
+                    <div className="space-y-2">
+                      {fields.map((field, index) => (
+                        <StopItem
+                          key={field.id}
+                          stop={field}
+                          index={index}
+                          onRemove={handleRemoveStop}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center">
+                  <div />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      className="bg-green-600 hover:bg-green-700 text-white transition-all active:scale-95"
+                      onClick={addSelectedTasks}
+                      disabled={selectedTaskIds.size === 0}
+                    >
+                      Adicionar ({selectedTaskIds.size})
+                    </Button>
+                    <Button
+                      type="button"
+                      className="bg-[#D35400] text-white hover:bg-[#D35400]/80 transition-all active:scale-95"
+                      onClick={() => setActiveTab("review")}
+                      disabled={fields.length === 0}
+                    >
+                      Revisar Rota →
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
 
               {/* ABA REVISÃO */}
               <TabsContent value="review" className="pt-4 space-y-4">
-                <ReviewSummary form={form} users={users} fields={fields} />
+                <Card className="bg-[#2C3E50] border-white/10 shadow-xl text-[#D1D5DB]">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-white text-xl">Confirmar Criação</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="p-5 bg-white/5 rounded-lg space-y-4 text-sm border border-white/10">
+                      <div className="flex justify-between border-b border-white/10 pb-2">
+                        <span className="text-white font-semibold">Título:</span>
+                        <span className="text-[#D1D5DB]">{form.watch("title") || "Não informado"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/10 pb-2">
+                        <span className="text-white font-semibold">Total de Paradas:</span>
+                        <span className="bg-[#D35400] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                          {fields.length} {fields.length === 1 ? "DESTINO" : "DESTINOS"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/10 pb-2">
+                        <span className="text-white font-semibold">Rota Por:</span>
+                        <span className="text-[#D1D5DB]">
+                          {form.watch("orderBy") === "DISTANCE" ? "📍 Proximidade" : "🎯 Prioridade"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/10 pb-2">
+                        <span className="text-white font-semibold">Responsável:</span>
+                        <span className="text-[#D1D5DB]">
+                          {users.find(u => u.id === form.watch("userAssignedId"))?.name || "Não atribuído"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/10 pb-2">
+                        <span className="text-white font-semibold">Data:</span>
+                        <span className="text-[#D1D5DB]">
+                          {form.watch("routeDate")
+                            ? format(form.watch("routeDate")!, "dd/MM/yyyy", { locale: ptBR })
+                            : "Não definida"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Lista de paradas na revisão */}
+                    {fields.length > 0 && (
+                      <div className="mt-4">
+                        <h4 className="font-semibold text-white mb-3 text-sm">Paradas da Rota</h4>
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                          {fields.map((field, index) => (
+                            <div key={field.id} className="flex items-center gap-3 p-2 rounded-lg bg-white/5">
+                              <span className="w-6 h-6 rounded-full bg-[#D35400]/20 text-[#D35400] flex items-center justify-center text-xs font-bold">
+                                {index + 1}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-white text-sm font-medium truncate">{field.name}</p>
+                                <p className="text-[#9CA3AF] text-xs truncate">{field.address}, {field.city}</p>
+                                {field.assignedToName && (
+                                  <p className="text-[#6B7280] text-xs truncate mt-0.5">
+                                    Responsável: {field.assignedToName}
+                                  </p>
+                                )}
+                                {field.notes && (
+                                  <p className="text-[#6B7280] text-xs truncate mt-0.5 line-clamp-2 italic">
+                                    📝 {field.notes}
+                                  </p>
+                                )}
+                              </div>
+                              {field.latitude !== 0 && field.longitude !== 0 && (
+                                <CheckCircleIcon className="h-4 w-4 text-green-400 flex-shrink-0" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <Button
+                      type="submit"
+                      disabled={createRoute.isPending || fields.length === 0}
+                      className="w-full h-14 text-lg font-bold bg-[#D35400] hover:bg-[#E67E22] text-white transition-all shadow-lg active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {createRoute.isPending ? (
+                        <>
+                          <Loader2 className="animate-spin mr-2 h-5 w-5" />
+                          Salvando...
+                        </>
+                      ) : (
+                        "Salvar e Gerar Rota"
+                      )}
+                    </Button>
+
+                    <p className="text-center text-[#6B7280] text-xs">
+                      Ao confirmar, a rota será enviada para o dispositivo do motorista.
+                    </p>
+                  </CardContent>
+                </Card>
+
                 <div className="flex justify-between">
                   <Button
                     type="button"
                     variant="ghost"
                     className="text-[#9CA3AF] hover:text-white transition-colors"
-                    onClick={() => setActiveTab("stops")}
+                    onClick={() => setActiveTab("tasks")}
                   >
                     ← Voltar
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={createRoute.isPending || isGeocoding || fields.length === 0}
-                    className="bg-[#D35400] hover:bg-[#E67E22] text-white transition-all shadow-lg active:scale-95 disabled:opacity-50"
-                  >
-                    {createRoute.isPending || isGeocoding ? (
-                      <>
-                        <Loader2 className="animate-spin mr-2 h-4 w-4" />
-                        {isGeocoding ? "Geocodificando..." : "Salvando..."}
-                      </>
-                    ) : (
-                      "Salvar e Gerar Rota"
-                    )}
                   </Button>
                 </div>
               </TabsContent>

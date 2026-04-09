@@ -2,7 +2,15 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeftIcon, Loader2, PlusIcon, Trash2Icon, EditIcon, MapPinIcon, GripVerticalIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  Loader2,
+  PlusIcon,
+  Trash2Icon,
+  EditIcon,
+  MapPinIcon,
+  GripVerticalIcon,
+} from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
@@ -11,7 +19,7 @@ import { z } from "zod";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -30,27 +38,33 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import { useRoutes } from "@/hooks/useRoutes";
 import { UpdateRouteDto } from "@/services/api";
 import { userService } from "@/services/userService";
 import { User } from "@/types/chat";
 
-// --- SCHEMA ---
+// --- SCHEMA CORRIGIDO ---
 const stopSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, "Número/Nome é obrigatório"),
   address: z.string().min(1, "Endereço é obrigatório"),
   city: z.string().min(1, "Cidade é obrigatória"),
   state: z.string().min(2, "UF é obrigatória").max(2),
-  zipCode: z.string().min(8, "CEP inválido"),
-  latitude: z.number(),
-  longitude: z.number(),
+  zipCode: z.string().optional(), // 🔥 Tornado opcional
+  latitude: z.number().optional().default(0),
+  longitude: z.number().optional().default(0),
   notes: z.string().optional().nullable(),
   complement: z.string().optional().nullable(),
   neighborhood: z.string().optional().nullable(),
 });
+
 
 const formSchema = z.object({
   title: z.string().min(3, "Título muito curto"),
@@ -79,7 +93,7 @@ export default function EditRoutePage() {
   const [isStopDialogOpen, setIsStopDialogOpen] = useState(false);
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
 
-  const form = useForm<FormValues>({
+  const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: "",
@@ -173,17 +187,25 @@ export default function EditRoutePage() {
   }, [route, isLoadingUsers, form]);
 
   const onSubmit = async (data: FormValues) => {
+    console.log("LOG: SUBMIT chamado!", data);
+
     try {
+      // 🔥 CORREÇÃO: Garantir que nunca seja null
+      let userAssignedId = data.userAssignedId;
+      if (
+        userAssignedId === "none" ||
+        userAssignedId === "" ||
+        userAssignedId === null
+      ) {
+        userAssignedId = undefined;
+      }
+
       const payload: UpdateRouteDto = {
         title: data.title,
         status: data.status,
         description: data.description ?? undefined,
         orderBy: data.orderBy as "DISTANCE" | "PRIORITY",
-        userAssignedId:
-          data.userAssignedId === "none"
-            ? undefined
-            : (data.userAssignedId ?? undefined),
-
+        userAssignedId: userAssignedId, // Agora é string | undefined, nunca null
         stops: data.stops.map((s: any, index: number) => ({
           name: s.name,
           address: s.address,
@@ -195,17 +217,30 @@ export default function EditRoutePage() {
           complement: s.complement ?? undefined,
           neighborhood: s.neighborhood ?? undefined,
           notes: s.notes ?? undefined,
-          order: index + 1, // Salvar a ordem atual
+          order: index + 1,
         })),
       };
+
+      console.log("LOG: Payload sendo enviado:", payload);
 
       await updateRoute.mutateAsync({ id: routeId, data: payload });
       toast.success("Rota atualizada com sucesso!");
       router.push(`/routes/${routeId}`);
     } catch (err) {
+      console.error("LOG: Erro no submit:", err);
       toast.error("Erro ao atualizar a rota.");
-      console.error(err);
     }
+  };
+
+  // Função para forçar o submit via botão de teste
+  const handleForceSubmit = () => {
+    console.log("LOG: Botão de teste clicado!");
+    console.log("LOG: Valores do form:", form.getValues());
+    console.log("LOG: Form isValid:", form.formState.isValid);
+    console.log("LOG: Form errors:", form.formState.errors);
+
+    // Forçar o submit
+    form.handleSubmit(onSubmit)();
   };
 
   const handleEditStop = (index: number) => {
@@ -250,6 +285,15 @@ export default function EditRoutePage() {
     setIsStopDialogOpen(false);
   };
 
+  const handleRemoveStop = (index: number) => {
+    if (fields.length === 1) {
+      toast.warning("É necessário pelo menos uma parada");
+      return;
+    }
+    remove(index);
+    toast.success("Parada removida");
+  };
+
   // Handlers para Drag and Drop
   const handleDragStart = (index: number) => {
     if (!isPriorityMode) return;
@@ -259,10 +303,9 @@ export default function EditRoutePage() {
   const handleDragOver = (e: React.DragEvent, index: number) => {
     if (!isPriorityMode) return;
     e.preventDefault();
-    
+
     if (draggedItemIndex === null || draggedItemIndex === index) return;
-    
-    // Mover o item
+
     move(draggedItemIndex, index);
     setDraggedItemIndex(index);
   };
@@ -271,7 +314,6 @@ export default function EditRoutePage() {
     setDraggedItemIndex(null);
   };
 
-  // Handlers para botões de mover (alternativa sem drag and drop)
   const handleMoveUp = (index: number) => {
     if (index > 0) {
       move(index, index - 1);
@@ -295,6 +337,17 @@ export default function EditRoutePage() {
     );
   }
 
+  // Verificar se o botão deve estar desabilitado
+  const isSubmitDisabled = updateRoute.isPending || fields.length === 0;
+  console.log(
+    "LOG: isSubmitDisabled:",
+    isSubmitDisabled,
+    "isPending:",
+    updateRoute.isPending,
+    "fieldsLength:",
+    fields.length,
+  );
+
   return (
     <div className="container mx-auto py-8 px-4 max-w-5xl">
       <div className="flex items-center gap-4 mb-6">
@@ -302,6 +355,17 @@ export default function EditRoutePage() {
           <ArrowLeftIcon className="mr-2 h-4 w-4" /> Voltar
         </Button>
         <h1 className="text-3xl font-bold">Editar Rota</h1>
+      </div>
+
+      {/* Botão de teste */}
+      <div className="mb-4">
+        <Button
+          type="button"
+          onClick={handleForceSubmit}
+          className="bg-green-600 hover:bg-green-700 text-white"
+        >
+          TESTAR SUBMIT MANUAL
+        </Button>
       </div>
 
       <Form {...form}>
@@ -336,8 +400,8 @@ export default function EditRoutePage() {
                       <FormItem>
                         <FormLabel>Descrição</FormLabel>
                         <FormControl>
-                          <Textarea 
-                            {...field} 
+                          <Textarea
+                            {...field}
                             placeholder="Descrição opcional da rota..."
                             value={field.value || ""}
                           />
@@ -357,7 +421,7 @@ export default function EditRoutePage() {
                           <Select
                             key={`select-user-${field.value}`}
                             onValueChange={field.onChange}
-                            defaultValue={field.value || "none"}
+                            value={field.value || "none"}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -386,7 +450,7 @@ export default function EditRoutePage() {
                           <FormLabel>Status</FormLabel>
                           <Select
                             onValueChange={field.onChange}
-                            defaultValue={field.value}
+                            value={field.value}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -394,10 +458,18 @@ export default function EditRoutePage() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="SCHEDULED">Agendada</SelectItem>
-                              <SelectItem value="IN_PROGRESS">Em Andamento</SelectItem>
-                              <SelectItem value="FINISHED">Finalizada</SelectItem>
-                              <SelectItem value="CANCELED">Cancelada</SelectItem>
+                              <SelectItem value="SCHEDULED">
+                                Agendada
+                              </SelectItem>
+                              <SelectItem value="IN_PROGRESS">
+                                Em Andamento
+                              </SelectItem>
+                              <SelectItem value="FINISHED">
+                                Finalizada
+                              </SelectItem>
+                              <SelectItem value="CANCELED">
+                                Cancelada
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -414,7 +486,7 @@ export default function EditRoutePage() {
                           <Select
                             key={`select-order-${field.value}`}
                             onValueChange={field.onChange}
-                            defaultValue={field.value}
+                            value={field.value}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -431,8 +503,8 @@ export default function EditRoutePage() {
                             </SelectContent>
                           </Select>
                           <p className="text-xs text-muted-foreground">
-                            {isPriorityMode 
-                              ? "✓ Você pode arrastar as paradas para reordenar ou usar os botões ↑ ↓" 
+                            {isPriorityMode
+                              ? "✓ Você pode arrastar as paradas para reordenar ou usar os botões ↑ ↓"
                               : "ℹ️ No modo 'Menor Distância', a ordem é definida automaticamente pelo sistema"}
                           </p>
                           <FormMessage />
@@ -458,16 +530,17 @@ export default function EditRoutePage() {
                   <CardContent className="text-center py-12">
                     <MapPinIcon className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                     <p className="text-muted-foreground">
-                      Nenhuma parada adicionada. Clique em &ldquo;Adicionar Parada&rdquo; para começar.
+                      Nenhuma parada adicionada. Clique em &ldquo;Adicionar
+                      Parada&rdquo; para começar.
                     </p>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="space-y-3">
                   {fields.map((field, index) => (
-                    <Card 
+                    <Card
                       key={field.id}
-                      className={`transition-all ${isPriorityMode ? 'cursor-move hover:border-primary/50' : ''}`}
+                      className={`transition-all ${isPriorityMode ? "cursor-move hover:border-primary/50" : ""}`}
                       draggable={isPriorityMode}
                       onDragStart={() => handleDragStart(index)}
                       onDragOver={(e) => handleDragOver(e, index)}
@@ -481,7 +554,9 @@ export default function EditRoutePage() {
                                 <GripVerticalIcon className="h-5 w-5 text-muted-foreground" />
                               </div>
                             )}
-                            <Badge variant="secondary">Parada {index + 1}</Badge>
+                            <Badge variant="secondary">
+                              Parada {index + 1}
+                            </Badge>
                             {form.watch(`stops.${index}.name`) && (
                               <span className="font-medium">
                                 {form.watch(`stops.${index}.name`)}
@@ -526,7 +601,7 @@ export default function EditRoutePage() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => remove(index)}
+                              onClick={() => handleRemoveStop(index)}
                             >
                               <Trash2Icon className="h-4 w-4 text-red-500" />
                             </Button>
@@ -536,11 +611,17 @@ export default function EditRoutePage() {
                         <div className="space-y-2 text-sm">
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <span className="text-muted-foreground">Endereço:</span>
-                              <p>{form.watch(`stops.${index}.address`) || "-"}</p>
+                              <span className="text-muted-foreground">
+                                Endereço:
+                              </span>
+                              <p>
+                                {form.watch(`stops.${index}.address`) || "-"}
+                              </p>
                             </div>
                             <div>
-                              <span className="text-muted-foreground">Cidade/UF:</span>
+                              <span className="text-muted-foreground">
+                                Cidade/UF:
+                              </span>
                               <p>
                                 {form.watch(`stops.${index}.city`) || "-"}/
                                 {form.watch(`stops.${index}.state`) || "-"}
@@ -549,8 +630,12 @@ export default function EditRoutePage() {
                           </div>
                           {form.watch(`stops.${index}.notes`) && (
                             <div>
-                              <span className="text-muted-foreground">Observações:</span>
-                              <p className="text-sm">{form.watch(`stops.${index}.notes`)}</p>
+                              <span className="text-muted-foreground">
+                                Observações:
+                              </span>
+                              <p className="text-sm">
+                                {form.watch(`stops.${index}.notes`)}
+                              </p>
                             </div>
                           )}
                         </div>
@@ -559,24 +644,25 @@ export default function EditRoutePage() {
                   ))}
                 </div>
               )}
-              
+
               {isPriorityMode && fields.length > 1 && (
                 <div className="bg-muted/50 p-3 rounded-lg text-sm text-muted-foreground">
-                  💡 Dica: Você pode arrastar e soltar as paradas para reordenar, ou usar os botões ↑ ↓ para mover.
+                  💡 Dica: Você pode arrastar e soltar as paradas para
+                  reordenar, ou usar os botões ↑ ↓ para mover.
                 </div>
               )}
             </TabsContent>
           </Tabs>
 
           <div className="flex justify-end gap-4 mt-6">
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => router.back()}
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={updateRoute.isPending}>
+            <Button type="submit" disabled={isSubmitDisabled}>
               {updateRoute.isPending ? (
                 <>
                   <Loader2 className="animate-spin mr-2" />
@@ -608,7 +694,10 @@ export default function EditRoutePage() {
                   <FormItem>
                     <FormLabel>Número/Nome da Parada *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="Ex: Parada 1, Empresa ABC" />
+                      <Input
+                        {...field}
+                        placeholder="Ex: Parada 1, Empresa ABC"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -622,7 +711,10 @@ export default function EditRoutePage() {
                   <FormItem>
                     <FormLabel>Endereço *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="Rua, número, complemento" />
+                      <Input
+                        {...field}
+                        placeholder="Rua, número, complemento"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -711,11 +803,13 @@ export default function EditRoutePage() {
                     <FormItem>
                       <FormLabel>Latitude</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          step="any" 
+                        <Input
+                          type="number"
+                          step="any"
                           {...field}
-                          onChange={e => field.onChange(parseFloat(e.target.value))}
+                          onChange={(e) =>
+                            field.onChange(parseFloat(e.target.value))
+                          }
                         />
                       </FormControl>
                       <FormMessage />
@@ -730,11 +824,13 @@ export default function EditRoutePage() {
                     <FormItem>
                       <FormLabel>Longitude</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          step="any" 
+                        <Input
+                          type="number"
+                          step="any"
                           {...field}
-                          onChange={e => field.onChange(parseFloat(e.target.value))}
+                          onChange={(e) =>
+                            field.onChange(parseFloat(e.target.value))
+                          }
                         />
                       </FormControl>
                       <FormMessage />
@@ -750,8 +846,8 @@ export default function EditRoutePage() {
                   <FormItem>
                     <FormLabel>Observações</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        {...field} 
+                      <Textarea
+                        {...field}
                         value={field.value || ""}
                         placeholder="Informações adicionais sobre a parada..."
                       />
@@ -771,9 +867,15 @@ export default function EditRoutePage() {
                 </Button>
                 <Button
                   type="button"
-                  onClick={editingStopIndex !== null ? handleSaveStop : handleSaveNewStop}
+                  onClick={
+                    editingStopIndex !== null
+                      ? handleSaveStop
+                      : handleSaveNewStop
+                  }
                 >
-                  {editingStopIndex !== null ? "Salvar Alterações" : "Adicionar Parada"}
+                  {editingStopIndex !== null
+                    ? "Salvar Alterações"
+                    : "Adicionar Parada"}
                 </Button>
               </div>
             </form>
