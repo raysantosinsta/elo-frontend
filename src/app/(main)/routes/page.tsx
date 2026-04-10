@@ -829,7 +829,7 @@ export default function RoutesPage() {
         {/* Header */}
         <PageHeader
           title="Rotas"
-          // description="Listagem de rotas"
+          description="Gerencie as rotas do sistema."
           searchValue={searchTerm}
           onSearchChange={(value) => debouncedSetSearch(value)}
           searchPlaceholder="Pesquisar por titulo..."
@@ -1090,7 +1090,7 @@ export default function RoutesPage() {
 
         {/* GenericTable com paginação */}
         <GenericTable
-          title="Listagem de Rotas"
+          title="Listagem"
           data={paginatedRoutes}
           columns={columns}
           isLoading={isLoading}
