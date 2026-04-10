@@ -10,12 +10,15 @@ import {
   EditIcon,
   MapPinIcon,
   GripVerticalIcon,
+  CalendarIcon,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +47,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 
 import { useRoutes } from "@/hooks/useRoutes";
 import { UpdateRouteDto } from "@/services/api";
@@ -57,7 +67,7 @@ const stopSchema = z.object({
   address: z.string().min(1, "Endereço é obrigatório"),
   city: z.string().min(1, "Cidade é obrigatória"),
   state: z.string().min(2, "UF é obrigatória").max(2),
-  zipCode: z.string().optional(), // 🔥 Tornado opcional
+  zipCode: z.string().optional(),
   latitude: z.number().optional().default(0),
   longitude: z.number().optional().default(0),
   notes: z.string().optional().nullable(),
@@ -65,10 +75,10 @@ const stopSchema = z.object({
   neighborhood: z.string().optional().nullable(),
 });
 
-
 const formSchema = z.object({
   title: z.string().min(3, "Título muito curto"),
   description: z.string().optional().nullable(),
+  routeDate: z.date().optional().nullable(), // 🔥 Adicionado campo de data
   userAssignedId: z.string().optional().nullable(),
   status: z.enum(["SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELED"]),
   orderBy: z.enum(["DISTANCE", "PRIORITY"]),
@@ -98,6 +108,7 @@ export default function EditRoutePage() {
     defaultValues: {
       title: "",
       description: "",
+      routeDate: null,
       status: "SCHEDULED",
       orderBy: "DISTANCE",
       stops: [],
@@ -154,6 +165,7 @@ export default function EditRoutePage() {
       console.log("LOG: Populando formulário com os seguintes dados:", {
         userAssignedId: route.userAssigned?.id || (route as any).userAssignedId,
         orderBy: (route as any).orderBy,
+        routeDate: route.routeDate,
       });
 
       const sortedStops = [...route.stops].sort(
@@ -163,6 +175,7 @@ export default function EditRoutePage() {
       form.reset({
         title: route.title,
         description: route.description || "",
+        routeDate: route.routeDate ? new Date(route.routeDate) : null,
         status: route.status,
         orderBy: (route as any).orderBy || "DISTANCE",
         userAssignedId:
@@ -190,7 +203,6 @@ export default function EditRoutePage() {
     console.log("LOG: SUBMIT chamado!", data);
 
     try {
-      // 🔥 CORREÇÃO: Garantir que nunca seja null
       let userAssignedId = data.userAssignedId;
       if (
         userAssignedId === "none" ||
@@ -204,8 +216,9 @@ export default function EditRoutePage() {
         title: data.title,
         status: data.status,
         description: data.description ?? undefined,
+        routeDate: data.routeDate ? data.routeDate.toISOString() : undefined,
         orderBy: data.orderBy as "DISTANCE" | "PRIORITY",
-        userAssignedId: userAssignedId, // Agora é string | undefined, nunca null
+        userAssignedId: userAssignedId,
         stops: data.stops.map((s: any, index: number) => ({
           name: s.name,
           address: s.address,
@@ -230,17 +243,6 @@ export default function EditRoutePage() {
       console.error("LOG: Erro no submit:", err);
       toast.error("Erro ao atualizar a rota.");
     }
-  };
-
-  // Função para forçar o submit via botão de teste
-  const handleForceSubmit = () => {
-    console.log("LOG: Botão de teste clicado!");
-    console.log("LOG: Valores do form:", form.getValues());
-    console.log("LOG: Form isValid:", form.formState.isValid);
-    console.log("LOG: Form errors:", form.formState.errors);
-
-    // Forçar o submit
-    form.handleSubmit(onSubmit)();
   };
 
   const handleEditStop = (index: number) => {
@@ -337,16 +339,7 @@ export default function EditRoutePage() {
     );
   }
 
-  // Verificar se o botão deve estar desabilitado
   const isSubmitDisabled = updateRoute.isPending || fields.length === 0;
-  console.log(
-    "LOG: isSubmitDisabled:",
-    isSubmitDisabled,
-    "isPending:",
-    updateRoute.isPending,
-    "fieldsLength:",
-    fields.length,
-  );
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-5xl">
@@ -355,17 +348,6 @@ export default function EditRoutePage() {
           <ArrowLeftIcon className="mr-2 h-4 w-4" /> Voltar
         </Button>
         <h1 className="text-3xl font-bold">Editar Rota</h1>
-      </div>
-
-      {/* Botão de teste */}
-      <div className="mb-4">
-        <Button
-          type="button"
-          onClick={handleForceSubmit}
-          className="bg-green-600 hover:bg-green-700 text-white"
-        >
-          TESTAR SUBMIT MANUAL
-        </Button>
       </div>
 
       <Form {...form}>
@@ -406,6 +388,47 @@ export default function EditRoutePage() {
                             value={field.value || ""}
                           />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* 🔥 NOVO CAMPO: Data da Rota */}
+                  <FormField
+                    control={form.control}
+                    name="routeDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Data da Rota</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value ? (
+                                  format(field.value, "PPP", { locale: ptBR })
+                                ) : (
+                                  <span>Selecionar data</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value || undefined}
+                              onSelect={field.onChange}
+                              initialFocus
+                              locale={ptBR}
+                            />
+                          </PopoverContent>
+                        </Popover>
                         <FormMessage />
                       </FormItem>
                     )}

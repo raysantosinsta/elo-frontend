@@ -16,12 +16,10 @@ import {
   Loader2,
   Lock,
   Package,
-  Plus,
-  X,
+  X
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSwipeable } from "react-swipeable";
 import { toast } from "sonner";
 
 import { useCompanySettings } from "@/hooks/use-company-settings";
