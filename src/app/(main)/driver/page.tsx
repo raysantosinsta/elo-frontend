@@ -858,7 +858,7 @@ export default function DriverPage() {
                       className="w-full py-3 border-2 border-blue-600 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
                     >
                       <Copy size={18} />
-                      Agendar
+                      Agendar Rota
                     </button>
                   )}
 

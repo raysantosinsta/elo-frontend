@@ -738,8 +738,7 @@ export default function ProductFlowKanban() {
 
       // Se o cargo profissional for um objeto, pega o name
       const userRole =
-        typeof userProfessionalRole === "object" &&
-        userProfessionalRole !== null
+        typeof userProfessionalRole === "object" && userProfessionalRole !== null
           ? ((userProfessionalRole as any).name || "").toLowerCase()
           : String(userProfessionalRole).toLowerCase();
 
