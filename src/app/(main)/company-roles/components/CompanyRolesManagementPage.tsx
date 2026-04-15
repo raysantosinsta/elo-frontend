@@ -5,15 +5,11 @@ import {
   AlertTriangle,
   Briefcase,
   Edit,
-  Hash,
   Loader2,
   MoreHorizontal,
   Plus,
   Power,
   Trash2,
-  UserCheck,
-  UserCog,
-  Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -54,7 +50,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -80,16 +75,6 @@ interface CompanyRole {
     companyRoleUsers: number;
     professionalRoleUsers: number;
   };
-  companyRoleUsers?: Array<{
-    id: string;
-    name: string;
-    email: string;
-  }>;
-  professionalRoleUsers?: Array<{
-    id: string;
-    name: string;
-    email: string;
-  }>;
 }
 
 interface CreateRoleDto {
@@ -100,15 +85,6 @@ interface CreateRoleDto {
 
 interface UpdateRoleDto extends Partial<CreateRoleDto> {
   status?: "ACTIVE" | "INACTIVE";
-}
-
-interface UserInfo {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  status: string;
-  createdAt: string;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -146,56 +122,46 @@ export default function CompanyRolesManagementPage() {
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
 
-  // Estado para visualizar usuários do cargo
-  const [viewUsersRole, setViewUsersRole] = useState<CompanyRole | null>(null);
-  const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
-  const [usersTab, setUsersTab] = useState<"company" | "professional">("company");
-  const [companyRoleUsers, setCompanyRoleUsers] = useState<UserInfo[]>([]);
-  const [professionalRoleUsers, setProfessionalRoleUsers] = useState<UserInfo[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
+  const fetchRoles = useCallback(async () => {
+    if (!canManage) {
+      console.log("❌ [fetchRoles] Sem permissão para gerenciar cargos", {
+        canManage,
+        isMaster,
+        isAdmin,
+        userRole: user?.role,
+      });
+      return;
+    }
 
- // No fetchRoles, adicione logs detalhados
-const fetchRoles = useCallback(async () => {
-  if (!canManage) {
-    console.log("❌ [fetchRoles] Sem permissão para gerenciar cargos", {
-      canManage,
-      isMaster,
-      isAdmin,
-      userRole: user?.role,
+    console.log("🔄 [fetchRoles] Iniciando busca de cargos...", {
+      includeInactive,
+      limit: 100,
     });
-    return;
-  }
-  
-  console.log("🔄 [fetchRoles] Iniciando busca de cargos...", {
-    includeInactive,
-    limit: 100,
-  });
-  
-  try {
-    setLoading(true);
-    const response = await api.get<{ data: CompanyRole[]; total: number }>(
-      `/company-roles?limit=100&includeInactive=${includeInactive}`,
-    );
-    
-    console.log("✅ [fetchRoles] Resposta recebida:", {
-      status: response.status,
-      dataLength: response.data?.data?.length,
-      total: response.data?.total,
-      fullResponse: response.data,
-    });
-    
-    setRoles(response.data.data || []);
-  } catch (error: any) {
-    console.error("❌ [fetchRoles] Erro:", {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
-    });
-    showError("Erro", "Não foi possível carregar os cargos");
-  } finally {
-    setLoading(false);
-  }
-}, [canManage, includeInactive, showError]);
+
+    try {
+      setLoading(true);
+      const response = await api.get<{ data: CompanyRole[]; total: number }>(
+        `/company-roles?limit=100&includeInactive=${includeInactive}`,
+      );
+
+      console.log("✅ [fetchRoles] Resposta recebida:", {
+        status: response.status,
+        dataLength: response.data?.data?.length,
+        total: response.data?.total,
+      });
+
+      setRoles(response.data.data || []);
+    } catch (error: any) {
+      console.error("❌ [fetchRoles] Erro:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      showError("Erro", "Não foi possível carregar os cargos");
+    } finally {
+      setLoading(false);
+    }
+  }, [canManage, includeInactive, showError]);
 
   useEffect(() => {
     if (user) fetchRoles();
@@ -222,31 +188,6 @@ const fetchRoles = useCallback(async () => {
   }, [filteredRoles, currentPage]);
 
   const totalPages = Math.ceil(filteredRoles.length / ITEMS_PER_PAGE);
-
-  // --- Fetch Users by Role ---
-  const fetchUsersByRole = async (roleId: string, type: "company" | "professional") => {
-    setLoadingUsers(true);
-    try {
-      const endpoint = type === "company" 
-        ? `/company-roles/${roleId}/company-role-users`
-        : `/company-roles/${roleId}/professional-role-users`;
-      
-      const response = await api.get<{ data: UserInfo[]; total: number }>(
-        `${endpoint}?limit=100`
-      );
-      
-      if (type === "company") {
-        setCompanyRoleUsers(response.data.data || []);
-      } else {
-        setProfessionalRoleUsers(response.data.data || []);
-      }
-    } catch (error: any) {
-      console.error(`Erro ao buscar usuários (${type}):`, error);
-      toast.error(`Erro ao carregar usuários do cargo`);
-    } finally {
-      setLoadingUsers(false);
-    }
-  };
 
   // --- Handlers de Modal ---
   const handleOpenCreate = () => {
@@ -308,7 +249,10 @@ const fetchRoles = useCallback(async () => {
         );
         toast.success("Cargo atualizado com sucesso!");
       } else {
-        const response = await api.post<CompanyRole>("/company-roles", formData);
+        const response = await api.post<CompanyRole>(
+          "/company-roles",
+          formData,
+        );
         setRoles((prev) => [response.data, ...prev]);
         toast.success("Cargo criado com sucesso!");
       }
@@ -325,14 +269,19 @@ const fetchRoles = useCallback(async () => {
   // --- Toggle Status ---
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     if (!isMaster && !isAdmin) {
-      showError("Permissão Negada", "Apenas Master ou Admin podem alterar o status.");
+      showError(
+        "Permissão Negada",
+        "Apenas Master ou Admin podem alterar o status.",
+      );
       return;
     }
 
     const newStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     try {
       await api.patch(`/company-roles/${id}`, { status: newStatus });
-      toast.success(`Cargo ${newStatus === "ACTIVE" ? "ativado" : "inativado"} com sucesso`);
+      toast.success(
+        `Cargo ${newStatus === "ACTIVE" ? "ativado" : "inativado"} com sucesso`,
+      );
       setRoles((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)),
       );
@@ -366,7 +315,9 @@ const fetchRoles = useCallback(async () => {
   const handleRestore = async () => {
     if (!restoreId) return;
     try {
-      const response = await api.patch<CompanyRole>(`/company-roles/${restoreId}/restore`);
+      const response = await api.patch<CompanyRole>(
+        `/company-roles/${restoreId}/restore`,
+      );
       setRoles((prev) =>
         prev.map((r) => (r.id === restoreId ? response.data : r)),
       );
@@ -379,23 +330,11 @@ const fetchRoles = useCallback(async () => {
     }
   };
 
-  // --- View Users by Role ---
-  const handleViewUsers = async (role: CompanyRole) => {
-    setViewUsersRole(role);
-    setUsersTab("company");
-    setCompanyRoleUsers([]);
-    setProfessionalRoleUsers([]);
-    setIsUsersModalOpen(true);
-    await fetchUsersByRole(role.id, "company");
-    await fetchUsersByRole(role.id, "professional");
-  };
-
   // --- Colunas da Tabela ---
   const tableColumns: Column<CompanyRole>[] = useMemo(() => {
     const cols: Column<CompanyRole>[] = [
       {
         header: "Cargo",
-        className: "w-[250px]",
         cell: (role) => (
           <div className="flex flex-col">
             <span className="font-medium text-[#2D3436] flex items-center gap-2">
@@ -411,53 +350,14 @@ const fetchRoles = useCallback(async () => {
         ),
       },
       {
-        header: "Nível",
-        cell: (role) => (
-          <div className="flex items-center gap-1">
-            <Hash className="h-3 w-3 text-[#95A5A6]" />
-            <Badge variant="outline" className="bg-[#F5F0E6] text-[#2C3E50]">
-              {role.level}
-            </Badge>
-          </div>
-        ),
-      },
-      {
-        header: "Usuários (Empresa)",
-        cell: (role) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex items-center gap-1 text-[#2C3E50] hover:text-[#D35400]"
-            onClick={() => handleViewUsers(role)}
-          >
-            <UserCog className="h-4 w-4" />
-            <span>{role._count?.companyRoleUsers || 0}</span>
-          </Button>
-        ),
-      },
-      {
-        header: "Usuários (Profissional)",
-        cell: (role) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex items-center gap-1 text-[#2C3E50] hover:text-[#D35400]"
-            onClick={() => handleViewUsers(role)}
-          >
-            <UserCheck className="h-4 w-4" />
-            <span>{role._count?.professionalRoleUsers || 0}</span>
-          </Button>
-        ),
-      },
-      {
         header: "Status",
         cell: (role) => (
           <Badge
             variant="outline"
             className={
               role.status === "ACTIVE"
-                ? "bg-green-50 text-green-700 border-green-200"
-                : "bg-gray-100 text-gray-500 border-gray-200"
+                ? "bg-green-50 text-green-700 border-green-200 whitespace-nowrap"
+                : "bg-gray-100 text-gray-500 border-gray-200 whitespace-nowrap"
             }
           >
             {role.status === "ACTIVE" ? "Ativo" : "Inativo"}
@@ -469,56 +369,57 @@ const fetchRoles = useCallback(async () => {
     if (canManage) {
       cols.push({
         header: "Ações",
-        className: "text-right",
         cell: (role) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="h-8 w-8 p-0 text-[#2C3E50] hover:text-[#D35400] hover:bg-transparent"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Opções</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => handleOpenEdit(role)}>
-                <Edit className="mr-2 h-4 w-4" /> Editar
-              </DropdownMenuItem>
-              {role.status === "ACTIVE" ? (
-                <DropdownMenuItem
-                  onClick={() => handleToggleStatus(role.id, role.status)}
-                  className="text-amber-600"
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="h-8 w-8 p-0 text-[#2C3E50] hover:text-[#D35400] hover:bg-transparent"
                 >
-                  <Power className="mr-2 h-4 w-4" /> Inativar
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Opções</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => handleOpenEdit(role)}>
+                  <Edit className="mr-2 h-4 w-4" /> Editar
                 </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem
-                  onClick={() => {
-                    setRestoreId(role.id);
-                    setIsRestoreOpen(true);
-                  }}
-                  className="text-green-600"
-                >
-                  <Power className="mr-2 h-4 w-4" /> Reativar
-                </DropdownMenuItem>
-              )}
-              {role.status === "INACTIVE" && (
-                <>
-                  <DropdownMenuSeparator />
+                {role.status === "ACTIVE" ? (
                   <DropdownMenuItem
-                    className="text-red-600 focus:text-red-600"
-                    onClick={() => {
-                      setDeleteId(role.id);
-                      setIsDeleteOpen(true);
-                    }}
+                    onClick={() => handleToggleStatus(role.id, role.status)}
+                    className="text-amber-600"
                   >
-                    <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                    <Power className="mr-2 h-4 w-4" /> Inativar
                   </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                ) : (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setRestoreId(role.id);
+                      setIsRestoreOpen(true);
+                    }}
+                    className="text-green-600"
+                  >
+                    <Power className="mr-2 h-4 w-4" /> Reativar
+                  </DropdownMenuItem>
+                )}
+                {role.status === "INACTIVE" && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-red-600 focus:text-red-600"
+                      onClick={() => {
+                        setDeleteId(role.id);
+                        setIsDeleteOpen(true);
+                      }}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ),
       });
     }
@@ -540,10 +441,10 @@ const fetchRoles = useCallback(async () => {
         {/* Header */}
         <PageHeader
           title="Cargos da Empresa"
-          description="Gerencie os cargos e funções da sua organização."
+          description="Gerencie os cargos da sua organização."
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
-          searchPlaceholder="Buscar por nome ou descrição..."
+          searchPlaceholder="Buscar por cargo e descrição ..."
         >
           <div className="flex items-center gap-2">
             <Button
@@ -642,7 +543,8 @@ const fetchRoles = useCallback(async () => {
                   className="border-[#E5E5E5] focus:border-[#D35400] focus:ring-[#D35400]"
                 />
                 <p className="text-xs text-[#95A5A6]">
-                  Valores menores = maior hierarquia (ex: 1 = Diretor, 10 = Estagiário)
+                  Valores menores = maior hierarquia (ex: 1 = Diretor, 10 =
+                  Estagiário)
                 </p>
               </div>
 
@@ -653,7 +555,9 @@ const fetchRoles = useCallback(async () => {
                 <Textarea
                   id="description"
                   value={formData.description}
-                  onChange={(e) => handleFormChange("description", e.target.value)}
+                  onChange={(e) =>
+                    handleFormChange("description", e.target.value)
+                  }
                   placeholder="Descreva as responsabilidades do cargo..."
                   rows={3}
                   className="border-[#E5E5E5] focus:border-[#D35400] focus:ring-[#D35400]"
@@ -674,107 +578,10 @@ const fetchRoles = useCallback(async () => {
                 disabled={isFormLoading}
                 className="bg-[#D35400] hover:bg-[#D35400]/90 text-white"
               >
-                {isFormLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isFormLoading && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 {editingRole ? "Salvar Alterações" : "Criar Cargo"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Modal de Usuários do Cargo com Tabs */}
-        <Dialog open={isUsersModalOpen} onOpenChange={setIsUsersModalOpen}>
-          <DialogContent className="sm:max-w-[700px] bg-white">
-            <DialogHeader>
-              <DialogTitle className="text-[#2D3436] flex items-center gap-2">
-                <Users className="h-5 w-5 text-[#D35400]" />
-                Usuários com o cargo: {viewUsersRole?.name}
-              </DialogTitle>
-              <DialogDescription className="text-[#95A5A6]">
-                Visualize os usuários que possuem este cargo.
-              </DialogDescription>
-            </DialogHeader>
-
-            <Tabs value={usersTab} onValueChange={(v) => setUsersTab(v as any)} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="company" className="flex items-center gap-2">
-                  <UserCog className="h-4 w-4" />
-                  Cargo na Empresa
-                </TabsTrigger>
-                <TabsTrigger value="professional" className="flex items-center gap-2">
-                  <UserCheck className="h-4 w-4" />
-                  Cargo Profissional
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="company" className="mt-4">
-                <div className="max-h-[400px] overflow-y-auto">
-                  {loadingUsers ? (
-                    <div className="flex justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin text-[#D35400]" />
-                    </div>
-                  ) : companyRoleUsers.length > 0 ? (
-                    <div className="space-y-2">
-                      {companyRoleUsers.map((user) => (
-                        <div
-                          key={user.id}
-                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
-                        >
-                          <div>
-                            <p className="font-medium text-[#2D3436]">{user.name}</p>
-                            <p className="text-sm text-[#95A5A6]">{user.email}</p>
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {user.role}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-[#95A5A6]">
-                      Nenhum usuário vinculado a este cargo como cargo de empresa.
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="professional" className="mt-4">
-                <div className="max-h-[400px] overflow-y-auto">
-                  {loadingUsers ? (
-                    <div className="flex justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin text-[#D35400]" />
-                    </div>
-                  ) : professionalRoleUsers.length > 0 ? (
-                    <div className="space-y-2">
-                      {professionalRoleUsers.map((user) => (
-                        <div
-                          key={user.id}
-                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
-                        >
-                          <div>
-                            <p className="font-medium text-[#2D3436]">{user.name}</p>
-                            <p className="text-sm text-[#95A5A6]">{user.email}</p>
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {user.role}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-[#95A5A6]">
-                      Nenhum usuário vinculado a este cargo como cargo profissional.
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
-
-            <DialogFooter>
-              <Button
-                onClick={() => setIsUsersModalOpen(false)}
-                className="bg-[#D35400] hover:bg-[#D35400]/90 text-white"
-              >
-                Fechar
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -796,7 +603,10 @@ const fetchRoles = useCallback(async () => {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeleting} className="text-[#2D3436]">
+              <AlertDialogCancel
+                disabled={isDeleting}
+                className="text-[#2D3436]"
+              >
                 Cancelar
               </AlertDialogCancel>
               <AlertDialogAction
@@ -807,7 +617,9 @@ const fetchRoles = useCallback(async () => {
                 disabled={isDeleting}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
-                {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isDeleting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
                 {isDeleting ? "Excluindo..." : "Sim, excluir"}
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -822,12 +634,14 @@ const fetchRoles = useCallback(async () => {
                 <Power className="h-5 w-5" /> Reativar Cargo
               </AlertDialogTitle>
               <AlertDialogDescription className="text-[#2D3436]">
-                Deseja reativar este cargo? Ele ficará disponível novamente
-                para atribuição aos usuários.
+                Deseja reativar este cargo? Ele ficará disponível novamente para
+                atribuição aos usuários.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="text-[#2D3436]">Cancelar</AlertDialogCancel>
+              <AlertDialogCancel className="text-[#2D3436]">
+                Cancelar
+              </AlertDialogCancel>
               <AlertDialogAction
                 onClick={(e) => {
                   e.preventDefault();
