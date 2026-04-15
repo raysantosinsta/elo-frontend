@@ -55,7 +55,7 @@ import {
 import { CompanyFilter } from "@/components/company-filter";
 import { Column, GenericTable } from "@/components/generic-table";
 import { PageHeader } from "@/components/page-header";
-import { UserFormModal } from "@/components/modals/user-form-modal"; // ✅ IMPORTA O NOVO MODAL
+import { UserFormModal } from "@/components/modals/user-form-modal";
 
 // --- Enums & Interfaces ---
 enum UserRole {
@@ -64,6 +64,7 @@ enum UserRole {
   EMPLOYER = "EMPLOYER",
 }
 
+// 🔥 INTERFACE ATUALIZADA COM companyRole
 interface User {
   id: string;
   name: string;
@@ -75,6 +76,7 @@ interface User {
   document?: string;
   companyId: string;
   company?: { name: string };
+  companyRole?: { id: string; name: string; level: number }; // 🔥 ADICIONADO
   createdAt: string;
 }
 
@@ -163,7 +165,7 @@ export default function UserManagementPage() {
         params.append("companyId", filterCompanyId);
       }
 
-      const response = await api.get<{ data: User[], total: number } | User[]>(`/users?${params.toString()}`);
+      const response = await api.get<{ data: User[]; total: number } | User[]>(`/users?${params.toString()}`);
 
       let data: User[] = [];
       if (Array.isArray(response.data)) {
@@ -171,6 +173,11 @@ export default function UserManagementPage() {
       } else if (response.data && Array.isArray(response.data.data)) {
         data = response.data.data;
       }
+
+      console.log("📦 Usuários carregados:", data.map(u => ({
+        name: u.name,
+        companyRole: u.companyRole
+      })));
 
       setUsers(data);
     } catch (error: any) {
@@ -204,7 +211,6 @@ export default function UserManagementPage() {
 
   // --- Handlers de Modal ---
   const handleOpenCreate = () => {
-    // Se for Master e tiver filtro ativo, pré-preenche a empresa
     const initialData = (isMaster && filterCompanyId) ? { companyId: filterCompanyId } : null;
     setEditingUser(initialData as any); 
     setIsModalOpen(true);
@@ -238,12 +244,10 @@ export default function UserManagementPage() {
 
     try {
       if (editingUser && editingUser.id) {
-        // Update
         await api.patch(`/users/${editingUser.id}`, payload);
         toast.success("Usuário atualizado!");
         fetchUsers();
       } else {
-        // Create
         const { data: newUser } = await api.post<User>("/users", payload);
         toast.success("Usuário criado!");
         
@@ -291,6 +295,7 @@ export default function UserManagementPage() {
     }
   };
 
+  // 🔥 COLUNAS ATUALIZADAS COM CARGO NA EMPRESA
   const columns: Column<User>[] = useMemo(() => {
     const cols: Column<User>[] = [
       {
@@ -321,6 +326,22 @@ export default function UserManagementPage() {
               <span className="text-xs text-slate-600 flex items-center gap-1">
                 <Briefcase className="h-3 w-3" /> {user.professionalRole}
               </span>
+            )}
+          </div>
+        )
+      },
+      // 🔥 NOVA COLUNA: Cargo na Empresa
+      {
+        header: "Cargo na Empresa",
+        cell: (user) => (
+          <div className="flex items-center gap-1">
+            {user.companyRole ? (
+              <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">
+                <Briefcase className="h-3 w-3 mr-1" />
+                {user.companyRole.name}
+              </Badge>
+            ) : (
+              <span className="text-xs text-slate-400">Não definido</span>
             )}
           </div>
         )
@@ -443,7 +464,6 @@ export default function UserManagementPage() {
           }}
         />
 
-        {/* 🔥 USANDO O NOVO COMPONENTE DO MODAL */}
         <UserFormModal 
           isOpen={isModalOpen}
           onClose={handleCloseModal}
@@ -451,7 +471,7 @@ export default function UserManagementPage() {
           onSubmit={handleFormSubmit}
           isLoading={isFormLoading}
           companies={companiesList}
-          currentUserRole={currentUser?.role} // 🔥 Passa o cargo para a regra de negócio
+          currentUserRole={currentUser?.role}
         />
 
         <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

@@ -17,6 +17,7 @@ import {
   CheckCircleIcon,
   Trash2Icon,
   UserIcon,
+  ChevronDownIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -647,7 +648,7 @@ export default function CreateRoutePage() {
                       onClick={() => setActiveTab("review")}
                       disabled={fields.length === 0}
                     >
-                      Revisar Rota →
+                      Próximo
                     </Button>
                   </div>
                 </div>

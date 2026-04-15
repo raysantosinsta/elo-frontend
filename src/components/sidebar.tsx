@@ -20,6 +20,7 @@ import {
   BarChart2,
   BarChart3,
   Bell,
+  Briefcase,
   Calendar,
   CarFront,
   CheckCheck,
@@ -37,7 +38,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 // --- 1. DEFINIÇÃO DA ESTRUTURA DO MENU ---
 const menuItems = [
@@ -75,6 +76,7 @@ const menuItems = [
     ],
   },
   { title: "Empresas", href: "/empresas", icon: Home },
+  { title: "Cargos", href: "/company-roles", icon: Briefcase },
   { title: "Rotas", href: "/routes", icon: CarFront },
   { title: "Fornecedores", href: "/suppliers", icon: Factory },
   { title: "Usuários", href: "/users", icon: Users },

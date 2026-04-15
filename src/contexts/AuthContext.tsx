@@ -33,7 +33,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
     const { data } = await api.post("/auth/login", { email, password });
 
-        console.log('Dados do login:', data); // Para debug
+      console.log('🔍 Dados do login:', {
+      user: data.user,
+      professionalRole: data.user?.professionalRole,
+      professionalRoleId: data.user?.professionalRoleId,
+      role: data.user?.role
+    });
 
 
       localStorage.setItem("accessToken", data.accessToken);
@@ -62,6 +67,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const { data } = await api.get<User>("/auth/profile");
+         console.log('🔍 Profile carregado:', {
+        user: data,
+        professionalRole: data?.professionalRole,
+        professionalRoleId: data?.professionalRoleId
+      });
         setUser(data);
       } catch {
         // Se falhar o profile (token inválido), o interceptor do axios 

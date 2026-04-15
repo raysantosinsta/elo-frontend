@@ -16,7 +16,7 @@ import {
   Loader2,
   Lock,
   Package,
-  X
+  X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -86,17 +86,6 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-// --- CONSTANTES ---
-const PROFESSIONAL_ROLES = [
-  { value: "modelista", label: "Modelista / Modelagem" },
-  { value: "piloteira", label: "Piloteira / Pilotagem" },
-  { value: "cortador", label: "Cortador / Corte" },
-  { value: "costureira", label: "Costureira / Costura" },
-  { value: "acabamento", label: "Acabamento" },
-  { value: "expedicao", label: "Expedição" },
-  { value: "gerente", label: "Gerente" },
-];
-
 // --- INTERFACES ---
 interface FlowMedia {
   id: string;
@@ -108,6 +97,12 @@ interface UserProfile {
   id: string;
   name: string;
   professionalRole?: string;
+}
+
+interface ProfessionalRole {
+  id: string;
+  name: string;
+  description?: string;
 }
 
 interface FlowItem {
@@ -188,6 +183,12 @@ export default function ProductFlowKanban() {
     null,
   );
 
+  // 🔥 Estado para cargos profissionais dinâmicos
+  const [professionalRoles, setProfessionalRoles] = useState<
+    ProfessionalRole[]
+  >([]);
+  const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+
   // 🔥 Buscar configuração da empresa
   const {
     data: companySettings,
@@ -201,6 +202,31 @@ export default function ProductFlowKanban() {
   useEffect(() => {
     console.log("🔍 [ProductFlowKanban] notificationDays:", notificationDays);
   }, [notificationDays]);
+
+  // ProductKanbanFlow.tsx linha 210
+  const fetchProfessionalRoles = useCallback(async () => {
+    if (!user?.company?.id) return;
+
+    setIsLoadingRoles(true);
+    try {
+      // 🔥 ALTERADO: usa a rota correta do backend
+      const response = await api.get(`/company-roles/active`);
+      // ou api.get(`/company-roles?includeInactive=false`)
+
+      if (response.data && Array.isArray(response.data)) {
+        setProfessionalRoles(response.data);
+      } else if (response.data && Array.isArray(response.data.data)) {
+        setProfessionalRoles(response.data.data);
+      } else {
+        setProfessionalRoles([]);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar cargos:", error);
+      setProfessionalRoles([]);
+    } finally {
+      setIsLoadingRoles(false);
+    }
+  }, [user?.company?.id]);
 
   // 🔥 Forçar atualização dos filtros quando notificationDays mudar
   useEffect(() => {
@@ -692,11 +718,42 @@ export default function ProductFlowKanban() {
     (stage: FlowStage) => {
       if (!user) return false;
       const systemRole = (user as any).role || "";
+
+      // Admin tem acesso a tudo
       if (["MASTER", "ADMIN", "MANAGER"].includes(systemRole)) return true;
-      if (!stage.allowedRole || stage.allowedRole.trim() === "") return true;
-      const userRole = user.professionalRole?.toLowerCase() || "";
+
+      // Se a etapa não tem restrição, qualquer um pode editar
+      if (
+        !stage.allowedRole ||
+        stage.allowedRole.trim() === "" ||
+        stage.allowedRole === "all"
+      )
+        return true;
+
+      // 🔥 CORREÇÃO: Acessar o nome do cargo profissional corretamente
+      const userProfessionalRole = user.professionalRole;
+
+      // Se o usuário não tem cargo profissional definido, não pode editar etapas restritas
+      if (!userProfessionalRole) return false;
+
+      // Se o cargo profissional for um objeto, pega o name
+      const userRole =
+        typeof userProfessionalRole === "object" &&
+        userProfessionalRole !== null
+          ? ((userProfessionalRole as any).name || "").toLowerCase()
+          : String(userProfessionalRole).toLowerCase();
+
       const requiredRole = stage.allowedRole.toLowerCase();
-      return userRole.includes(requiredRole);
+
+      // Comparação parcial
+      const hasAccess =
+        userRole.includes(requiredRole) || requiredRole.includes(userRole);
+
+      console.log(
+        `🔍 [canUserEditStage] Stage: ${stage.name}, required: ${requiredRole}, user: ${userRole}, hasAccess: ${hasAccess}`,
+      );
+
+      return hasAccess;
     },
     [user],
   );
@@ -976,7 +1033,8 @@ export default function ProductFlowKanban() {
   // ===========================================================================
   useEffect(() => {
     fetchInitialData();
-  }, [fetchInitialData]);
+    fetchProfessionalRoles();
+  }, [fetchInitialData, fetchProfessionalRoles]);
 
   // ===========================================================================
   // 🎯 FUNÇÃO DE AVANÇAR ITEM
@@ -1451,6 +1509,22 @@ export default function ProductFlowKanban() {
     return Object.values(stageGroups).sort((a, b) => a.order - b.order);
   }, [boards, itemsPendingRemoval, shouldShowItem]);
 
+  useEffect(() => {
+    console.log("🔍 ========== DIAGNÓSTICO DE PERMISSÃO ==========");
+    console.log("📌 user:", user);
+    console.log("📌 user.professionalRole:", user?.professionalRole);
+    console.log("📌 user.role (sistema):", (user as any)?.role);
+    console.log(
+      "📌 unifiedStages:",
+      unifiedStages.map((s) => ({
+        name: s.name,
+        allowedRole: s.allowedRole,
+        defaultDays: s.defaultDays,
+      })),
+    );
+    console.log("================================================");
+  }, [user, unifiedStages]);
+
   // ===========================================================================
   // 🔥 HOOK DE DRAG (ajustado para usar refreshBoardsAfterAction)
   // ===========================================================================
@@ -1637,6 +1711,14 @@ export default function ProductFlowKanban() {
       stageName.toLowerCase().includes(keyword.toLowerCase()),
     );
   };
+
+  // 🔥 Mapear cargos para o select (dinâmico)
+  const roleOptions = useMemo(() => {
+    return professionalRoles.map((role) => ({
+      value: role.name,
+      label: role.name.charAt(0).toUpperCase() + role.name.slice(1),
+    }));
+  }, [professionalRoles]);
 
   if (loading && boards.length === 0) {
     return (
@@ -2132,22 +2214,6 @@ export default function ProductFlowKanban() {
         )}
       </KanbanBoard>
 
-      {/* FAB para mobile */}
-      {/* <div className="fixed bottom-6 right-6 z-50 md:hidden">
-        <button
-          onClick={() => {
-            const firstStageId = unifiedStages[0]?.id;
-            if (firstStageId) handleCreateItem(firstStageId);
-          }}
-          className="w-14 h-14 rounded-full bg-orange-600 text-white shadow-lg 
-                     active:scale-95 transition-transform duration-200
-                     flex items-center justify-center hover:bg-orange-700 touch-feedback"
-          aria-label="Criar novo item"
-        >
-          <Plus size={24} />
-        </button>
-      </div> */}
-
       {/* Bottom Sheet de Filtros Mobile */}
       {isMobileFilterDrawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
@@ -2487,11 +2553,21 @@ export default function ProductFlowKanban() {
                       Liberado para todos
                     </span>
                   </SelectItem>
-                  {PROFESSIONAL_ROLES.map((role) => (
-                    <SelectItem key={role.value} value={role.value}>
-                      {role.label}
+                  {isLoadingRoles ? (
+                    <SelectItem value="loading" disabled>
+                      Carregando cargos...
                     </SelectItem>
-                  ))}
+                  ) : roleOptions.length === 0 ? (
+                    <SelectItem value="none" disabled>
+                      Nenhum cargo cadastrado
+                    </SelectItem>
+                  ) : (
+                    roleOptions.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-slate-500">
