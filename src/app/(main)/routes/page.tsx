@@ -152,11 +152,11 @@ const Autocomplete = ({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
-  const selectedOption = options.find(opt => opt.value === value);
+  const selectedOption = options.find((opt) => opt.value === value);
   const displayValue = selectedOption?.label || placeholder;
 
-  const filteredOptions = options.filter(opt =>
-    opt.label.toLowerCase().includes(search.toLowerCase())
+  const filteredOptions = options.filter((opt) =>
+    opt.label.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
@@ -202,7 +202,7 @@ const Autocomplete = ({
                   key={option.value}
                   className={cn(
                     "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-gray-100 cursor-pointer",
-                    value === option.value && "bg-gray-50"
+                    value === option.value && "bg-gray-50",
                   )}
                   onClick={() => {
                     onChange(option.value === value ? "all" : option.value);
@@ -213,7 +213,7 @@ const Autocomplete = ({
                   <CheckCircle2
                     className={cn(
                       "mr-2 h-4 w-4 text-[#D35400]",
-                      value === option.value ? "opacity-100" : "opacity-0"
+                      value === option.value ? "opacity-100" : "opacity-0",
                     )}
                   />
                   {option.label}
@@ -297,7 +297,7 @@ const CustomToast = ({
   );
 };
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 export default function RoutesPage() {
   const router = useRouter();
@@ -309,10 +309,12 @@ export default function RoutesPage() {
   // Normalizar os dados da API para o formato esperado pelo componente
   const routes: Route[] = useMemo(() => {
     if (!apiRoutes) return [];
-    return apiRoutes.map((route: any): Route => ({
-      ...route,
-      routeDate: route.routeDate ?? null,
-    }));
+    return apiRoutes.map(
+      (route: any): Route => ({
+        ...route,
+        routeDate: route.routeDate ?? null,
+      }),
+    );
   }, [apiRoutes]);
 
   // Estados de busca e filtros
@@ -322,15 +324,23 @@ export default function RoutesPage() {
 
   // VALORES TEMPORÁRIOS
   const [tempStatusFilter, setTempStatusFilter] = useState<string>("all");
-  const [tempStartDate, setTempStartDate] = useState<Date | undefined>(undefined);
+  const [tempStartDate, setTempStartDate] = useState<Date | undefined>(
+    undefined,
+  );
   const [tempEndDate, setTempEndDate] = useState<Date | undefined>(undefined);
-  const [tempUserAssignedFilter, setTempUserAssignedFilter] = useState<string>("all");
+  const [tempUserAssignedFilter, setTempUserAssignedFilter] =
+    useState<string>("all");
 
   // VALORES APLICADOS
   const [appliedStatusFilter, setAppliedStatusFilter] = useState<string>("all");
-  const [appliedStartDate, setAppliedStartDate] = useState<Date | undefined>(undefined);
-  const [appliedEndDate, setAppliedEndDate] = useState<Date | undefined>(undefined);
-  const [appliedUserAssignedFilter, setAppliedUserAssignedFilter] = useState<string>("all");
+  const [appliedStartDate, setAppliedStartDate] = useState<Date | undefined>(
+    undefined,
+  );
+  const [appliedEndDate, setAppliedEndDate] = useState<Date | undefined>(
+    undefined,
+  );
+  const [appliedUserAssignedFilter, setAppliedUserAssignedFilter] =
+    useState<string>("all");
 
   const [showFilters, setShowFilters] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
@@ -343,16 +353,30 @@ export default function RoutesPage() {
     if (appliedEndDate) count++;
     if (appliedUserAssignedFilter !== "all") count++;
     return count;
-  }, [appliedStatusFilter, appliedStartDate, appliedEndDate, appliedUserAssignedFilter]);
+  }, [
+    appliedStatusFilter,
+    appliedStartDate,
+    appliedEndDate,
+    appliedUserAssignedFilter,
+  ]);
 
   // Resetar página quando filtros mudam
   useEffect(() => {
     setCurrentPage(1);
-  }, [appliedStatusFilter, appliedStartDate, appliedEndDate, appliedUserAssignedFilter]);
+  }, [
+    appliedStatusFilter,
+    appliedStartDate,
+    appliedEndDate,
+    appliedUserAssignedFilter,
+  ]);
 
   // Lista de Responsaveis para autocomplete
   const driverOptions = useMemo(() => {
-    if (!routes) return [{ value: "all", label: "Todos" }, { value: "none", label: "Não atribuído" }];
+    if (!routes)
+      return [
+        { value: "all", label: "Todos" },
+        { value: "none", label: "Não atribuído" },
+      ];
     const driverMap = new Map();
     routes.forEach((route) => {
       if (route.userAssigned?.id && !driverMap.has(route.userAssigned.id)) {
@@ -363,7 +387,7 @@ export default function RoutesPage() {
     return [
       { value: "all", label: "Todos" },
       { value: "none", label: "Não atribuído" },
-      ...drivers.map((driver) => ({ value: driver.id, label: driver.name }))
+      ...drivers.map((driver) => ({ value: driver.id, label: driver.name })),
     ];
   }, [routes]);
 
@@ -394,10 +418,10 @@ export default function RoutesPage() {
 
     await refetch();
     setIsFiltering(false);
-    
+
     // Fechar o card de filtros após aplicar
     setShowFilters(false);
-    
+
     toast.custom(
       (t) => <CustomToast message="Filtros aplicados" type="success" />,
       { duration: 1500 },
@@ -413,15 +437,19 @@ export default function RoutesPage() {
 
     let filtered = routes.filter((route) => {
       let matchesStatus = true;
-      
+
       if (appliedStatusFilter === "OVERDUE") {
         // Filtro especial para rotas atrasadas
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const routeDate = route.routeDate ? new Date(route.routeDate) : null;
-        matchesStatus = routeDate !== null && routeDate < today && route.status !== "FINISHED";
+        matchesStatus =
+          routeDate !== null &&
+          routeDate < today &&
+          route.status !== "FINISHED";
       } else {
-        matchesStatus = appliedStatusFilter === "all" || route.status === appliedStatusFilter;
+        matchesStatus =
+          appliedStatusFilter === "all" || route.status === appliedStatusFilter;
       }
 
       let matchesDate = true;
@@ -443,11 +471,7 @@ export default function RoutesPage() {
         (appliedUserAssignedFilter === "none" && !route.userAssigned) ||
         route.userAssigned?.id === appliedUserAssignedFilter;
 
-      return (
-        matchesStatus &&
-        matchesDate &&
-        matchesDriver
-      );
+      return matchesStatus && matchesDate && matchesDriver;
     });
 
     return filtered;
@@ -489,146 +513,175 @@ export default function RoutesPage() {
   }, [deleteId, deleteRoute, refetch]);
 
   // Definição das colunas para o GenericTable
-  const columns: Column<Route>[] = useMemo(() => [
-    {
-      header: "Título",
-      className: "font-semibold",
-      cell: (route) => (
-        <Link
-          href={`/routes/${route.id}`}
-          className="relative group/link hover:text-[#D35400] transition-colors duration-200 font-semibold"
-          prefetch={true}
-        >
-          {route.title}
-          <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#D35400] group-hover/link:w-full transition-all duration-300" />
-        </Link>
-      ),
-    },
-    {
-      header: "Status",
-      cell: (route) => {
-        // Verificar se a rota está atrasada para exibir badge especial
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const routeDate = route.routeDate ? new Date(route.routeDate) : null;
-        const isOverdue = routeDate !== null && routeDate < today && route.status !== "FINISHED";
-        
-        if (isOverdue && route.status !== "FINISHED") {
+  const columns: Column<Route>[] = useMemo(
+    () => [
+      {
+        header: "Título",
+        className: "font-semibold",
+        cell: (route) => (
+          <Link
+            href={`/routes/${route.id}`}
+            className="relative group/link hover:text-[#D35400] transition-colors duration-200 font-semibold"
+            prefetch={true}
+          >
+            {route.title}
+            <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#D35400] group-hover/link:w-full transition-all duration-300" />
+          </Link>
+        ),
+      },
+      {
+        header: "Status",
+        cell: (route) => {
+          // Verificar se a rota está atrasada para exibir badge especial
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const routeDate = route.routeDate ? new Date(route.routeDate) : null;
+          const isOverdue =
+            routeDate !== null &&
+            routeDate < today &&
+            route.status !== "FINISHED";
+
+          if (isOverdue && route.status !== "FINISHED") {
+            return (
+              <Badge className="bg-red-50 text-red-700 border border-red-200 text-xs font-medium shadow-none">
+                Atrasada
+              </Badge>
+            );
+          }
+
           return (
-            <Badge className="bg-red-50 text-red-700 border border-red-200 text-xs font-medium shadow-none">
-              Atrasada
+            <Badge
+              className={`${statusColors[route.status]} text-xs font-medium shadow-none`}
+            >
+              {statusText[route.status]}
             </Badge>
           );
-        }
-        
-        return (
-          <Badge className={`${statusColors[route.status]} text-xs font-medium shadow-none`}>
-            {statusText[route.status]}
-          </Badge>
-        );
+        },
       },
-    },
-    {
-      header: "Data agendada",
-      cell: (route) => (
-        <span className="text-[#95A5A6]">
-          {route.routeDate ? format(new Date(route.routeDate), "dd/MM/yyyy", { locale: ptBR }) : "-"}
-        </span>
-      ),
-    },
-    {
-      header: "Paradas",
-      className: "text-center",
-      cell: (route) => (
-        <span className="font-medium text-[#2C3E50] text-center block">
-          {route.stops?.length || 0}
-        </span>
-      ),
-    },
-    {
-      header: "Distância",
-      cell: (route) => <span className="text-[#2C3E50]">{route.formattedDistance || "-"}</span>,
-    },
-    {
-      header: "Duração",
-      cell: (route) => <span className="text-[#2C3E50]">{route.formattedDuration || "-"}</span>,
-    },
-    {
-      header: "Responsavel",
-      cell: (route) => (
-        <div className="flex items-center gap-1">
-          <UsersIcon className="h-3 w-3 text-[#95A5A6]" />
-          <span className="text-[#2C3E50]">{route.userAssigned?.name || "Não atribuído"}</span>
-        </div>
-      ),
-    },
-    {
-      header: "Descrição",
-      className: "min-w-[200px]",
-      cell: (route) => (
-        route.description ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="truncate text-[#95A5A6] cursor-help max-w-[200px]">
-                  {route.description.length > 50
-                    ? `${route.description.substring(0, 50)}...`
-                    : route.description}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="max-w-xs">{route.description}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <span className="text-[#95A5A6] text-sm">-</span>
-        )
-      ),
-    },
-    {
-      header: "Criado em",
-      cell: (route) => (
-        <span className="text-[#95A5A6] whitespace-nowrap">
-          {route.createdAt
-            ? format(new Date(route.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })
-            : "-"}
-        </span>
-      ),
-    },
-    {
-      header: "Ações",
-      className: "text-right",
-      cell: (route) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 w-8 p-0">
-              <MoreHorizontalIcon className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel className="text-[#95A5A6] text-xs">Ações</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => router.push(`/routes/${route.id}`)}>
-              <EyeIcon className="mr-2 h-4 w-4 text-[#95A5A6]" />
-              Detalhes
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push(`/routes/${route.id}/edit`)}>
-              <PencilIcon className="mr-2 h-4 w-4 text-[#95A5A6]" />
-              Editar
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              className="text-red-600 focus:text-red-600" 
-              onClick={() => setDeleteId(route.id)}
-            >
-              <Trash2Icon className="mr-2 h-4 w-4" />
-              Excluir
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
-  ], [router]);
+      {
+        header: "Data agendada",
+        cell: (route) => (
+          <span className="text-[#95A5A6]">
+            {route.routeDate
+              ? format(new Date(route.routeDate), "dd/MM/yyyy", {
+                  locale: ptBR,
+                })
+              : "-"}
+          </span>
+        ),
+      },
+      {
+        header: "Paradas",
+        className: "text-center",
+        cell: (route) => (
+          <span className="font-medium text-[#2C3E50] text-center block">
+            {route.stops?.length || 0}
+          </span>
+        ),
+      },
+      {
+        header: "Distância",
+        cell: (route) => (
+          <span className="text-[#2C3E50]">
+            {route.formattedDistance || "-"}
+          </span>
+        ),
+      },
+      {
+        header: "Duração",
+        cell: (route) => (
+          <span className="text-[#2C3E50]">
+            {route.formattedDuration || "-"}
+          </span>
+        ),
+      },
+      {
+        header: "Responsavel",
+        cell: (route) => (
+          <div className="flex items-center gap-1">
+            <UsersIcon className="h-3 w-3 text-[#95A5A6]" />
+            <span className="text-[#2C3E50]">
+              {route.userAssigned?.name || "Não atribuído"}
+            </span>
+          </div>
+        ),
+      },
+      {
+        header: "Descrição",
+        className: "min-w-[200px]",
+        cell: (route) =>
+          route.description ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="truncate text-[#95A5A6] cursor-help max-w-[200px]">
+                    {route.description.length > 50
+                      ? `${route.description.substring(0, 50)}...`
+                      : route.description}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">{route.description}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <span className="text-[#95A5A6] text-sm">-</span>
+          ),
+      },
+      {
+        header: "Criado em",
+        cell: (route) => (
+          <span className="text-[#95A5A6] whitespace-nowrap">
+            {route.createdAt
+              ? format(new Date(route.createdAt), "dd/MM/yyyy HH:mm", {
+                  locale: ptBR,
+                })
+              : "-"}
+          </span>
+        ),
+      },
+      {
+        header: "Ações",
+        className: "text-right",
+        cell: (route) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <MoreHorizontalIcon className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel className="text-[#95A5A6] text-xs">
+                Ações
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => router.push(`/routes/${route.id}`)}
+              >
+                <EyeIcon className="mr-2 h-4 w-4 text-[#95A5A6]" />
+                Detalhes
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => router.push(`/routes/${route.id}/edit`)}
+              >
+                <PencilIcon className="mr-2 h-4 w-4 text-[#95A5A6]" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600"
+                onClick={() => setDeleteId(route.id)}
+              >
+                <Trash2Icon className="mr-2 h-4 w-4" />
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+      },
+    ],
+    [router],
+  );
 
   if (isLoading) {
     return (
@@ -647,10 +700,7 @@ export default function RoutesPage() {
     <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header - sem searchValue */}
-        <PageHeader
-          title="Rotas"
-          description="Gerencie as rotas do sistema."
-        >
+        <PageHeader title="Rotas" description="Gerencie as rotas do sistema.">
           <div className="flex gap-2">
             <TooltipProvider>
               <Tooltip>
@@ -660,7 +710,8 @@ export default function RoutesPage() {
                     onClick={() => setShowFilters(!showFilters)}
                     className={cn(
                       "rounded-full h-10 px-4 gap-2 transition-all duration-200",
-                      showFilters && "bg-[#D35400] text-white hover:bg-[#D35400]/90"
+                      showFilters &&
+                        "bg-[#D35400] text-white hover:bg-[#D35400]/90",
                     )}
                   >
                     <FilterIcon className="h-5 w-5" />
@@ -733,17 +784,22 @@ export default function RoutesPage() {
                         </label>
                         <Popover>
                           <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full justify-start text-left font-normal">
+                            <Button
+                              variant="outline"
+                              className="w-full justify-start text-left font-normal"
+                            >
                               <CalendarIcon className="mr-2 h-4 w-4" />
-                              {tempStartDate ? format(tempStartDate, "dd/MM/yyyy") : "Selecionar data inicial"}
+                              {tempStartDate
+                                ? format(tempStartDate, "dd/MM/yyyy")
+                                : "Selecionar data inicial"}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0">
-                            <Calendar 
-                              mode="single" 
-                              selected={tempStartDate} 
-                              onSelect={setTempStartDate} 
-                              locale={ptBR} 
+                            <Calendar
+                              mode="single"
+                              selected={tempStartDate}
+                              onSelect={setTempStartDate}
+                              locale={ptBR}
                             />
                           </PopoverContent>
                         </Popover>
@@ -755,18 +811,25 @@ export default function RoutesPage() {
                         </label>
                         <Popover>
                           <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full justify-start text-left font-normal">
+                            <Button
+                              variant="outline"
+                              className="w-full justify-start text-left font-normal"
+                            >
                               <CalendarIcon className="mr-2 h-4 w-4" />
-                              {tempEndDate ? format(tempEndDate, "dd/MM/yyyy") : "Selecionar data final"}
+                              {tempEndDate
+                                ? format(tempEndDate, "dd/MM/yyyy")
+                                : "Selecionar data final"}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0">
-                            <Calendar 
-                              mode="single" 
-                              selected={tempEndDate} 
-                              onSelect={setTempEndDate} 
-                              locale={ptBR} 
-                              disabled={(date) => tempStartDate ? date < tempStartDate : false}
+                            <Calendar
+                              mode="single"
+                              selected={tempEndDate}
+                              onSelect={setTempEndDate}
+                              locale={ptBR}
+                              disabled={(date) =>
+                                tempStartDate ? date < tempStartDate : false
+                              }
                             />
                           </PopoverContent>
                         </Popover>
@@ -790,12 +853,20 @@ export default function RoutesPage() {
                   {/* Botões de ação dos filtros */}
                   <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
                     {hasActiveFilters && (
-                      <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearFilters}
+                      >
                         <X className="h-4 w-4 mr-1" />
                         Limpar filtros
                       </Button>
                     )}
-                    <Button size="sm" onClick={handleApplyFilters} disabled={isFiltering}>
+                    <Button
+                      size="sm"
+                      onClick={handleApplyFilters}
+                      disabled={isFiltering}
+                    >
                       {isFiltering ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -815,7 +886,9 @@ export default function RoutesPage() {
         {/* Resultados encontrados */}
         {filteredRoutes.length > 0 && (
           <div className="text-right text-xs text-[#95A5A6]">
-            {filteredRoutes.length} resultado{filteredRoutes.length !== 1 ? "s" : ""} encontrado{filteredRoutes.length !== 1 ? "s" : ""}
+            {filteredRoutes.length} resultado
+            {filteredRoutes.length !== 1 ? "s" : ""} encontrado
+            {filteredRoutes.length !== 1 ? "s" : ""}
           </div>
         )}
 
@@ -831,21 +904,29 @@ export default function RoutesPage() {
             totalPages: totalPages,
             onPageChange: (page) => setCurrentPage(page),
             totalItems: filteredRoutes.length,
-            itemsPerPage: ITEMS_PER_PAGE
+            itemsPerPage: ITEMS_PER_PAGE,
           }}
         />
 
         {/* Dialog de exclusão */}
-        <AlertDialog open={!!deleteId} onOpenChange={() => !isDeleting && setDeleteId(null)}>
+        <AlertDialog
+          open={!!deleteId}
+          onOpenChange={() => !isDeleting && setDeleteId(null)}
+        >
           <AlertDialogContent className="bg-white border border-gray-200">
             <AlertDialogHeader>
-              <AlertDialogTitle className="text-[#2C3E50]">Excluir Rota</AlertDialogTitle>
+              <AlertDialogTitle className="text-[#2C3E50]">
+                Excluir Rota
+              </AlertDialogTitle>
               <AlertDialogDescription className="text-[#95A5A6]">
-                Esta ação removerá todos os dados da rota do sistema. Esta ação não pode ser desfeita.
+                Esta ação removerá todos os dados da rota do sistema. Esta ação
+                não pode ser desfeita.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogCancel disabled={isDeleting}>
+                Cancelar
+              </AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDelete}
                 disabled={isDeleting}

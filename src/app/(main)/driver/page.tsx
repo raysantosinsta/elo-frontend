@@ -3,6 +3,7 @@
 "use client";
 
 import { useRoutes } from "@/hooks/useRoutes";
+import { CreateRouteDto } from "@/services/api";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -16,6 +17,7 @@ import {
   Copy,
   CalendarPlus,
   LeafIcon,
+  XCircle,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -150,7 +152,7 @@ export default function DriverPage() {
     useGetRouteById,
     useMarkStopVisited,
     useUpdateRoute,
-    useDuplicateRoute,
+    useCreateRoute, // 🔥 ADICIONAR ESTA LINHA
   } = useRoutes();
   const {
     data: route,
@@ -159,7 +161,7 @@ export default function DriverPage() {
   } = useGetRouteById(routeId || "");
   const markStopVisited = useMarkStopVisited();
   const updateRoute = useUpdateRoute();
-  const duplicateRoute = useDuplicateRoute();
+  const createRoute = useCreateRoute(); // 🔥 ADICIONAR ESTA LINHA
 
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
   const [currentPosition, setCurrentPosition] = useState<
@@ -171,6 +173,9 @@ export default function DriverPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [comment, setComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [visitStatus, setVisitStatus] = useState<"success" | "error" | null>(
+    null,
+  );
 
   // Estados para o novo fluxo de criar rota
   const [showNewRouteOption, setShowNewRouteOption] = useState(false);
@@ -259,8 +264,6 @@ export default function DriverPage() {
     (stops: any[], currentLatLng: [number, number], visitedIds: string[]) => {
       if (!stops.length) return [];
 
-      // 🔥 IMPORTANTE: Incluir TODAS as paradas, não apenas as não visitadas
-      // Paradas já visitadas vão para o final, mas NÃO são removidas da ordenação
       const notVisited = stops.filter((stop) => !visitedIds.includes(stop.id));
       const alreadyVisited = stops.filter((stop) =>
         visitedIds.includes(stop.id),
@@ -307,7 +310,6 @@ export default function DriverPage() {
         remaining.splice(nearestIndex, 1);
       }
 
-      // Adicionar paradas visitadas no final (já foram concluídas)
       return [...ordered, ...alreadyVisited];
     },
     [calculateDistance],
@@ -320,19 +322,15 @@ export default function DriverPage() {
       return;
     }
 
-    // Se for PRIORIDADE, manter ordem original
     if (route.orderBy === "PRIORITY") {
       if (JSON.stringify(optimizedStops) !== JSON.stringify(route.stops)) {
         setOptimizedStops(route.stops);
-        // Resetar índice para primeira parada
         setCurrentStopIndex(0);
       }
       return;
     }
 
-    // Se for DISTANCE
     if (route.orderBy === "DISTANCE") {
-      // Se temos localização do GPS, usar ela
       if (currentPosition) {
         const reorderKey = `${currentPosition[0].toFixed(4)},${currentPosition[1].toFixed(4)}|${visitedStops.join(",")}`;
 
@@ -350,7 +348,6 @@ export default function DriverPage() {
 
           if (currentOrderIds !== newOrderIds) {
             setOptimizedStops(reordered);
-            // 🔥 RESETAR O ÍNDICE PARA A PRIMEIRA PARADA QUANDO A ORDEM MUDAR
             setCurrentStopIndex(0);
           } else if (optimizedStops.length === 0) {
             setOptimizedStops(reordered);
@@ -360,9 +357,7 @@ export default function DriverPage() {
           lastReorderedRef.current = reorderKey;
           setIsReordering(false);
         }
-      }
-      // 🔥 SE NÃO TEMOS LOCALIZAÇÃO AINDA, USAR A PRIMEIRA PARADA COMO REFERÊNCIA
-      else if (optimizedStops.length === 0) {
+      } else if (optimizedStops.length === 0) {
         const firstStopPos = {
           lat: route.stops[0]?.latitude || 0,
           lng: route.stops[0]?.longitude || 0,
@@ -407,26 +402,15 @@ export default function DriverPage() {
   const completedStops = visitedStops.length;
   const isLastStop = currentStopIndex === totalStops - 1;
 
-  // 🔥 LOG PARA DEBUG
-  console.log("🔍 DEBUG - Botão Agendar:", {
-    currentStopIndex,
-    totalStops,
-    isLastStop,
-    isModalOpen,
-    showNewRouteOption,
-  });
-
   const isFinished =
     route?.status === "FINISHED" ||
     (completedStops === totalStops && totalStops > 0);
 
-  // Verificar chegada ao destino (apenas quando a parada atual muda)
+  // Verificar chegada ao destino
   const previousStopIdRef = useRef<string>("");
 
   useEffect(() => {
     if (!currentPosition || !currentStop) return;
-
-    // Verificar se já estamos processando esta parada
     if (previousStopIdRef.current === currentStop.id) return;
 
     const distance = calculateDistance(
@@ -449,6 +433,8 @@ export default function DriverPage() {
       setShowNewRouteOption(false);
       setNewRouteDate("");
       setNewRouteObservations("");
+      setVisitStatus(null);
+      setComment("");
     }
   }, [
     currentPosition,
@@ -460,7 +446,6 @@ export default function DriverPage() {
   ]);
 
   const startSimulation = useCallback(() => {
-    // Usar a parada atual da lista otimizada (displayStops)
     const targetStop = displayStops[currentStopIndex];
 
     if (!targetStop) {
@@ -475,15 +460,6 @@ export default function DriverPage() {
 
     setIsGPSActive(false);
     setIsSimulating(true);
-
-    // Log para debug
-    console.log("🎯 SIMULAÇÃO - Destino atual:", {
-      name: targetStop.name,
-      lat: targetStop.latitude,
-      lng: targetStop.longitude,
-      currentPos: currentPosition,
-      orderBy: route?.orderBy,
-    });
 
     const steps = 150;
     const speed = 20;
@@ -512,7 +488,7 @@ export default function DriverPage() {
         });
       }
     }, speed);
-  }, [displayStops, currentStopIndex, currentPosition, route?.orderBy]);
+  }, [displayStops, currentStopIndex, currentPosition]);
 
   const resumeRealGPS = useCallback(() => {
     setIsGPSActive(true);
@@ -521,21 +497,26 @@ export default function DriverPage() {
     toast.info("GPS em tempo real ativado", { duration: 2000 });
   }, []);
 
-  const confirmFinalization = useCallback(async () => {
+  // Confirmar visita com sucesso
+  const confirmSuccess = useCallback(async () => {
     if (!currentStop) return;
 
     setIsSubmitting(true);
+    setVisitStatus("success");
     try {
+      // 🔥 PASSAR OBSERVAÇÃO CLARA DE QUE FOI SUCESSO
+      const successNote = comment
+        ? `✅ VISITA CONCLUÍDA COM SUCESSO: ${comment}`
+        : `✅ VISITA CONCLUÍDA COM SUCESSO`;
+
       await markStopVisited.mutateAsync({
         routeId: routeId!,
         stopId: currentStop.id!,
-        notes: comment,
+        notes: successNote,
       });
 
       const newVisitedStops = [...visitedStops, currentStop.id!];
       setVisitedStops(newVisitedStops);
-
-      // Resetar o tracking da parada
       previousStopIdRef.current = "";
 
       const nextIndex = currentStopIndex + 1;
@@ -560,7 +541,7 @@ export default function DriverPage() {
       } else {
         setCurrentStopIndex(nextIndex);
         toast.success(
-          `✅ Parada ${currentStopIndex + 1} concluída! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+          `✅ Visita concluída com sucesso! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
           { duration: 3000 },
         );
 
@@ -569,12 +550,13 @@ export default function DriverPage() {
         setShowNewRouteOption(false);
         setNewRouteDate("");
         setNewRouteObservations("");
+        setVisitStatus(null);
       }
 
       refetch();
     } catch (error) {
       console.error("Erro ao finalizar:", error);
-      toast.error("Erro ao finalizar parada. Tente novamente.");
+      toast.error("Erro ao registrar visita. Tente novamente.");
     } finally {
       setIsSubmitting(false);
     }
@@ -592,8 +574,86 @@ export default function DriverPage() {
     displayStops,
   ]);
 
+  // Registrar erro na visita
+  const confirmError = useCallback(async () => {
+    if (!currentStop) return;
+
+    setIsSubmitting(true);
+    setVisitStatus("error");
+    try {
+      // 🔥 PASSAR OBSERVAÇÃO CLARA DE QUE FOI ERRO
+      const errorNote = comment
+        ? `❌ ERRO NA VISITA: ${comment}`
+        : `❌ ERRO NA VISITA - Não foi possível realizar a visita.`;
+
+      await markStopVisited.mutateAsync({
+        routeId: routeId!,
+        stopId: currentStop.id!,
+        notes: errorNote,
+      });
+
+      const newVisitedStops = [...visitedStops, currentStop.id!];
+      setVisitedStops(newVisitedStops);
+      previousStopIdRef.current = "";
+
+      const nextIndex = currentStopIndex + 1;
+
+      if (nextIndex >= totalStops) {
+        await updateRoute.mutateAsync({
+          id: routeId!,
+          data: { status: "FINISHED" },
+        });
+
+        localStorage.removeItem(`driver_route_${routeId}_index`);
+        localStorage.removeItem(`driver_route_${routeId}_visited`);
+
+        toast.warning("⚠️ Rota finalizada com erros registrados", {
+          duration: 3000,
+          icon: "⚠️",
+        });
+
+        setTimeout(() => {
+          router.push("/routes");
+        }, 1500);
+      } else {
+        setCurrentStopIndex(nextIndex);
+        toast.warning(
+          `⚠️ Erro registrado na visita. Seguindo para próxima parada.`,
+          { duration: 3000 },
+        );
+
+        setIsModalOpen(false);
+        setComment("");
+        setShowNewRouteOption(false);
+        setNewRouteDate("");
+        setNewRouteObservations("");
+        setVisitStatus(null);
+      }
+
+      refetch();
+    } catch (error) {
+      console.error("Erro ao registrar erro na visita:", error);
+      toast.error("Erro ao registrar erro. Tente novamente.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [
+    currentStop,
+    markStopVisited,
+    routeId,
+    comment,
+    visitedStops,
+    currentStopIndex,
+    totalStops,
+    updateRoute,
+    router,
+    refetch,
+    displayStops,
+  ]);
+
+  // 🔥 FUNÇÃO CORRIGIDA: Criar nova rota APENAS com o destino atual
   const handleCreateNewRoute = useCallback(async () => {
-    if (!route) return;
+    if (!route || !currentStop) return;
 
     if (!newRouteDate) {
       toast.warning("Selecione uma data para a nova rota");
@@ -606,55 +666,106 @@ export default function DriverPage() {
     });
 
     try {
-      if (currentStop && !visitedStops.includes(currentStop.id!)) {
+      const formattedDate = new Date(newRouteDate).toLocaleDateString("pt-BR");
+      const newTitle = `${route.title} - ${currentStop.name} (agendado - ${formattedDate})`;
+
+      let description = `Destino agendado da rota original: ${route.title}\n`;
+      description += `Endereço: ${currentStop.address}, ${currentStop.city}/${currentStop.state}\n`;
+      if (currentStop.notes) {
+        description += `Observações originais: ${currentStop.notes}\n`;
+      }
+      if (newRouteObservations) {
+        description += `\n📝 Observações do agendamento: ${newRouteObservations}`;
+      }
+
+      const createRoutePayload: CreateRouteDto = {
+        title: newTitle,
+        description: description,
+        routeDate: newRouteDate,
+        userAssignedId: route.userAssignedId || undefined,
+        orderBy: "DISTANCE",
+        stops: [
+          {
+            name: currentStop.name,
+            address: currentStop.address,
+            complement: currentStop.complement || "",
+            neighborhood: currentStop.neighborhood || "",
+            city: currentStop.city,
+            state: currentStop.state,
+            zipCode: currentStop.zipCode,
+            latitude: currentStop.latitude,
+            longitude: currentStop.longitude,
+            notes: currentStop.notes || "",
+          },
+        ],
+      };
+
+      // Usar o mutateAsync do hook createRoute
+      await createRoute.mutateAsync(createRoutePayload);
+
+      // 🔥 MARCAR PARADA COMO VISITADA E AVANÇAR PARA PRÓXIMA
+      if (!visitedStops.includes(currentStop.id!)) {
         await markStopVisited.mutateAsync({
           routeId: routeId!,
           stopId: currentStop.id!,
-          notes: "tudo certo",
+          notes: `Rota agendada para ${formattedDate}.`,
         });
-        setVisitedStops([...visitedStops, currentStop.id!]);
+
+        // 🔥 ATUALIZAR ESTADO LOCAL IMEDIATAMENTE
+        const newVisitedStops = [...visitedStops, currentStop.id!];
+        setVisitedStops(newVisitedStops);
+
+        // 🔥 AVANÇAR PARA PRÓXIMA PARADA
+        const nextIndex = currentStopIndex + 1;
+        if (nextIndex < totalStops) {
+          setCurrentStopIndex(nextIndex);
+          toast.success(
+            `✅ Destino agendado! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+            { duration: 3000 },
+          );
+        } else {
+          // Se não há mais paradas, finalizar rota
+          await updateRoute.mutateAsync({
+            id: routeId!,
+            data: { status: "FINISHED" },
+          });
+          localStorage.removeItem(`driver_route_${routeId}_index`);
+          localStorage.removeItem(`driver_route_${routeId}_visited`);
+          toast.success("🎉 Rota finalizada com sucesso!", { duration: 3000 });
+          setTimeout(() => router.push("/routes"), 1500);
+        }
       }
-
-      const formattedDate = new Date(newRouteDate).toLocaleDateString("pt-BR");
-      const newTitle = `${route.title} (Agendar - ${formattedDate})`;
-
-      let description = route.description || "";
-      if (newRouteObservations) {
-        description = description
-          ? `${description}\n\n📝 ${newRouteObservations}`
-          : newRouteObservations;
-      }
-
-      await duplicateRoute.mutateAsync({
-        id: routeId!,
-        data: { title: newTitle, routeDate: newRouteDate, description },
-      });
-
-      await updateRoute.mutateAsync({
-        id: routeId!,
-        data: { status: "FINISHED" },
-      });
-
-      localStorage.removeItem(`driver_route_${routeId}_index`);
-      localStorage.removeItem(`driver_route_${routeId}_visited`);
 
       toast.dismiss(loadingToast);
-      toast.success("✅ Rota reagendada com sucesso!", {
+      toast.success("✅ Nova rota criada com sucesso!", {
         duration: 4000,
         description: `Nova rota: ${newTitle} | Data: ${formattedDate}`,
       });
 
+      // 🔥 FECHAR MODAL E LIMPAR ESTADOS
       setIsModalOpen(false);
       setShowNewRouteOption(false);
       setComment("");
       setNewRouteDate("");
       setNewRouteObservations("");
+      setVisitStatus(null);
 
-      setTimeout(() => router.push("/routes"), 1500);
+      // 🔥 FORÇAR REFRESH DOS DADOS
+      await refetch();
+
+      // 🔥 RECALCULAR ORDEM OTIMIZADA (se necessário)
+      if (route.orderBy === "DISTANCE" && currentPosition) {
+        const reordered = reorderStopsByProximity(
+          route.stops,
+          currentPosition,
+          [...visitedStops, currentStop.id!],
+        );
+        setOptimizedStops(reordered);
+      }
     } catch (error) {
       console.error("Erro ao criar nova rota:", error);
       toast.dismiss(loadingToast);
-      toast.error("❌ Erro ao reagendar rota", {
+      toast.error("❌ Erro ao criar nova rota", {
         description: "Tente novamente ou contate o suporte.",
       });
     } finally {
@@ -662,15 +773,21 @@ export default function DriverPage() {
     }
   }, [
     route,
+    currentStop,
+    currentStopIndex,
+    totalStops,
+    displayStops,
+    currentPosition,
     newRouteDate,
     newRouteObservations,
-    currentStop,
-    visitedStops,
     markStopVisited,
-    duplicateRoute,
     updateRoute,
-    router,
     routeId,
+    visitedStops,
+    createRoute,
+    refetch,
+    reorderStopsByProximity,
+    router,
   ]);
 
   // Efeito para marcar rota como concluída
@@ -707,19 +824,6 @@ export default function DriverPage() {
     router,
     isFinishing,
   ]);
-
-  // 🔥 LOG para debug da ordem das paradas
-  useEffect(() => {
-    if (route && displayStops.length > 0) {
-      console.log("📍 ORDEM DAS PARADAS:");
-      console.log(`Tipo de ordenação: ${route.orderBy}`);
-      displayStops.forEach((stop, idx) => {
-        console.log(
-          `  ${idx + 1}. ${stop.name} (${stop.city}) - lat:${stop.latitude}, lng:${stop.longitude}`,
-        );
-      });
-    }
-  }, [route, displayStops]);
 
   // Prefetch da lista de rotas
   const prefetchRoutes = useCallback(() => {
@@ -801,7 +905,7 @@ export default function DriverPage() {
         />
       </div>
 
-      {/* Modal de Finalização (mesmo código, sem alterações) */}
+      {/* Modal de Finalização */}
       {isModalOpen && (
         <div className="absolute inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
@@ -812,8 +916,8 @@ export default function DriverPage() {
                     Chegou ao Destino!
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    Confirme a visita para{" "}
-                    {currentStop?.name || `Parada ${currentStopIndex + 1}`}
+                    Como foi a visita em{" "}
+                    {currentStop?.name || `Parada ${currentStopIndex + 1}`}?
                   </p>
                 </div>
 
@@ -833,34 +937,49 @@ export default function DriverPage() {
 
                 <div className="flex flex-col gap-2">
                   <button
-                    onClick={confirmFinalization}
+                    onClick={confirmSuccess}
                     disabled={isSubmitting}
-                    className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-95"
+                    className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center gap-2"
                   >
-                    {isSubmitting ? (
+                    {isSubmitting && visitStatus === "success" ? (
                       <>
-                        <Loader2
-                          className="animate-spin inline mr-2"
-                          size={18}
-                        />
+                        <Loader2 className="animate-spin" size={18} />
                         Confirmando...
                       </>
                     ) : (
-                      "Confirmar Visita"
+                      <>
+                        <CheckCircle size={18} />
+                        Visita concluída
+                      </>
                     )}
                   </button>
 
-                  {/* Botão Agendar - aparece na última parada ou quando não há mais paradas */}
-                  {(currentStopIndex === totalStops - 1 ||
-                    visitedStops.length === totalStops - 1) && (
-                    <button
-                      onClick={() => setShowNewRouteOption(true)}
-                      className="w-full py-3 border-2 border-blue-600 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Copy size={18} />
-                      Agendar Rota
-                    </button>
-                  )}
+                  <button
+                    onClick={confirmError}
+                    disabled={isSubmitting}
+                    className="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting && visitStatus === "error" ? (
+                      <>
+                        <Loader2 className="animate-spin" size={18} />
+                        Registrando...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle size={18} />
+                        Erro na visita
+                      </>
+                    )}
+                  </button>
+
+                  {/* Botão Agendar - disponível desde o início */}
+                  <button
+                    onClick={() => setShowNewRouteOption(true)}
+                    className="w-full py-3 border-2 border-blue-600 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Copy size={18} />
+                    Agendar Rota
+                  </button>
 
                   <button
                     onClick={() => setIsModalOpen(false)}
@@ -877,8 +996,15 @@ export default function DriverPage() {
                     Agendar Rota
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    Reaproveitar todos os {totalStops} destinos desta rota
+                    Criar nova rota apenas para este destino
                   </p>
+                  <div className="mt-2 p-2 bg-amber-50 rounded-lg">
+                    <p className="text-xs text-amber-700">
+                      📍 Destino atual: <strong>{currentStop?.name}</strong>
+                      <br />
+                      Endereço: {currentStop?.address}, {currentStop?.city}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="mb-4">
@@ -910,11 +1036,10 @@ export default function DriverPage() {
                 <div className="mb-4 p-3 bg-slate-50 rounded-lg">
                   <p className="text-xs text-slate-500 mb-1">Resumo:</p>
                   <p className="text-sm font-medium text-slate-700 truncate">
-                    {route?.title}
+                    {route?.title} - {currentStop?.name}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
-                    {totalStops} destino{totalStops !== 1 ? "s" : ""} •
-                    {route?.formattedDistance || " Distância não calculada"}
+                    1 destino • Nova rota independente
                   </p>
                 </div>
 
@@ -932,7 +1057,7 @@ export default function DriverPage() {
                     ) : (
                       <>
                         <CalendarPlus size={18} />
-                        Criar Rota
+                        Criar Rota para este Destino
                       </>
                     )}
                   </button>

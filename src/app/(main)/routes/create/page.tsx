@@ -164,7 +164,7 @@ const FormSkeleton = () => (
   </div>
 );
 
-// Componente de Task Item para seleção (com efeito glass no hover)
+// Componente de Task Item para seleção
 const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
   const hasLocation = task.taskAddress?.latitude && task.taskAddress?.longitude;
 
@@ -175,10 +175,9 @@ const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
       transition={{ duration: 0.2 }}
       className={cn(
         "flex items-start gap-3 p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer",
-        "backdrop-blur-sm",
         isSelected
           ? "border-[#D35400] bg-[#D35400]/10 shadow-md"
-          : "border-gray-200 bg-white/80 hover:bg-white/95 hover:backdrop-blur-md hover:shadow-lg hover:border-[#D35400]/30",
+          : "border-gray-200 bg-white hover:bg-gray-50 hover:shadow-lg hover:border-[#D35400]/30",
       )}
       onClick={() => onToggle(task.id)}
     >
@@ -194,11 +193,7 @@ const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
           <h4 className="font-semibold text-[#2C3E50] truncate">
             {task.title}
           </h4>
-          {hasLocation && (
-            <Badge className="bg-green-50 text-green-700 border border-green-200 text-xs">
-              ✓ Geolocalizada
-            </Badge>
-          )}
+          
         </div>
         {task.taskAddress && (
           <p className="text-sm text-[#95A5A6] truncate mt-1">
@@ -224,7 +219,7 @@ const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
 
 TaskItem.displayName = "TaskItem";
 
-// Componente de StopItem (parada selecionada) - com efeito glass
+// Componente de StopItem (parada selecionada)
 const StopItem = memo(({ stop, index, onRemove }: any) => {
   const handleRemoveClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -236,7 +231,7 @@ const StopItem = memo(({ stop, index, onRemove }: any) => {
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="flex items-center justify-between p-3 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 shadow-sm hover:bg-white/95 hover:backdrop-blur-md hover:shadow-md transition-all duration-300"
+      className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300"
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <span className="w-6 h-6 rounded-full bg-[#D35400]/10 text-[#D35400] flex items-center justify-center text-xs font-bold">
@@ -302,6 +297,8 @@ export default function CreateRoutePage() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
     new Set(),
   );
+  // 🔥 NOVO: Controlar se as tarefas já foram carregadas para evitar loop
+  const [hasLoadedTasks, setHasLoadedTasks] = useState(false);
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -335,37 +332,38 @@ export default function CreateRoutePage() {
 
   // Carregar tasks disponíveis (com endereço)
   const loadAvailableTasks = useCallback(async () => {
+    // 🔥 EVITAR CARREGAMENTO DUPLICADO
+    if (isLoadingTasks || hasLoadedTasks) return;
+    
     setIsLoadingTasks(true);
     try {
       const response = await api.get("/tasks", {
-        params: { hasLocation: "true", limit: 100 },
+        params: { hasLocation: "true", limit: 100, excludeCompleted: "true" },
       });
       const tasks = response.data?.data || [];
       setAvailableTasks(tasks);
+      setHasLoadedTasks(true); // 🔥 MARCA COMO CARREGADO
 
       if (tasks.length === 0) {
-        toast.info("Nenhuma tarefa com endereço disponível", {
+        toast.info("Nenhuma tarefa disponível para criar rota", {
           duration: 3000,
         });
       }
     } catch (error) {
       console.error("Erro ao carregar tasks:", error);
       toast.error("Erro ao carregar lista de tarefas");
+      setHasLoadedTasks(true); // 🔥 MESMO COM ERRO, MARCA COMO CARREGADO PARA EVITAR LOOP
     } finally {
       setIsLoadingTasks(false);
     }
-  }, []);
+  }, [isLoadingTasks, hasLoadedTasks]);
 
-  // Carregar tasks ao entrar na aba
+  // Carregar tasks ao entrar na aba - 🔥 CORRIGIDO PARA EVITAR LOOP
   useEffect(() => {
-    if (
-      activeTab === "tasks" &&
-      availableTasks.length === 0 &&
-      !isLoadingTasks
-    ) {
+    if (activeTab === "tasks" && !hasLoadedTasks && !isLoadingTasks) {
       loadAvailableTasks();
     }
-  }, [activeTab, availableTasks.length, isLoadingTasks, loadAvailableTasks]);
+  }, [activeTab, hasLoadedTasks, isLoadingTasks, loadAvailableTasks]);
 
   // Converter task para stop
   const convertTaskToStop = useCallback((task: Task) => {
@@ -477,7 +475,7 @@ export default function CreateRoutePage() {
       try {
         const payload = {
           title: data.title,
-          description: `Rota criada a partir de ${data.stops.length} tarefa(s)`,
+          description: "",
           routeDate: data.routeDate?.toISOString(),
           userAssignedId:
             data.userAssignedId === "none" ? undefined : data.userAssignedId,
@@ -536,9 +534,9 @@ export default function CreateRoutePage() {
           <div>
             <h1 className="text-3xl font-bold text-[#2C3E50]">Criar Rota</h1>
             <p className="text-[#95A5A6] mt-1">
-              Preencha as informações da rota
+              Preencha as informações 
             </p>
-            {stats.totalStops > 0 && (
+            {/* {stats.totalStops > 0 && (
               <div className="flex gap-3 mt-3">
                 <Badge
                   variant="outline"
@@ -550,7 +548,7 @@ export default function CreateRoutePage() {
                   ✓ {stats.hasCoordinates} geocodificada(s)
                 </Badge>
               </div>
-            )}
+            )} */}
           </div>
           <TooltipProvider>
             <Tooltip>
@@ -565,7 +563,7 @@ export default function CreateRoutePage() {
                 </RippleButton>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Voltar para lista de rotas</p>
+                <p>Cancelar rota</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -593,7 +591,7 @@ export default function CreateRoutePage() {
                     "rounded-md px-6 py-2 text-[#95A5A6] transition-all data-[state=active]:bg-[#D35400] data-[state=active]:text-white",
                   )}
                 >
-                  2. Revisão ({stats.totalStops})
+                  2. Revisão 
                 </TabsTrigger>
               </TabsList>
 
@@ -729,7 +727,7 @@ export default function CreateRoutePage() {
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className={labelStyle}>
-                                Otimizar Rota Por
+                                Rota Por
                               </FormLabel>
                               <Select
                                 onValueChange={field.onChange}
@@ -746,7 +744,7 @@ export default function CreateRoutePage() {
                                     className="text-[#2C3E50] focus:bg-[#D35400]/10"
                                   >
                                     <MapPin className="w-4 h-4 text-[#D35400] mr-2 inline" />
-                                    Proximidade (Menor distância)
+                                    Proximidade
                                   </SelectItem>
                                   <SelectItem
                                     value="PRIORITY"
@@ -772,10 +770,10 @@ export default function CreateRoutePage() {
                     <div className="flex justify-between items-center mb-6">
                       <div>
                         <h3 className="font-bold text-lg text-[#2C3E50]">
-                          Tarefas com Endereço
+                          Tarefas 
                         </h3>
                         <p className="text-sm text-[#95A5A6] mt-1">
-                          Selecione as tarefas que farão parte da rota
+                          Selecione as tarefas 
                         </p>
                       </div>
                       {selectedTaskIds.size > 0 && (
@@ -795,7 +793,7 @@ export default function CreateRoutePage() {
                         <MapPinIcon className="mx-auto h-12 w-12 text-[#BDC3C7] mb-4" />
                         <p className="text-[#95A5A6]">
                           {availableTasks.length === 0
-                            ? "Nenhuma tarefa com endereço disponível"
+                            ? "Nenhuma tarefa disponível para criar rota"
                             : "Todas as tarefas já foram adicionadas à rota"}
                         </p>
                         <p className="text-[#95A5A6] text-sm mt-1">
@@ -852,7 +850,7 @@ export default function CreateRoutePage() {
                         disabled={selectedTaskIds.size === 0}
                       >
                         <PlusIcon className="h-4 w-4 mr-2" />
-                        Adicionar ({selectedTaskIds.size})
+                        Adicionar 
                       </Button>
                       <Button
                         type="button"
@@ -873,10 +871,10 @@ export default function CreateRoutePage() {
                 <Card className={cardStyle}>
                   <CardHeader className="pb-4 border-b border-gray-200">
                     <CardTitle className="text-[#2C3E50] text-xl">
-                      Confirmar Criação da Rota
+                      Confirmar 
                     </CardTitle>
                     <p className="text-sm text-[#95A5A6] mt-1">
-                      Revise os dados antes de salvar
+                      Revisar as informações 
                     </p>
                   </CardHeader>
                   <CardContent className="p-6 space-y-6">
@@ -901,7 +899,7 @@ export default function CreateRoutePage() {
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-[#2C3E50] font-medium">
-                          Otimização:
+                          Rota Por:
                         </span>
                         <span className="text-[#2C3E50]">
                           {form.watch("orderBy") === "DISTANCE" ? (
@@ -945,7 +943,7 @@ export default function CreateRoutePage() {
                     {fields.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-[#2C3E50] mb-3">
-                          Paradas da Rota
+                          Pontos de parada
                         </h4>
                         <div className="space-y-2 max-h-[400px] overflow-y-auto">
                           {fields.map((field, index) => (
@@ -991,14 +989,11 @@ export default function CreateRoutePage() {
                           Salvando...
                         </>
                       ) : (
-                        "Salvar e Gerar Rota"
+                        "Salvar"
                       )}
                     </Button>
 
-                    <p className="text-center text-[#95A5A6] text-xs">
-                      Ao confirmar, a rota será otimizada e enviada para o
-                      dispositivo do motorista.
-                    </p>
+                    
                   </CardContent>
                 </Card>
 
@@ -1009,7 +1004,7 @@ export default function CreateRoutePage() {
                     className="text-[#95A5A6] hover:text-[#2C3E50] transition-colors rounded-full"
                     onClick={() => setActiveTab("tasks")}
                   >
-                    ← Voltar para seleção de tarefas
+                    ← Voltar
                   </Button>
                 </div>
               </TabsContent>

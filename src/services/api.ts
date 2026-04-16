@@ -367,7 +367,7 @@ export const routesApi = {
     api.post("/routes/calculate-best-path", data),
 
   /**
-   * Finaliza uma tarefa (sucesso/falha) ou reagenda
+   * Finaliza uma tarefa (sucesso/falha) ou agenda
    */
   finalizeTask: (taskId: string, data: FinalizeTaskDto) =>
     api.patch(`/routes/tasks/${taskId}/finalize`, data),

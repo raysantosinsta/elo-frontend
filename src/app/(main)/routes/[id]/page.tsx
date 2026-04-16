@@ -4,35 +4,58 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useRoutes } from "@/hooks/useRoutes";
+import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   ArrowLeftIcon,
-  CalendarDaysIcon,
   CalendarIcon,
   CheckCircleIcon,
   ClockIcon,
   FileTextIcon,
   Loader2,
-  MessageSquareIcon,
+  MapPinIcon,
   Navigation,
   RulerIcon,
   UserIcon,
-  MapPinIcon,
-  ArrowUpDownIcon,
   Edit2Icon,
+  Trash2Icon,
+  MoreHorizontalIcon,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, memo, useCallback } from "react";
+import { useMemo, memo, useCallback, useState } from "react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-// ─── Constantes ──────────────────────────────────────────────────────────────
+// ─── Constantes de Status (alinhadas com RoutesPage) ─────────────────────────
 const statusColors: Record<string, string> = {
-  SCHEDULED: "bg-blue-500/20 text-blue-300 border border-blue-500/30",
-  IN_PROGRESS: "bg-[#D35400]/20 text-[#D35400] border border-[#D35400]/30",
-  FINISHED: "bg-green-500/20 text-green-300 border border-green-500/30",
-  CANCELED: "bg-white/10 text-[#9CA3AF] border border-white/10",
+  SCHEDULED: "bg-blue-50 text-blue-700 border border-blue-200",
+  IN_PROGRESS: "bg-[#D35400]/10 text-[#D35400] border border-[#D35400]/20",
+  FINISHED: "bg-green-50 text-green-700 border border-green-200",
+  CANCELED: "bg-gray-100 text-gray-500 border border-gray-200",
 };
 
 const statusText: Record<string, string> = {
@@ -47,48 +70,65 @@ const orderByText: Record<string, string> = {
   PRIORITY: "Prioridade",
 };
 
-const orderByIcon: Record<string, any> = {
-  DISTANCE: MapPinIcon,
-  PRIORITY: ArrowUpDownIcon,
+// Componente de toast customizado
+const CustomToast = ({
+  message,
+  type = "success",
+}: {
+  message: string;
+  type?: "success" | "error";
+}) => {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 bg-white rounded-lg shadow-lg p-3 border-l-4",
+        type === "success" ? "border-green-500" : "border-red-500",
+      )}
+    >
+      {type === "success" ? (
+        <CheckCircleIcon className="h-5 w-5 text-green-500" />
+      ) : (
+        <FileTextIcon className="h-5 w-5 text-red-500" />
+      )}
+      <span className="text-sm text-gray-700">{message}</span>
+    </div>
+  );
 };
-
-const orderByColor: Record<string, string> = {
-  DISTANCE: "bg-purple-500/20 text-purple-300 border border-purple-500/30",
-  PRIORITY: "bg-amber-500/20 text-amber-300 border border-amber-500/30",
-};
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
-}
 
 // 🎯 Componente de Skeleton Loading
 const DetailsSkeleton = () => (
-  <div className="min-h-screen bg-[#2C3E50]">
-    <div className="container mx-auto py-8 px-4 max-w-5xl">
-      <div className="mb-8">
-        <div className="h-8 w-32 bg-white/10 rounded-lg animate-pulse mb-4" />
-        <div className="h-12 w-64 bg-white/10 rounded-lg animate-pulse mb-3" />
+  <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-8">
+    <div className="max-w-7xl mx-auto space-y-6">
+      <div className="animate-pulse space-y-4">
+        <div className="h-10 w-32 bg-gray-200 rounded" />
+        <div className="h-12 w-64 bg-gray-200 rounded" />
         <div className="flex gap-3">
-          <div className="h-6 w-24 bg-white/10 rounded-full animate-pulse" />
-          <div className="h-6 w-24 bg-white/10 rounded-full animate-pulse" />
+          <div className="h-6 w-24 bg-gray-200 rounded-full" />
+          <div className="h-6 w-24 bg-gray-200 rounded-full" />
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-4">
-            <div className="h-4 w-24 bg-white/10 rounded animate-pulse mb-2" />
-            <div className="h-8 w-32 bg-white/10 rounded animate-pulse" />
+          <div
+            key={i}
+            className="bg-white rounded-xl p-4 shadow-sm border border-gray-100"
+          >
+            <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mb-2" />
+            <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
           </div>
         ))}
       </div>
       <div className="space-y-3">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-4">
+          <div
+            key={i}
+            className="bg-white rounded-xl p-4 shadow-sm border border-gray-100"
+          >
             <div className="flex gap-4">
-              <div className="h-8 w-8 bg-white/10 rounded-full animate-pulse" />
+              <div className="h-8 w-8 bg-gray-200 rounded-full animate-pulse" />
               <div className="flex-1">
-                <div className="h-5 w-32 bg-white/10 rounded animate-pulse mb-2" />
-                <div className="h-4 w-48 bg-white/10 rounded animate-pulse" />
+                <div className="h-5 w-32 bg-gray-200 rounded animate-pulse mb-2" />
+                <div className="h-4 w-48 bg-gray-200 rounded animate-pulse" />
               </div>
             </div>
           </div>
@@ -98,93 +138,89 @@ const DetailsSkeleton = () => (
   </div>
 );
 
-// 🎯 Componente de Card de Informação memoizado
-const InfoCard = memo(({ icon: Icon, title, value, subtitle, color = "#D35400" }: any) => (
-  <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:border-[#D35400]/30 transition-all duration-200">
-    <div className="flex items-center gap-2 mb-2">
-      <Icon className="h-4 w-4" style={{ color }} />
-      <span className="text-xs text-[#9CA3AF] uppercase tracking-wider font-semibold">
-        {title}
-      </span>
-    </div>
-    <p className="text-2xl font-bold text-white">{value}</p>
-    {subtitle && <p className="text-xs text-[#6B7280] mt-1">{subtitle}</p>}
-  </div>
+// 🎯 Componente de Info Card
+const InfoCard = memo(({ icon: Icon, title, value }: any) => (
+  <Card className="border-0 shadow-md rounded-xl hover:shadow-lg transition-all duration-200">
+    <CardContent className="p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Icon className="h-4 w-4 text-[#D35400]" />
+        <span className="text-xs font-medium text-[#95A5A6] uppercase tracking-wider">
+          {title}
+        </span>
+      </div>
+      <p className="text-2xl font-bold text-[#2C3E50]">{value}</p>
+    </CardContent>
+  </Card>
 ));
 
 InfoCard.displayName = "InfoCard";
 
-// 🎯 Componente de Stop Item memoizado
-const StopItem = memo(({ stop, index, orderByType }: any) => {
+// 🎯 Componente de Stop Item
+const StopItem = memo(({ stop, index }: any) => {
   const isVisited = stop.visited;
-  
+
   return (
-    <div
+    <Card
       className={cn(
-        "group flex flex-col gap-4 p-4 rounded-xl border transition-all duration-200",
+        "border transition-all duration-200 hover:shadow-md",
         isVisited
-          ? "bg-white/5 border-white/5 opacity-80"
-          : "bg-white/5 border-white/10 hover:border-[#D35400]/40 hover:bg-white/10",
+          ? "bg-gray-50/50 border-gray-200"
+          : "border-gray-100 hover:border-[#D35400]/20",
       )}
     >
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-        {/* Indicador numérico */}
-        <div
-          className={cn(
-            "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border-2 transition-all",
-            isVisited
-              ? "bg-green-500/20 border-green-500/40 text-green-300"
-              : "bg-[#D35400]/20 border-[#D35400]/50 text-[#D35400] group-hover:scale-105",
-          )}
-        >
-          {isVisited ? (
-            <CheckCircleIcon className="h-4 w-4" />
-          ) : (
-            index + 1
-          )}
-        </div>
+      <CardContent className="p-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          {/* Indicador numérico */}
+          <div
+            className={cn(
+              "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border-2 transition-all",
+              isVisited
+                ? "bg-green-50 border-green-300 text-green-600"
+                : "bg-[#D35400]/10 border-[#D35400]/30 text-[#D35400]",
+            )}
+          >
+            {isVisited ? (
+              <CheckCircleIcon className="h-4 w-4 text-green-500" />
+            ) : (
+              index + 1
+            )}
+          </div>
 
-        {/* Dados da parada */}
-        <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-sm text-white truncate">
-            {stop.name || `Ponto ${index + 1}`}
-          </h3>
-          <p className="text-xs text-[#9CA3AF] truncate">
-            {stop.address}, {stop.city} - {stop.state}
-          </p>
-        </div>
+          {/* Dados da parada */}
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-[#2C3E50] truncate">
+              {stop.name || `Ponto ${index + 1}`}
+            </h3>
+            <p className="text-sm text-[#95A5A6] truncate">
+              {stop.address}, {stop.city} - {stop.state}
+            </p>
+          </div>
 
-        {/* Status */}
-        <div className="flex-shrink-0">
-          {isVisited ? (
-            <Badge className="bg-green-500/20 text-green-300 border border-green-500/30 shadow-none text-xs">
-              Visitado em {stop.visitedAt ? format(new Date(stop.visitedAt), "dd/MM/yyyy HH:mm", { locale: ptBR }) : ""}
-            </Badge>
-          ) : (
-            <Badge className="bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-none text-xs">
-              Pendente
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      {/* Observações da visita */}
-      {stop.notes && (
-        <div className="ml-12 pl-4 border-l-2 border-[#D35400]/30">
-          <div className="flex items-start gap-2">
-            <MessageSquareIcon className="h-4 w-4 text-[#D35400] mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-xs text-[#9CA3AF] font-medium mb-1">
-                Observações da visita:
-              </p>
-              <p className="text-sm text-[#D1D5DB] whitespace-pre-wrap">
-                {stop.notes}
-              </p>
-            </div>
+          {/* Status */}
+          <div className="flex-shrink-0">
+            {isVisited ? (
+              <Badge className="bg-green-50 text-green-700 border border-green-200 shadow-none text-xs">
+                Visitado
+              </Badge>
+            ) : (
+              <Badge className="bg-blue-50 text-blue-700 border border-blue-200 shadow-none text-xs">
+                Pendente
+              </Badge>
+            )}
           </div>
         </div>
-      )}
-    </div>
+
+        {/* Observações da visita */}
+        {stop.notes && (
+          <div className="mt-3 ml-12 pl-4 border-l-2 border-[#D35400]/20">
+            <p className="text-sm text-[#95A5A6]">
+              <span className="font-medium text-[#2C3E50]">Observações:</span>{" "}
+              {stop.notes}
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 });
 
@@ -195,29 +231,53 @@ export default function RouteDetailsPage() {
   const router = useRouter();
   const routeId = params.id as string;
 
-  const { useGetRouteById, useUpdateRoute } = useRoutes();
+  const { useGetRouteById, useUpdateRoute, useDeleteRoute } = useRoutes();
   const { data: route, isLoading } = useGetRouteById(routeId);
   const updateRoute = useUpdateRoute();
+  const deleteRoute = useDeleteRoute();
 
-  // 🔥 Memoização dos stops ordenados
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // Memoização dos stops ordenados
   const orderedStops = useMemo(() => {
     if (!route?.stops) return [];
     return [...route.stops].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [route?.stops]);
 
-  // 🔥 Estatísticas memoizadas
+  // Estatísticas memoizadas
   const stats = useMemo(() => {
-    if (!route) return { visitedCount: 0, totalStops: 0, progress: 0 };
-    const visitedCount = route.stops?.filter((stop: any) => stop.visited).length || 0;
+    if (!route) return { visitedCount: 0, totalStops: 0 };
+    const visitedCount =
+      route.stops?.filter((stop: any) => stop.visited).length || 0;
     const totalStops = route.stops?.length || 0;
-    return {
-      visitedCount,
-      totalStops,
-      progress: totalStops > 0 ? (visitedCount / totalStops) * 100 : 0,
-    };
+    return { visitedCount, totalStops };
   }, [route]);
 
-  // 🔥 Callback para iniciar navegação
+  // Verificar se rota está atrasada
+  const isOverdue = useMemo(() => {
+    if (!route?.routeDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const routeDate = new Date(route.routeDate);
+    return routeDate < today && route.status !== "FINISHED";
+  }, [route?.routeDate, route?.status]);
+
+  // 🔥 Função para verificar se o valor da distância é válido (não zero e não "—")
+  const hasValidDistance = useMemo(() => {
+    if (!route?.formattedDistance) return false;
+    const value = route.formattedDistance;
+    return value !== "—" && value !== "Distância não calculada" && value !== "0 km";
+  }, [route?.formattedDistance]);
+
+  // 🔥 Função para verificar se o valor da duração é válido (não zero e não "—")
+  const hasValidDuration = useMemo(() => {
+    if (!route?.formattedDuration) return false;
+    const value = route.formattedDuration;
+    return value !== "—" && value !== "Duração não calculada" && value !== "0 min";
+  }, [route?.formattedDuration]);
+
+  // Callback para iniciar navegação
   const handleStartNavigation = useCallback(async () => {
     if (route?.status === "SCHEDULED") {
       try {
@@ -225,27 +285,44 @@ export default function RouteDetailsPage() {
           id: routeId,
           data: { status: "IN_PROGRESS" as any },
         });
-      } catch (error) {
-        console.error("Erro ao atualizar status da rota", error);
+        toast.custom(
+          (t) => (
+            <CustomToast message="Rota iniciada com sucesso" type="success" />
+          ),
+          { duration: 1500 },
+        );
+      } catch {
+        toast.custom(
+          (t) => <CustomToast message="Erro ao iniciar rota" type="error" />,
+          { duration: 1500 },
+        );
       }
     }
     router.push(`/driver?routeId=${routeId}`);
   }, [route?.status, updateRoute, router, routeId]);
 
-  // 🔥 Prefetch da lista de rotas
-  const prefetchRoutes = useCallback(() => {
-    router.prefetch("/routes");
-  }, [router]);
-
-  // 🔥 Prefetch da página do driver
-  const prefetchDriver = useCallback(() => {
-    router.prefetch(`/driver?routeId=${routeId}`);
-  }, [router, routeId]);
-
-  // 🔥 Prefetch da página de edição
-  const prefetchEdit = useCallback(() => {
-    router.prefetch(`/routes/${routeId}/edit`);
-  }, [router, routeId]);
+  // Callback para excluir rota
+  const handleDelete = useCallback(async () => {
+    setIsDeleting(true);
+    try {
+      await deleteRoute.mutateAsync(routeId);
+      toast.custom(
+        (t) => (
+          <CustomToast message="Rota excluída com sucesso" type="success" />
+        ),
+        { duration: 1500 },
+      );
+      router.push("/routes");
+    } catch {
+      toast.custom(
+        (t) => <CustomToast message="Erro ao excluir rota" type="error" />,
+        { duration: 1500 },
+      );
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  }, [deleteRoute, routeId, router]);
 
   if (isLoading) {
     return <DetailsSkeleton />;
@@ -253,16 +330,19 @@ export default function RouteDetailsPage() {
 
   if (!route) {
     return (
-      <div className="min-h-screen bg-[#2C3E50] flex flex-col items-center justify-center gap-4 text-white">
+      <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-8 flex flex-col items-center justify-center gap-4">
         <div className="text-center">
-          <MapPinIcon className="mx-auto h-16 w-16 text-[#6B7280] mb-4" />
-          <p className="text-[#9CA3AF] text-lg">Rota não encontrada</p>
-          <p className="text-[#6B7280] text-sm mt-1">Verifique o ID da rota ou tente novamente</p>
+          <MapPinIcon className="mx-auto h-16 w-16 text-[#95A5A6] mb-4" />
+          <p className="text-[#2C3E50] text-lg font-medium">
+            Rota não encontrada
+          </p>
+          <p className="text-[#95A5A6] text-sm mt-1">
+            Verifique o ID da rota ou tente novamente
+          </p>
         </div>
         <Button
-          className="bg-[#D35400] hover:bg-[#b84700] text-white border-none transition-all active:scale-95"
+          className="bg-[#D35400] hover:bg-[#D35400]/90 text-white rounded-full"
           onClick={() => router.push("/routes")}
-          onMouseEnter={prefetchRoutes}
         >
           Voltar para lista de rotas
         </Button>
@@ -271,199 +351,222 @@ export default function RouteDetailsPage() {
   }
 
   const orderByType = route.orderBy || "DISTANCE";
-  const OrderIcon = orderByIcon[orderByType];
 
   return (
-    <div className="min-h-screen bg-[#2C3E50] text-white">
-      <div className="container mx-auto py-8 px-4 max-w-5xl">
-        {/* ── Header com progresso ─────────────────────────────────────────────── */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+    <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* ── Header com ações ─────────────────────────────────────────────────── */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div className="space-y-2">
             <Button
               variant="ghost"
-              className="-ml-4 h-8 text-[#9CA3AF] hover:text-white hover:bg-white/10 transition-all"
+              className="-ml-4 h-8 text-[#95A5A6] hover:text-[#2C3E50] hover:bg-transparent"
               onClick={() => router.push("/routes")}
-              onMouseEnter={prefetchRoutes}
             >
               <ArrowLeftIcon className="h-4 w-4 mr-2" />
               Voltar para lista
             </Button>
-            <h1 className="text-4xl font-extrabold tracking-tight text-white">
-              {route.title}
-            </h1>
-            <div className="flex flex-wrap gap-3 items-center">
-              <Badge
-                className={`${statusColors[route.status as keyof typeof statusColors]} text-xs font-medium shadow-none`}
-              >
-                {statusText[route.status as keyof typeof statusText]}
+            <h1 className="text-3xl font-bold text-[#2C3E50]">{route.title}</h1>
+            <div className="flex flex-wrap gap-2 items-center">
+              <Badge className={statusColors[route.status]}>
+                {statusText[route.status]}
               </Badge>
-              
-              <Badge
-                className={`${orderByColor[orderByType]} text-xs font-medium shadow-none flex items-center gap-1`}
-              >
-                {OrderIcon && <OrderIcon className="h-3 w-3" />}
+              {isOverdue && route.status !== "FINISHED" && (
+                <Badge className="bg-red-50 text-red-700 border border-red-200">
+                  Atrasada
+                </Badge>
+              )}
+              <Badge className="bg-purple-50 text-purple-700 border border-purple-200">
                 {orderByText[orderByType]}
               </Badge>
-              
-              {route.routeDate && (
-                <span className="flex items-center text-sm text-[#9CA3AF]">
-                  <CalendarIcon className="h-4 w-4 mr-1" />
-                  {format(new Date(route.routeDate), "dd/MM/yyyy", { locale: ptBR })}
-                </span>
-              )}
-              <span className="text-sm text-[#6B7280]">•</span>
-              <span className="text-sm text-[#D1D5DB] font-medium">
-                {stats.visitedCount} / {stats.totalStops} concluído
-              </span>
             </div>
-            
-            {/* Barra de progresso */}
-            {stats.totalStops > 0 && (
-              <div className="mt-3">
-                <div className="flex justify-between text-xs text-[#6B7280] mb-1">
-                  <span>Progresso da rota</span>
-                  <span>{Math.round(stats.progress)}%</span>
-                </div>
-                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-[#D35400] rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${stats.progress}%` }}
-                  />
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* Apenas o botão de navegação */}
-          <div className="flex gap-2 w-full md:w-auto">
-            <Button
-              onClick={handleStartNavigation}
-              className="flex-1 md:flex-none bg-[#D35400] hover:bg-[#b84700] text-white border-none transition-all active:scale-95"
-              disabled={updateRoute.isPending}
-              onMouseEnter={prefetchDriver}
-            >
-              {updateRoute.isPending ? (
-                <Loader2 className="animate-spin h-4 w-4 mr-2" />
-              ) : (
-                <Navigation className="h-4 w-4 mr-2" />
-              )}
-              Iniciar Navegação
-            </Button>
+          {/* Ações */}
+          <div className="flex gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleStartNavigation}
+                    className="bg-[#D35400] hover:bg-[#D35400]/90 text-white rounded-full"
+                    disabled={updateRoute.isPending}
+                  >
+                    {updateRoute.isPending ? (
+                      <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                    ) : (
+                      <Navigation className="h-4 w-3 mr-1" />
+                    )}
+                    Iniciar
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Iniciar navegação</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="rounded-full">
+                  <MoreHorizontalIcon className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={() => router.push(`/routes/${routeId}/edit`)}
+                >
+                  <Edit2Icon className="mr-2 h-4 w-4 text-[#95A5A6]" />
+                  Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-red-600 focus:text-red-600"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2Icon className="mr-2 h-4 w-4" />
+                  Excluir
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
-          {/* ── Cards de Informações da Rota ────────────────────────────────────── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* ── Cards de Informações da Rota ────────────────────────────────────── */}
+        {/* 🔥 Só mostra os cards se os valores forem válidos */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {hasValidDistance && (
             <InfoCard
               icon={RulerIcon}
               title="Distância Total"
-              value={route.formattedDistance || "Não calculado"}
-              subtitle={route.totalDistanceMeters ? `${(route.totalDistanceMeters / 1000).toFixed(2)} km` : "Distância não calculada"}
+              value={route.formattedDistance}
             />
+          )}
+          {hasValidDuration && (
             <InfoCard
               icon={ClockIcon}
               title="Duração Estimada"
-              value={route.formattedDuration || "Não calculado"}
-              subtitle={route.totalDurationSeconds ? `${Math.floor(route.totalDurationSeconds / 60)} minutos` : "Tempo não calculado"}
+              value={route.formattedDuration}
             />
-            <InfoCard
-              icon={CalendarDaysIcon}
-              title="Criado em"
-              value={route.createdAt ? format(new Date(route.createdAt), "dd/MM/yyyy", { locale: ptBR }) : "-"}
-              subtitle={route.createdAt ? format(new Date(route.createdAt), "HH:mm", { locale: ptBR }) : ""}
-            />
-            <InfoCard
-              icon={FileTextIcon}
-              title="Total de Paradas"
-              value={stats.totalStops}
-              subtitle={`${stats.visitedCount} concluídas • ${stats.totalStops - stats.visitedCount} restantes`}
-            />
-          </div>
+          )}
+          <InfoCard
+            icon={CalendarIcon}
+            title="Data Agendada"
+            value={
+              route.routeDate
+                ? format(new Date(route.routeDate), "dd/MM/yyyy", {
+                    locale: ptBR,
+                  })
+                : "—"
+            }
+          />
+          <InfoCard
+            icon={MapPinIcon}
+            title="Total de Paradas"
+            value={stats.totalStops}
+          />
+        </div>
 
-          {/* ── Descrição ─────────────────────────────────────────────────────── */}
-          {route.description && (
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 transition-all hover:border-[#D35400]/30">
+        {/* ── Descrição ───────────────────────────────────────────────────────── */}
+        {route.description && (
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
                 <FileTextIcon className="h-4 w-4 text-[#D35400]" />
-                <span className="text-xs text-[#9CA3AF] uppercase tracking-wider font-semibold">
+                <span className="text-xs font-medium text-[#95A5A6] uppercase tracking-wider">
                   Descrição
                 </span>
               </div>
-              <p className="text-sm text-[#D1D5DB] whitespace-pre-wrap">
+              <p className="text-sm text-[#2C3E50] whitespace-pre-wrap">
                 {route.description}
               </p>
-            </div>
-          )}
+            </CardContent>
+          </Card>
+        )}
 
-          {/* ── Responsável ─────────────────────────────────────────────────────── */}
-          {route.userAssigned && (
-            <div className="flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-white/5 transition-all hover:border-[#D35400]/30">
-              <div className="h-10 w-10 rounded-full bg-[#D35400]/20 border border-[#D35400]/30 flex items-center justify-center flex-shrink-0">
-                <UserIcon className="h-5 w-5 text-[#D35400]" />
-              </div>
-              <div>
-                <p className="text-xs text-[#9CA3AF] uppercase tracking-wider font-semibold">
-                  Responsável
-                </p>
-                <p className="text-base font-medium text-white">
-                  {route.userAssigned.name}
-                </p>
-                {route.userAssigned.contact && (
-                  <p className="text-xs text-[#6B7280] mt-1">
-                    {route.userAssigned.contact}
+        {/* ── Responsável ─────────────────────────────────────────────────────── */}
+        {route.userAssigned && (
+          <Card className="border-0 shadow-md rounded-xl">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4">
+                <div className="h-10 w-10 rounded-full bg-[#D35400]/10 flex items-center justify-center">
+                  <UserIcon className="h-5 w-5 text-[#D35400]" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-[#95A5A6] uppercase tracking-wider">
+                    Responsável
                   </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── Itinerário ────────────────────────────────────────────────────── */}
-          <Card className="border-none shadow-none bg-transparent">
-            <CardHeader className="px-0 pt-0">
-              <CardTitle className="text-xl text-white">Itinerário</CardTitle>
-              <p className="text-sm text-[#9CA3AF]">
-                Sequência de paradas da rota
-                {orderByType === "DISTANCE" && (
-                  <span className="ml-2 text-purple-300">
-                    (Ordenado por proximidade - reordenado pelo GPS)
-                  </span>
-                )}
-                {orderByType === "PRIORITY" && (
-                  <span className="ml-2 text-amber-300">
-                    (Ordenado por prioridade - ordem manual)
-                  </span>
-                )}
-              </p>
-            </CardHeader>
-            <CardContent className="px-0">
-              <div className="space-y-3">
-                {orderedStops.map((stop: any, index: number) => (
-                  <StopItem
-                    key={stop.id || index}
-                    stop={stop}
-                    index={index}
-                    orderByType={orderByType}
-                  />
-                ))}
+                  <p className="text-base font-semibold text-[#2C3E50]">
+                    {route.userAssigned.name}
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
+        )}
 
-          {/* ── Footer com botão de editar melhorado ───────────────────────────────────────── */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-            <Button
-              variant="outline"
-              className="border-white/20 bg-[#374859] hover:bg-white/10 hover:text-white hover:border-[#D35400]/50 transition-all"
-              onClick={() => router.push(`/routes/${routeId}/edit`)}
-              onMouseEnter={prefetchEdit}
-            >
-              <Edit2Icon className="h-4 w-4 mr-2 text-[#D35400]" />
-              Editar Rota
-            </Button>
+        {/* ── Percurso ──────────────────────────────────────────────────────── */}
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-xl font-bold text-[#2C3E50]">Percurso</h2>
+          </div>
+          <div className="space-y-3">
+            {orderedStops.length > 0 ? (
+              orderedStops.map((stop: any, index: number) => (
+                <StopItem key={stop.id || index} stop={stop} index={index} />
+              ))
+            ) : (
+              <Card className="border-0 shadow-md rounded-xl">
+                <CardContent className="p-8 text-center">
+                  <MapPinIcon className="mx-auto h-12 w-12 text-[#95A5A6] mb-3" />
+                  <p className="text-[#95A5A6]">
+                    Nenhuma parada cadastrada nesta rota
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Dialog de exclusão */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent className="bg-white border border-gray-200">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#2C3E50]">
+              Excluir Rota
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-[#95A5A6]">
+              Tem certeza que deseja excluir a rota{" "}
+              <span className="font-semibold text-[#2C3E50]">
+                {route.title}
+              </span>
+              ?
+              <br />
+              Esta ação não pode ser desfeita e todos os dados da rota serão
+              removidos permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting} className="rounded-full">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-full"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                "Confirmar Exclusão"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
