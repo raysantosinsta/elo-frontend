@@ -19,7 +19,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,23 +42,17 @@ import { useRoutes } from "@/hooks/useRoutes";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { debounce } from "lodash";
 import {
   AlertTriangleIcon,
-  CalendarDaysIcon,
   CalendarIcon,
-  ClockIcon,
   FilterIcon,
-  MapPinIcon,
   MoreHorizontalIcon,
   PlusIcon,
-  RulerIcon,
   UsersIcon,
   X,
   CheckCircle2,
   Loader2,
   ChevronDown,
-  ChevronUp,
   EyeIcon,
   PencilIcon,
   Trash2Icon,
@@ -78,7 +71,7 @@ interface ApiRoute {
   id: string;
   title: string;
   status: string;
-  routeDate?: string | null;  // Pode ser string, null ou undefined
+  routeDate?: string | null;
   stops: any[];
   formattedDistance: string;
   formattedDuration: string;
@@ -95,7 +88,7 @@ interface Route {
   id: string;
   title: string;
   status: string;
-  routeDate: string | null;  // Normalizado para string | null
+  routeDate: string | null;
   stops: any[];
   formattedDistance: string;
   formattedDuration: string;
@@ -122,26 +115,13 @@ const statusText: Record<string, string> = {
   CANCELED: "Cancelada",
 };
 
-// Opções para filtros de métricas
-const stopOptions = [
-  { value: "1-5", label: "1 a 5 paradas" },
-  { value: "6-10", label: "6 a 10 paradas" },
-  { value: "11-20", label: "11 a 20 paradas" },
-  { value: "20+", label: "Mais de 20 paradas" },
-];
-
-const distanceOptions = [
-  { value: "0-10", label: "Até 10 km" },
-  { value: "10-50", label: "10 a 50 km" },
-  { value: "50-100", label: "50 a 100 km" },
-  { value: "100+", label: "Mais de 100 km" },
-];
-
-const durationOptions = [
-  { value: "0-30", label: "Até 30 min" },
-  { value: "30-60", label: "30 a 60 min" },
-  { value: "60-120", label: "1 a 2 horas" },
-  { value: "120+", label: "Mais de 2 horas" },
+// Opções de status incluindo "Atrasadas"
+const statusOptions = [
+  { value: "all", label: "Todas" },
+  { value: "SCHEDULED", label: "Agendadas" },
+  { value: "IN_PROGRESS", label: "Em Andamento" },
+  { value: "FINISHED", label: "Finalizadas" },
+  { value: "OVERDUE", label: "Atrasadas" },
 ];
 
 // Componente de Autocomplete
@@ -331,77 +311,44 @@ export default function RoutesPage() {
     if (!apiRoutes) return [];
     return apiRoutes.map((route: any): Route => ({
       ...route,
-      routeDate: route.routeDate ?? null, // Converter undefined para null
+      routeDate: route.routeDate ?? null,
     }));
   }, [apiRoutes]);
 
   // Estados de busca e filtros
-  const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isDeleting, setIsDeleting] = useState(false);
-  const [filterFlashTrigger, setFilterFlashTrigger] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
 
   // VALORES TEMPORÁRIOS
+  const [tempStatusFilter, setTempStatusFilter] = useState<string>("all");
   const [tempStartDate, setTempStartDate] = useState<Date | undefined>(undefined);
   const [tempEndDate, setTempEndDate] = useState<Date | undefined>(undefined);
-  const [tempCreatedStartDate, setTempCreatedStartDate] = useState<Date | undefined>(undefined);
-  const [tempCreatedEndDate, setTempCreatedEndDate] = useState<Date | undefined>(undefined);
   const [tempUserAssignedFilter, setTempUserAssignedFilter] = useState<string>("all");
-  const [tempOrderByFilter, setTempOrderByFilter] = useState<string>("all");
-  const [tempStopRange, setTempStopRange] = useState<string>("all");
-  const [tempDistanceRange, setTempDistanceRange] = useState<string>("all");
-  const [tempDurationRange, setTempDurationRange] = useState<string>("all");
-  const [tempIsOverdue, setTempIsOverdue] = useState<boolean>(false);
-  const [tempIsUpcoming, setTempIsUpcoming] = useState<boolean>(false);
 
   // VALORES APLICADOS
+  const [appliedStatusFilter, setAppliedStatusFilter] = useState<string>("all");
   const [appliedStartDate, setAppliedStartDate] = useState<Date | undefined>(undefined);
   const [appliedEndDate, setAppliedEndDate] = useState<Date | undefined>(undefined);
-  const [appliedCreatedStartDate, setAppliedCreatedStartDate] = useState<Date | undefined>(undefined);
-  const [appliedCreatedEndDate, setAppliedCreatedEndDate] = useState<Date | undefined>(undefined);
   const [appliedUserAssignedFilter, setAppliedUserAssignedFilter] = useState<string>("all");
-  const [appliedOrderByFilter, setAppliedOrderByFilter] = useState<string>("all");
-  const [appliedStopRange, setAppliedStopRange] = useState<string>("all");
-  const [appliedDistanceRange, setAppliedDistanceRange] = useState<string>("all");
-  const [appliedDurationRange, setAppliedDurationRange] = useState<string>("all");
-  const [appliedIsOverdue, setAppliedIsOverdue] = useState<boolean>(false);
-  const [appliedIsUpcoming, setAppliedIsUpcoming] = useState<boolean>(false);
 
   const [showFilters, setShowFilters] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
-  const [shakeFilterButton, setShakeFilterButton] = useState(false);
 
   // Contagem de filtros ativos
   const activeFiltersCount = useMemo(() => {
     let count = 0;
+    if (appliedStatusFilter !== "all") count++;
     if (appliedStartDate) count++;
     if (appliedEndDate) count++;
-    if (appliedCreatedStartDate) count++;
-    if (appliedCreatedEndDate) count++;
     if (appliedUserAssignedFilter !== "all") count++;
-    if (appliedOrderByFilter !== "all") count++;
-    if (searchTerm !== "") count++;
-    if (statusFilter !== "all") count++;
-    if (appliedStopRange !== "all") count++;
-    if (appliedDistanceRange !== "all") count++;
-    if (appliedDurationRange !== "all") count++;
-    if (appliedIsOverdue) count++;
-    if (appliedIsUpcoming) count++;
     return count;
-  }, [
-    appliedStartDate, appliedEndDate, appliedCreatedStartDate, appliedCreatedEndDate,
-    appliedUserAssignedFilter, appliedOrderByFilter, searchTerm, statusFilter,
-    appliedStopRange, appliedDistanceRange, appliedDurationRange, appliedIsOverdue, appliedIsUpcoming
-  ]);
+  }, [appliedStatusFilter, appliedStartDate, appliedEndDate, appliedUserAssignedFilter]);
 
   // Resetar página quando filtros mudam
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, appliedStartDate, appliedEndDate, appliedCreatedStartDate, 
-      appliedCreatedEndDate, appliedUserAssignedFilter, appliedOrderByFilter, 
-      appliedStopRange, appliedDistanceRange, appliedDurationRange, appliedIsOverdue, appliedIsUpcoming]);
+  }, [appliedStatusFilter, appliedStartDate, appliedEndDate, appliedUserAssignedFilter]);
 
   // Lista de Responsaveis para autocomplete
   const driverOptions = useMemo(() => {
@@ -420,74 +367,16 @@ export default function RoutesPage() {
     ];
   }, [routes]);
 
-  // Opções para autocomplete
-  const stopAutocompleteOptions = [{ value: "all", label: "Todas" }, ...stopOptions];
-  const distanceAutocompleteOptions = [{ value: "all", label: "Todas" }, ...distanceOptions];
-  const durationAutocompleteOptions = [{ value: "all", label: "Todas" }, ...durationOptions];
-
-  // Debounce da busca
-  const debouncedSetSearch = useCallback(
-    debounce((value: string) => {
-      setSearchTerm(value);
-      setFilterFlashTrigger((prev) => prev + 1);
-    }, 300),
-    [],
-  );
-
-  const parseRange = (range: string, type: string) => {
-    if (range === "all") return { min: undefined, max: undefined };
-
-    switch (type) {
-      case "stops":
-        if (range === "1-5") return { min: 1, max: 5 };
-        if (range === "6-10") return { min: 6, max: 10 };
-        if (range === "11-20") return { min: 11, max: 20 };
-        if (range === "20+") return { min: 21, max: undefined };
-        break;
-      case "distance":
-        if (range === "0-10") return { min: 0, max: 10 };
-        if (range === "10-50") return { min: 10, max: 50 };
-        if (range === "50-100") return { min: 50, max: 100 };
-        if (range === "100+") return { min: 100, max: undefined };
-        break;
-      case "duration":
-        if (range === "0-30") return { min: 0, max: 30 };
-        if (range === "30-60") return { min: 30, max: 60 };
-        if (range === "60-120") return { min: 60, max: 120 };
-        if (range === "120+") return { min: 120, max: undefined };
-        break;
-    }
-    return { min: undefined, max: undefined };
-  };
-
   const handleClearFilters = () => {
+    setTempStatusFilter("all");
     setTempStartDate(undefined);
     setTempEndDate(undefined);
-    setTempCreatedStartDate(undefined);
-    setTempCreatedEndDate(undefined);
     setTempUserAssignedFilter("all");
-    setTempOrderByFilter("all");
-    setTempStopRange("all");
-    setTempDistanceRange("all");
-    setTempDurationRange("all");
-    setTempIsOverdue(false);
-    setTempIsUpcoming(false);
 
+    setAppliedStatusFilter("all");
     setAppliedStartDate(undefined);
     setAppliedEndDate(undefined);
-    setAppliedCreatedStartDate(undefined);
-    setAppliedCreatedEndDate(undefined);
     setAppliedUserAssignedFilter("all");
-    setAppliedOrderByFilter("all");
-    setAppliedStopRange("all");
-    setAppliedDistanceRange("all");
-    setAppliedDurationRange("all");
-    setAppliedIsOverdue(false);
-    setAppliedIsUpcoming(false);
-
-    setSearchTerm("");
-    setStatusFilter("all");
-    setFilterFlashTrigger((prev) => prev + 1);
 
     toast.custom(
       (t) => <CustomToast message="Filtros limpos" type="success" />,
@@ -498,21 +387,17 @@ export default function RoutesPage() {
   const handleApplyFilters = async () => {
     setIsFiltering(true);
 
+    setAppliedStatusFilter(tempStatusFilter);
     setAppliedStartDate(tempStartDate);
     setAppliedEndDate(tempEndDate);
-    setAppliedCreatedStartDate(tempCreatedStartDate);
-    setAppliedCreatedEndDate(tempCreatedEndDate);
     setAppliedUserAssignedFilter(tempUserAssignedFilter);
-    setAppliedOrderByFilter(tempOrderByFilter);
-    setAppliedStopRange(tempStopRange);
-    setAppliedDistanceRange(tempDistanceRange);
-    setAppliedDurationRange(tempDurationRange);
-    setAppliedIsOverdue(tempIsOverdue);
-    setAppliedIsUpcoming(tempIsUpcoming);
-    setFilterFlashTrigger((prev) => prev + 1);
 
     await refetch();
     setIsFiltering(false);
+    
+    // Fechar o card de filtros após aplicar
+    setShowFilters(false);
+    
     toast.custom(
       (t) => <CustomToast message="Filtros aplicados" type="success" />,
       { duration: 1500 },
@@ -526,21 +411,25 @@ export default function RoutesPage() {
   const filteredRoutes = useMemo(() => {
     if (!routes) return [];
 
-    const stopLimits = parseRange(appliedStopRange, "stops");
-    const distanceLimits = parseRange(appliedDistanceRange, "distance");
-    const durationLimits = parseRange(appliedDurationRange, "duration");
-
     let filtered = routes.filter((route) => {
-      const matchesSearch = route.title
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase());
-      const matchesStatus =
-        statusFilter === "all" || route.status === statusFilter;
+      let matchesStatus = true;
+      
+      if (appliedStatusFilter === "OVERDUE") {
+        // Filtro especial para rotas atrasadas
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const routeDate = route.routeDate ? new Date(route.routeDate) : null;
+        matchesStatus = routeDate !== null && routeDate < today && route.status !== "FINISHED";
+      } else {
+        matchesStatus = appliedStatusFilter === "all" || route.status === appliedStatusFilter;
+      }
 
       let matchesDate = true;
       if (appliedStartDate && route.routeDate) {
         const routeDate = new Date(route.routeDate);
-        if (routeDate < appliedStartDate) matchesDate = false;
+        const startOfDay = new Date(appliedStartDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        if (routeDate < startOfDay) matchesDate = false;
       }
       if (appliedEndDate && route.routeDate) {
         const routeDate = new Date(route.routeDate);
@@ -549,108 +438,25 @@ export default function RoutesPage() {
         if (routeDate > endOfDay) matchesDate = false;
       }
 
-      let matchesCreatedDate = true;
-      if (appliedCreatedStartDate && route.createdAt) {
-        const createdDate = new Date(route.createdAt);
-        if (createdDate < appliedCreatedStartDate) matchesCreatedDate = false;
-      }
-      if (appliedCreatedEndDate && route.createdAt) {
-        const createdDate = new Date(route.createdAt);
-        const endOfDay = new Date(appliedCreatedEndDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        if (createdDate > endOfDay) matchesCreatedDate = false;
-      }
-
       const matchesDriver =
         appliedUserAssignedFilter === "all" ||
         (appliedUserAssignedFilter === "none" && !route.userAssigned) ||
         route.userAssigned?.id === appliedUserAssignedFilter;
-      const matchesOrderBy =
-        appliedOrderByFilter === "all" ||
-        route.orderBy === appliedOrderByFilter;
-
-      const stopsCount = route.stops?.length || 0;
-      let matchesStops = true;
-      if (stopLimits.min !== undefined && stopsCount < stopLimits.min)
-        matchesStops = false;
-      if (stopLimits.max !== undefined && stopsCount > stopLimits.max)
-        matchesStops = false;
-
-      const distanceKm = route.totalDistanceMeters
-        ? route.totalDistanceMeters / 1000
-        : 0;
-      let matchesDistance = true;
-      if (distanceLimits.min !== undefined && distanceKm < distanceLimits.min)
-        matchesDistance = false;
-      if (distanceLimits.max !== undefined && distanceKm > distanceLimits.max)
-        matchesDistance = false;
-
-      const durationMin = route.totalDurationSeconds
-        ? route.totalDurationSeconds / 60
-        : 0;
-      let matchesDuration = true;
-      if (durationLimits.min !== undefined && durationMin < durationLimits.min)
-        matchesDuration = false;
-      if (durationLimits.max !== undefined && durationMin > durationLimits.max)
-        matchesDuration = false;
-
-      let matchesOverdue = true;
-      if (appliedIsOverdue) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const routeDate = route.routeDate ? new Date(route.routeDate) : null;
-        matchesOverdue =
-          routeDate !== null &&
-          routeDate < today &&
-          route.status !== "FINISHED";
-      }
-
-      let matchesUpcoming = true;
-      if (appliedIsUpcoming) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const nextWeek = new Date();
-        nextWeek.setDate(nextWeek.getDate() + 7);
-        nextWeek.setHours(23, 59, 59, 999);
-        const routeDate = route.routeDate ? new Date(route.routeDate) : null;
-        matchesUpcoming =
-          routeDate !== null &&
-          routeDate >= today &&
-          routeDate <= nextWeek &&
-          route.status !== "FINISHED";
-      }
 
       return (
-        matchesSearch &&
         matchesStatus &&
         matchesDate &&
-        matchesCreatedDate &&
-        matchesDriver &&
-        matchesOrderBy &&
-        matchesStops &&
-        matchesDistance &&
-        matchesDuration &&
-        matchesOverdue &&
-        matchesUpcoming
+        matchesDriver
       );
     });
 
     return filtered;
   }, [
     routes,
-    searchTerm,
-    statusFilter,
+    appliedStatusFilter,
     appliedStartDate,
     appliedEndDate,
-    appliedCreatedStartDate,
-    appliedCreatedEndDate,
     appliedUserAssignedFilter,
-    appliedOrderByFilter,
-    appliedStopRange,
-    appliedDistanceRange,
-    appliedDurationRange,
-    appliedIsOverdue,
-    appliedIsUpcoming,
   ]);
 
   // Paginação
@@ -677,8 +483,6 @@ export default function RoutesPage() {
       toast.custom((t) => (
         <CustomToast message="Erro ao excluir rota" type="error" />
       ));
-      setShakeFilterButton(true);
-      setTimeout(() => setShakeFilterButton(false), 500);
     } finally {
       setIsDeleting(false);
     }
@@ -702,11 +506,27 @@ export default function RoutesPage() {
     },
     {
       header: "Status",
-      cell: (route) => (
-        <Badge className={`${statusColors[route.status]} text-xs font-medium shadow-none`}>
-          {statusText[route.status]}
-        </Badge>
-      ),
+      cell: (route) => {
+        // Verificar se a rota está atrasada para exibir badge especial
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const routeDate = route.routeDate ? new Date(route.routeDate) : null;
+        const isOverdue = routeDate !== null && routeDate < today && route.status !== "FINISHED";
+        
+        if (isOverdue && route.status !== "FINISHED") {
+          return (
+            <Badge className="bg-red-50 text-red-700 border border-red-200 text-xs font-medium shadow-none">
+              Atrasada
+            </Badge>
+          );
+        }
+        
+        return (
+          <Badge className={`${statusColors[route.status]} text-xs font-medium shadow-none`}>
+            {statusText[route.status]}
+          </Badge>
+        );
+      },
     },
     {
       header: "Data agendada",
@@ -826,13 +646,10 @@ export default function RoutesPage() {
   return (
     <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
+        {/* Header - sem searchValue */}
         <PageHeader
           title="Rotas"
           description="Gerencie as rotas do sistema."
-          searchValue={searchTerm}
-          onSearchChange={(value) => debouncedSetSearch(value)}
-          searchPlaceholder="Pesquisar por titulo..."
         >
           <div className="flex gap-2">
             <TooltipProvider>
@@ -879,7 +696,7 @@ export default function RoutesPage() {
           </div>
         </PageHeader>
 
-        {/* Painel de Filtros */}
+        {/* Painel de Filtros - Card único com todos os filtros */}
         <AnimatePresence>
           {showFilters && (
             <motion.div
@@ -890,78 +707,74 @@ export default function RoutesPage() {
             >
               <Card className="border-0 shadow-md rounded-xl overflow-hidden">
                 <CardContent className="p-4 space-y-4">
-                  {/* Linha 1: Filtros de Data */}
+                  {/* Linha 1: Filtro de Status */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-[#95A5A6] flex items-center gap-1">
-                        <CalendarIcon className="h-3 w-3" /> Data Inicial da Rota
-                      </label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start text-left font-normal">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {tempStartDate ? format(tempStartDate, "dd/MM/yyyy") : "Selecionar"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={tempStartDate} onSelect={setTempStartDate} locale={ptBR} />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
+                    <Autocomplete
+                      options={statusOptions}
+                      value={tempStatusFilter}
+                      onChange={setTempStatusFilter}
+                      label="Status"
+                      icon={<AlertTriangleIcon className="h-3 w-3" />}
+                      placeholder="Selecionar status..."
+                      emptyMessage="Nenhum status encontrado."
+                    />
+                  </div>
 
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-[#95A5A6] flex items-center gap-1">
-                        <CalendarIcon className="h-3 w-3" /> Data Final da Rota
-                      </label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start text-left font-normal">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {tempEndDate ? format(tempEndDate, "dd/MM/yyyy") : "Selecionar"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={tempEndDate} onSelect={setTempEndDate} locale={ptBR} />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
+                  {/* Linha 2: Filtro de Data - Rotas Agendadas */}
+                  <div className="space-y-3">
+                    <label className="text-sm font-medium text-[#2C3E50] flex items-center gap-2">
+                      <CalendarIcon className="h-4 w-4 text-[#D35400]" />
+                      Rotas agendadas
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-[#95A5A6]">
+                          Data inicial
+                        </label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" className="w-full justify-start text-left font-normal">
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {tempStartDate ? format(tempStartDate, "dd/MM/yyyy") : "Selecionar data inicial"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar 
+                              mode="single" 
+                              selected={tempStartDate} 
+                              onSelect={setTempStartDate} 
+                              locale={ptBR} 
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
 
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-[#95A5A6] flex items-center gap-1">
-                        <CalendarDaysIcon className="h-3 w-3" /> Criado a partir de
-                      </label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start text-left font-normal">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {tempCreatedStartDate ? format(tempCreatedStartDate, "dd/MM/yyyy") : "Selecionar"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={tempCreatedStartDate} onSelect={setTempCreatedStartDate} locale={ptBR} />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-[#95A5A6] flex items-center gap-1">
-                        <CalendarDaysIcon className="h-3 w-3" /> Criado até
-                      </label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start text-left font-normal">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {tempCreatedEndDate ? format(tempCreatedEndDate, "dd/MM/yyyy") : "Selecionar"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={tempCreatedEndDate} onSelect={setTempCreatedEndDate} locale={ptBR} />
-                        </PopoverContent>
-                      </Popover>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-[#95A5A6]">
+                          Data final
+                        </label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" className="w-full justify-start text-left font-normal">
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {tempEndDate ? format(tempEndDate, "dd/MM/yyyy") : "Selecionar data final"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar 
+                              mode="single" 
+                              selected={tempEndDate} 
+                              onSelect={setTempEndDate} 
+                              locale={ptBR} 
+                              disabled={(date) => tempStartDate ? date < tempStartDate : false}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Linha 2: Filtros de Usuário e Ordenação */}
+                  {/* Linha 3: Filtro de Responsável */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <Autocomplete
                       options={driverOptions}
@@ -971,69 +784,6 @@ export default function RoutesPage() {
                       icon={<UsersIcon className="h-3 w-3" />}
                       placeholder="Selecionar Responsavel..."
                       emptyMessage="Nenhum Responsavel encontrado."
-                    />
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-[#95A5A6] flex items-center gap-1">
-                        <AlertTriangleIcon className="h-3 w-3" /> Status 
-                      </label>
-                      <div className="flex gap-3 pt-2">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="overdue"
-                            checked={tempIsOverdue}
-                            onCheckedChange={(checked) => {
-                              setTempIsOverdue(checked === true);
-                              if (checked) setTempIsUpcoming(false);
-                            }}
-                          />
-                          <label htmlFor="overdue" className="text-sm cursor-pointer">Atrasadas</label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="upcoming"
-                            checked={tempIsUpcoming}
-                            onCheckedChange={(checked) => {
-                              setTempIsUpcoming(checked === true);
-                              if (checked) setTempIsOverdue(false);
-                            }}
-                          />
-                          <label htmlFor="upcoming" className="text-sm cursor-pointer">Próximas 7 dias</label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Linha 3: Filtros de Métricas */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-gray-100">
-                    <Autocomplete
-                      options={stopAutocompleteOptions}
-                      value={tempStopRange}
-                      onChange={setTempStopRange}
-                      label="Quantidade de Paradas"
-                      icon={<MapPinIcon className="h-3 w-3" />}
-                      placeholder="Selecionar faixa de paradas..."
-                      emptyMessage="Nenhuma faixa encontrada."
-                    />
-
-                    <Autocomplete
-                      options={distanceAutocompleteOptions}
-                      value={tempDistanceRange}
-                      onChange={setTempDistanceRange}
-                      label="Distância Total"
-                      icon={<RulerIcon className="h-3 w-3" />}
-                      placeholder="Selecionar distância..."
-                      emptyMessage="Nenhuma faixa encontrada."
-                    />
-
-                    <Autocomplete
-                      options={durationAutocompleteOptions}
-                      value={tempDurationRange}
-                      onChange={setTempDurationRange}
-                      label="Duração Estimada"
-                      icon={<ClockIcon className="h-3 w-3" />}
-                      placeholder="Selecionar duração..."
-                      emptyMessage="Nenhuma faixa encontrada."
                     />
                   </div>
 
@@ -1062,31 +812,12 @@ export default function RoutesPage() {
           )}
         </AnimatePresence>
 
-        {/* Filtro de status em Tabs */}
-        <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-          <div className="flex gap-2 bg-white border border-gray-200 rounded-lg p-1">
-            {(["all", "SCHEDULED", "IN_PROGRESS", "FINISHED"] as const).map((val) => (
-              <Button
-                key={val}
-                variant="ghost"
-                size="sm"
-                onClick={() => setStatusFilter(val)}
-                className={cn(
-                  "px-4 h-8 text-[#95A5A6] hover:text-[#2C3E50] transition-all duration-200 rounded-md",
-                  statusFilter === val && "bg-[#D35400] text-white hover:bg-[#D35400]/90"
-                )}
-              >
-                {{ all: "Todas", SCHEDULED: "Agendadas", IN_PROGRESS: "Em Andamento", FINISHED: "Finalizadas" }[val]}
-              </Button>
-            ))}
+        {/* Resultados encontrados */}
+        {filteredRoutes.length > 0 && (
+          <div className="text-right text-xs text-[#95A5A6]">
+            {filteredRoutes.length} resultado{filteredRoutes.length !== 1 ? "s" : ""} encontrado{filteredRoutes.length !== 1 ? "s" : ""}
           </div>
-
-          {searchTerm && filteredRoutes.length > 0 && (
-            <div className="text-right text-xs text-[#95A5A6]">
-              {filteredRoutes.length} resultado{filteredRoutes.length !== 1 ? "s" : ""} encontrado{filteredRoutes.length !== 1 ? "s" : ""}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* GenericTable com paginação */}
         <GenericTable
