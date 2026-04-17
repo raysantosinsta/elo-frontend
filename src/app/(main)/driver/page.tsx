@@ -8,20 +8,19 @@ import {
   AlertTriangle,
   ArrowLeft,
   Calendar,
+  CalendarPlus,
   CheckCircle,
+  Copy,
   FileText,
+  LeafIcon,
   Loader2,
   MapPin,
-  Navigation,
   Play,
-  Copy,
-  CalendarPlus,
-  LeafIcon,
   XCircle,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // Importação dinâmica do mapa
@@ -152,7 +151,7 @@ export default function DriverPage() {
     useGetRouteById,
     useMarkStopVisited,
     useUpdateRoute,
-    useCreateRoute, // 🔥 ADICIONAR ESTA LINHA
+    useCreateRoute,
   } = useRoutes();
   const {
     data: route,
@@ -161,13 +160,14 @@ export default function DriverPage() {
   } = useGetRouteById(routeId || "");
   const markStopVisited = useMarkStopVisited();
   const updateRoute = useUpdateRoute();
-  const createRoute = useCreateRoute(); // 🔥 ADICIONAR ESTA LINHA
+  const createRoute = useCreateRoute();
 
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
   const [currentPosition, setCurrentPosition] = useState<
     [number, number] | null
   >(null);
   const [visitedStops, setVisitedStops] = useState<string[]>([]);
+  const [failedStops, setFailedStops] = useState<string[]>([]); // 🆕 Para rastrear falhas
   const [isGPSActive, setIsGPSActive] = useState(true);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -177,12 +177,19 @@ export default function DriverPage() {
     null,
   );
 
-  // Estados para o novo fluxo de criar rota
+  // Estados para o novo fluxo de criar rota (Agendar)
   const [showNewRouteOption, setShowNewRouteOption] = useState(false);
   const [newRouteDate, setNewRouteDate] = useState("");
   const [newRouteObservations, setNewRouteObservations] = useState("");
+  const [newRouteTitle, setNewRouteTitle] = useState("");
   const [isCreatingNewRoute, setIsCreatingNewRoute] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+
+  // Estados para reagendamento em caso de falha
+  const [showRescheduleOption, setShowRescheduleOption] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleObservations, setRescheduleObservations] = useState("");
+  const [isRescheduling, setIsRescheduling] = useState(false);
 
   // Estado para armazenar as paradas otimizadas por proximidade
   const [optimizedStops, setOptimizedStops] = useState<any[]>([]);
@@ -200,9 +207,13 @@ export default function DriverPage() {
       const savedVisited = localStorage.getItem(
         `driver_route_${routeId}_visited`,
       );
+      const savedFailed = localStorage.getItem(
+        `driver_route_${routeId}_failed`,
+      );
 
       if (savedIndex) setCurrentStopIndex(parseInt(savedIndex));
       if (savedVisited) setVisitedStops(JSON.parse(savedVisited));
+      if (savedFailed) setFailedStops(JSON.parse(savedFailed));
     }
   }, [routeId]);
 
@@ -217,8 +228,12 @@ export default function DriverPage() {
         `driver_route_${routeId}_visited`,
         JSON.stringify(visitedStops),
       );
+      localStorage.setItem(
+        `driver_route_${routeId}_failed`,
+        JSON.stringify(failedStops),
+      );
     }
-  }, [routeId, currentStopIndex, visitedStops, route]);
+  }, [routeId, currentStopIndex, visitedStops, failedStops, route]);
 
   // Monitorar GPS
   useEffect(() => {
@@ -399,8 +414,7 @@ export default function DriverPage() {
 
   const currentStop = displayStops[currentStopIndex];
   const totalStops = displayStops.length;
-  const completedStops = visitedStops.length;
-  const isLastStop = currentStopIndex === totalStops - 1;
+  const completedStops = visitedStops.length + failedStops.length; // Total de paradas finalizadas (sucesso + falha)
 
   const isFinished =
     route?.status === "FINISHED" ||
@@ -422,8 +436,14 @@ export default function DriverPage() {
 
     const ARRIVAL_RADIUS_METERS = 50;
     const isVisited = visitedStops.includes(currentStop.id);
+    const isFailed = failedStops.includes(currentStop.id);
 
-    if (distance <= ARRIVAL_RADIUS_METERS && !isVisited && !isModalOpen) {
+    if (
+      distance <= ARRIVAL_RADIUS_METERS &&
+      !isVisited &&
+      !isFailed &&
+      !isModalOpen
+    ) {
       previousStopIdRef.current = currentStop.id;
       toast.success(
         `✅ Você chegou em: ${currentStop.name || `Parada ${currentStopIndex + 1}`}`,
@@ -431,8 +451,12 @@ export default function DriverPage() {
       );
       setIsModalOpen(true);
       setShowNewRouteOption(false);
+      setShowRescheduleOption(false);
       setNewRouteDate("");
       setNewRouteObservations("");
+      setNewRouteTitle("");
+      setRescheduleDate("");
+      setRescheduleObservations("");
       setVisitStatus(null);
       setComment("");
     }
@@ -440,6 +464,7 @@ export default function DriverPage() {
     currentPosition,
     currentStop,
     visitedStops,
+    failedStops,
     isModalOpen,
     currentStopIndex,
     calculateDistance,
@@ -497,14 +522,13 @@ export default function DriverPage() {
     toast.info("GPS em tempo real ativado", { duration: 2000 });
   }, []);
 
-  // Confirmar visita com sucesso
+  // ✅ Confirmar visita com sucesso (marca como concluído e avança)
   const confirmSuccess = useCallback(async () => {
     if (!currentStop) return;
 
     setIsSubmitting(true);
     setVisitStatus("success");
     try {
-      // 🔥 PASSAR OBSERVAÇÃO CLARA DE QUE FOI SUCESSO
       const successNote = comment
         ? `✅ VISITA CONCLUÍDA COM SUCESSO: ${comment}`
         : `✅ VISITA CONCLUÍDA COM SUCESSO`;
@@ -529,6 +553,7 @@ export default function DriverPage() {
 
         localStorage.removeItem(`driver_route_${routeId}_index`);
         localStorage.removeItem(`driver_route_${routeId}_visited`);
+        localStorage.removeItem(`driver_route_${routeId}_failed`);
 
         toast.success("🎉 Rota finalizada com sucesso!", {
           duration: 3000,
@@ -548,8 +573,12 @@ export default function DriverPage() {
         setIsModalOpen(false);
         setComment("");
         setShowNewRouteOption(false);
+        setShowRescheduleOption(false);
         setNewRouteDate("");
         setNewRouteObservations("");
+        setNewRouteTitle("");
+        setRescheduleDate("");
+        setRescheduleObservations("");
         setVisitStatus(null);
       }
 
@@ -574,28 +603,74 @@ export default function DriverPage() {
     displayStops,
   ]);
 
-  // Registrar erro na visita
-  const confirmError = useCallback(async () => {
+  // 🔥 FUNÇÃO CORRIGIDA: Reagendar visita em caso de falha - Marca como FAILED
+  const handleReschedule = useCallback(async () => {
     if (!currentStop) return;
 
-    setIsSubmitting(true);
-    setVisitStatus("error");
-    try {
-      // 🔥 PASSAR OBSERVAÇÃO CLARA DE QUE FOI ERRO
-      const errorNote = comment
-        ? `❌ ERRO NA VISITA: ${comment}`
-        : `❌ ERRO NA VISITA - Não foi possível realizar a visita.`;
+    if (!rescheduleDate) {
+      toast.warning("Selecione uma data para o reagendamento");
+      return;
+    }
 
+    setIsRescheduling(true);
+    const loadingToast = toast.loading("Reagendando visita...", {
+      duration: Infinity,
+    });
+
+    try {
+      const formattedDate = new Date(rescheduleDate).toLocaleDateString(
+        "pt-BR",
+      );
+
+      // 🆕 NOTA DE FALHA (não como sucesso)
+      const failureNote =
+        `❌ VISITA COM FALHA - REAGENDADA\n` +
+        `Data original: ${new Date(route?.routeDate || "").toLocaleDateString("pt-BR")}\n` +
+        `Nova data agendada: ${formattedDate}\n` +
+        `Motivo da falha: ${rescheduleObservations || "Não informado"}\n` +
+        `Comentário original: ${comment || "Nenhum"}\n` +
+        `Status: FAILED - Visita não concluída, reagendada para futuro.`;
+
+      // ✅ MARCAR COMO FAILED (NÃO como concluída)
       await markStopVisited.mutateAsync({
         routeId: routeId!,
         stopId: currentStop.id!,
-        notes: errorNote,
+        notes: failureNote,
       });
 
-      const newVisitedStops = [...visitedStops, currentStop.id!];
-      setVisitedStops(newVisitedStops);
+      // Adicionar aos failed stops (NÃO aos visited stops)
+      const newFailedStops = [...failedStops, currentStop.id!];
+      setFailedStops(newFailedStops);
       previousStopIdRef.current = "";
 
+      // Criar nova rota para o futuro com o mesmo destino
+      const newTitle = `[REAGENDADO - FALHA] ${currentStop.name}`;
+
+      const createRoutePayload: CreateRouteDto = {
+        title: newTitle,
+        description: `⚠️ VISITA REAGENDADA POR FALHA\nMotivo: ${rescheduleObservations || "Não informado"}\nEndereço: ${currentStop.address}, ${currentStop.city}/${currentStop.state}`,
+        routeDate: rescheduleDate,
+        userAssignedId: route?.userAssignedId || undefined,
+        orderBy: "DISTANCE",
+        stops: [
+          {
+            name: currentStop.name,
+            address: currentStop.address,
+            complement: currentStop.complement || "",
+            neighborhood: currentStop.neighborhood || "",
+            city: currentStop.city,
+            state: currentStop.state,
+            zipCode: currentStop.zipCode,
+            latitude: currentStop.latitude,
+            longitude: currentStop.longitude,
+            notes: `⚠️ Reagendado por falha. Motivo: ${rescheduleObservations || "Não informado"}`,
+          },
+        ],
+      };
+
+      await createRoute.mutateAsync(createRoutePayload);
+
+      // Avançar para próxima parada
       const nextIndex = currentStopIndex + 1;
 
       if (nextIndex >= totalStops) {
@@ -603,57 +678,87 @@ export default function DriverPage() {
           id: routeId!,
           data: { status: "FINISHED" },
         });
-
         localStorage.removeItem(`driver_route_${routeId}_index`);
         localStorage.removeItem(`driver_route_${routeId}_visited`);
-
-        toast.warning("⚠️ Rota finalizada com erros registrados", {
-          duration: 3000,
-          icon: "⚠️",
-        });
-
-        setTimeout(() => {
-          router.push("/routes");
-        }, 1500);
+        localStorage.removeItem(`driver_route_${routeId}_failed`);
+        toast.success("🎉 Rota finalizada!", { duration: 3000 });
+        setTimeout(() => router.push("/routes"), 1500);
       } else {
         setCurrentStopIndex(nextIndex);
         toast.warning(
-          `⚠️ Erro registrado na visita. Seguindo para próxima parada.`,
-          { duration: 3000 },
+          `⚠️ Falha registrada! Visita reagendada para ${formattedDate}. Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+          { duration: 4000 },
         );
-
-        setIsModalOpen(false);
-        setComment("");
-        setShowNewRouteOption(false);
-        setNewRouteDate("");
-        setNewRouteObservations("");
-        setVisitStatus(null);
       }
 
-      refetch();
+      toast.dismiss(loadingToast);
+      toast.warning("⚠️ Visita registrada como FALHA e reagendada!", {
+        duration: 4000,
+        description: `Status: FAILED | Nova data: ${formattedDate}`,
+      });
+
+      // Fechar modal e limpar estados
+      setIsModalOpen(false);
+      setComment("");
+      setShowNewRouteOption(false);
+      setShowRescheduleOption(false);
+      setNewRouteDate("");
+      setNewRouteObservations("");
+      setNewRouteTitle("");
+      setRescheduleDate("");
+      setRescheduleObservations("");
+      setVisitStatus(null);
+
+      await refetch();
     } catch (error) {
-      console.error("Erro ao registrar erro na visita:", error);
-      toast.error("Erro ao registrar erro. Tente novamente.");
+      console.error("Erro ao reagendar:", error);
+      toast.dismiss(loadingToast);
+      toast.error("❌ Erro ao reagendar visita", {
+        description: "Tente novamente ou contate o suporte.",
+      });
     } finally {
-      setIsSubmitting(false);
+      setIsRescheduling(false);
     }
   }, [
     currentStop,
-    markStopVisited,
-    routeId,
+    rescheduleDate,
+    rescheduleObservations,
     comment,
-    visitedStops,
-    currentStopIndex,
-    totalStops,
+    routeId,
+    route,
+    failedStops,
+    markStopVisited,
+    createRoute,
     updateRoute,
     router,
-    refetch,
+    currentStopIndex,
+    totalStops,
     displayStops,
+    refetch,
   ]);
 
-  // 🔥 FUNÇÃO CORRIGIDA: Criar nova rota APENAS com o destino atual
+  // 🔥 FUNÇÃO AUXILIAR: Converter data local para UTC mantendo o mesmo dia
+  const convertLocalDateToUTC = (dateString: string): string => {
+    // Exemplo: "2026-04-17" -> "2026-04-17T00:00:00-03:00"
+    const [year, month, day] = dateString.split("-");
+    // Criar data no fuso horário local
+    const localDate = new Date(
+      parseInt(year),
+      parseInt(month) - 1,
+      parseInt(day),
+    );
+    // Retornar como string ISO mantendo o offset local
+    return localDate.toISOString().split("T")[0]; // Retorna "2026-04-17"
+  };
+
+  // 🔥 FUNÇÃO: Criar nova rota (Agendar) - Marca como concluída
   const handleCreateNewRoute = useCallback(async () => {
     if (!route || !currentStop) return;
+
+    if (!newRouteTitle.trim()) {
+      toast.warning("Digite um título para a nova rota");
+      return;
+    }
 
     if (!newRouteDate) {
       toast.warning("Selecione uma data para a nova rota");
@@ -666,8 +771,11 @@ export default function DriverPage() {
     });
 
     try {
-      const formattedDate = new Date(newRouteDate).toLocaleDateString("pt-BR");
-      const newTitle = `${route.title} - ${currentStop.name} (agendado - ${formattedDate})`;
+      // 🔥 CORREÇÃO: Manter a data exata que o usuário selecionou
+      // Não converter para UTC, enviar como string YYYY-MM-DD
+      const selectedDate = newRouteDate; // Já está no formato YYYY-MM-DD
+      const formattedDate = new Date(selectedDate).toLocaleDateString("pt-BR");
+      const finalTitle = newRouteTitle.trim();
 
       let description = `Destino agendado da rota original: ${route.title}\n`;
       description += `Endereço: ${currentStop.address}, ${currentStop.city}/${currentStop.state}\n`;
@@ -679,9 +787,9 @@ export default function DriverPage() {
       }
 
       const createRoutePayload: CreateRouteDto = {
-        title: newTitle,
+        title: finalTitle,
         description: description,
-        routeDate: newRouteDate,
+        routeDate: selectedDate,
         userAssignedId: route.userAssignedId || undefined,
         orderBy: "DISTANCE",
         stops: [
@@ -700,37 +808,37 @@ export default function DriverPage() {
         ],
       };
 
-      // Usar o mutateAsync do hook createRoute
       await createRoute.mutateAsync(createRoutePayload);
 
-      // 🔥 MARCAR PARADA COMO VISITADA E AVANÇAR PARA PRÓXIMA
-      if (!visitedStops.includes(currentStop.id!)) {
+      // ✅ MARCAR A PARADA ATUAL COMO CONCLUÍDA (AGENDADA - SUCESSO)
+      if (
+        !visitedStops.includes(currentStop.id!) &&
+        !failedStops.includes(currentStop.id!)
+      ) {
         await markStopVisited.mutateAsync({
           routeId: routeId!,
           stopId: currentStop.id!,
-          notes: `Rota agendada para ${formattedDate}.`,
+          notes: `📅 AGENDADO: Nova rota criada para ${formattedDate} com título: ${finalTitle}. Visita registrada como concluída para seguir rota atual.`,
         });
 
-        // 🔥 ATUALIZAR ESTADO LOCAL IMEDIATAMENTE
         const newVisitedStops = [...visitedStops, currentStop.id!];
         setVisitedStops(newVisitedStops);
 
-        // 🔥 AVANÇAR PARA PRÓXIMA PARADA
         const nextIndex = currentStopIndex + 1;
         if (nextIndex < totalStops) {
           setCurrentStopIndex(nextIndex);
           toast.success(
-            `✅ Destino agendado! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
-            { duration: 3000 },
+            `✅ Destino agendado e marcado como concluído! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+            { duration: 4000 },
           );
         } else {
-          // Se não há mais paradas, finalizar rota
           await updateRoute.mutateAsync({
             id: routeId!,
             data: { status: "FINISHED" },
           });
           localStorage.removeItem(`driver_route_${routeId}_index`);
           localStorage.removeItem(`driver_route_${routeId}_visited`);
+          localStorage.removeItem(`driver_route_${routeId}_failed`);
           toast.success("🎉 Rota finalizada com sucesso!", { duration: 3000 });
           setTimeout(() => router.push("/routes"), 1500);
         }
@@ -739,21 +847,20 @@ export default function DriverPage() {
       toast.dismiss(loadingToast);
       toast.success("✅ Nova rota criada com sucesso!", {
         duration: 4000,
-        description: `Nova rota: ${newTitle} | Data: ${formattedDate}`,
+        description: `Título: ${finalTitle} | Data: ${formattedDate}`,
       });
 
-      // 🔥 FECHAR MODAL E LIMPAR ESTADOS
+      // Limpar estados
       setIsModalOpen(false);
       setShowNewRouteOption(false);
       setComment("");
       setNewRouteDate("");
       setNewRouteObservations("");
+      setNewRouteTitle("");
       setVisitStatus(null);
 
-      // 🔥 FORÇAR REFRESH DOS DADOS
       await refetch();
 
-      // 🔥 RECALCULAR ORDEM OTIMIZADA (se necessário)
       if (route.orderBy === "DISTANCE" && currentPosition) {
         const reordered = reorderStopsByProximity(
           route.stops,
@@ -778,12 +885,14 @@ export default function DriverPage() {
     totalStops,
     displayStops,
     currentPosition,
+    newRouteTitle,
     newRouteDate,
     newRouteObservations,
     markStopVisited,
     updateRoute,
     routeId,
     visitedStops,
+    failedStops,
     createRoute,
     refetch,
     reorderStopsByProximity,
@@ -794,7 +903,7 @@ export default function DriverPage() {
   useEffect(() => {
     const checkAndFinishRoute = async () => {
       if (isFinishing || !route || route.status === "FINISHED") return;
-      if (visitedStops.length === totalStops && totalStops > 0) {
+      if (completedStops === totalStops && totalStops > 0) {
         setIsFinishing(true);
         try {
           await updateRoute.mutateAsync({
@@ -803,6 +912,7 @@ export default function DriverPage() {
           });
           localStorage.removeItem(`driver_route_${routeId}_index`);
           localStorage.removeItem(`driver_route_${routeId}_visited`);
+          localStorage.removeItem(`driver_route_${routeId}_failed`);
           toast.success("🎉 Rota finalizada com sucesso!", {
             duration: 4000,
             icon: "✅",
@@ -816,7 +926,7 @@ export default function DriverPage() {
     };
     checkAndFinishRoute();
   }, [
-    visitedStops,
+    completedStops,
     totalStops,
     route,
     routeId,
@@ -864,6 +974,12 @@ export default function DriverPage() {
           <h2 className="text-2xl font-bold mb-2">Rota Finalizada!</h2>
           <p className="text-gray-600 mb-6">
             Parabéns! Você completou todas as {totalStops} paradas desta rota.
+            {failedStops.length > 0 && (
+              <span className="block text-amber-600 mt-2">
+                ⚠️ {failedStops.length} parada(s) foram registradas como FALHA e
+                reagendada(s)
+              </span>
+            )}
           </p>
           <button
             onClick={() => router.push("/routes")}
@@ -898,7 +1014,10 @@ export default function DriverPage() {
           myLocation={currentPosition}
           visitedStops={visitedStops}
           onStopClick={(stop, index) => {
-            if (!visitedStops.includes(stop.id!)) {
+            if (
+              !visitedStops.includes(stop.id!) &&
+              !failedStops.includes(stop.id!)
+            ) {
               setCurrentStopIndex(index);
             }
           }}
@@ -908,16 +1027,15 @@ export default function DriverPage() {
       {/* Modal de Finalização */}
       {isModalOpen && (
         <div className="absolute inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
-            {!showNewRouteOption ? (
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl max-h-[90vh] overflow-y-auto">
+            {!showNewRouteOption && !showRescheduleOption ? (
               <>
                 <div className="text-center mb-4">
                   <h3 className="text-xl font-bold text-emerald-600">
                     Chegou ao Destino!
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    Como foi a visita em{" "}
-                    {currentStop?.name || `Parada ${currentStopIndex + 1}`}?
+                    {currentStop?.name || `Parada ${currentStopIndex + 1}`}
                   </p>
                 </div>
 
@@ -929,7 +1047,7 @@ export default function DriverPage() {
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                    placeholder="Adicione observações sobre esta visita..."
+                    placeholder="Adicione observações sobre a visita..."
                     rows={3}
                     autoFocus
                   />
@@ -948,37 +1066,24 @@ export default function DriverPage() {
                       </>
                     ) : (
                       <>
-                        <CheckCircle size={18} />
-                        Visita concluída
+                        <CheckCircle size={18} /> Concluir
                       </>
                     )}
                   </button>
 
                   <button
-                    onClick={confirmError}
+                    onClick={() => setShowRescheduleOption(true)}
                     disabled={isSubmitting}
                     className="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center gap-2"
                   >
-                    {isSubmitting && visitStatus === "error" ? (
-                      <>
-                        <Loader2 className="animate-spin" size={18} />
-                        Registrando...
-                      </>
-                    ) : (
-                      <>
-                        <XCircle size={18} />
-                        Erro na visita
-                      </>
-                    )}
+                    <XCircle size={18} /> Falha
                   </button>
 
-                  {/* Botão Agendar - disponível desde o início */}
                   <button
                     onClick={() => setShowNewRouteOption(true)}
                     className="w-full py-3 border-2 border-blue-600 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
                   >
-                    <Copy size={18} />
-                    Agendar Rota
+                    📅 Agendar
                   </button>
 
                   <button
@@ -989,27 +1094,127 @@ export default function DriverPage() {
                   </button>
                 </div>
               </>
-            ) : (
+            ) : showRescheduleOption ? (
+              // MODAL DE REAGENDAMENTO (FALHA)
               <>
                 <div className="text-center mb-4">
-                  <h3 className="text-xl font-bold text-blue-600">
-                    Agendar Rota
+                  <h3 className="text-xl font-bold text-red-600">
+                    ❌ Falha na Visita
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    Criar nova rota apenas para este destino
+                    <strong>{currentStop?.name}</strong>
                   </p>
-                  <div className="mt-2 p-2 bg-amber-50 rounded-lg">
-                    <p className="text-xs text-amber-700">
-                      📍 Destino atual: <strong>{currentStop?.name}</strong>
-                      <br />
-                      Endereço: {currentStop?.address}, {currentStop?.city}
+                  <div className="mt-2 p-2 bg-red-50 rounded-lg">
+                    <p className="text-xs text-red-600">
+                      ⚠️ A visita não pôde ser concluída. A parada será marcada
+                      como <strong>FAILED</strong> e uma nova rota será criada.
                     </p>
                   </div>
                 </div>
 
                 <div className="mb-4">
                   <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                    Nova Data *
+                    Nova Data para Visita *
+                  </label>
+                  <input
+                    type="date"
+                    value={rescheduleDate}
+                    onChange={(e) => setRescheduleDate(e.target.value)}
+                    className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                    min={new Date().toISOString().split("T")[0]}
+                  />
+                  {!rescheduleDate && (
+                    <p className="text-xs text-red-500 mt-1">
+                      ⚠️ Selecione uma data para o reagendamento
+                    </p>
+                  )}
+                </div>
+
+                <div className="mb-4">
+                  <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                    Motivo da Falha *
+                  </label>
+                  <textarea
+                    value={rescheduleObservations}
+                    onChange={(e) => setRescheduleObservations(e.target.value)}
+                    className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                    placeholder="Descreva o motivo da falha (ex: cliente ausente, endereço incorreto, etc.)..."
+                    rows={3}
+                    required
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handleReschedule}
+                    disabled={
+                      isRescheduling ||
+                      !rescheduleDate ||
+                      !rescheduleObservations.trim()
+                    }
+                    className="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
+                  >
+                    {isRescheduling ? (
+                      <>
+                        <Loader2 className="animate-spin" size={18} />
+                        Registrando Falha...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle size={18} />
+                        Confirmar Falha e Reagendar
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowRescheduleOption(false);
+                      setRescheduleDate("");
+                      setRescheduleObservations("");
+                    }}
+                    className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
+                  >
+                    Voltar
+                  </button>
+                </div>
+              </>
+            ) : (
+              // MODAL DE AGENDAMENTO (NOVA ROTA)
+              <>
+                <div className="text-center mb-4">
+                  <h3 className="text-xl font-bold text-blue-600">
+                    📅 Agendar Nova Rota
+                  </h3>
+
+                  <div className="mt-2 p-2 bg-amber-50 rounded-lg">
+                    <p className="text-xs text-amber-700">
+                      📍 Destino atual: <strong>{currentStop?.name}</strong>
+                      <br />
+                      Endereço: {currentStop?.address}, {currentStop?.city}
+                    </p>
+                    
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                    Título  *
+                  </label>
+                  <input
+                    type="text"
+                    value={newRouteTitle}
+                    onChange={(e) => setNewRouteTitle(e.target.value)}
+                    className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                    placeholder="Ex: VISITAR - Cliente XPTO"
+                    autoFocus
+                  />
+                 
+                </div>
+
+                <div className="mb-4">
+                  <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                    Data *
                   </label>
                   <input
                     type="date"
@@ -1028,25 +1233,19 @@ export default function DriverPage() {
                     value={newRouteObservations}
                     onChange={(e) => setNewRouteObservations(e.target.value)}
                     className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                    placeholder="Observações para a nova rota (opcional)..."
+                    placeholder="Adicionar Informações..."
                     rows={3}
                   />
-                </div>
-
-                <div className="mb-4 p-3 bg-slate-50 rounded-lg">
-                  <p className="text-xs text-slate-500 mb-1">Resumo:</p>
-                  <p className="text-sm font-medium text-slate-700 truncate">
-                    {route?.title} - {currentStop?.name}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    1 destino • Nova rota independente
-                  </p>
                 </div>
 
                 <div className="flex flex-col gap-2">
                   <button
                     onClick={handleCreateNewRoute}
-                    disabled={isCreatingNewRoute || !newRouteDate}
+                    disabled={
+                      isCreatingNewRoute ||
+                      !newRouteDate ||
+                      !newRouteTitle.trim()
+                    }
                     className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
                   >
                     {isCreatingNewRoute ? (
@@ -1057,7 +1256,7 @@ export default function DriverPage() {
                     ) : (
                       <>
                         <CalendarPlus size={18} />
-                        Criar Rota para este Destino
+                        Agendar
                       </>
                     )}
                   </button>
@@ -1067,6 +1266,7 @@ export default function DriverPage() {
                       setShowNewRouteOption(false);
                       setNewRouteDate("");
                       setNewRouteObservations("");
+                      setNewRouteTitle("");
                     }}
                     className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
                   >
