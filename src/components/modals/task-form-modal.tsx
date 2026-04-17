@@ -375,38 +375,54 @@ export function TaskFormModal({
       state,
       complement,
       id,
-      scheduledAt, // <--- Extraia scheduledAt aqui
-      dueDate, // <--- Extraia dueDate aqui
+      scheduledAt,
+      dueDate,
+      latitude, // 🔥 PEGAR LATITUDE DO FORM
+      longitude, // 🔥 PEGAR LONGITUDE DO FORM
       ...taskFields
     } = values;
-    const hasAddress = street || city || (finalLat && finalLon);
 
+    // 🔥 USAR finalLat/finalLon OU os valores do form
+    const finalLatitude =
+      finalLat ?? (latitude ? parseFloat(latitude.toString()) : null);
+    const finalLongitude =
+      finalLon ?? (longitude ? parseFloat(longitude.toString()) : null);
+
+    const hasAddress = street || city || (finalLatitude && finalLongitude);
+
+    // 🔥 CORREÇÃO: Construir o address com todos os campos
     const taskAddressData = hasAddress
       ? {
-          cep,
-          endereco: street,
-          numero: number,
-          bairro: neighborhood,
-          cidade: city,
-          estado: state,
-          complemento: complement,
-          latitude: finalLat,
-          longitude: finalLon,
+          cep: cep || "",
+          endereco: street || "",
+          numero: number || "",
+          bairro: neighborhood || "",
+          cidade: city || "",
+          estado: state || "",
+          complemento: complement || "",
+          latitude: finalLatitude,
+          longitude: finalLongitude,
         }
       : null;
 
-    // --- CORREÇÃO PRINCIPAL: ENVIA O ID SE EXISTIR ---
+    const taskId = id || initialData?.id;
+
     const payload = {
-      id: id || initialData?.id, // Usa o do form, com fallback para o inicial
+      ...(taskId && { id: taskId }),
       ...taskFields,
-      // Envia NULL se a string estiver vazia, caso contrário envia a data
-      scheduledAt: scheduledAt ? scheduledAt : null,
-      dueDate: dueDate ? dueDate : null,
+      scheduledAt: scheduledAt || null,
+      dueDate: dueDate || null,
       assignedToId:
         values.assignedToId === "unassigned" ? null : values.assignedToId,
       priority: parseInt(values.priority) || 1,
-      address: taskAddressData,
+      address: taskAddressData, // 🔥 Enviar o objeto address completo
     };
+
+    // 🔥 LOG PARA DEBUG
+    console.log("📦 Enviando payload:", {
+      ...payload,
+      address: taskAddressData,
+    });
 
     await onSubmit(
       payload,
@@ -473,7 +489,7 @@ export function TaskFormModal({
                       </FormItem>
                     )}
                   />
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
