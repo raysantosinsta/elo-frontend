@@ -116,9 +116,7 @@ const DriverHeader = memo(
             <span className="flex items-center gap-1">
               <Calendar size={12} /> {currentStop?.city}/{currentStop?.state}
             </span>
-            <span className="flex items-center gap-1">
-              <FileText size={12} /> CEP: {currentStop?.zipCode}
-            </span>
+            
           </div>
 
           {/* Barra de progresso */}
@@ -557,7 +555,7 @@ export default function DriverPage() {
         localStorage.removeItem(`driver_route_${routeId}_visited`);
         localStorage.removeItem(`driver_route_${routeId}_failed`);
 
-        toast.success("🎉 Rota finalizada com sucesso!", {
+        toast.success(" Rota finalizada com sucesso!", {
           duration: 3000,
           icon: "✅",
         });
@@ -997,7 +995,7 @@ export default function DriverPage() {
 
             {/* Título */}
             <h2 className="text-2xl md:text-3xl font-bold text-[#2C3E50] mb-3">
-              Rota Finalizada! 🎉
+              Rota Finalizada!
             </h2>
 
             {/* Mensagem de sucesso */}

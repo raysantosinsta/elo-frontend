@@ -208,8 +208,8 @@ const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
           </p>
         )}
         {task.description && (
-          <p className="text-xs text-[#95A5A6] mt-1 line-clamp-2 italic">
-            📝 {task.description}
+          <p className="text-sm text-[#95A5A6] mt-1 line-clamp-2 italic">
+            Descrição: {task.description}
           </p>
         )}
       </div>
@@ -251,8 +251,8 @@ const StopItem = memo(({ stop, index, onRemove }: any) => {
             </p>
           )}
           {stop.notes && (
-            <p className="text-[#95A5A6] text-xs truncate mt-0.5 line-clamp-2 italic">
-              📝 {stop.notes}
+            <p className="text-[#95A5A6] text-sm truncate mt-0.5 line-clamp-2 italic">
+               {stop.notes}
             </p>
           )}
         </div>

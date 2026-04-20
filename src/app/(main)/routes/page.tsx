@@ -524,24 +524,43 @@ export default function RoutesPage() {
   };
 
   const handleApplyFilters = async () => {
+    if (isFiltering) return;
+
     setIsFiltering(true);
 
+    // Atualiza os valores aplicados
     setAppliedStatusFilter(tempStatusFilter);
     setAppliedStartDate(tempStartDate);
     setAppliedEndDate(tempEndDate);
     setAppliedUserAssignedFilter(tempUserAssignedFilter);
 
-    await refetch();
-    setIsFiltering(false);
-
-    // Fechar o card de filtros após aplicar
-    setShowFilters(false);
-
-    toast.custom(
-      (t) => <CustomToast message="Filtros aplicados" type="success" />,
-      { duration: 1500 },
-    );
+    try {
+      await refetch();
+      toast.custom(
+        (t) => <CustomToast message="Filtros aplicados" type="success" />,
+        { duration: 1500 },
+      );
+    } catch (error) {
+      console.error("Erro ao aplicar filtros:", error);
+      toast.custom(
+        (t) => <CustomToast message="Erro ao aplicar filtros" type="error" />,
+        { duration: 1500 },
+      );
+    } finally {
+      setIsFiltering(false);
+      // ❌ REMOVA ESTA LINHA - não fecha o card automaticamente
+      // setTimeout(() => {
+      //   setShowFilters(false);
+      // }, 500);
+    }
   };
+
+  // Função para fechar manualmente
+  const handleCloseFilters = useCallback(() => {
+    if (!isFiltering) {
+      setShowFilters(false);
+    }
+  }, [isFiltering]);
 
   const hasActiveFilters = useMemo(() => {
     return activeFiltersCount > 0;
@@ -765,7 +784,7 @@ export default function RoutesPage() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-1 cursor-help">
-                    <span className="text-[#D35400] font-semibold">
+                    <span className="text-[#2C3E50] font-semibold">
                       {totalDuration}
                     </span>
                   </div>
@@ -775,10 +794,14 @@ export default function RoutesPage() {
                   className="bg-gray-800 text-white border-0"
                 >
                   <div className="space-y-1 text-sm p-1">
-                    <p>🚗 Duração: {routeDuration}</p>
-                    <p>⏱️ Intervalo: {formatMinutes(totalIntervalTime)}</p>
+                    <p>🚗 Duração da rota: {routeDuration}</p>
+                    <p>
+                      ⏱️ Intervalo de tempo: {formatMinutes(totalIntervalTime)}
+                    </p>
                     <div className="border-t border-gray-600 my-1"></div>
-                    <p className="font-bold">✨ Total: {totalDuration}</p>
+                    <p className="font-bold">
+                      ✨ Total da rota: {totalDuration}
+                    </p>
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -964,7 +987,7 @@ export default function RoutesPage() {
                   {/* Linha 2: Filtro de Data - Rotas Agendadas */}
                   <div className="space-y-3">
                     <label className="text-sm font-medium text-[#2C3E50] flex items-center gap-2">
-                      <CalendarIcon className="h-4 w-4 text-[#D35400]" />
+                      <CalendarIcon className="h-3 w-3 text-[#979492]" />
                       Rotas agendadas
                     </label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
