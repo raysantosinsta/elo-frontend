@@ -625,7 +625,7 @@ export default function RoutesPage() {
     }
   }, [deleteId, deleteRoute, refetch]);
 
-  // app/routes/page.tsx - Substitua a definição das colunas
+  // Substitua a definição das colunas por esta versão completa
 
   const columns: Column<Route>[] = useMemo(
     () => [
@@ -700,21 +700,54 @@ export default function RoutesPage() {
           </span>
         ),
       },
+      // =============================================
+      // COLUNA 1: DURAÇÃO (tempo das tarefas sem intervalo)
+      // =============================================
       {
         header: "Duração",
         cell: (route) => (
-          <span className="text-[#2C3E50]">
+          <span className="text-[#2C3E50] font-medium">
             {route.formattedDuration || "-"}
           </span>
         ),
       },
-      // 🔥 NOVA COLUNA 2: Duração Total (Trajeto + Tarefas) - COM VERIFICAÇÃO
+      // =============================================
+      // COLUNA 2: TEMPO DE INTERVALO (soma dos intervalTime)
+      // =============================================
+      {
+        header: "Tempo de intervalo",
+        cell: (route) => {
+          const totalIntervalTime = calculateTotalIntervalTime(route);
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-[#2C3E50] font-medium cursor-help">
+                    {formatMinutes(totalIntervalTime)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="left"
+                  className="bg-gray-800 text-white border-0"
+                >
+                  <p className="text-sm">
+                    Soma dos intervalos de todas as tarefas da rota
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        },
+      },
+      // =============================================
+      // COLUNA 3: TOTAL (Duração + Intervalo)
+      // =============================================
       {
         header: "Total",
         cell: (route) => {
           const stopsCount = route.stops?.length || 0;
 
-          // Se for apenas 1 parada, não mostrar total
+          // Se for apenas 1 parada, não mostrar total (não há deslocamento)
           if (stopsCount <= 1) {
             return (
               <div className="flex items-center gap-1">
@@ -742,8 +775,8 @@ export default function RoutesPage() {
                   className="bg-gray-800 text-white border-0"
                 >
                   <div className="space-y-1 text-sm p-1">
-                    <p>🚗 Trajeto: {routeDuration}</p>
-                    <p>📋 Tarefas: {formatMinutes(totalIntervalTime)}</p>
+                    <p>🚗 Duração: {routeDuration}</p>
+                    <p>⏱️ Intervalo: {formatMinutes(totalIntervalTime)}</p>
                     <div className="border-t border-gray-600 my-1"></div>
                     <p className="font-bold">✨ Total: {totalDuration}</p>
                   </div>
@@ -753,7 +786,6 @@ export default function RoutesPage() {
           );
         },
       },
-      
       {
         header: "Responsavel",
         cell: (route) => (

@@ -1,3 +1,4 @@
+/* eslint-disable react/jsx-no-undef */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable prefer-const */
 "use client";
@@ -10,18 +11,19 @@ import {
   Calendar,
   CalendarPlus,
   CheckCircle,
-  Copy,
   FileText,
   LeafIcon,
   Loader2,
   MapPin,
   Play,
+  RotateCcw,
   XCircle,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { motion } from "framer-motion";
 
 // Importação dinâmica do mapa
 const RouteMap = dynamic(() => import("@/components/DriverMap"), {
@@ -968,19 +970,62 @@ export default function DriverPage() {
 
   if (isFinished) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-slate-100">
-        <div className="text-center bg-white p-8 rounded-2xl shadow-lg max-w-md animate-in fade-in zoom-in duration-300">
-          <CheckCircle className="text-green-500 mx-auto mb-4" size={64} />
-          <h2 className="text-2xl font-bold mb-2">Rota Finalizada!</h2>
+      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden"
+        >
+          {/* Barra decorativa superior */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#D35400] to-[#e67e22]" />
 
-          <button
-            onClick={() => router.push("/routes")}
-            className="px-6 py-2 bg-[#D35400] text-white rounded-lg hover:bg-[#b84700] transition-all active:scale-95"
-            onMouseEnter={prefetchRoutes}
-          >
-            Voltar para rotas
-          </button>
-        </div>
+          <div className="p-8 md:p-10 text-center">
+            {/* Ícone animado */}
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+              className="mx-auto w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6"
+            >
+              <CheckCircle
+                className="text-green-500"
+                size={48}
+                strokeWidth={1.5}
+              />
+            </motion.div>
+
+            {/* Título */}
+            <h2 className="text-2xl md:text-3xl font-bold text-[#2C3E50] mb-3">
+              Rota Finalizada! 🎉
+            </h2>
+
+            {/* Mensagem de sucesso */}
+            <p className="text-[#95A5A6] text-sm md:text-base mb-6">
+              Todas as paradas foram concluídas com sucesso.
+            </p>
+
+            {/* Botão principal */}
+            <button
+              onClick={() => router.push("/routes")}
+              onMouseEnter={prefetchRoutes}
+              className="group relative w-full px-6 py-3 bg-[#D35400] text-white rounded-xl font-semibold
+          hover:bg-[#e06714] transition-all duration-300 
+          active:scale-95 shadow-md hover:shadow-lg
+          flex items-center justify-center gap-2"
+            >
+              <span>Voltar para rotas</span>
+              <motion.span
+                initial={{ x: 0 }}
+                animate={{ x: [0, 5, 0] }}
+                transition={{ duration: 1, repeat: Infinity, repeatDelay: 2 }}
+                className="inline-block"
+              >
+                →
+              </motion.span>
+            </button>
+          </div>
+        </motion.div>
       </div>
     );
   }
