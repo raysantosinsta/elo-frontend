@@ -137,7 +137,14 @@ const taskSchema = z.object({
   complement: z.string().optional(),
   latitude: z.any().optional(),
   longitude: z.any().optional(),
+  mediaFiles: z.object({
+    images: z.array(z.any()).optional(),
+    videos: z.array(z.any()).optional(),
+    audios: z.array(z.any()).optional(),
+  }).optional(),
 });
+
+
 
 type TaskFormValues = z.infer<typeof taskSchema>;
 
@@ -191,6 +198,11 @@ export function TaskFormModal({
       longitude: "",
     },
   });
+
+  useEffect(() => {
+  // Sincroniza as mídias com o formulário sempre que mudarem
+  form.setValue('mediaFiles', { images, videos, audios });
+}, [images, videos, audios, form]);
 
   // --- POPULA O FORMULÁRIO QUANDO ABRE ---
   useEffect(() => {
@@ -343,6 +355,21 @@ export function TaskFormModal({
   };
 
   const handleSubmit = async (values: TaskFormValues) => {
+      console.log("📸 Mídias no submit:", { images, videos, audios });
+      // Impede submit se estiver processando
+  if (isProcessingLocation || isLoading) {
+    console.warn("Submit bloqueado: já em processamento");
+    return;
+  }
+
+      // 🔥 VERIFICA SE O SUBMIT VAI FUNCIONAR ANTES DE PROCESSAR
+    if (!values.title || values.title.trim() === "") {
+      toast.error("Título é obrigatório");
+      setIsProcessingLocation(false);
+      return;
+    }
+
+
     setIsProcessingLocation(true);
     let finalLat = values.latitude
       ? parseFloat(values.latitude.toString())
