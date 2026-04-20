@@ -161,8 +161,8 @@ export interface RouteStop {
   id?: string;
   name?: string;
   address: string;
-  complement?: string;    // Adicione se não tiver
-  neighborhood?: string;  // Adicione se não tiver
+  complement?: string; // Adicione se não tiver
+  neighborhood?: string; // Adicione se não tiver
   city: string;
   state: string;
   zipCode: string;
@@ -200,6 +200,7 @@ export interface Route {
   _count?: {
     stops: number;
   };
+  tasks?: TaskInfo[]; // ← ADICIONE ESTA LINHA
 }
 
 export interface CreateRouteDto {
@@ -287,6 +288,13 @@ export interface AvailableTask {
   };
 }
 
+export interface TaskInfo {
+  id: string;
+  title: string;
+  intervalTime: number | null;
+  status?: string;
+}
+
 // =============================================
 // API ROUTES - Rotas sem tarefas
 // =============================================
@@ -330,8 +338,10 @@ export const routesApi = {
   /**
    * Duplica uma rota existente
    */
-  duplicate: (id: string, data: { title?: string; routeDate?: string; description?: string }) =>
-    api.post(`/routes/${id}/duplicate`, data),
+  duplicate: (
+    id: string,
+    data: { title?: string; routeDate?: string; description?: string },
+  ) => api.post(`/routes/${id}/duplicate`, data),
 
   /**
    * Converte uma rota salva em tarefas reais
@@ -371,6 +381,11 @@ export const routesApi = {
    */
   finalizeTask: (taskId: string, data: FinalizeTaskDto) =>
     api.patch(`/routes/tasks/${taskId}/finalize`, data),
+
+  /**
+   * Busca as tasks de uma rota específica
+   */
+  getRouteTasks: (routeId: string) => api.get(`/routes/${routeId}/tasks`),
 };
 
 export default api;

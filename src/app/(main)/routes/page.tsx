@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useRoutes } from "@/hooks/useRoutes";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, addDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangleIcon,
@@ -345,6 +345,63 @@ export default function RoutesPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
 
+  // app/routes/page.tsx - Dentro do componente RoutesPage
+
+  // 🔥 FUNÇÃO PARA CALCULAR TOTAL DO INTERVALTIME
+  const calculateTotalIntervalTime = useCallback((route: any): number => {
+    if (!route.tasks || route.tasks.length === 0) return 0;
+
+    return route.tasks.reduce((total: number, task: any) => {
+      return total + (task.intervalTime || 0);
+    }, 0);
+  }, []);
+
+  // 🔥 FUNÇÃO PARA FORMATAR MINUTOS
+  const formatMinutes = useCallback((minutes: number): string => {
+    if (minutes === 0) return "-";
+    if (minutes >= 60) {
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+    }
+    return `${minutes}min`;
+  }, []);
+
+  // 🔥 FUNÇÃO PARA EXTRAIR MINUTOS DA DURAÇÃO FORMATADA
+  const parseDurationToMinutes = useCallback((durationStr: string): number => {
+    if (!durationStr || durationStr === "-") return 0;
+
+    let totalMinutes = 0;
+
+    // Extrair horas
+    const hoursMatch = durationStr.match(/(\d+)h/);
+    if (hoursMatch) {
+      totalMinutes += parseInt(hoursMatch[1]) * 60;
+    }
+
+    // Extrair minutos
+    const minutesMatch = durationStr.match(/(\d+)min/);
+    if (minutesMatch) {
+      totalMinutes += parseInt(minutesMatch[1]);
+    }
+
+    return totalMinutes;
+  }, []);
+
+  // 🔥 FUNÇÃO PARA CALCULAR DURAÇÃO TOTAL (TRAJETO + INTERVALTIME)
+  const calculateTotalDuration = useCallback(
+    (route: any): string => {
+      const totalIntervalTime = calculateTotalIntervalTime(route);
+      const routeDurationMinutes = parseDurationToMinutes(
+        route.formattedDuration || "0min",
+      );
+      const totalMinutes = routeDurationMinutes + totalIntervalTime;
+
+      return formatMinutes(totalMinutes);
+    },
+    [calculateTotalIntervalTime, parseDurationToMinutes, formatMinutes],
+  );
+
   // Contagem de filtros ativos
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -369,6 +426,64 @@ export default function RoutesPage() {
     appliedEndDate,
     appliedUserAssignedFilter,
   ]);
+
+  // Função para obter data atual às 00:00:00
+  const getTodayDate = useCallback(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  }, []);
+
+  // Função para obter data daqui a 7 dias às 23:59:59
+  const getDatePlus7Days = useCallback(() => {
+    const date = addDays(new Date(), 7);
+    date.setHours(23, 59, 59, 999);
+    return date;
+  }, []);
+
+  // Função para aplicar filtro com datas padrão
+  const handleFilterButtonClick = useCallback(async () => {
+    const today = getTodayDate();
+    const sevenDaysLater = getDatePlus7Days();
+
+    // Atualiza os valores temporários
+    setTempStartDate(today);
+    setTempEndDate(sevenDaysLater);
+
+    // Atualiza os valores aplicados
+    setAppliedStartDate(today);
+    setAppliedEndDate(sevenDaysLater);
+
+    // Mantém os outros filtros como estão (não altera status e responsável)
+    // Se quiser resetar status e responsável para "all", descomente as linhas abaixo:
+    // setTempStatusFilter("all");
+    // setAppliedStatusFilter("all");
+    // setTempUserAssignedFilter("all");
+    // setAppliedUserAssignedFilter("all");
+
+    // Mostra o painel de filtros
+    setShowFilters(true);
+
+    // Aplica os filtros
+    setIsFiltering(true);
+    await refetch();
+    setIsFiltering(false);
+
+    toast.custom(
+      (t) => (
+        <CustomToast
+          message={`Filtro aplicado: ${format(today, "dd/MM/yyyy")} até ${format(sevenDaysLater, "dd/MM/yyyy")}`}
+          type="success"
+        />
+      ),
+      { duration: 3000 },
+    );
+  }, [getTodayDate, getDatePlus7Days, refetch]);
+
+  // Função original para toggle do painel de filtros (sem aplicar datas automáticas)
+  const handleToggleFilters = useCallback(() => {
+    setShowFilters(!showFilters);
+  }, [showFilters]);
 
   // Lista de Responsaveis para autocomplete
   const driverOptions = useMemo(() => {
@@ -455,15 +570,13 @@ export default function RoutesPage() {
       let matchesDate = true;
       if (appliedStartDate && route.routeDate) {
         const routeDate = new Date(route.routeDate);
-        const startOfDay = new Date(appliedStartDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        if (routeDate < startOfDay) matchesDate = false;
+        const startOfDayDate = startOfDay(appliedStartDate);
+        if (routeDate < startOfDayDate) matchesDate = false;
       }
       if (appliedEndDate && route.routeDate) {
         const routeDate = new Date(route.routeDate);
-        const endOfDay = new Date(appliedEndDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        if (routeDate > endOfDay) matchesDate = false;
+        const endOfDayDate = endOfDay(appliedEndDate);
+        if (routeDate > endOfDayDate) matchesDate = false;
       }
 
       const matchesDriver =
@@ -512,7 +625,8 @@ export default function RoutesPage() {
     }
   }, [deleteId, deleteRoute, refetch]);
 
-  // Definição das colunas para o GenericTable
+  // app/routes/page.tsx - Substitua a definição das colunas
+
   const columns: Column<Route>[] = useMemo(
     () => [
       {
@@ -532,7 +646,6 @@ export default function RoutesPage() {
       {
         header: "Status",
         cell: (route) => {
-          // Verificar se a rota está atrasada para exibir badge especial
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const routeDate = route.routeDate ? new Date(route.routeDate) : null;
@@ -595,11 +708,56 @@ export default function RoutesPage() {
           </span>
         ),
       },
+      // 🔥 NOVA COLUNA 2: Duração Total (Trajeto + Tarefas) - COM VERIFICAÇÃO
+      {
+        header: "Total",
+        cell: (route) => {
+          const stopsCount = route.stops?.length || 0;
+
+          // Se for apenas 1 parada, não mostrar total
+          if (stopsCount <= 1) {
+            return (
+              <div className="flex items-center gap-1">
+                <span className="text-[#95A5A6] text-sm">-</span>
+              </div>
+            );
+          }
+
+          const totalDuration = calculateTotalDuration(route);
+          const totalIntervalTime = calculateTotalIntervalTime(route);
+          const routeDuration = route.formattedDuration || "0min";
+
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1 cursor-help">
+                    <span className="text-[#D35400] font-semibold">
+                      {totalDuration}
+                    </span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="left"
+                  className="bg-gray-800 text-white border-0"
+                >
+                  <div className="space-y-1 text-sm p-1">
+                    <p>🚗 Trajeto: {routeDuration}</p>
+                    <p>📋 Tarefas: {formatMinutes(totalIntervalTime)}</p>
+                    <div className="border-t border-gray-600 my-1"></div>
+                    <p className="font-bold">✨ Total: {totalDuration}</p>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        },
+      },
+      
       {
         header: "Responsavel",
         cell: (route) => (
           <div className="flex items-center gap-1">
-            <UsersIcon className="h-3 w-3 text-[#95A5A6]" />
             <span className="text-[#2C3E50]">
               {route.userAssigned?.name || "Não atribuído"}
             </span>
@@ -680,7 +838,7 @@ export default function RoutesPage() {
         ),
       },
     ],
-    [router],
+    [router, calculateTotalIntervalTime, calculateTotalDuration, formatMinutes],
   );
 
   if (isLoading) {
@@ -707,7 +865,7 @@ export default function RoutesPage() {
                 <TooltipTrigger asChild>
                   <RippleButton
                     variant="outline"
-                    onClick={() => setShowFilters(!showFilters)}
+                    onClick={handleFilterButtonClick}
                     className={cn(
                       "rounded-full h-10 px-4 gap-2 transition-all duration-200",
                       showFilters &&
@@ -724,7 +882,7 @@ export default function RoutesPage() {
                   </RippleButton>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Filtrar rotas</p>
+                  <p>Aplicar filtro para rotas</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

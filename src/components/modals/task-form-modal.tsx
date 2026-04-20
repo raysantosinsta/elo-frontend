@@ -81,6 +81,7 @@ export interface TaskData {
   taskImages: any[];
   taskAudios: any[];
   taskVideos: any[];
+  intervalTime?: number | null; // 🔥 ADICIONE ESTA LINHA
 }
 
 export interface Supplier {
@@ -125,6 +126,7 @@ const taskSchema = z.object({
   dueDate: z.string().optional(),
   scheduledAt: z.string().optional(),
   finalComment: z.string().optional(),
+  intervalTime: z.string().optional(), // 🔥 ADICIONE ESTA LINHA (string para input)
   // Campos do formulário (Inglês)
   cep: z.string().optional(),
   street: z.string().optional(),
@@ -218,6 +220,7 @@ export function TaskFormModal({
             ? new Date(initialData.scheduledDate).toISOString().slice(0, 16)
             : "",
           finalComment: initialData.finalComment || "",
+          intervalTime: initialData.intervalTime?.toString() || "", // 🔥 ADICIONE ESTA LINHA
 
           // Mapeamento correto dos dados do Banco (PT) para o Form (EN)
           cep: initialData.taskAddress?.cep || "",
@@ -244,6 +247,7 @@ export function TaskFormModal({
           dueDate: "",
           scheduledAt: "",
           finalComment: "",
+          intervalTime: "", // 🔥 ADICIONE ESTA LINHA
           cep: "",
           street: "",
           number: "",
@@ -377,8 +381,10 @@ export function TaskFormModal({
       id,
       scheduledAt,
       dueDate,
-      latitude, // 🔥 PEGAR LATITUDE DO FORM
-      longitude, // 🔥 PEGAR LONGITUDE DO FORM
+      latitude,
+      longitude,
+      intervalTime,
+
       ...taskFields
     } = values;
 
@@ -415,6 +421,8 @@ export function TaskFormModal({
       assignedToId:
         values.assignedToId === "unassigned" ? null : values.assignedToId,
       priority: parseInt(values.priority) || 1,
+      intervalTime: intervalTime ? parseInt(intervalTime) : null, // 🔥 ADICIONE ESTA LINHA
+
       address: taskAddressData, // 🔥 Enviar o objeto address completo
     };
 
@@ -515,6 +523,35 @@ export function TaskFormModal({
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={form.control}
+                      name="intervalTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2">
+                            <span> Tempo Intervalo</span>
+                            
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              placeholder="Ex: 12 minutos"
+                              {...field}
+                              value={field.value || ""}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                field.onChange(
+                                  value === "" ? undefined : value,
+                                );
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
@@ -593,7 +630,7 @@ export function TaskFormModal({
                         <FormControl>
                           <Textarea
                             className="resize-none h-20 border-red-200 focus:border-red-400"
-                            placeholder="Descreva o motivo do erro (opcional)..."
+                            placeholder="Descreva comentario Final..."
                             {...field}
                             value={field.value || ""}
                           />

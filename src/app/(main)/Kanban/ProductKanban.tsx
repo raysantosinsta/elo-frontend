@@ -87,6 +87,7 @@ interface Task {
   dueDate?: string;
   scheduledDate?: string;
   finalComment?: string;
+  intervalTime?: number | null; // 🔥 ADICIONE ESTA LINHA
   taskAddress?: TaskAddress | null;
   taskImages: MediaFile[];
   taskAudios: MediaFile[];
@@ -299,6 +300,14 @@ export default function ProductKanban() {
         const tasksData = Array.isArray(tasksRes.data.data)
           ? tasksRes.data.data
           : tasksRes.data.tasks || [];
+
+        // 🔥 LOG DETALHADO
+        if (tasksData.length > 0) {
+          console.log("📦 Primeira task do backend:", tasksData[0]);
+          console.log("📦 Campos disponíveis:", Object.keys(tasksData[0]));
+          console.log("📦 intervalTime:", tasksData[0].intervalTime);
+        }
+
         setTasks(tasksData);
 
         setUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
@@ -322,8 +331,6 @@ export default function ProductKanban() {
       filterOverdue,
     ],
   );
-
-
 
   useEffect(() => {
     const filterParam = searchParams.get("filter");
@@ -445,13 +452,33 @@ export default function ProductKanban() {
         values[key] !== null &&
         values[key] !== ""
       ) {
-        formData.append(key, values[key]);
+        // 🔥 TRATAMENTO ESPECIAL PARA intervalTime
+        if (key === "intervalTime") {
+          const intervalValue = parseInt(values[key]);
+          if (!isNaN(intervalValue) && intervalValue >= 0) {
+            formData.append(key, intervalValue.toString());
+          }
+        } else {
+          formData.append(key, values[key]);
+        }
       }
     });
 
     const addressData = values.address || values.taskAddress;
     if (addressData) {
       formData.append("address", JSON.stringify(addressData));
+    }
+
+    // 🔥 SE FOR EDIÇÃO E TIVER intervalTime, GARANTIR QUE ENVIA
+    if (
+      editingTask &&
+      editingTask.intervalTime !== undefined &&
+      editingTask.intervalTime !== null
+    ) {
+      if (!values.intervalTime && values.intervalTime !== 0) {
+        // Se não veio no values mas tem no editingTask, manter o valor
+        formData.append("intervalTime", editingTask.intervalTime.toString());
+      }
     }
 
     if (user?.company?.id) formData.append("companyId", user.company.id);
@@ -1079,6 +1106,26 @@ export default function ProductKanban() {
                 </div>
               </div>
             </div>
+            {previewTask?.intervalTime !== undefined &&
+              previewTask?.intervalTime !== null && (
+                <div className="bg-blue-50/30 p-4 rounded-xl border border-blue-100 space-y-2">
+                  <h4 className="text-sm font-bold text-blue-700 flex items-center gap-2">
+                    Tempo Intervalo
+                  </h4>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-blue-600">
+                      {previewTask.intervalTime}
+                    </span>
+                    <span className="text-sm text-blue-600">minutos</span>
+                    {previewTask.intervalTime >= 60 && (
+                      <span className="text-xs text-gray-500 ml-2">
+                        ({Math.floor(previewTask.intervalTime / 60)}h{" "}
+                        {previewTask.intervalTime % 60}min)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
           </div>
 
           <DialogFooter className="px-6 py-4 bg-slate-50 border-t sticky bottom-0 z-20">

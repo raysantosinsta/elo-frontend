@@ -526,7 +526,7 @@ export default function CompanyRolesManagementPage() {
                 />
               </div>
 
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <Label htmlFor="level" className="text-[#2D3436]">
                   Nível Hierárquico (1-100)
                 </Label>
@@ -546,7 +546,7 @@ export default function CompanyRolesManagementPage() {
                   Valores menores = maior hierarquia (ex: 1 = Diretor, 10 =
                   Estagiário)
                 </p>
-              </div>
+              </div> */}
 
               <div className="space-y-2">
                 <Label htmlFor="description" className="text-[#2D3436]">

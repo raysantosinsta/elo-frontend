@@ -972,15 +972,7 @@ export default function DriverPage() {
         <div className="text-center bg-white p-8 rounded-2xl shadow-lg max-w-md animate-in fade-in zoom-in duration-300">
           <CheckCircle className="text-green-500 mx-auto mb-4" size={64} />
           <h2 className="text-2xl font-bold mb-2">Rota Finalizada!</h2>
-          <p className="text-gray-600 mb-6">
-            Parabéns! Você completou todas as {totalStops} paradas desta rota.
-            {failedStops.length > 0 && (
-              <span className="block text-amber-600 mt-2">
-                ⚠️ {failedStops.length} parada(s) foram registradas como FALHA e
-                reagendada(s)
-              </span>
-            )}
-          </p>
+
           <button
             onClick={() => router.push("/routes")}
             className="px-6 py-2 bg-[#D35400] text-white rounded-lg hover:bg-[#b84700] transition-all active:scale-95"
@@ -1099,17 +1091,11 @@ export default function DriverPage() {
               <>
                 <div className="text-center mb-4">
                   <h3 className="text-xl font-bold text-red-600">
-                    ❌ Falha na Visita
+                    Falha na Visita
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">
                     <strong>{currentStop?.name}</strong>
                   </p>
-                  <div className="mt-2 p-2 bg-red-50 rounded-lg">
-                    <p className="text-xs text-red-600">
-                      ⚠️ A visita não pôde ser concluída. A parada será marcada
-                      como <strong>FAILED</strong> e uma nova rota será criada.
-                    </p>
-                  </div>
                 </div>
 
                 <div className="mb-4">
@@ -1123,11 +1109,6 @@ export default function DriverPage() {
                     className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
                     min={new Date().toISOString().split("T")[0]}
                   />
-                  {!rescheduleDate && (
-                    <p className="text-xs text-red-500 mt-1">
-                      ⚠️ Selecione uma data para o reagendamento
-                    </p>
-                  )}
                 </div>
 
                 <div className="mb-4">
@@ -1162,7 +1143,7 @@ export default function DriverPage() {
                     ) : (
                       <>
                         <XCircle size={18} />
-                        Confirmar Falha e Reagendar
+                        Reagendar
                       </>
                     )}
                   </button>
@@ -1190,16 +1171,13 @@ export default function DriverPage() {
                   <div className="mt-2 p-2 bg-amber-50 rounded-lg">
                     <p className="text-xs text-amber-700">
                       📍 Destino atual: <strong>{currentStop?.name}</strong>
-                      <br />
-                      Endereço: {currentStop?.address}, {currentStop?.city}
                     </p>
-                    
                   </div>
                 </div>
 
                 <div className="mb-4">
                   <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                    Título  *
+                    Título *
                   </label>
                   <input
                     type="text"
@@ -1209,7 +1187,6 @@ export default function DriverPage() {
                     placeholder="Ex: VISITAR - Cliente XPTO"
                     autoFocus
                   />
-                 
                 </div>
 
                 <div className="mb-4">
