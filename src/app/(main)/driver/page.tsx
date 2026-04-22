@@ -441,7 +441,7 @@ export default function DriverPage() {
   const updateRoute = useUpdateRoute();
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
-  const finalizeTask = useFinalizeTask(); // 🔥 USAR ESTE
+  const finalizeTask = useFinalizeTask();
 
   const { data: routeTasks, refetch: refetchTasks } = useGetTasksByRoute(
     routeId || "",
@@ -474,7 +474,7 @@ export default function DriverPage() {
   const simulationInterval = useRef<NodeJS.Timeout | null>(null);
   const previousStopIdRef = useRef<string>("");
 
-  // 🔥 Declarar displayStops e currentStop ANTES de serem usados
+  // 🔥 Declarar displayStops e currentStop
   const displayStops = useMemo(
     () => (optimizedStops.length ? optimizedStops : route?.stops || []),
     [optimizedStops, route?.stops],
@@ -522,20 +522,16 @@ export default function DriverPage() {
     }
   }, [routeId, currentStopIndex, visitedStops, failedStops, route]);
 
-  // Buscar task associada à parada atual
+  // 🔥 CORRIGIDO: Buscar task associada à parada atual - sem dependência problemática
   useEffect(() => {
-    const findTaskForCurrentStop = async () => {
-      if (routeTasks && currentStop && currentStop.name) {
-        const task = routeTasks.find((t: any) => t.title === currentStop.name);
-        if (task) {
-          setCurrentTaskId(task.id);
-        } else {
-          setCurrentTaskId(null);
-        }
+    if (routeTasks && currentStop && currentStop.name) {
+      const task = routeTasks.find((t: any) => t.title === currentStop.name);
+      const newTaskId = task?.id || null;
+      if (newTaskId !== currentTaskId) {
+        setCurrentTaskId(newTaskId);
       }
-    };
-    findTaskForCurrentStop();
-  }, [routeTasks, currentStop]);
+    }
+  }, [routeTasks, currentStop]); // currentTaskId removido das dependências
 
   // Função para fechar todos os modais
   const closeAllModals = useCallback(() => {
@@ -627,54 +623,51 @@ export default function DriverPage() {
     [calculateDistance],
   );
 
-  // Efeito de reordenação
+  // 🔥 CORRIGIDO: Efeito de reordenação - otimizado para evitar loops
   useEffect(() => {
     if (!route || !route.stops) {
-      setOptimizedStops([]);
+      if (optimizedStops.length !== 0) setOptimizedStops([]);
       return;
     }
 
     if (route.orderBy === "PRIORITY") {
-      if (JSON.stringify(optimizedStops) !== JSON.stringify(route.stops)) {
+      const currentIds = JSON.stringify(optimizedStops.map((s) => s.id));
+      const routeIds = JSON.stringify(route.stops.map((s: any) => s.id));
+      if (currentIds !== routeIds) {
         setOptimizedStops(route.stops);
         setCurrentStopIndex(0);
       }
       return;
     }
 
-    if (route.orderBy === "DISTANCE" && currentPosition) {
+    if (route.orderBy === "DISTANCE" && currentPosition && !isReordering) {
       const reorderKey = `${currentPosition[0].toFixed(4)},${currentPosition[1].toFixed(4)}|${visitedStops.join(",")}`;
 
-      if (lastReorderedRef.current !== reorderKey && !isReordering) {
+      if (lastReorderedRef.current !== reorderKey) {
         setIsReordering(true);
         const reordered = reorderStopsByProximity(
           route.stops,
           currentPosition,
           visitedStops,
         );
-        if (
-          JSON.stringify(optimizedStops.map((s) => s.id)) !==
-          JSON.stringify(reordered.map((s) => s.id))
-        ) {
+
+        const currentIds = optimizedStops.map((s) => s.id).join(",");
+        const newIds = reordered.map((s) => s.id).join(",");
+
+        if (currentIds !== newIds) {
           setOptimizedStops(reordered);
           setCurrentStopIndex(0);
         }
+
         lastReorderedRef.current = reorderKey;
         setIsReordering(false);
       }
-    } else if (optimizedStops.length === 0) {
+    } else if (optimizedStops.length === 0 && route.stops) {
       setOptimizedStops(route.stops);
     }
-  }, [
-    route,
-    currentPosition,
-    visitedStops,
-    reorderStopsByProximity,
-    optimizedStops,
-    isReordering,
-  ]);
+  }, [route, currentPosition, visitedStops, reorderStopsByProximity]);
 
-  // Verificar chegada ao destino
+  // 🔥 CORRIGIDO: Verificar chegada ao destino
   useEffect(() => {
     if (!currentPosition || !currentStop) return;
     if (previousStopIdRef.current === currentStop.id) return;
@@ -708,94 +701,85 @@ export default function DriverPage() {
     currentStop,
     visitedStops,
     failedStops,
-    activeModal,
     currentStopIndex,
     calculateDistance,
   ]);
 
-  // Concluir tarefa (apenas concluir) - Usando finalizeTask
-  const completeTaskOnly = useCallback(async () => {
-    if (!currentStop) return;
+ // Concluir tarefa (apenas concluir) - COM ATUALIZAÇÃO DA ROTA
+const completeTaskOnly = useCallback(async () => {
+  if (!currentStop) return;
 
-    setIsSubmitting(true);
-    try {
-      const successNote = comment
-        ? `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED): ${comment}`
-        : `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED)`;
+  setIsSubmitting(true);
+  try {
+    const successNote = comment
+      ? `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED): ${comment}`
+      : `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED)`;
 
-      // 🔥 Usar finalizeTask em vez de updateTask
-      if (currentTaskId) {
-        await finalizeTask.mutateAsync({
-          taskId: currentTaskId,
-          data: {
-            status: "COMPLETED",
-            finalComment: successNote,
-          },
-        });
-        console.log(`✅ Task ${currentTaskId} finalizada como COMPLETED`);
-      }
+    await markStopVisited.mutateAsync({
+      routeId: routeId!,
+      stopId: currentStop.id!,
+      notes: successNote,
+    });
 
-      await markStopVisited.mutateAsync({
-        routeId: routeId!,
-        stopId: currentStop.id!,
-        notes: successNote,
+    const newVisitedStops = [...visitedStops, currentStop.id!];
+    setVisitedStops(newVisitedStops);
+    previousStopIdRef.current = "";
+
+    const nextIndex = currentStopIndex + 1;
+
+    if (nextIndex >= totalStops) {
+      await updateRoute.mutateAsync({
+        id: routeId!,
+        data: { status: "FINISHED" },
       });
+      localStorage.removeItem(`driver_route_${routeId}_index`);
+      localStorage.removeItem(`driver_route_${routeId}_visited`);
+      localStorage.removeItem(`driver_route_${routeId}_failed`);
+      toast.success("🎉 Rota finalizada com sucesso!", {
+        duration: 3000,
+        icon: "✅",
+      });
+      setTimeout(() => router.push("/routes"), 1500);
+    } else {
+      setCurrentStopIndex(nextIndex);
 
-      const newVisitedStops = [...visitedStops, currentStop.id!];
-      setVisitedStops(newVisitedStops);
-      previousStopIdRef.current = "";
-
-      const nextIndex = currentStopIndex + 1;
-
-      if (nextIndex >= totalStops) {
-        await updateRoute.mutateAsync({
-          id: routeId!,
-          data: { status: "FINISHED" },
-        });
-        localStorage.removeItem(`driver_route_${routeId}_index`);
-        localStorage.removeItem(`driver_route_${routeId}_visited`);
-        localStorage.removeItem(`driver_route_${routeId}_failed`);
-        toast.success("🎉 Rota finalizada com sucesso!", {
-          duration: 3000,
-          icon: "✅",
-        });
-        setTimeout(() => router.push("/routes"), 1500);
-      } else {
-        setCurrentStopIndex(nextIndex);
-        toast.success(
-          `✅ Visita concluída (COMPLETED)! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
-          { duration: 3000 },
-        );
-      }
-
-      closeAllModals();
-      await refetch();
-      await refetchTasks();
-    } catch (error) {
-      console.error("Erro ao finalizar:", error);
-      toast.error("Erro ao registrar visita. Tente novamente.");
-    } finally {
-      setIsSubmitting(false);
+      window.dispatchEvent(new Event("route-updated"));
+      
+      // 🔥 Dispara evento para o mapa recalcular a rota para o próximo destino
+      window.dispatchEvent(new Event("route-updated"));
+      
+      toast.success(
+        `✅ Visita concluída (COMPLETED)! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+        { duration: 3000 },
+      );
     }
-  }, [
-    currentStop,
-    markStopVisited,
-    routeId,
-    comment,
-    visitedStops,
-    currentStopIndex,
-    totalStops,
-    updateRoute,
-    router,
-    refetch,
-    refetchTasks,
-    displayStops,
-    closeAllModals,
-    currentTaskId,
-    finalizeTask,
-  ]);
 
-  // Criar nova tarefa - A tarefa atual deve ser COMPLETED
+    closeAllModals();
+    await refetch();
+    await refetchTasks();
+  } catch (error) {
+    console.error("Erro ao finalizar:", error);
+    toast.error("Erro ao registrar visita. Tente novamente.");
+  } finally {
+    setIsSubmitting(false);
+  }
+}, [
+  currentStop,
+  markStopVisited,
+  routeId,
+  comment,
+  visitedStops,
+  currentStopIndex,
+  totalStops,
+  updateRoute,
+  router,
+  refetch,
+  refetchTasks,
+  displayStops,
+  closeAllModals,
+]);
+
+  // Criar nova tarefa
   const handleCreateNewTask = useCallback(
     async (taskData: {
       title: string;
@@ -810,11 +794,9 @@ export default function DriverPage() {
       });
 
       try {
-        // 🔥 BUSCAR UMA COLUNA PADRÃO (PENDENTES)
         let defaultColumnId = (route as any)?.columnId;
 
         if (!defaultColumnId) {
-          // Buscar coluna "Pendentes" ou a primeira disponível
           const columnsResponse = await api.get("/kanban-columns");
           const columns = Array.isArray(columnsResponse.data)
             ? columnsResponse.data
@@ -833,7 +815,6 @@ export default function DriverPage() {
           }
         }
 
-        // 1. Criar a nova tarefa
         const taskAddress = {
           cep: currentStop.zipCode || "",
           endereco: currentStop.address || "",
@@ -852,13 +833,12 @@ export default function DriverPage() {
           dueDate: taskData.dueDate,
           address: taskAddress,
           companyId: (route as any)?.companyId,
-          columnId: defaultColumnId, // 🔥 ADICIONAR columnId OBRIGATÓRIO
+          columnId: defaultColumnId,
           priority: 1,
         };
 
         await createTask.mutateAsync(createTaskPayload);
 
-        // 2. Marcar a parada atual como visitada
         const successNote = comment
           ? `✅ VISITA CONCLUÍDA (COMPLETED). Nova tarefa criada: "${taskData.title}"\nObservações: ${comment}`
           : `✅ VISITA CONCLUÍDA (COMPLETED). Nova tarefa criada: "${taskData.title}"`;
@@ -868,18 +848,6 @@ export default function DriverPage() {
           stopId: currentStop.id!,
           notes: successNote,
         });
-
-        // 3. 🔥 Finalizar a tarefa atual como COMPLETED
-        if (currentTaskId) {
-          await finalizeTask.mutateAsync({
-            taskId: currentTaskId,
-            data: {
-              status: "COMPLETED",
-              finalComment: successNote,
-            },
-          });
-          console.log(`✅ Task ${currentTaskId} finalizada como COMPLETED`);
-        }
 
         const newVisitedStops = [...visitedStops, currentStop.id!];
         setVisitedStops(newVisitedStops);
@@ -900,7 +868,7 @@ export default function DriverPage() {
         } else {
           setCurrentStopIndex(nextIndex);
           toast.success(
-            `✅ Tarefa "${taskData.title}" criada e tarefa atual COMPLETED! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+            `✅ Tarefa "${taskData.title}" criada! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
             { duration: 4000 },
           );
         }
@@ -946,8 +914,6 @@ export default function DriverPage() {
       updateRoute,
       routeId,
       createTask,
-      finalizeTask,
-      currentTaskId,
       refetch,
       refetchTasks,
       reorderStopsByProximity,
@@ -956,7 +922,7 @@ export default function DriverPage() {
     ],
   );
 
-  // Reagendar tarefa em caso de falha - Usando finalizeTask com scheduledAt
+  // Reagendar tarefa em caso de falha
   const handleRescheduleTask = useCallback(
     async (data: { dueDate: string; observations: string }) => {
       if (!currentTaskId) {
@@ -970,21 +936,15 @@ export default function DriverPage() {
       });
 
       try {
-        // 🔥 Usar finalizeTask com FAILED e scheduledAt para reagendar
         await finalizeTask.mutateAsync({
           taskId: currentTaskId,
           data: {
             status: "FAILED",
             finalComment: `❌ FALHA NA VISITA (FAILED)\nMotivo: ${data.observations}\nNova data agendada: ${new Date(data.dueDate).toLocaleDateString("pt-BR")}\n${comment ? `Comentário original: ${comment}` : ""}`,
-            dueDate: data.dueDate, // Isso atualiza a data da tarefa
+            dueDate: data.dueDate,
           },
         });
 
-        console.log(
-          `❌ Task ${currentTaskId} marcada como FAILED e reagendada para ${data.dueDate}`,
-        );
-
-        // Marcar a parada como FAILED
         const failureNote = `❌ VISITA COM FALHA (FAILED) - REAGENDADA\nMotivo: ${data.observations}\nNova data: ${new Date(data.dueDate).toLocaleDateString("pt-BR")}`;
 
         await markStopVisited.mutateAsync({
@@ -1057,54 +1017,90 @@ export default function DriverPage() {
     ],
   );
 
-  // Simulação
-  const startSimulation = useCallback(() => {
-    const targetStop = displayStops[currentStopIndex];
-    if (!targetStop) {
-      toast.warning("Destino não encontrado");
-      return;
-    }
-    if (!currentPosition) {
-      toast.warning("Aguardando sinal de GPS");
-      return;
-    }
+ // Simulação - CORRIGIDA
+const startSimulation = useCallback(() => {
+  // 🔥 IMPORTANTE: Pega o destino atual baseado no currentStopIndex
+  const targetStop = displayStops[currentStopIndex];
+  
+  if (!targetStop) {
+    toast.warning("Destino não encontrado");
+    return;
+  }
+  
+  if (!currentPosition) {
+    toast.warning("Aguardando sinal de GPS");
+    return;
+  }
 
-    setIsGPSActive(false);
-    setIsSimulating(true);
+  // Verifica se o destino já foi visitado
+  if (visitedStops.includes(targetStop.id)) {
+    toast.warning(`O destino "${targetStop.name}" já foi concluído!`);
+    return;
+  }
 
-    const steps = 150;
-    const speed = 20;
-    let step = 0;
-    const startLat = currentPosition[0];
-    const startLng = currentPosition[1];
-    const endLat = targetStop.latitude;
-    const endLng = targetStop.longitude;
+  console.log('🎮 Iniciando simulação para:', targetStop.name);
+  console.log('   Posição atual:', currentPosition);
+  console.log('   Destino:', targetStop.latitude, targetStop.longitude);
 
-    if (simulationInterval.current) clearInterval(simulationInterval.current);
+  setIsGPSActive(false);
+  setIsSimulating(true);
 
-    simulationInterval.current = setInterval(() => {
-      step++;
-      const progress = step / steps;
-      const newLat = startLat + (endLat - startLat) * progress;
-      const newLng = startLng + (endLng - startLng) * progress;
-      setCurrentPosition([newLat, newLng]);
+  // Dispara evento para o mapa saber que a simulação começou
+  window.dispatchEvent(new Event("simulation-start"));
 
-      if (step >= steps) {
-        if (simulationInterval.current)
-          clearInterval(simulationInterval.current);
-        setCurrentPosition([endLat, endLng]);
-        setIsSimulating(false);
-        toast.success(`Simulação concluída! Chegou em: ${targetStop.name}`, {
-          duration: 2000,
-        });
+  const steps = 150;
+  const speed = 20;
+  let step = 0;
+  const startLat = currentPosition[0];
+  const startLng = currentPosition[1];
+  const endLat = targetStop.latitude;
+  const endLng = targetStop.longitude;
+
+  // Limpa intervalo anterior se existir
+  if (simulationInterval.current) {
+    clearInterval(simulationInterval.current);
+    simulationInterval.current = null;
+  }
+
+  simulationInterval.current = setInterval(() => {
+    step++;
+    const progress = step / steps;
+    const newLat = startLat + (endLat - startLat) * progress;
+    const newLng = startLng + (endLng - startLng) * progress;
+    setCurrentPosition([newLat, newLng]);
+
+    if (step >= steps) {
+      if (simulationInterval.current) {
+        clearInterval(simulationInterval.current);
+        simulationInterval.current = null;
       }
-    }, speed);
-  }, [displayStops, currentStopIndex, currentPosition]);
+      
+      // Posiciona exatamente no destino
+      setCurrentPosition([endLat, endLng]);
+      setIsSimulating(false);
+
+      // Dispara evento para o mapa saber que a simulação terminou
+      window.dispatchEvent(new Event("simulation-end"));
+
+      toast.success(`✅ Simulação concluída! Você chegou em: ${targetStop.name}`, {
+        duration: 3000,
+      });
+
+      // 🔥 Força a verificação de chegada ao destino
+      // O efeito de verificação de chegada vai detectar que está no destino
+      // e abrir o modal automaticamente
+    }
+  }, speed);
+}, [displayStops, currentStopIndex, currentPosition, visitedStops]);
 
   const resumeRealGPS = useCallback(() => {
     setIsGPSActive(true);
     setIsSimulating(false);
     if (simulationInterval.current) clearInterval(simulationInterval.current);
+
+    // 🔥 Dispara evento para o mapa saber que a simulação terminou
+    window.dispatchEvent(new Event("simulation-end"));
+
     toast.info("GPS em tempo real ativado", { duration: 2000 });
   }, []);
 

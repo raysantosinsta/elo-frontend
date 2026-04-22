@@ -39,6 +39,8 @@ export const useRoutes = () => {
           (data as Route[]).map(async (route) => {
             try {
               const tasksResponse = await routesApi.getRouteTasks(route.id);
+              console.log(`📊 Tasks da rota ${route.id}:`, tasksResponse.data); // 🔥 ADICIONE
+
               return {
                 ...route,
                 tasks: tasksResponse.data as TaskInfo[],
@@ -286,7 +288,9 @@ export const useRoutes = () => {
           queryClient.invalidateQueries({
             queryKey: ["tasks-by-route", variables.routeId],
           });
-          queryClient.invalidateQueries({ queryKey: ["routes", variables.routeId] });
+          queryClient.invalidateQueries({
+            queryKey: ["routes", variables.routeId],
+          });
         }
       },
     });
@@ -296,8 +300,13 @@ export const useRoutes = () => {
    */
   const useUpdateTask = () =>
     useMutation({
-      mutationFn: ({ id, data }: { id: string; data: Partial<CreateTaskDto> }) =>
-        routesApi.updateTask(id, data),
+      mutationFn: ({
+        id,
+        data,
+      }: {
+        id: string;
+        data: Partial<CreateTaskDto>;
+      }) => routesApi.updateTask(id, data),
       onSuccess: (_, variables) => {
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
         queryClient.invalidateQueries({ queryKey: ["tasks", variables.id] });

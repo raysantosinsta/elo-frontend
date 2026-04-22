@@ -85,6 +85,7 @@ interface ApiRoute {
 
 // Tipo para o componente (com valores normalizados)
 interface Route {
+  tasks: any;
   id: string;
   title: string;
   status: string;
@@ -345,50 +346,51 @@ export default function RoutesPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
 
-  // app/routes/page.tsx - Dentro do componente RoutesPage
-
-  // 🔥 FUNÇÃO PARA CALCULAR TOTAL DO INTERVALTIME
   const calculateTotalIntervalTime = useCallback((route: any): number => {
     if (!route.tasks || route.tasks.length === 0) return 0;
 
     return route.tasks.reduce((total: number, task: any) => {
-      return total + (task.intervalTime || 0);
+      const intervalValue = task.intervalTime || 0;
+      return (
+        total +
+        (typeof intervalValue === "number"
+          ? intervalValue
+          : Number(intervalValue) || 0)
+      );
     }, 0);
   }, []);
 
-  // 🔥 FUNÇÃO PARA FORMATAR MINUTOS
+  // 🔥 FUNÇÃO CORRIGIDA PARA FORMATAR MINUTOS (SEM CONVERSÃO ERRADA)
   const formatMinutes = useCallback((minutes: number): string => {
-    if (minutes === 0) return "-";
-    if (minutes >= 60) {
-      const hours = Math.floor(minutes / 60);
-      const mins = minutes % 60;
-      return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+    if (!minutes || minutes === 0) return "-";
+
+    const totalMinutes = Number(minutes);
+    if (isNaN(totalMinutes) || totalMinutes === 0) return "-";
+
+    if (totalMinutes >= 60) {
+      const hours = Math.floor(totalMinutes / 60);
+      const mins = totalMinutes % 60;
+      if (mins > 0) return `${hours}h ${mins}min`;
+      return `${hours}h`;
     }
-    return `${minutes}min`;
+
+    return `${totalMinutes}min`;
   }, []);
 
-  // 🔥 FUNÇÃO PARA EXTRAIR MINUTOS DA DURAÇÃO FORMATADA
+  // 🔥 FUNÇÃO CORRIGIDA - SEM LOGS
   const parseDurationToMinutes = useCallback((durationStr: string): number => {
     if (!durationStr || durationStr === "-") return 0;
 
     let totalMinutes = 0;
-
-    // Extrair horas
     const hoursMatch = durationStr.match(/(\d+)h/);
-    if (hoursMatch) {
-      totalMinutes += parseInt(hoursMatch[1]) * 60;
-    }
-
-    // Extrair minutos
+    if (hoursMatch) totalMinutes += parseInt(hoursMatch[1], 10) * 60;
     const minutesMatch = durationStr.match(/(\d+)min/);
-    if (minutesMatch) {
-      totalMinutes += parseInt(minutesMatch[1]);
-    }
+    if (minutesMatch) totalMinutes += parseInt(minutesMatch[1], 10);
 
     return totalMinutes;
   }, []);
 
-  // 🔥 FUNÇÃO PARA CALCULAR DURAÇÃO TOTAL (TRAJETO + INTERVALTIME)
+  // 🔥 FUNÇÃO CORRIGIDA PARA CALCULAR DURAÇÃO TOTAL (TRAJETO + INTERVALTIME)
   const calculateTotalDuration = useCallback(
     (route: any): string => {
       const totalIntervalTime = calculateTotalIntervalTime(route);
@@ -396,7 +398,6 @@ export default function RoutesPage() {
         route.formattedDuration || "0min",
       );
       const totalMinutes = routeDurationMinutes + totalIntervalTime;
-
       return formatMinutes(totalMinutes);
     },
     [calculateTotalIntervalTime, parseDurationToMinutes, formatMinutes],
@@ -426,6 +427,22 @@ export default function RoutesPage() {
     appliedEndDate,
     appliedUserAssignedFilter,
   ]);
+
+  // // No componente RoutesPage, adicione este useEffect
+  // useEffect(() => {
+  //   if (routes && routes.length > 0) {
+  //     routes.forEach((route) => {
+  //       if (route.tasks && route.tasks.length > 0) {
+  //         console.log(`=== ROTA: ${route.title} ===`);
+  //         route.tasks.forEach((task: { title: any; intervalTime: any }) => {
+  //           console.log(`  Task: ${task.title}`);
+  //           console.log(`  intervalTime:`, task.intervalTime);
+  //           console.log(`  Tipo:`, typeof task.intervalTime);
+  //         });
+  //       }
+  //     });
+  //   }
+  // }, [routes]);
 
   // Função para obter data atual às 00:00:00
   const getTodayDate = useCallback(() => {
@@ -644,10 +661,13 @@ export default function RoutesPage() {
     }
   }, [deleteId, deleteRoute, refetch]);
 
-  // Substitua a definição das colunas por esta versão completa
+  // routes/page.tsx - Substitua a definição das colunas por esta versão
 
-  const columns: Column<Route>[] = useMemo(
-    () => [
+  // 🔥 CORREÇÃO: Usar useRef para evitar recriação infinita das colunas
+  const columnsRef = useRef<Column<Route>[] | null>(null);
+
+  const getColumns = useCallback(
+    (): Column<Route>[] => [
       {
         header: "Título",
         className: "font-semibold",
@@ -719,9 +739,6 @@ export default function RoutesPage() {
           </span>
         ),
       },
-      // =============================================
-      // COLUNA 1: DURAÇÃO (tempo das tarefas sem intervalo)
-      // =============================================
       {
         header: "Duração",
         cell: (route) => (
@@ -730,9 +747,6 @@ export default function RoutesPage() {
           </span>
         ),
       },
-      // =============================================
-      // COLUNA 2: TEMPO DE INTERVALO (soma dos intervalTime)
-      // =============================================
       {
         header: "Tempo de intervalo",
         cell: (route) => {
@@ -758,15 +772,11 @@ export default function RoutesPage() {
           );
         },
       },
-      // =============================================
-      // COLUNA 3: TOTAL (Duração + Intervalo)
-      // =============================================
       {
         header: "Total",
         cell: (route) => {
           const stopsCount = route.stops?.length || 0;
 
-          // Se for apenas 1 parada, não mostrar total (não há deslocamento)
           if (stopsCount <= 1) {
             return (
               <div className="flex items-center gap-1">
@@ -895,6 +905,9 @@ export default function RoutesPage() {
     ],
     [router, calculateTotalIntervalTime, calculateTotalDuration, formatMinutes],
   );
+
+  // 🔥 Usar useMemo com a função getColumns
+  const columns = useMemo(() => getColumns(), [getColumns]);
 
   if (isLoading) {
     return (
