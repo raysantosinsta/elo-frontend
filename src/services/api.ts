@@ -156,13 +156,12 @@ api.interceptors.response.use(
 // TIPOS PARA AS ROTAS
 // =============================================
 
-// No seu arquivo de tipos (ex: chat.ts ou api.ts)
 export interface RouteStop {
   id?: string;
   name?: string;
   address: string;
-  complement?: string; // Adicione se não tiver
-  neighborhood?: string; // Adicione se não tiver
+  complement?: string;
+  neighborhood?: string;
   city: string;
   state: string;
   zipCode: string;
@@ -173,8 +172,8 @@ export interface RouteStop {
 }
 
 export interface Route {
-  userAssignedId?: string | null; // Adicione isso
-  orderBy?: "DISTANCE" | "PRIORITY"; // Adicione isso
+  userAssignedId?: string | null;
+  orderBy?: "DISTANCE" | "PRIORITY";
   id: string;
   title: string;
   description?: string;
@@ -200,15 +199,13 @@ export interface Route {
   _count?: {
     stops: number;
   };
-  tasks?: TaskInfo[]; // ← ADICIONE ESTA LINHA
+  tasks?: TaskInfo[];
 }
 
 export interface CreateRouteDto {
   title: string;
   description?: string;
   routeDate?: string;
-  // driverLatitude: number;
-  // driverLongitude: number;
   stops: Omit<RouteStop, "id" | "order" | "visited" | "visitedAt">[];
   userAssignedId?: string;
   orderBy?: "DISTANCE" | "PRIORITY";
@@ -221,7 +218,7 @@ export interface UpdateRouteDto {
   status?: Route["status"];
   stops?: CreateRouteDto["stops"];
   userAssignedId?: string;
-  orderBy?: "DISTANCE" | "PRIORITY"; // Adicione esta linha
+  orderBy?: "DISTANCE" | "PRIORITY";
 }
 
 export interface RouteStats {
@@ -254,7 +251,7 @@ export interface OptimizeRouteDto {
 export interface FinalizeTaskDto {
   status: "COMPLETED" | "FAILED";
   finalComment?: string;
-  scheduledAt?: string;
+  dueDate?: string;
 }
 
 export interface TaskAddress {
@@ -293,6 +290,119 @@ export interface TaskInfo {
   title: string;
   intervalTime: number | null;
   status?: string;
+}
+
+// =============================================
+// TIPOS PARA TAREFAS (NOVO)
+// =============================================
+
+export interface CreateTaskDto {
+  title: string;
+  description?: string;
+  dueDate?: string;
+  scheduledAt?: string;
+  status?: string;
+  completionDate?: string | null;
+  address?: {
+    cep: string;
+    endereco: string;
+    numero: string;
+    bairro: string;
+    cidade: string;
+    estado: string;
+    complemento?: string;
+    latitude?: number;
+    longitude?: number;
+  };
+  assignedToId?: string;
+  companyId?: string;
+  columnId?: string;
+  routeId?: string;
+  priority?: number;
+  columnOrder?: number;
+  intervalTime?: number;
+  finalComment?: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: number;
+  columnOrder: number;
+  dueDate: string | null;
+  scheduledDate: string | null;
+  completionDate: string | null;
+  finalComment: string | null;
+  intervalTime: number | null;
+  companyId: string;
+  userCreateId: string;
+  userAssignedId: string | null;
+  userCompletedId: string | null;
+  userUpdateId: string | null;
+  columnId: string | null;
+  routeId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  taskAddress?: {
+    id: string;
+    cep: string;
+    endereco: string;
+    numero: string;
+    bairro: string;
+    cidade: string;
+    estado: string;
+    complemento: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  };
+  userAssigned?: {
+    id: string;
+    name: string;
+    email: string;
+    contact: string | null;
+  };
+  userCreate?: {
+    id: string;
+    name: string;
+  };
+  userUpdate?: {
+    id: string;
+    name: string;
+  };
+  userCompleted?: {
+    id: string;
+    name: string;
+  };
+  column?: {
+    id: string;
+    title: string;
+  };
+  route?: {
+    id: string;
+    title: string;
+  };
+}
+
+export interface UpdateTaskDto {
+  title?: string;
+  description?: string;
+  dueDate?: string;
+  scheduledAt?: string;
+  completionDate?: string | null;
+  status?: string;
+  priority?: number;
+  columnOrder?: number;
+  assignedToId?: string | null;
+  columnId?: string | null;
+  routeId?: string | null;
+  finalComment?: string | null;
+  intervalTime?: number | null;
+  address?: CreateTaskDto["address"];
+  removeImageIds?: string[];
+  removeAudioIds?: string[];
+  removeVideoIds?: string[];
 }
 
 // =============================================
@@ -380,12 +490,61 @@ export const routesApi = {
    * Finaliza uma tarefa (sucesso/falha) ou agenda
    */
   finalizeTask: (taskId: string, data: FinalizeTaskDto) =>
-    api.patch(`/routes/tasks/${taskId}/finalize`, data),
+    api.patch(`/tasks/${taskId}/finalize`, data),
 
   /**
    * Busca as tasks de uma rota específica
    */
   getRouteTasks: (routeId: string) => api.get(`/routes/${routeId}/tasks`),
+
+  // =============================================
+  // NOVOS ENDPOINTS PARA TAREFAS
+  // =============================================
+
+  /**
+   * Cria uma nova tarefa
+   */
+  createTask: (data: CreateTaskDto) => api.post<Task>("/tasks", data),
+
+  /**
+   * Busca todas as tarefas (com paginação e filtros)
+   */
+  getAllTasks: (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    assignedToId?: string;
+    startDate?: string;
+    endDate?: string;
+    dateType?: string;
+    isOverdue?: boolean;
+    excludeCompleted?: boolean;
+    columnId?: string;
+    hasLocation?: boolean;
+  }) => api.get("/tasks", { params }),
+
+  /**
+   * Busca uma tarefa específica por ID
+   */
+  getTaskById: (id: string) => api.get<Task>(`/tasks/${id}`),
+
+  /**
+   * Atualiza uma tarefa existente
+   */
+  updateTask: (id: string, data: UpdateTaskDto) =>
+    api.patch<Task>(`/tasks/${id}`, data),
+
+  /**
+   * Remove uma tarefa
+   */
+  deleteTask: (id: string) => api.delete(`/tasks/${id}`),
+
+  /**
+   * Adiciona ou atualiza o endereço de uma tarefa
+   */
+  addTaskAddress: (taskId: string, address: any) =>
+    api.post(`/tasks/${taskId}/address`, address),
 };
 
 export default api;

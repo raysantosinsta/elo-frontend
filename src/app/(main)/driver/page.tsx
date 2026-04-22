@@ -1,17 +1,18 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable react/jsx-no-undef */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable prefer-const */
 "use client";
 
 import { useRoutes } from "@/hooks/useRoutes";
-import { CreateRouteDto } from "@/services/api";
+import api, { CreateTaskDto } from "@/services/api";
+import { motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeft,
   Calendar,
   CalendarPlus,
   CheckCircle,
-  FileText,
   LeafIcon,
   Loader2,
   MapPin,
@@ -23,7 +24,6 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
 
 // Importação dinâmica do mapa
 const RouteMap = dynamic(() => import("@/components/DriverMap"), {
@@ -116,7 +116,6 @@ const DriverHeader = memo(
             <span className="flex items-center gap-1">
               <Calendar size={12} /> {currentStop?.city}/{currentStop?.state}
             </span>
-            
           </div>
 
           {/* Barra de progresso */}
@@ -142,6 +141,281 @@ const DriverHeader = memo(
 
 DriverHeader.displayName = "DriverHeader";
 
+// 🎯 COMPONENTE: Modal de criação de tarefa
+const TaskCreationModal = memo(
+  ({
+    isOpen,
+    onClose,
+    onSubmit,
+    defaultAddress,
+    isSubmitting,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (data: {
+      title: string;
+      description: string;
+      dueDate: string;
+    }) => Promise<void>;
+    defaultAddress: any;
+    isSubmitting: boolean;
+  }) => {
+    const [title, setTitle] = useState("");
+    const [description, setDescription] = useState("");
+    const [dueDate, setDueDate] = useState("");
+
+    useEffect(() => {
+      if (isOpen) {
+        setTitle("");
+        setDescription("");
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        setDueDate(tomorrow.toISOString().split("T")[0]);
+      }
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!title.trim()) {
+        toast.warning("Digite um título para a tarefa");
+        return;
+      }
+      if (!dueDate) {
+        toast.warning("Selecione uma data para a tarefa");
+        return;
+      }
+      await onSubmit({ title: title.trim(), description, dueDate });
+    };
+
+    return (
+      <div className="fixed inset-0 z-[1100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="bg-white w-full max-w-md rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
+          <div className="text-center mb-4">
+            <h3 className="text-xl font-bold text-blue-600">
+              ✨ Criar Nova Tarefa
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">
+              O endereço será reaproveitado do destino atual
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                Título da Tarefa *
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                placeholder="Ex: Segunda visita ao cliente"
+                autoFocus
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                Descrição
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                placeholder="Adicione detalhes sobre a nova tarefa..."
+                rows={3}
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                Data de Vencimento *
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                min={new Date().toISOString().split("T")[0]}
+              />
+            </div>
+
+            {defaultAddress && (
+              <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <p className="text-xs font-bold text-slate-500 mb-1 uppercase">
+                  📍 Endereço (reaproveitado)
+                </p>
+                <p className="text-sm text-slate-700">
+                  {defaultAddress.address}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {defaultAddress.city}/{defaultAddress.state} - CEP:{" "}
+                  {defaultAddress.zipCode}
+                </p>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="submit"
+                disabled={isSubmitting || !title.trim() || !dueDate}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="animate-spin" size={18} />
+                    Criando...
+                  </>
+                ) : (
+                  <>
+                    <CalendarPlus size={18} />
+                    Criar Tarefa
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  },
+);
+
+TaskCreationModal.displayName = "TaskCreationModal";
+
+// 🎯 COMPONENTE: Modal de reagendamento de tarefa (para falha)
+const TaskRescheduleModal = memo(
+  ({
+    isOpen,
+    onClose,
+    onSubmit,
+    taskTitle,
+    isSubmitting,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (data: {
+      dueDate: string;
+      observations: string;
+    }) => Promise<void>;
+    taskTitle: string;
+    isSubmitting: boolean;
+  }) => {
+    const [dueDate, setDueDate] = useState("");
+    const [observations, setObservations] = useState("");
+
+    useEffect(() => {
+      if (isOpen) {
+        setDueDate("");
+        setObservations("");
+      }
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!dueDate) {
+        toast.warning("Selecione uma nova data para a tarefa");
+        return;
+      }
+      if (!observations.trim()) {
+        toast.warning("Descreva o motivo da falha");
+        return;
+      }
+      await onSubmit({ dueDate, observations });
+    };
+
+    return (
+      <div className="fixed inset-0 z-[1100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="bg-white w-full max-w-md rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
+          <div className="text-center mb-4">
+            <h3 className="text-xl font-bold text-red-600">
+              ❌ Falha na Visita
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Tarefa: <strong>{taskTitle}</strong>
+            </p>
+            <p className="text-xs text-amber-600 mt-2">
+              A tarefa será mantida com os mesmos dados, apenas a data será
+              atualizada.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                Nova Data para a Tarefa *
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                min={new Date().toISOString().split("T")[0]}
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                Motivo da Falha *
+              </label>
+              <textarea
+                value={observations}
+                onChange={(e) => setObservations(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                placeholder="Descreva o motivo da falha (ex: cliente ausente, endereço incorreto, etc.)..."
+                rows={3}
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="submit"
+                disabled={isSubmitting || !dueDate || !observations.trim()}
+                className="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="animate-spin" size={18} />
+                    Reagendando...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={18} />
+                    Reagendar Tarefa
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  },
+);
+
+TaskRescheduleModal.displayName = "TaskRescheduleModal";
+
 export default function DriverPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -151,54 +425,67 @@ export default function DriverPage() {
     useGetRouteById,
     useMarkStopVisited,
     useUpdateRoute,
-    useCreateRoute,
+    useCreateTask,
+    useUpdateTask,
+    useGetTasksByRoute,
+    useFinalizeTask,
   } = useRoutes();
+
   const {
     data: route,
     isLoading: isLoadingRoute,
     refetch,
   } = useGetRouteById(routeId || "");
+
   const markStopVisited = useMarkStopVisited();
   const updateRoute = useUpdateRoute();
-  const createRoute = useCreateRoute();
+  const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+  const finalizeTask = useFinalizeTask(); // 🔥 USAR ESTE
 
+  const { data: routeTasks, refetch: refetchTasks } = useGetTasksByRoute(
+    routeId || "",
+  );
+
+  // Estados
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
   const [currentPosition, setCurrentPosition] = useState<
     [number, number] | null
   >(null);
   const [visitedStops, setVisitedStops] = useState<string[]>([]);
-  const [failedStops, setFailedStops] = useState<string[]>([]); // 🆕 Para rastrear falhas
+  const [failedStops, setFailedStops] = useState<string[]>([]);
   const [isGPSActive, setIsGPSActive] = useState(true);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [comment, setComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [visitStatus, setVisitStatus] = useState<"success" | "error" | null>(
-    null,
-  );
-
-  // Estados para o novo fluxo de criar rota (Agendar)
-  const [showNewRouteOption, setShowNewRouteOption] = useState(false);
-  const [newRouteDate, setNewRouteDate] = useState("");
-  const [newRouteObservations, setNewRouteObservations] = useState("");
-  const [newRouteTitle, setNewRouteTitle] = useState("");
-  const [isCreatingNewRoute, setIsCreatingNewRoute] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
-
-  // Estados para reagendamento em caso de falha
-  const [showRescheduleOption, setShowRescheduleOption] = useState(false);
-  const [rescheduleDate, setRescheduleDate] = useState("");
-  const [rescheduleObservations, setRescheduleObservations] = useState("");
-  const [isRescheduling, setIsRescheduling] = useState(false);
-
-  // Estado para armazenar as paradas otimizadas por proximidade
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [isReschedulingTask, setIsReschedulingTask] = useState(false);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [activeModal, setActiveModal] = useState<
+    "main" | "confirm" | "create" | "reschedule" | null
+  >(null);
   const [optimizedStops, setOptimizedStops] = useState<any[]>([]);
-  // Flag para evitar reordenação desnecessária
   const [isReordering, setIsReordering] = useState(false);
-  const lastReorderedRef = useRef<string>("");
 
+  // Refs
+  const lastReorderedRef = useRef<string>("");
   const watchIdRef = useRef<number | null>(null);
   const simulationInterval = useRef<NodeJS.Timeout | null>(null);
+  const previousStopIdRef = useRef<string>("");
+
+  // 🔥 Declarar displayStops e currentStop ANTES de serem usados
+  const displayStops = useMemo(
+    () => (optimizedStops.length ? optimizedStops : route?.stops || []),
+    [optimizedStops, route?.stops],
+  );
+
+  const currentStop = displayStops[currentStopIndex];
+  const totalStops = displayStops.length;
+  const completedStops = visitedStops.length + failedStops.length;
+  const isFinished =
+    route?.status === "FINISHED" ||
+    (completedStops === totalStops && totalStops > 0);
 
   // Carregar estado salvo do localStorage
   useEffect(() => {
@@ -235,6 +522,27 @@ export default function DriverPage() {
     }
   }, [routeId, currentStopIndex, visitedStops, failedStops, route]);
 
+  // Buscar task associada à parada atual
+  useEffect(() => {
+    const findTaskForCurrentStop = async () => {
+      if (routeTasks && currentStop && currentStop.name) {
+        const task = routeTasks.find((t: any) => t.title === currentStop.name);
+        if (task) {
+          setCurrentTaskId(task.id);
+        } else {
+          setCurrentTaskId(null);
+        }
+      }
+    };
+    findTaskForCurrentStop();
+  }, [routeTasks, currentStop]);
+
+  // Função para fechar todos os modais
+  const closeAllModals = useCallback(() => {
+    setActiveModal(null);
+    setComment("");
+  }, []);
+
   // Monitorar GPS
   useEffect(() => {
     if (!navigator.geolocation || !isGPSActive) return;
@@ -256,7 +564,7 @@ export default function DriverPage() {
     };
   }, [isGPSActive]);
 
-  // Função para calcular distância entre dois pontos (em metros)
+  // Calcular distância
   const calculateDistance = useCallback(
     (lat1: number, lon1: number, lat2: number, lon2: number): number => {
       const R = 6371000;
@@ -274,7 +582,7 @@ export default function DriverPage() {
     [],
   );
 
-  // 🔥 FUNÇÃO PRINCIPAL: Reordenar paradas por proximidade
+  // Reordenar paradas por proximidade
   const reorderStopsByProximity = useCallback(
     (stops: any[], currentLatLng: [number, number], visitedIds: string[]) => {
       if (!stops.length) return [];
@@ -288,16 +596,9 @@ export default function DriverPage() {
 
       const ordered: any[] = [];
       const remaining = [...notVisited];
-      let currentPos = {
-        lat: currentLatLng[0],
-        lng: currentLatLng[1],
-      };
+      let currentPos = { lat: currentLatLng[0], lng: currentLatLng[1] };
 
-      let iteration = 0;
-      const maxIterations = remaining.length;
-
-      while (remaining.length > 0 && iteration < maxIterations) {
-        iteration++;
+      while (remaining.length > 0) {
         let nearestIndex = 0;
         let minDistance = Infinity;
 
@@ -309,7 +610,6 @@ export default function DriverPage() {
             stop.latitude,
             stop.longitude,
           );
-
           if (distance < minDistance) {
             minDistance = distance;
             nearestIndex = i;
@@ -318,10 +618,7 @@ export default function DriverPage() {
 
         const nearest = remaining[nearestIndex];
         ordered.push(nearest);
-        currentPos = {
-          lat: nearest.latitude,
-          lng: nearest.longitude,
-        };
+        currentPos = { lat: nearest.latitude, lng: nearest.longitude };
         remaining.splice(nearestIndex, 1);
       }
 
@@ -330,7 +627,7 @@ export default function DriverPage() {
     [calculateDistance],
   );
 
-  // 🔥 EFEITO: Reordenar paradas apenas quando necessário
+  // Efeito de reordenação
   useEffect(() => {
     if (!route || !route.stops) {
       setOptimizedStops([]);
@@ -345,84 +642,39 @@ export default function DriverPage() {
       return;
     }
 
-    if (route.orderBy === "DISTANCE") {
-      if (currentPosition) {
-        const reorderKey = `${currentPosition[0].toFixed(4)},${currentPosition[1].toFixed(4)}|${visitedStops.join(",")}`;
+    if (route.orderBy === "DISTANCE" && currentPosition) {
+      const reorderKey = `${currentPosition[0].toFixed(4)},${currentPosition[1].toFixed(4)}|${visitedStops.join(",")}`;
 
-        if (lastReorderedRef.current !== reorderKey && !isReordering) {
-          setIsReordering(true);
-
-          const reordered = reorderStopsByProximity(
-            route.stops,
-            currentPosition,
-            visitedStops,
-          );
-
-          const currentOrderIds = optimizedStops.map((s) => s.id).join(",");
-          const newOrderIds = reordered.map((s) => s.id).join(",");
-
-          if (currentOrderIds !== newOrderIds) {
-            setOptimizedStops(reordered);
-            setCurrentStopIndex(0);
-          } else if (optimizedStops.length === 0) {
-            setOptimizedStops(reordered);
-            setCurrentStopIndex(0);
-          }
-
-          lastReorderedRef.current = reorderKey;
-          setIsReordering(false);
-        }
-      } else if (optimizedStops.length === 0) {
-        const firstStopPos = {
-          lat: route.stops[0]?.latitude || 0,
-          lng: route.stops[0]?.longitude || 0,
-        };
-
-        if (firstStopPos.lat !== 0 && firstStopPos.lng !== 0) {
-          const initialPos: [number, number] = [
-            firstStopPos.lat,
-            firstStopPos.lng,
-          ];
-          const reordered = reorderStopsByProximity(
-            route.stops,
-            initialPos,
-            visitedStops,
-          );
+      if (lastReorderedRef.current !== reorderKey && !isReordering) {
+        setIsReordering(true);
+        const reordered = reorderStopsByProximity(
+          route.stops,
+          currentPosition,
+          visitedStops,
+        );
+        if (
+          JSON.stringify(optimizedStops.map((s) => s.id)) !==
+          JSON.stringify(reordered.map((s) => s.id))
+        ) {
           setOptimizedStops(reordered);
           setCurrentStopIndex(0);
-        } else {
-          setOptimizedStops(route.stops);
-          setCurrentStopIndex(0);
         }
+        lastReorderedRef.current = reorderKey;
+        setIsReordering(false);
       }
+    } else if (optimizedStops.length === 0) {
+      setOptimizedStops(route.stops);
     }
   }, [
     route,
     currentPosition,
     visitedStops,
-    currentStopIndex,
     reorderStopsByProximity,
     optimizedStops,
     isReordering,
   ]);
 
-  // Memoização dos valores derivados
-  const displayStops = useMemo(
-    () => (optimizedStops.length ? optimizedStops : route?.stops || []),
-    [optimizedStops, route?.stops],
-  );
-
-  const currentStop = displayStops[currentStopIndex];
-  const totalStops = displayStops.length;
-  const completedStops = visitedStops.length + failedStops.length; // Total de paradas finalizadas (sucesso + falha)
-
-  const isFinished =
-    route?.status === "FINISHED" ||
-    (completedStops === totalStops && totalStops > 0);
-
   // Verificar chegada ao destino
-  const previousStopIdRef = useRef<string>("");
-
   useEffect(() => {
     if (!currentPosition || !currentStop) return;
     if (previousStopIdRef.current === currentStop.id) return;
@@ -433,7 +685,6 @@ export default function DriverPage() {
       currentStop.latitude,
       currentStop.longitude,
     );
-
     const ARRIVAL_RADIUS_METERS = 50;
     const isVisited = visitedStops.includes(currentStop.id);
     const isFailed = failedStops.includes(currentStop.id);
@@ -442,22 +693,14 @@ export default function DriverPage() {
       distance <= ARRIVAL_RADIUS_METERS &&
       !isVisited &&
       !isFailed &&
-      !isModalOpen
+      activeModal === null
     ) {
       previousStopIdRef.current = currentStop.id;
       toast.success(
         `✅ Você chegou em: ${currentStop.name || `Parada ${currentStopIndex + 1}`}`,
         { duration: 3000 },
       );
-      setIsModalOpen(true);
-      setShowNewRouteOption(false);
-      setShowRescheduleOption(false);
-      setNewRouteDate("");
-      setNewRouteObservations("");
-      setNewRouteTitle("");
-      setRescheduleDate("");
-      setRescheduleObservations("");
-      setVisitStatus(null);
+      setActiveModal("main");
       setComment("");
     }
   }, [
@@ -465,19 +708,362 @@ export default function DriverPage() {
     currentStop,
     visitedStops,
     failedStops,
-    isModalOpen,
+    activeModal,
     currentStopIndex,
     calculateDistance,
   ]);
 
+  // Concluir tarefa (apenas concluir) - Usando finalizeTask
+  const completeTaskOnly = useCallback(async () => {
+    if (!currentStop) return;
+
+    setIsSubmitting(true);
+    try {
+      const successNote = comment
+        ? `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED): ${comment}`
+        : `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED)`;
+
+      // 🔥 Usar finalizeTask em vez de updateTask
+      if (currentTaskId) {
+        await finalizeTask.mutateAsync({
+          taskId: currentTaskId,
+          data: {
+            status: "COMPLETED",
+            finalComment: successNote,
+          },
+        });
+        console.log(`✅ Task ${currentTaskId} finalizada como COMPLETED`);
+      }
+
+      await markStopVisited.mutateAsync({
+        routeId: routeId!,
+        stopId: currentStop.id!,
+        notes: successNote,
+      });
+
+      const newVisitedStops = [...visitedStops, currentStop.id!];
+      setVisitedStops(newVisitedStops);
+      previousStopIdRef.current = "";
+
+      const nextIndex = currentStopIndex + 1;
+
+      if (nextIndex >= totalStops) {
+        await updateRoute.mutateAsync({
+          id: routeId!,
+          data: { status: "FINISHED" },
+        });
+        localStorage.removeItem(`driver_route_${routeId}_index`);
+        localStorage.removeItem(`driver_route_${routeId}_visited`);
+        localStorage.removeItem(`driver_route_${routeId}_failed`);
+        toast.success("🎉 Rota finalizada com sucesso!", {
+          duration: 3000,
+          icon: "✅",
+        });
+        setTimeout(() => router.push("/routes"), 1500);
+      } else {
+        setCurrentStopIndex(nextIndex);
+        toast.success(
+          `✅ Visita concluída (COMPLETED)! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+          { duration: 3000 },
+        );
+      }
+
+      closeAllModals();
+      await refetch();
+      await refetchTasks();
+    } catch (error) {
+      console.error("Erro ao finalizar:", error);
+      toast.error("Erro ao registrar visita. Tente novamente.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [
+    currentStop,
+    markStopVisited,
+    routeId,
+    comment,
+    visitedStops,
+    currentStopIndex,
+    totalStops,
+    updateRoute,
+    router,
+    refetch,
+    refetchTasks,
+    displayStops,
+    closeAllModals,
+    currentTaskId,
+    finalizeTask,
+  ]);
+
+  // Criar nova tarefa - A tarefa atual deve ser COMPLETED
+  const handleCreateNewTask = useCallback(
+    async (taskData: {
+      title: string;
+      description: string;
+      dueDate: string;
+    }) => {
+      if (!currentStop) return;
+
+      setIsCreatingTask(true);
+      const loadingToast = toast.loading("Criando nova tarefa...", {
+        duration: Infinity,
+      });
+
+      try {
+        // 🔥 BUSCAR UMA COLUNA PADRÃO (PENDENTES)
+        let defaultColumnId = (route as any)?.columnId;
+
+        if (!defaultColumnId) {
+          // Buscar coluna "Pendentes" ou a primeira disponível
+          const columnsResponse = await api.get("/kanban-columns");
+          const columns = Array.isArray(columnsResponse.data)
+            ? columnsResponse.data
+            : columnsResponse.data.columns || [];
+
+          const pendingColumn = columns.find(
+            (col: any) =>
+              col.title.toLowerCase().includes("pendente") ||
+              col.title.toLowerCase().includes("pending"),
+          );
+
+          defaultColumnId = pendingColumn?.id || columns[0]?.id;
+
+          if (!defaultColumnId) {
+            throw new Error("Nenhuma coluna Kanban encontrada");
+          }
+        }
+
+        // 1. Criar a nova tarefa
+        const taskAddress = {
+          cep: currentStop.zipCode || "",
+          endereco: currentStop.address || "",
+          numero: "",
+          bairro: currentStop.neighborhood || "",
+          cidade: currentStop.city || "",
+          estado: currentStop.state || "",
+          complemento: currentStop.complement || "",
+          latitude: currentStop.latitude,
+          longitude: currentStop.longitude,
+        };
+
+        const createTaskPayload: CreateTaskDto = {
+          title: taskData.title,
+          description: taskData.description,
+          dueDate: taskData.dueDate,
+          address: taskAddress,
+          companyId: (route as any)?.companyId,
+          columnId: defaultColumnId, // 🔥 ADICIONAR columnId OBRIGATÓRIO
+          priority: 1,
+        };
+
+        await createTask.mutateAsync(createTaskPayload);
+
+        // 2. Marcar a parada atual como visitada
+        const successNote = comment
+          ? `✅ VISITA CONCLUÍDA (COMPLETED). Nova tarefa criada: "${taskData.title}"\nObservações: ${comment}`
+          : `✅ VISITA CONCLUÍDA (COMPLETED). Nova tarefa criada: "${taskData.title}"`;
+
+        await markStopVisited.mutateAsync({
+          routeId: routeId!,
+          stopId: currentStop.id!,
+          notes: successNote,
+        });
+
+        // 3. 🔥 Finalizar a tarefa atual como COMPLETED
+        if (currentTaskId) {
+          await finalizeTask.mutateAsync({
+            taskId: currentTaskId,
+            data: {
+              status: "COMPLETED",
+              finalComment: successNote,
+            },
+          });
+          console.log(`✅ Task ${currentTaskId} finalizada como COMPLETED`);
+        }
+
+        const newVisitedStops = [...visitedStops, currentStop.id!];
+        setVisitedStops(newVisitedStops);
+        previousStopIdRef.current = "";
+
+        const nextIndex = currentStopIndex + 1;
+
+        if (nextIndex >= totalStops) {
+          await updateRoute.mutateAsync({
+            id: routeId!,
+            data: { status: "FINISHED" },
+          });
+          localStorage.removeItem(`driver_route_${routeId}_index`);
+          localStorage.removeItem(`driver_route_${routeId}_visited`);
+          localStorage.removeItem(`driver_route_${routeId}_failed`);
+          toast.success("🎉 Rota finalizada com sucesso!", { duration: 3000 });
+          setTimeout(() => router.push("/routes"), 1500);
+        } else {
+          setCurrentStopIndex(nextIndex);
+          toast.success(
+            `✅ Tarefa "${taskData.title}" criada e tarefa atual COMPLETED! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+            { duration: 4000 },
+          );
+        }
+
+        toast.dismiss(loadingToast);
+        toast.success("✅ Nova tarefa criada com sucesso!", {
+          duration: 4000,
+          description: `Título: ${taskData.title} | Data: ${new Date(taskData.dueDate).toLocaleDateString("pt-BR")}`,
+        });
+
+        closeAllModals();
+        await refetch();
+        await refetchTasks();
+
+        if (route?.orderBy === "DISTANCE" && currentPosition) {
+          const reordered = reorderStopsByProximity(
+            route.stops,
+            currentPosition,
+            [...visitedStops, currentStop.id!],
+          );
+          setOptimizedStops(reordered);
+        }
+      } catch (error) {
+        console.error("Erro ao criar nova tarefa:", error);
+        toast.dismiss(loadingToast);
+        toast.error("❌ Erro ao criar nova tarefa", {
+          description: "Tente novamente ou contate o suporte.",
+        });
+      } finally {
+        setIsCreatingTask(false);
+      }
+    },
+    [
+      currentStop,
+      route,
+      comment,
+      visitedStops,
+      currentStopIndex,
+      totalStops,
+      displayStops,
+      currentPosition,
+      markStopVisited,
+      updateRoute,
+      routeId,
+      createTask,
+      finalizeTask,
+      currentTaskId,
+      refetch,
+      refetchTasks,
+      reorderStopsByProximity,
+      router,
+      closeAllModals,
+    ],
+  );
+
+  // Reagendar tarefa em caso de falha - Usando finalizeTask com scheduledAt
+  const handleRescheduleTask = useCallback(
+    async (data: { dueDate: string; observations: string }) => {
+      if (!currentTaskId) {
+        toast.error("Tarefa não encontrada para reagendamento");
+        return;
+      }
+
+      setIsReschedulingTask(true);
+      const loadingToast = toast.loading("Reagendando tarefa...", {
+        duration: Infinity,
+      });
+
+      try {
+        // 🔥 Usar finalizeTask com FAILED e scheduledAt para reagendar
+        await finalizeTask.mutateAsync({
+          taskId: currentTaskId,
+          data: {
+            status: "FAILED",
+            finalComment: `❌ FALHA NA VISITA (FAILED)\nMotivo: ${data.observations}\nNova data agendada: ${new Date(data.dueDate).toLocaleDateString("pt-BR")}\n${comment ? `Comentário original: ${comment}` : ""}`,
+            dueDate: data.dueDate, // Isso atualiza a data da tarefa
+          },
+        });
+
+        console.log(
+          `❌ Task ${currentTaskId} marcada como FAILED e reagendada para ${data.dueDate}`,
+        );
+
+        // Marcar a parada como FAILED
+        const failureNote = `❌ VISITA COM FALHA (FAILED) - REAGENDADA\nMotivo: ${data.observations}\nNova data: ${new Date(data.dueDate).toLocaleDateString("pt-BR")}`;
+
+        await markStopVisited.mutateAsync({
+          routeId: routeId!,
+          stopId: currentStop.id!,
+          notes: failureNote,
+        });
+
+        const newFailedStops = [...failedStops, currentStop.id!];
+        setFailedStops(newFailedStops);
+        previousStopIdRef.current = "";
+
+        const nextIndex = currentStopIndex + 1;
+
+        if (nextIndex >= totalStops) {
+          await updateRoute.mutateAsync({
+            id: routeId!,
+            data: { status: "FINISHED" },
+          });
+          localStorage.removeItem(`driver_route_${routeId}_index`);
+          localStorage.removeItem(`driver_route_${routeId}_visited`);
+          localStorage.removeItem(`driver_route_${routeId}_failed`);
+          toast.success("🎉 Rota finalizada com sucesso!", { duration: 3000 });
+          setTimeout(() => router.push("/routes"), 1500);
+        } else {
+          setCurrentStopIndex(nextIndex);
+          toast.warning(
+            `⚠️ Falha registrada (FAILED)! Tarefa reagendada. Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+            { duration: 4000 },
+          );
+        }
+
+        toast.dismiss(loadingToast);
+        toast.warning(
+          "⚠️ Falha registrada! Tarefa marcada como FAILED e reagendada.",
+          {
+            duration: 4000,
+          },
+        );
+
+        closeAllModals();
+        await refetch();
+        await refetchTasks();
+      } catch (error) {
+        console.error("Erro ao reagendar tarefa:", error);
+        toast.dismiss(loadingToast);
+        toast.error("❌ Erro ao reagendar tarefa", {
+          description: "Tente novamente ou contate o suporte.",
+        });
+      } finally {
+        setIsReschedulingTask(false);
+      }
+    },
+    [
+      currentTaskId,
+      currentStop,
+      comment,
+      routeId,
+      failedStops,
+      currentStopIndex,
+      totalStops,
+      displayStops,
+      markStopVisited,
+      updateRoute,
+      finalizeTask,
+      refetch,
+      refetchTasks,
+      router,
+      closeAllModals,
+    ],
+  );
+
+  // Simulação
   const startSimulation = useCallback(() => {
     const targetStop = displayStops[currentStopIndex];
-
     if (!targetStop) {
       toast.warning("Destino não encontrado");
       return;
     }
-
     if (!currentPosition) {
       toast.warning("Aguardando sinal de GPS");
       return;
@@ -522,384 +1108,7 @@ export default function DriverPage() {
     toast.info("GPS em tempo real ativado", { duration: 2000 });
   }, []);
 
-  // ✅ Confirmar visita com sucesso (marca como concluído e avança)
-  const confirmSuccess = useCallback(async () => {
-    if (!currentStop) return;
-
-    setIsSubmitting(true);
-    setVisitStatus("success");
-    try {
-      const successNote = comment
-        ? `✅ VISITA CONCLUÍDA COM SUCESSO: ${comment}`
-        : `✅ VISITA CONCLUÍDA COM SUCESSO`;
-
-      await markStopVisited.mutateAsync({
-        routeId: routeId!,
-        stopId: currentStop.id!,
-        notes: successNote,
-      });
-
-      const newVisitedStops = [...visitedStops, currentStop.id!];
-      setVisitedStops(newVisitedStops);
-      previousStopIdRef.current = "";
-
-      const nextIndex = currentStopIndex + 1;
-
-      if (nextIndex >= totalStops) {
-        await updateRoute.mutateAsync({
-          id: routeId!,
-          data: { status: "FINISHED" },
-        });
-
-        localStorage.removeItem(`driver_route_${routeId}_index`);
-        localStorage.removeItem(`driver_route_${routeId}_visited`);
-        localStorage.removeItem(`driver_route_${routeId}_failed`);
-
-        toast.success(" Rota finalizada com sucesso!", {
-          duration: 3000,
-          icon: "✅",
-        });
-
-        setTimeout(() => {
-          router.push("/routes");
-        }, 1500);
-      } else {
-        setCurrentStopIndex(nextIndex);
-        toast.success(
-          `✅ Visita concluída com sucesso! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
-          { duration: 3000 },
-        );
-
-        setIsModalOpen(false);
-        setComment("");
-        setShowNewRouteOption(false);
-        setShowRescheduleOption(false);
-        setNewRouteDate("");
-        setNewRouteObservations("");
-        setNewRouteTitle("");
-        setRescheduleDate("");
-        setRescheduleObservations("");
-        setVisitStatus(null);
-      }
-
-      refetch();
-    } catch (error) {
-      console.error("Erro ao finalizar:", error);
-      toast.error("Erro ao registrar visita. Tente novamente.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [
-    currentStop,
-    markStopVisited,
-    routeId,
-    comment,
-    visitedStops,
-    currentStopIndex,
-    totalStops,
-    updateRoute,
-    router,
-    refetch,
-    displayStops,
-  ]);
-
-  // 🔥 FUNÇÃO CORRIGIDA: Reagendar visita em caso de falha - Marca como FAILED
-  const handleReschedule = useCallback(async () => {
-    if (!currentStop) return;
-
-    if (!rescheduleDate) {
-      toast.warning("Selecione uma data para o reagendamento");
-      return;
-    }
-
-    setIsRescheduling(true);
-    const loadingToast = toast.loading("Reagendando visita...", {
-      duration: Infinity,
-    });
-
-    try {
-      const formattedDate = new Date(rescheduleDate).toLocaleDateString(
-        "pt-BR",
-      );
-
-      // 🆕 NOTA DE FALHA (não como sucesso)
-      const failureNote =
-        `❌ VISITA COM FALHA - REAGENDADA\n` +
-        `Data original: ${new Date(route?.routeDate || "").toLocaleDateString("pt-BR")}\n` +
-        `Nova data agendada: ${formattedDate}\n` +
-        `Motivo da falha: ${rescheduleObservations || "Não informado"}\n` +
-        `Comentário original: ${comment || "Nenhum"}\n` +
-        `Status: FAILED - Visita não concluída, reagendada para futuro.`;
-
-      // ✅ MARCAR COMO FAILED (NÃO como concluída)
-      await markStopVisited.mutateAsync({
-        routeId: routeId!,
-        stopId: currentStop.id!,
-        notes: failureNote,
-      });
-
-      // Adicionar aos failed stops (NÃO aos visited stops)
-      const newFailedStops = [...failedStops, currentStop.id!];
-      setFailedStops(newFailedStops);
-      previousStopIdRef.current = "";
-
-      // Criar nova rota para o futuro com o mesmo destino
-      const newTitle = `[REAGENDADO - FALHA] ${currentStop.name}`;
-
-      const createRoutePayload: CreateRouteDto = {
-        title: newTitle,
-        description: `⚠️ VISITA REAGENDADA POR FALHA\nMotivo: ${rescheduleObservations || "Não informado"}\nEndereço: ${currentStop.address}, ${currentStop.city}/${currentStop.state}`,
-        routeDate: rescheduleDate,
-        userAssignedId: route?.userAssignedId || undefined,
-        orderBy: "DISTANCE",
-        stops: [
-          {
-            name: currentStop.name,
-            address: currentStop.address,
-            complement: currentStop.complement || "",
-            neighborhood: currentStop.neighborhood || "",
-            city: currentStop.city,
-            state: currentStop.state,
-            zipCode: currentStop.zipCode,
-            latitude: currentStop.latitude,
-            longitude: currentStop.longitude,
-            notes: `⚠️ Reagendado por falha. Motivo: ${rescheduleObservations || "Não informado"}`,
-          },
-        ],
-      };
-
-      await createRoute.mutateAsync(createRoutePayload);
-
-      // Avançar para próxima parada
-      const nextIndex = currentStopIndex + 1;
-
-      if (nextIndex >= totalStops) {
-        await updateRoute.mutateAsync({
-          id: routeId!,
-          data: { status: "FINISHED" },
-        });
-        localStorage.removeItem(`driver_route_${routeId}_index`);
-        localStorage.removeItem(`driver_route_${routeId}_visited`);
-        localStorage.removeItem(`driver_route_${routeId}_failed`);
-        toast.success("🎉 Rota finalizada!", { duration: 3000 });
-        setTimeout(() => router.push("/routes"), 1500);
-      } else {
-        setCurrentStopIndex(nextIndex);
-        toast.warning(
-          `⚠️ Falha registrada! Visita reagendada para ${formattedDate}. Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
-          { duration: 4000 },
-        );
-      }
-
-      toast.dismiss(loadingToast);
-      toast.warning("⚠️ Visita registrada como FALHA e reagendada!", {
-        duration: 4000,
-        description: `Status: FAILED | Nova data: ${formattedDate}`,
-      });
-
-      // Fechar modal e limpar estados
-      setIsModalOpen(false);
-      setComment("");
-      setShowNewRouteOption(false);
-      setShowRescheduleOption(false);
-      setNewRouteDate("");
-      setNewRouteObservations("");
-      setNewRouteTitle("");
-      setRescheduleDate("");
-      setRescheduleObservations("");
-      setVisitStatus(null);
-
-      await refetch();
-    } catch (error) {
-      console.error("Erro ao reagendar:", error);
-      toast.dismiss(loadingToast);
-      toast.error("❌ Erro ao reagendar visita", {
-        description: "Tente novamente ou contate o suporte.",
-      });
-    } finally {
-      setIsRescheduling(false);
-    }
-  }, [
-    currentStop,
-    rescheduleDate,
-    rescheduleObservations,
-    comment,
-    routeId,
-    route,
-    failedStops,
-    markStopVisited,
-    createRoute,
-    updateRoute,
-    router,
-    currentStopIndex,
-    totalStops,
-    displayStops,
-    refetch,
-  ]);
-
-  // 🔥 FUNÇÃO AUXILIAR: Converter data local para UTC mantendo o mesmo dia
-  const convertLocalDateToUTC = (dateString: string): string => {
-    // Exemplo: "2026-04-17" -> "2026-04-17T00:00:00-03:00"
-    const [year, month, day] = dateString.split("-");
-    // Criar data no fuso horário local
-    const localDate = new Date(
-      parseInt(year),
-      parseInt(month) - 1,
-      parseInt(day),
-    );
-    // Retornar como string ISO mantendo o offset local
-    return localDate.toISOString().split("T")[0]; // Retorna "2026-04-17"
-  };
-
-  // 🔥 FUNÇÃO: Criar nova rota (Agendar) - Marca como concluída
-  const handleCreateNewRoute = useCallback(async () => {
-    if (!route || !currentStop) return;
-
-    if (!newRouteTitle.trim()) {
-      toast.warning("Digite um título para a nova rota");
-      return;
-    }
-
-    if (!newRouteDate) {
-      toast.warning("Selecione uma data para a nova rota");
-      return;
-    }
-
-    setIsCreatingNewRoute(true);
-    const loadingToast = toast.loading("Criando nova rota...", {
-      duration: Infinity,
-    });
-
-    try {
-      // 🔥 CORREÇÃO: Manter a data exata que o usuário selecionou
-      // Não converter para UTC, enviar como string YYYY-MM-DD
-      const selectedDate = newRouteDate; // Já está no formato YYYY-MM-DD
-      const formattedDate = new Date(selectedDate).toLocaleDateString("pt-BR");
-      const finalTitle = newRouteTitle.trim();
-
-      let description = `Destino agendado da rota original: ${route.title}\n`;
-      description += `Endereço: ${currentStop.address}, ${currentStop.city}/${currentStop.state}\n`;
-      if (currentStop.notes) {
-        description += `Observações originais: ${currentStop.notes}\n`;
-      }
-      if (newRouteObservations) {
-        description += `\n📝 Observações do agendamento: ${newRouteObservations}`;
-      }
-
-      const createRoutePayload: CreateRouteDto = {
-        title: finalTitle,
-        description: description,
-        routeDate: selectedDate,
-        userAssignedId: route.userAssignedId || undefined,
-        orderBy: "DISTANCE",
-        stops: [
-          {
-            name: currentStop.name,
-            address: currentStop.address,
-            complement: currentStop.complement || "",
-            neighborhood: currentStop.neighborhood || "",
-            city: currentStop.city,
-            state: currentStop.state,
-            zipCode: currentStop.zipCode,
-            latitude: currentStop.latitude,
-            longitude: currentStop.longitude,
-            notes: currentStop.notes || "",
-          },
-        ],
-      };
-
-      await createRoute.mutateAsync(createRoutePayload);
-
-      // ✅ MARCAR A PARADA ATUAL COMO CONCLUÍDA (AGENDADA - SUCESSO)
-      if (
-        !visitedStops.includes(currentStop.id!) &&
-        !failedStops.includes(currentStop.id!)
-      ) {
-        await markStopVisited.mutateAsync({
-          routeId: routeId!,
-          stopId: currentStop.id!,
-          notes: `📅 AGENDADO: Nova rota criada para ${formattedDate} com título: ${finalTitle}. Visita registrada como concluída para seguir rota atual.`,
-        });
-
-        const newVisitedStops = [...visitedStops, currentStop.id!];
-        setVisitedStops(newVisitedStops);
-
-        const nextIndex = currentStopIndex + 1;
-        if (nextIndex < totalStops) {
-          setCurrentStopIndex(nextIndex);
-          toast.success(
-            `✅ Destino agendado e marcado como concluído! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
-            { duration: 4000 },
-          );
-        } else {
-          await updateRoute.mutateAsync({
-            id: routeId!,
-            data: { status: "FINISHED" },
-          });
-          localStorage.removeItem(`driver_route_${routeId}_index`);
-          localStorage.removeItem(`driver_route_${routeId}_visited`);
-          localStorage.removeItem(`driver_route_${routeId}_failed`);
-          toast.success("🎉 Rota finalizada com sucesso!", { duration: 3000 });
-          setTimeout(() => router.push("/routes"), 1500);
-        }
-      }
-
-      toast.dismiss(loadingToast);
-      toast.success("✅ Nova rota criada com sucesso!", {
-        duration: 4000,
-        description: `Título: ${finalTitle} | Data: ${formattedDate}`,
-      });
-
-      // Limpar estados
-      setIsModalOpen(false);
-      setShowNewRouteOption(false);
-      setComment("");
-      setNewRouteDate("");
-      setNewRouteObservations("");
-      setNewRouteTitle("");
-      setVisitStatus(null);
-
-      await refetch();
-
-      if (route.orderBy === "DISTANCE" && currentPosition) {
-        const reordered = reorderStopsByProximity(
-          route.stops,
-          currentPosition,
-          [...visitedStops, currentStop.id!],
-        );
-        setOptimizedStops(reordered);
-      }
-    } catch (error) {
-      console.error("Erro ao criar nova rota:", error);
-      toast.dismiss(loadingToast);
-      toast.error("❌ Erro ao criar nova rota", {
-        description: "Tente novamente ou contate o suporte.",
-      });
-    } finally {
-      setIsCreatingNewRoute(false);
-    }
-  }, [
-    route,
-    currentStop,
-    currentStopIndex,
-    totalStops,
-    displayStops,
-    currentPosition,
-    newRouteTitle,
-    newRouteDate,
-    newRouteObservations,
-    markStopVisited,
-    updateRoute,
-    routeId,
-    visitedStops,
-    failedStops,
-    createRoute,
-    refetch,
-    reorderStopsByProximity,
-    router,
-  ]);
-
-  // Efeito para marcar rota como concluída
+  // Finalizar rota automaticamente
   useEffect(() => {
     const checkAndFinishRoute = async () => {
       if (isFinishing || !route || route.status === "FINISHED") return;
@@ -935,18 +1144,27 @@ export default function DriverPage() {
     isFinishing,
   ]);
 
-  // Prefetch da lista de rotas
-  const prefetchRoutes = useCallback(() => {
-    router.prefetch("/routes");
-  }, [router]);
+  const prefetchRoutes = useCallback(
+    () => router.prefetch("/routes"),
+    [router],
+  );
+  const handleBack = useCallback(() => router.back(), [router]);
 
-  const handleBack = useCallback(() => {
-    router.back();
-  }, [router]);
+  // Preparar endereço padrão
+  const defaultTaskAddress = currentStop
+    ? {
+        address: currentStop.address,
+        city: currentStop.city,
+        state: currentStop.state,
+        zipCode: currentStop.zipCode,
+        neighborhood: currentStop.neighborhood,
+        complement: currentStop.complement,
+        latitude: currentStop.latitude,
+        longitude: currentStop.longitude,
+      }
+    : null;
 
-  if (isLoadingRoute) {
-    return <DriverSkeleton />;
-  }
+  if (isLoadingRoute) return <DriverSkeleton />;
 
   if (!route) {
     return (
@@ -975,11 +1193,8 @@ export default function DriverPage() {
           transition={{ duration: 0.4, ease: "easeOut" }}
           className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden"
         >
-          {/* Barra decorativa superior */}
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#D35400] to-[#e67e22]" />
-
           <div className="p-8 md:p-10 text-center">
-            {/* Ícone animado */}
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -992,25 +1207,16 @@ export default function DriverPage() {
                 strokeWidth={1.5}
               />
             </motion.div>
-
-            {/* Título */}
             <h2 className="text-2xl md:text-3xl font-bold text-[#2C3E50] mb-3">
               Rota Finalizada!
             </h2>
-
-            {/* Mensagem de sucesso */}
             <p className="text-[#95A5A6] text-sm md:text-base mb-6">
               Todas as paradas foram concluídas com sucesso.
             </p>
-
-            {/* Botão principal */}
             <button
               onClick={() => router.push("/routes")}
               onMouseEnter={prefetchRoutes}
-              className="group relative w-full px-6 py-3 bg-[#D35400] text-white rounded-xl font-semibold
-          hover:bg-[#e06714] transition-all duration-300 
-          active:scale-95 shadow-md hover:shadow-lg
-          flex items-center justify-center gap-2"
+              className="group relative w-full px-6 py-3 bg-[#D35400] text-white rounded-xl font-semibold hover:bg-[#e06714] transition-all duration-300 active:scale-95 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
             >
               <span>Voltar para rotas</span>
               <motion.span
@@ -1059,245 +1265,127 @@ export default function DriverPage() {
         />
       </div>
 
-      {/* Modal de Finalização */}
-      {isModalOpen && (
-        <div className="absolute inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl max-h-[90vh] overflow-y-auto">
-            {!showNewRouteOption && !showRescheduleOption ? (
-              <>
-                <div className="text-center mb-4">
-                  <h3 className="text-xl font-bold text-emerald-600">
-                    Chegou ao Destino!
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {currentStop?.name || `Parada ${currentStopIndex + 1}`}
-                  </p>
-                </div>
+      {/* MODAL PRINCIPAL - Concluir ou Falha */}
+      {activeModal === "main" && (
+        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <MapPin className="text-emerald-600" size={28} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800">
+                Você chegou ao destino!
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {currentStop?.name || `Parada ${currentStopIndex + 1}`}
+              </p>
+              <p className="text-xs text-slate-400 mt-2 truncate">
+                📍 {currentStop?.address}
+              </p>
+            </div>
 
-                <div className="mb-4">
-                  <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                    Observações
-                  </label>
-                  <textarea
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                    placeholder="Adicione observações sobre a visita..."
-                    rows={3}
-                    autoFocus
-                  />
-                </div>
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                Observações (opcional)
+              </label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                placeholder="Adicione observações sobre a visita..."
+                rows={2}
+                autoFocus
+              />
+            </div>
 
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={confirmSuccess}
-                    disabled={isSubmitting}
-                    className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center gap-2"
-                  >
-                    {isSubmitting && visitStatus === "success" ? (
-                      <>
-                        <Loader2 className="animate-spin" size={18} />
-                        Confirmando...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle size={18} /> Concluir
-                      </>
-                    )}
-                  </button>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setActiveModal("confirm")}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <CheckCircle size={18} /> Concluir
+              </button>
 
-                  <button
-                    onClick={() => setShowRescheduleOption(true)}
-                    disabled={isSubmitting}
-                    className="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center gap-2"
-                  >
-                    <XCircle size={18} /> Falha
-                  </button>
+              <button
+                onClick={() => setActiveModal("reschedule")}
+                className="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <XCircle size={18} /> Falha
+              </button>
 
-                  <button
-                    onClick={() => setShowNewRouteOption(true)}
-                    className="w-full py-3 border-2 border-blue-600 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
-                  >
-                    📅 Agendar
-                  </button>
-
-                  <button
-                    onClick={() => setIsModalOpen(false)}
-                    className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              </>
-            ) : showRescheduleOption ? (
-              // MODAL DE REAGENDAMENTO (FALHA)
-              <>
-                <div className="text-center mb-4">
-                  <h3 className="text-xl font-bold text-red-600">
-                    Falha na Visita
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    <strong>{currentStop?.name}</strong>
-                  </p>
-                </div>
-
-                <div className="mb-4">
-                  <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                    Nova Data para Visita *
-                  </label>
-                  <input
-                    type="date"
-                    value={rescheduleDate}
-                    onChange={(e) => setRescheduleDate(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                    min={new Date().toISOString().split("T")[0]}
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                    Motivo da Falha *
-                  </label>
-                  <textarea
-                    value={rescheduleObservations}
-                    onChange={(e) => setRescheduleObservations(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                    placeholder="Descreva o motivo da falha (ex: cliente ausente, endereço incorreto, etc.)..."
-                    rows={3}
-                    required
-                  />
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={handleReschedule}
-                    disabled={
-                      isRescheduling ||
-                      !rescheduleDate ||
-                      !rescheduleObservations.trim()
-                    }
-                    className="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
-                  >
-                    {isRescheduling ? (
-                      <>
-                        <Loader2 className="animate-spin" size={18} />
-                        Registrando Falha...
-                      </>
-                    ) : (
-                      <>
-                        <XCircle size={18} />
-                        Reagendar
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowRescheduleOption(false);
-                      setRescheduleDate("");
-                      setRescheduleObservations("");
-                    }}
-                    className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
-                  >
-                    Voltar
-                  </button>
-                </div>
-              </>
-            ) : (
-              // MODAL DE AGENDAMENTO (NOVA ROTA)
-              <>
-                <div className="text-center mb-4">
-                  <h3 className="text-xl font-bold text-blue-600">
-                    📅 Agendar Nova Rota
-                  </h3>
-
-                  <div className="mt-2 p-2 bg-amber-50 rounded-lg">
-                    <p className="text-xs text-amber-700">
-                      📍 Destino atual: <strong>{currentStop?.name}</strong>
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                    Título *
-                  </label>
-                  <input
-                    type="text"
-                    value={newRouteTitle}
-                    onChange={(e) => setNewRouteTitle(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                    placeholder="Ex: VISITAR - Cliente XPTO"
-                    autoFocus
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                    Data *
-                  </label>
-                  <input
-                    type="date"
-                    value={newRouteDate}
-                    onChange={(e) => setNewRouteDate(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                    min={new Date().toISOString().split("T")[0]}
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                    Observações
-                  </label>
-                  <textarea
-                    value={newRouteObservations}
-                    onChange={(e) => setNewRouteObservations(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                    placeholder="Adicionar Informações..."
-                    rows={3}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={handleCreateNewRoute}
-                    disabled={
-                      isCreatingNewRoute ||
-                      !newRouteDate ||
-                      !newRouteTitle.trim()
-                    }
-                    className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
-                  >
-                    {isCreatingNewRoute ? (
-                      <>
-                        <Loader2 className="animate-spin" size={18} />
-                        Criando...
-                      </>
-                    ) : (
-                      <>
-                        <CalendarPlus size={18} />
-                        Agendar
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowNewRouteOption(false);
-                      setNewRouteDate("");
-                      setNewRouteObservations("");
-                      setNewRouteTitle("");
-                    }}
-                    className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
-                  >
-                    Voltar
-                  </button>
-                </div>
-              </>
-            )}
+              <button
+                onClick={closeAllModals}
+                className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* MODAL DE CONFIRMAÇÃO: "Deseja criar nova tarefa?" */}
+      {activeModal === "confirm" && (
+        <div className="fixed inset-0 z-[1010] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl text-center">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CalendarPlus className="text-blue-600" size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">
+              Criar nova tarefa?
+            </h3>
+            <p className="text-slate-500 text-sm mb-6">
+              Deseja criar uma nova tarefa com o mesmo endereço de{" "}
+              <strong>
+                {currentStop?.name || `Parada ${currentStopIndex + 1}`}
+              </strong>
+              ?
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setActiveModal("create")}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <CalendarPlus size={18} /> Sim, criar tarefa
+              </button>
+              <button
+                onClick={() => {
+                  setActiveModal(null);
+                  completeTaskOnly();
+                }}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <CheckCircle size={18} /> Não, apenas concluir
+              </button>
+              <button
+                onClick={() => setActiveModal("main")}
+                className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
+              >
+                Voltar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CRIAÇÃO DE TAREFA */}
+      <TaskCreationModal
+        isOpen={activeModal === "create"}
+        onClose={() => setActiveModal("confirm")}
+        onSubmit={handleCreateNewTask}
+        defaultAddress={defaultTaskAddress}
+        isSubmitting={isCreatingTask}
+      />
+
+      {/* MODAL DE REAGENDAMENTO (FALHA) */}
+      <TaskRescheduleModal
+        isOpen={activeModal === "reschedule"}
+        onClose={() => setActiveModal("main")}
+        onSubmit={handleRescheduleTask}
+        taskTitle={currentStop?.name || `Parada ${currentStopIndex + 1}`}
+        isSubmitting={isReschedulingTask}
+      />
     </div>
   );
 }

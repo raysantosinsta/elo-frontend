@@ -116,9 +116,34 @@ export interface Supplier {
 }
 
 // --- Helpers ---
-const formatDateShort = (d: string) =>
-  new Date(d).toLocaleDateString("pt-BR", { day: "numeric", month: "short" });
-const isOverdue = (d: string) => new Date(d) < new Date();
+// Formata a data sem timezone - SIMPLES
+const formatDateShort = (dateStr: string) => {
+  // Pega só a parte YYYY-MM-DD da string
+  const [year, month, day] = dateStr.split("T")[0].split("-");
+  const months = [
+    "jan",
+    "fev",
+    "mar",
+    "abr",
+    "mai",
+    "jun",
+    "jul",
+    "ago",
+    "set",
+    "out",
+    "nov",
+    "dez",
+  ];
+  return `${parseInt(day)} ${months[parseInt(month) - 1]}`;
+};
+
+// Verifica se está atrasada - SIMPLES
+const isOverdue = (dateStr: string) => {
+  const datePart = dateStr.split("T")[0]; // "2026-04-23"
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return datePart < todayStr;
+};
 
 const getPriorityColor = (p: number) => {
   if (p === 1) return "#E74C3C"; // Alta
