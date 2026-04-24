@@ -1235,25 +1235,6 @@ export default function CreateRoutePage() {
                       </div>
                     )}
 
-                    {/* Mostrar erros de validação */}
-                    {!form.formState.isValid && (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                        <p className="text-red-600 text-sm font-medium">
-                          ⚠️ Erros no formulário:
-                        </p>
-                        <ul className="text-red-500 text-xs mt-1">
-                          {form.formState.errors.title && (
-                            <li>
-                              • Título: {form.formState.errors.title.message}
-                            </li>
-                          )}
-                          {form.formState.errors.stops && (
-                            <li>• {form.formState.errors.stops.message}</li>
-                          )}
-                        </ul>
-                      </div>
-                    )}
-
                     <Button
                       type="button" // Mudar para button
                       disabled={createRoute.isPending || fields.length === 0}
