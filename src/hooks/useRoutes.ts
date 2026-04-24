@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // hooks/useRoutes.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
+import api, {
   routesApi,
   Route,
   CreateRouteDto,
@@ -169,7 +170,15 @@ export const useRoutes = () => {
 
   const useCreateRoute = () =>
     useMutation({
-      mutationFn: (newRoute: CreateRouteDto) => routesApi.create(newRoute),
+      mutationFn: async (data: any) => {
+        console.log("📤 [useCreateRoute] Enviando requisição:", data);
+        const response = await api.post("/routes", data);
+        console.log("📥 [useCreateRoute] Resposta recebida:", response.data);
+        return response.data;
+      },
+      onError: (error: any) => {
+        console.error("❌ [useCreateRoute] Erro na mutation:", error);
+      },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["routes"] });
         queryClient.invalidateQueries({ queryKey: ["routes-summary"] });

@@ -20,6 +20,9 @@ import {
   ChevronDownIcon,
   X,
   PlusIcon,
+  FilterIcon,
+  SearchIcon,
+  CalendarIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -76,6 +79,8 @@ const stopSchema = z.object({
   longitude: z.number().optional().default(0),
   notes: z.string().optional(),
   assignedToName: z.string().optional(),
+  scheduledDate: z.string().optional().nullable(), // ✅ Aceita null
+  dueDate: z.string().optional().nullable(), // ✅ Aceita null
 });
 
 const formSchema = z.object({
@@ -88,11 +93,14 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-// Interface para Task
+// Interface para Task com status
 interface Task {
   id: string;
   title: string;
   description?: string;
+  status?: string;
+  scheduledDate?: string;
+  dueDate?: string;
   userAssigned?: { id: string; name: string };
   taskAddress?: {
     endereco: string;
@@ -106,7 +114,7 @@ interface Task {
   };
 }
 
-// Componente Ripple Button (igual ao RoutesPage)
+// Componente Ripple Button
 const RippleButton = ({ children, onClick, className, ...props }: any) => {
   const [ripple, setRipple] = useState<{
     x: number;
@@ -151,7 +159,7 @@ const RippleButton = ({ children, onClick, className, ...props }: any) => {
   );
 };
 
-// Componente de Skeleton (igual ao RoutesPage)
+// Componente de Skeleton
 const FormSkeleton = () => (
   <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-8">
     <div className="max-w-5xl mx-auto">
@@ -164,9 +172,26 @@ const FormSkeleton = () => (
   </div>
 );
 
-// Componente de Task Item para seleção
+// Componente de Task Item para seleção (com badge de status)
 const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
-  const hasLocation = task.taskAddress?.latitude && task.taskAddress?.longitude;
+  const getStatusBadge = () => {
+    const status = task.status;
+    if (status === "RESCHEDULED") {
+      return (
+        <Badge className="bg-amber-100 text-amber-700 border border-amber-200 text-xs">
+          Reagendada
+        </Badge>
+      );
+    }
+    if (status === "PENDING") {
+      return (
+        <Badge className="bg-blue-100 text-blue-700 border border-blue-200 text-xs">
+          Pendente
+        </Badge>
+      );
+    }
+    return null;
+  };
 
   return (
     <motion.div
@@ -193,8 +218,17 @@ const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
           <h4 className="font-semibold text-[#2C3E50] truncate">
             {task.title}
           </h4>
-          
+          {getStatusBadge()}
         </div>
+        {task.dueDate && (
+          <p className="text-xs text-[#95A5A6] mt-1 flex items-center gap-1">
+            <CalendarIcon className="h-3 w-3" />
+            Prazo:{" "}
+            {format(new Date(task.dueDate), "dd/MM/yyyy", {
+              locale: ptBR,
+            })}
+          </p>
+        )}
         {task.taskAddress && (
           <p className="text-sm text-[#95A5A6] truncate mt-1">
             {task.taskAddress.endereco}, {task.taskAddress.cidade}/
@@ -244,15 +278,22 @@ const StopItem = memo(({ stop, index, onRemove }: any) => {
           <p className="text-[#95A5A6] text-xs truncate">
             {stop.address}, {stop.city}
           </p>
+          {stop.dueDate && (
+            <p className="text-xs text-[#95A5A6] mt-1 flex items-center gap-1">
+              <CalendarIcon className="h-3 w-3" />
+              Prazo:{" "}
+              {format(new Date(stop.dueDate), "dd/MM/yyyy", { locale: ptBR })}
+            </p>
+          )}
           {stop.assignedToName && (
-            <p className="text-[#95A5A6] text-xs truncate mt-0.5 flex items-center gap-1">
+            <p className="text-xs text-[#95A5A6] mt-1 flex items-center gap-1">
               <UserIcon className="h-3 w-3" />
-              {stop.assignedToName}
+              Responsável: {stop.assignedToName}
             </p>
           )}
           {stop.notes && (
             <p className="text-[#95A5A6] text-sm truncate mt-0.5 line-clamp-2 italic">
-               {stop.notes}
+              {stop.notes}
             </p>
           )}
         </div>
@@ -297,8 +338,24 @@ export default function CreateRoutePage() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
     new Set(),
   );
-  // 🔥 NOVO: Controlar se as tarefas já foram carregadas para evitar loop
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // FILTROS AVANÇADOS
+  const [assignedToFilter, setAssignedToFilter] = useState<string>("all");
+  const [titleFilter, setTitleFilter] = useState<string>("");
+  const [dueDateStart, setDueDateStart] = useState<Date | undefined>(undefined);
+  const [dueDateEnd, setDueDateEnd] = useState<Date | undefined>(undefined);
+
+  // Estados temporários para o formulário de filtro
+  const [tempAssignedTo, setTempAssignedTo] = useState<string>("all");
+  const [tempTitle, setTempTitle] = useState<string>("");
+  const [tempDueDateStart, setTempDueDateStart] = useState<Date | undefined>(
+    undefined,
+  );
+  const [tempDueDateEnd, setTempDueDateEnd] = useState<Date | undefined>(
+    undefined,
+  );
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -308,12 +365,37 @@ export default function CreateRoutePage() {
       stops: [],
       userAssignedId: null,
     },
+    mode: "onChange", // IMPORTANTE: validar em tempo real
   });
+
+  // Monitorar estado do formulário
+  useEffect(() => {
+    const subscription = form.watch((value, { name, type }) => {
+      console.log(
+        `📝 [FORM] Campo "${name}" alterado:`,
+        value[name as keyof typeof value],
+      );
+    });
+
+    console.log("📋 [FORM] Estado inicial:", {
+      isValid: form.formState.isValid,
+      errors: form.formState.errors,
+      values: form.getValues(),
+    });
+
+    return () => subscription.unsubscribe();
+  }, [form]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "stops",
   });
+
+  // Atualizar validação quando stops mudar
+  useEffect(() => {
+    console.log("📊 [STOPS] Paradas atualizadas:", fields.length);
+    form.trigger("stops");
+  }, [fields.length, form]);
 
   // Carregar usuários
   useEffect(() => {
@@ -330,42 +412,95 @@ export default function CreateRoutePage() {
     loadUsers();
   }, []);
 
-  // Carregar tasks disponíveis (com endereço)
   const loadAvailableTasks = useCallback(async () => {
-    // 🔥 EVITAR CARREGAMENTO DUPLICADO
     if (isLoadingTasks || hasLoadedTasks) return;
-    
+
     setIsLoadingTasks(true);
     try {
-      const response = await api.get("/tasks", {
-        params: { hasLocation: "true", limit: 100, excludeCompleted: "true" },
-      });
+      const params: any = {
+        hasLocation: "true",
+        status: "PENDING,RESCHEDULED",
+        limit: 100,
+      };
+
+      if (assignedToFilter !== "all") {
+        if (assignedToFilter === "none") {
+          params.assignedToId = "none";
+        } else {
+          params.assignedToId = assignedToFilter;
+        }
+      }
+
+      if (titleFilter && titleFilter.trim() !== "") {
+        params.search = titleFilter.trim();
+        console.log("✅ [TITLE] Adicionando filtro de busca:", params.search);
+      }
+
+      if (dueDateStart || dueDateEnd) {
+        params.dateType = "due";
+        if (dueDateStart) {
+          const start = new Date(dueDateStart);
+          start.setHours(0, 0, 0, 0);
+          params.startDate = start.toISOString();
+        }
+        if (dueDateEnd) {
+          const end = new Date(dueDateEnd);
+          end.setHours(23, 59, 59, 999);
+          params.endDate = end.toISOString();
+        }
+      }
+
+      console.log("📊 [API] Parâmetros completos:", params);
+      const response = await api.get("/tasks", { params });
       const tasks = response.data?.data || [];
       setAvailableTasks(tasks);
-      setHasLoadedTasks(true); // 🔥 MARCA COMO CARREGADO
-
-      if (tasks.length === 0) {
-        toast.info("Nenhuma tarefa disponível para criar rota", {
-          duration: 3000,
-        });
-      }
+      setHasLoadedTasks(true);
     } catch (error) {
       console.error("Erro ao carregar tasks:", error);
       toast.error("Erro ao carregar lista de tarefas");
-      setHasLoadedTasks(true); // 🔥 MESMO COM ERRO, MARCA COMO CARREGADO PARA EVITAR LOOP
+      setHasLoadedTasks(true);
     } finally {
       setIsLoadingTasks(false);
     }
-  }, [isLoadingTasks, hasLoadedTasks]);
+  }, [
+    isLoadingTasks,
+    hasLoadedTasks,
+    assignedToFilter,
+    titleFilter,
+    dueDateStart,
+    dueDateEnd,
+  ]);
 
-  // Carregar tasks ao entrar na aba - 🔥 CORRIGIDO PARA EVITAR LOOP
+  const applyFilters = useCallback(() => {
+    console.log("🔄 Aplicando filtros...");
+    setAssignedToFilter(tempAssignedTo);
+    setTitleFilter(tempTitle);
+    setDueDateStart(tempDueDateStart);
+    setDueDateEnd(tempDueDateEnd);
+    setHasLoadedTasks(false);
+    setSelectedTaskIds(new Set());
+  }, [tempAssignedTo, tempTitle, tempDueDateStart, tempDueDateEnd]);
+
+  const clearFilters = useCallback(() => {
+    console.log("🧹 Limpando todos os filtros");
+    setTempAssignedTo("all");
+    setTempTitle("");
+    setTempDueDateStart(undefined);
+    setTempDueDateEnd(undefined);
+    setAssignedToFilter("all");
+    setTitleFilter("");
+    setDueDateStart(undefined);
+    setDueDateEnd(undefined);
+    setHasLoadedTasks(false);
+    setSelectedTaskIds(new Set());
+  }, []);
+
   useEffect(() => {
     if (activeTab === "tasks" && !hasLoadedTasks && !isLoadingTasks) {
       loadAvailableTasks();
     }
   }, [activeTab, hasLoadedTasks, isLoadingTasks, loadAvailableTasks]);
 
-  // Converter task para stop
   const convertTaskToStop = useCallback((task: Task) => {
     const address = task.taskAddress;
     return {
@@ -378,10 +513,11 @@ export default function CreateRoutePage() {
       longitude: address?.longitude || 0,
       notes: task.description || "",
       assignedToName: task.userAssigned?.name || "",
+      scheduledDate: task.scheduledDate || null, // ✅ Pode ser null
+      dueDate: task.dueDate || null, // ✅ Pode ser null
     };
   }, []);
 
-  // Adicionar tasks selecionadas como paradas
   const addSelectedTasks = useCallback(() => {
     const selectedTasks = availableTasks.filter((task) =>
       selectedTaskIds.has(task.id),
@@ -416,7 +552,6 @@ export default function CreateRoutePage() {
     setSelectedTaskIds(newSelectedIds);
   }, [availableTasks, selectedTaskIds, append, convertTaskToStop, fields]);
 
-  // Alternar seleção de task
   const toggleTaskSelection = useCallback((taskId: string) => {
     setSelectedTaskIds((prev) => {
       const newSet = new Set(prev);
@@ -429,7 +564,6 @@ export default function CreateRoutePage() {
     });
   }, []);
 
-  // Remover parada
   const handleRemoveStop = useCallback(
     (indexToRemove: number) => {
       if (indexToRemove >= 0 && indexToRemove < fields.length) {
@@ -440,31 +574,28 @@ export default function CreateRoutePage() {
     [fields.length, remove],
   );
 
-  // Estatísticas
-  const stats = useMemo(
-    () => ({
-      totalStops: fields.length,
-      hasCoordinates: fields.filter(
-        (stop) => stop.latitude !== 0 && stop.longitude !== 0,
-      ).length,
-    }),
-    [fields],
-  );
-
-  // Tasks já adicionadas
   const addedTaskIds = useMemo(
     () => new Set(fields.map((f) => f.taskId).filter(Boolean)),
     [fields],
   );
 
-  // Tasks disponíveis que ainda não foram adicionadas
   const availableNotAdded = useMemo(
     () => availableTasks.filter((task) => !addedTaskIds.has(task.id)),
     [availableTasks, addedTaskIds],
   );
 
-  const onSubmit = useCallback(
+  // Função de submit CORRIGIDA
+  const handleSubmit = useCallback(
     async (data: FormValues) => {
+      console.log("🚀 [CREATE ROUTE] Iniciando criação da rota...");
+      console.log("📝 [CREATE ROUTE] Dados do formulário:", {
+        title: data.title,
+        routeDate: data.routeDate,
+        userAssignedId: data.userAssignedId,
+        orderBy: data.orderBy,
+        stopsCount: data.stops.length,
+      });
+
       if (data.stops.length === 0) {
         toast.warning("Adicione pelo menos uma parada à rota");
         return;
@@ -494,7 +625,12 @@ export default function CreateRoutePage() {
           })),
         };
 
-        await createRoute.mutateAsync(payload as any);
+        console.log(
+          "📦 [CREATE ROUTE] Payload enviado:",
+          JSON.stringify(payload, null, 2),
+        );
+        const result = await createRoute.mutateAsync(payload as any);
+        console.log("✅ [CREATE ROUTE] Resposta da API:", result);
 
         toast.dismiss(loadingToast);
         toast.success("Rota criada com sucesso!", {
@@ -504,19 +640,21 @@ export default function CreateRoutePage() {
             onClick: () => router.push("/routes"),
           },
         });
-
         router.push("/routes");
       } catch (err: any) {
+        console.error("❌ [CREATE ROUTE] Erro:", err);
         toast.dismiss(loadingToast);
         toast.error("Erro ao salvar rota.", {
-          description: err?.message || "Tente novamente mais tarde",
+          description:
+            err?.response?.data?.message ||
+            err?.message ||
+            "Tente novamente mais tarde",
         });
       }
     },
     [createRoute, router],
   );
 
-  // Estilos padronizados com o RoutesPage
   const inputStyle =
     "bg-white border-gray-200 text-[#2C3E50] placeholder:text-[#95A5A6] focus-visible:ring-[#D35400] focus-visible:border-[#D35400] transition-all";
   const labelStyle = "text-[#2C3E50] font-medium";
@@ -526,29 +664,21 @@ export default function CreateRoutePage() {
     return <FormSkeleton />;
   }
 
+  const activeFiltersCount = [
+    assignedToFilter !== "all",
+    !!titleFilter,
+    !!dueDateStart || !!dueDateEnd,
+  ].filter(Boolean).length;
+
   return (
     <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8 font-sans">
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Header com estilo consistente */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-[#2C3E50]">Criar Rota</h1>
             <p className="text-[#95A5A6] mt-1">
-              Preencha as informações 
+              Preencha as informações para criar uma nova rota
             </p>
-            {/* {stats.totalStops > 0 && (
-              <div className="flex gap-3 mt-3">
-                <Badge
-                  variant="outline"
-                  className="bg-white text-[#2C3E50] border-gray-200"
-                >
-                  Total: {stats.totalStops} parada(s)
-                </Badge>
-                <Badge className="bg-green-50 text-green-700 border border-green-200">
-                  ✓ {stats.hasCoordinates} geocodificada(s)
-                </Badge>
-              </div>
-            )} */}
           </div>
           <TooltipProvider>
             <Tooltip>
@@ -563,14 +693,17 @@ export default function CreateRoutePage() {
                 </RippleButton>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Cancelar rota</p>
+                <p>Cancelar criação da rota</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form
+            onSubmit={form.handleSubmit(handleSubmit)}
+            className="space-y-6"
+          >
             <Tabs
               value={activeTab}
               onValueChange={setActiveTab}
@@ -591,13 +724,11 @@ export default function CreateRoutePage() {
                     "rounded-md px-6 py-2 text-[#95A5A6] transition-all data-[state=active]:bg-[#D35400] data-[state=active]:text-white",
                   )}
                 >
-                  2. Revisão 
+                  2. Revisão e Confirmação
                 </TabsTrigger>
               </TabsList>
 
-              {/* ABA SELECIONAR TAREFAS */}
               <TabsContent value="tasks" className="space-y-6 mt-6">
-                {/* Configurações da Rota */}
                 <Card className={cardStyle}>
                   <CardContent className="p-6 space-y-6">
                     <div className="space-y-4">
@@ -614,6 +745,13 @@ export default function CreateRoutePage() {
                                 className={inputStyle}
                                 placeholder="Ex: Entregas Zona Sul, Visitas Técnicas..."
                                 {...field}
+                                onChange={(e) => {
+                                  console.log(
+                                    "📝 Título alterado:",
+                                    e.target.value,
+                                  );
+                                  field.onChange(e);
+                                }}
                               />
                             </FormControl>
                             <FormMessage className="text-red-500" />
@@ -622,7 +760,6 @@ export default function CreateRoutePage() {
                       />
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* Data */}
                         <FormField
                           control={form.control}
                           name="routeDate"
@@ -667,7 +804,6 @@ export default function CreateRoutePage() {
                           )}
                         />
 
-                        {/* Responsável */}
                         <FormField
                           control={form.control}
                           name="userAssignedId"
@@ -688,13 +824,7 @@ export default function CreateRoutePage() {
                               >
                                 <FormControl>
                                   <SelectTrigger className={inputStyle}>
-                                    <SelectValue
-                                      placeholder={
-                                        isLoadingUsers
-                                          ? "Carregando..."
-                                          : "Selecione um responsável"
-                                      }
-                                    />
+                                    <SelectValue placeholder="Selecione um responsável" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent className="bg-white border-gray-200">
@@ -705,11 +835,7 @@ export default function CreateRoutePage() {
                                     Não atribuído
                                   </SelectItem>
                                   {users.map((u) => (
-                                    <SelectItem
-                                      key={u.id}
-                                      value={u.id}
-                                      className="text-[#2C3E50] focus:bg-[#D35400]/10"
-                                    >
+                                    <SelectItem key={u.id} value={u.id}>
                                       {u.name}
                                     </SelectItem>
                                   ))}
@@ -720,7 +846,6 @@ export default function CreateRoutePage() {
                           )}
                         />
 
-                        {/* Rota Por */}
                         <FormField
                           control={form.control}
                           name="orderBy"
@@ -739,17 +864,11 @@ export default function CreateRoutePage() {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent className="bg-white border-gray-200">
-                                  <SelectItem
-                                    value="DISTANCE"
-                                    className="text-[#2C3E50] focus:bg-[#D35400]/10"
-                                  >
+                                  <SelectItem value="DISTANCE">
                                     <MapPin className="w-4 h-4 text-[#D35400] mr-2 inline" />
                                     Proximidade
                                   </SelectItem>
-                                  <SelectItem
-                                    value="PRIORITY"
-                                    className="text-[#2C3E50] focus:bg-[#D35400]/10"
-                                  >
+                                  <SelectItem value="PRIORITY">
                                     <ArrowUpDown className="w-4 h-4 text-[#D35400] mr-2 inline" />
                                     Prioridade
                                   </SelectItem>
@@ -764,24 +883,175 @@ export default function CreateRoutePage() {
                   </CardContent>
                 </Card>
 
-                {/* Seleção de Tarefas */}
                 <Card className={cardStyle}>
                   <CardContent className="p-6">
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex justify-between items-center mb-4">
                       <div>
                         <h3 className="font-bold text-lg text-[#2C3E50]">
-                          Tarefas 
+                          Tarefas Disponíveis
                         </h3>
                         <p className="text-sm text-[#95A5A6] mt-1">
-                          Selecione as tarefas 
+                          Selecione as tarefas que deseja adicionar à rota
                         </p>
                       </div>
-                      {selectedTaskIds.size > 0 && (
-                        <Badge className="bg-[#D35400] text-white">
-                          {selectedTaskIds.size} selecionada(s)
-                        </Badge>
-                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setShowAdvancedFilters(!showAdvancedFilters)
+                        }
+                        className="text-[#95A5A6] hover:text-[#D35400] relative"
+                      >
+                        <FilterIcon className="h-4 w-4 mr-1" />
+                        Filtros
+                        {activeFiltersCount > 0 && (
+                          <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center bg-[#D35400] text-white text-xs">
+                            {activeFiltersCount}
+                          </Badge>
+                        )}
+                      </Button>
                     </div>
+
+                    <AnimatePresence>
+                      {showAdvancedFilters && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="mb-4 p-4 bg-gray-50 rounded-lg space-y-3"
+                        >
+                          <div>
+                            <label className="text-sm font-medium text-[#2C3E50] block mb-1 flex items-center gap-2">
+                              <UserIcon className="h-4 w-4 text-[#D35400]" />
+                              Responsável
+                            </label>
+                            <select
+                              value={tempAssignedTo}
+                              onChange={(e) =>
+                                setTempAssignedTo(e.target.value)
+                              }
+                              className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                            >
+                              <option value="all">Todos os responsáveis</option>
+                              <option value="none">Não atribuído</option>
+                              {users.map((user) => (
+                                <option key={user.id} value={user.id}>
+                                  {user.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-sm font-medium text-[#2C3E50] block mb-1 flex items-center gap-2">
+                              <SearchIcon className="h-4 w-4 text-[#D35400]" />
+                              Título da Tarefa
+                            </label>
+                            <Input
+                              type="text"
+                              value={tempTitle}
+                              onChange={(e) => setTempTitle(e.target.value)}
+                              placeholder="Buscar por título..."
+                              className="bg-white border-gray-200"
+                              onKeyDown={(e) =>
+                                e.key === "Enter" && applyFilters()
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-3">
+                            <label className="text-sm font-medium text-[#2C3E50] block flex items-center gap-2">
+                              <CalendarIcon className="h-4 w-4 text-[#D35400]" />
+                              Prazo final
+                            </label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs text-[#95A5A6] block mb-1">
+                                  Data Início
+                                </label>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      className={cn(
+                                        "w-full justify-start text-left",
+                                        !tempDueDateStart && "text-[#95A5A6]",
+                                      )}
+                                    >
+                                      <CalendarDaysIcon className="mr-2 h-4 w-4 text-[#D35400]" />
+                                      {tempDueDateStart
+                                        ? format(tempDueDateStart, "PPP", {
+                                            locale: ptBR,
+                                          })
+                                        : "Data inicial"}
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0 bg-white">
+                                    <Calendar
+                                      mode="single"
+                                      selected={tempDueDateStart}
+                                      onSelect={setTempDueDateStart}
+                                      locale={ptBR}
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                              <div>
+                                <label className="text-xs text-[#95A5A6] block mb-1">
+                                  Data Fim
+                                </label>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      className={cn(
+                                        "w-full justify-start text-left",
+                                        !tempDueDateEnd && "text-[#95A5A6]",
+                                      )}
+                                    >
+                                      <CalendarDaysIcon className="mr-2 h-4 w-4 text-[#D35400]" />
+                                      {tempDueDateEnd
+                                        ? format(tempDueDateEnd, "PPP", {
+                                            locale: ptBR,
+                                          })
+                                        : "Data final"}
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0 bg-white">
+                                    <Calendar
+                                      mode="single"
+                                      selected={tempDueDateEnd}
+                                      onSelect={setTempDueDateEnd}
+                                      locale={ptBR}
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 pt-2">
+                            <Button
+                              type="button"
+                              onClick={applyFilters}
+                              className="flex-1 bg-[#D35400] hover:bg-[#E67E22] text-white"
+                            >
+                              <SearchIcon className="h-4 w-4 mr-2" />
+                              Buscar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={clearFilters}
+                              className="flex-1 border-gray-300 text-[#2C3E50] hover:bg-gray-100"
+                            >
+                              Limpar Filtros
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
                     {isLoadingTasks ? (
                       <div className="text-center py-12">
@@ -793,13 +1063,8 @@ export default function CreateRoutePage() {
                         <MapPinIcon className="mx-auto h-12 w-12 text-[#BDC3C7] mb-4" />
                         <p className="text-[#95A5A6]">
                           {availableTasks.length === 0
-                            ? "Nenhuma tarefa disponível para criar rota"
+                            ? "Nenhuma tarefa pendente ou reagendada encontrada"
                             : "Todas as tarefas já foram adicionadas à rota"}
-                        </p>
-                        <p className="text-[#95A5A6] text-sm mt-1">
-                          {availableTasks.length === 0
-                            ? "Cadastre tarefas com endereço para utilizá-las na rota"
-                            : `Você já adicionou ${fields.length} tarefa(s)`}
                         </p>
                       </div>
                     ) : (
@@ -815,7 +1080,6 @@ export default function CreateRoutePage() {
                       </div>
                     )}
 
-                    {/* Paradas já adicionadas */}
                     <AnimatePresence>
                       {fields.length > 0 && (
                         <motion.div
@@ -823,11 +1087,9 @@ export default function CreateRoutePage() {
                           animate={{ opacity: 1, height: "auto" }}
                           className="mt-6 pt-6 border-t border-gray-200"
                         >
-                          <div className="flex justify-between items-center mb-4">
-                            <h4 className="font-semibold text-[#2C3E50]">
-                              Paradas selecionadas ({fields.length})
-                            </h4>
-                          </div>
+                          <h4 className="font-semibold text-[#2C3E50] mb-3">
+                            Paradas selecionadas ({fields.length})
+                          </h4>
                           <div className="space-y-2">
                             {fields.map((field, index) => (
                               <StopItem
@@ -845,16 +1107,16 @@ export default function CreateRoutePage() {
                     <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
                       <Button
                         type="button"
-                        className="bg-green-600 text-white hover:bg-green-700 transition-all active:scale-95 rounded-full px-6"
+                        className="bg-green-600 text-white hover:bg-green-700 rounded-full px-6"
                         onClick={addSelectedTasks}
                         disabled={selectedTaskIds.size === 0}
                       >
                         <PlusIcon className="h-4 w-4 mr-2" />
-                        Adicionar 
+                        Adicionar à Rota
                       </Button>
                       <Button
                         type="button"
-                        className="bg-[#2C3E50] text-white hover:bg-[#2C3E50]/90 transition-all active:scale-95 rounded-full px-6"
+                        className="bg-[#2C3E50] text-white hover:bg-[#2C3E50]/90 rounded-full px-6"
                         onClick={() => setActiveTab("review")}
                         disabled={fields.length === 0}
                       >
@@ -866,80 +1128,71 @@ export default function CreateRoutePage() {
                 </Card>
               </TabsContent>
 
-              {/* ABA REVISÃO */}
               <TabsContent value="review" className="space-y-6 mt-6">
                 <Card className={cardStyle}>
                   <CardHeader className="pb-4 border-b border-gray-200">
                     <CardTitle className="text-[#2C3E50] text-xl">
-                      Confirmar 
+                      Confirmar Dados da Rota
                     </CardTitle>
-                    <p className="text-sm text-[#95A5A6] mt-1">
-                      Revisar as informações 
-                    </p>
                   </CardHeader>
                   <CardContent className="p-6 space-y-6">
-                    {/* Resumo */}
                     <div className="bg-[#F5F0E6] rounded-xl p-5 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[#2C3E50] font-medium">
-                          Título:
-                        </span>
-                        <span className="text-[#2C3E50]">
-                          {form.watch("title") || "Não informado"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[#2C3E50] font-medium">
-                          Total de Paradas:
-                        </span>
-                        <Badge className="bg-[#D35400] text-white">
-                          {fields.length}{" "}
-                          {fields.length === 1 ? "parada" : "paradas"}
-                        </Badge>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[#2C3E50] font-medium">
-                          Rota Por:
-                        </span>
-                        <span className="text-[#2C3E50]">
-                          {form.watch("orderBy") === "DISTANCE" ? (
-                            <span>
-                              <MapPin className="h-4 w-4 text-[#D35400] inline mr-1" />{" "}
-                              Proximidade
-                            </span>
-                          ) : (
-                            <span>
-                              <ArrowUpDown className="h-4 w-4 text-[#D35400] inline mr-1" />{" "}
-                              Prioridade
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[#2C3E50] font-medium">
-                          Responsável:
-                        </span>
-                        <span className="text-[#2C3E50]">
-                          {users.find(
-                            (u) => u.id === form.watch("userAssignedId"),
-                          )?.name || "Não atribuído"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-[#2C3E50] font-medium">
-                          Data Agendada:
-                        </span>
-                        <span className="text-[#2C3E50]">
-                          {form.watch("routeDate")
-                            ? format(form.watch("routeDate")!, "dd/MM/yyyy", {
-                                locale: ptBR,
-                              })
-                            : "Não definida"}
-                        </span>
+                      <div className="bg-[#F5F0E6] rounded-xl p-5 space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-[#2C3E50] font-medium">
+                            Título:
+                          </span>
+                          <span>{form.watch("title") || "Não informado"}</span>
+                        </div>
+
+                        {/* 🔥 DATA AGENDADA DA ROTA - ADICIONAR AQUI */}
+                        <div className="flex justify-between">
+                          <span className="text-[#2C3E50] font-medium">
+                            Data Agendada:
+                          </span>
+                          <span>
+                            {form.watch("routeDate")
+                              ? format(form.watch("routeDate")!, "dd/MM/yyyy", {
+                                  locale: ptBR,
+                                })
+                              : "Não definida"}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between">
+                          <span className="text-[#2C3E50] font-medium">
+                            Total de Paradas:
+                          </span>
+                          <Badge className="bg-[#D35400] text-white">
+                            {fields.length}{" "}
+                            {fields.length === 1 ? "parada" : "paradas"}
+                          </Badge>
+                        </div>
+
+                        <div className="flex justify-between">
+                          <span className="text-[#2C3E50] font-medium">
+                            Rota Por:
+                          </span>
+                          <span>
+                            {form.watch("orderBy") === "DISTANCE"
+                              ? "Proximidade"
+                              : "Prioridade"}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between">
+                          <span className="text-[#2C3E50] font-medium">
+                            Responsável:
+                          </span>
+                          <span>
+                            {users.find(
+                              (u) => u.id === form.watch("userAssignedId"),
+                            )?.name || "Não atribuído"}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Lista de paradas na revisão */}
                     {fields.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-[#2C3E50] mb-3">
@@ -961,27 +1214,107 @@ export default function CreateRoutePage() {
                                 <p className="text-[#95A5A6] text-xs truncate">
                                   {field.address}, {field.city}
                                 </p>
+                                {field.dueDate && (
+                                  <p className="text-xs text-[#95A5A6] mt-1">
+                                    📅 Prazo:{" "}
+                                    {format(
+                                      new Date(field.dueDate),
+                                      "dd/MM/yyyy",
+                                    )}
+                                  </p>
+                                )}
                                 {field.assignedToName && (
-                                  <p className="text-[#95A5A6] text-xs truncate mt-0.5 flex items-center gap-1">
-                                    <UserIcon className="h-3 w-3" />
-                                    {field.assignedToName}
+                                  <p className="text-xs text-[#95A5A6] mt-1">
+                                    👤 Responsável: {field.assignedToName}
                                   </p>
                                 )}
                               </div>
-                              {field.latitude !== 0 &&
-                                field.longitude !== 0 && (
-                                  <CheckCircleIcon className="h-4 w-4 text-green-500 flex-shrink-0" />
-                                )}
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
 
+                    {/* Mostrar erros de validação */}
+                    {!form.formState.isValid && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                        <p className="text-red-600 text-sm font-medium">
+                          ⚠️ Erros no formulário:
+                        </p>
+                        <ul className="text-red-500 text-xs mt-1">
+                          {form.formState.errors.title && (
+                            <li>
+                              • Título: {form.formState.errors.title.message}
+                            </li>
+                          )}
+                          {form.formState.errors.stops && (
+                            <li>• {form.formState.errors.stops.message}</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
                     <Button
-                      type="submit"
+                      type="button" // Mudar para button
                       disabled={createRoute.isPending || fields.length === 0}
                       className="w-full h-12 text-base font-semibold bg-[#D35400] hover:bg-[#E67E22] text-white transition-all shadow-md active:scale-[0.98] disabled:opacity-50 rounded-full"
+                      onClick={async () => {
+                        console.log("🖱️ [BUTTON] Botão clicado!");
+
+                        // 🔥 FORÇAR VALIDAÇÃO MANUAL
+                        const isValid = await form.trigger();
+                        console.log(
+                          "✅ [VALIDATION] Resultado trigger():",
+                          isValid,
+                        );
+
+                        if (!isValid) {
+                          const errors = form.formState.errors;
+                          console.log(
+                            "❌ [VALIDATION] Erros encontrados:",
+                            errors,
+                          );
+
+                          if (errors.title) {
+                            toast.error(errors.title.message);
+                          } else if (errors.stops) {
+                            toast.error(errors.stops.message);
+                          } else {
+                            toast.error(
+                              "Preencha todos os campos obrigatórios",
+                            );
+                          }
+                          return;
+                        }
+
+                        // Verificação manual extra
+                        const title = form.getValues("title");
+                        const stops = form.getValues("stops");
+
+                        console.log(
+                          "🔍 [CHECK] Título:",
+                          title,
+                          "Length:",
+                          title?.length,
+                        );
+                        console.log("🔍 [CHECK] Stops:", stops?.length);
+
+                        if (!title || title.length < 3) {
+                          toast.error(
+                            "Título é obrigatório (mínimo 3 caracteres)",
+                          );
+                          return;
+                        }
+
+                        if (!stops || stops.length === 0) {
+                          toast.error("Adicione pelo menos uma parada à rota");
+                          return;
+                        }
+
+                        // Se passou, submeter
+                        console.log("✅ [SUBMIT] Chamando handleSubmit...");
+                        form.handleSubmit(handleSubmit)();
+                      }}
                     >
                       {createRoute.isPending ? (
                         <>
@@ -989,11 +1322,9 @@ export default function CreateRoutePage() {
                           Salvando...
                         </>
                       ) : (
-                        "Salvar"
+                        "Criar Rota"
                       )}
                     </Button>
-
-                    
                   </CardContent>
                 </Card>
 
@@ -1001,10 +1332,9 @@ export default function CreateRoutePage() {
                   <Button
                     type="button"
                     variant="ghost"
-                    className="text-[#95A5A6] hover:text-[#2C3E50] transition-colors rounded-full"
                     onClick={() => setActiveTab("tasks")}
                   >
-                    ← Voltar
+                    ← Voltar para seleção de tarefas
                   </Button>
                 </div>
               </TabsContent>

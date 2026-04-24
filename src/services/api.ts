@@ -249,7 +249,7 @@ export interface OptimizeRouteDto {
 }
 
 export interface FinalizeTaskDto {
-  status: "COMPLETED" | "FAILED";
+  status: "COMPLETED" | "FAILED" | "RESCHEDULED";
   finalComment?: string;
   dueDate?: string;
 }

@@ -705,79 +705,79 @@ export default function DriverPage() {
     calculateDistance,
   ]);
 
- // Concluir tarefa (apenas concluir) - COM ATUALIZAÇÃO DA ROTA
-const completeTaskOnly = useCallback(async () => {
-  if (!currentStop) return;
+  // Concluir tarefa (apenas concluir) - COM ATUALIZAÇÃO DA ROTA
+  const completeTaskOnly = useCallback(async () => {
+    if (!currentStop) return;
 
-  setIsSubmitting(true);
-  try {
-    const successNote = comment
-      ? `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED): ${comment}`
-      : `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED)`;
+    setIsSubmitting(true);
+    try {
+      const successNote = comment
+        ? `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED): ${comment}`
+        : `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED)`;
 
-    await markStopVisited.mutateAsync({
-      routeId: routeId!,
-      stopId: currentStop.id!,
-      notes: successNote,
-    });
-
-    const newVisitedStops = [...visitedStops, currentStop.id!];
-    setVisitedStops(newVisitedStops);
-    previousStopIdRef.current = "";
-
-    const nextIndex = currentStopIndex + 1;
-
-    if (nextIndex >= totalStops) {
-      await updateRoute.mutateAsync({
-        id: routeId!,
-        data: { status: "FINISHED" },
+      await markStopVisited.mutateAsync({
+        routeId: routeId!,
+        stopId: currentStop.id!,
+        notes: successNote,
       });
-      localStorage.removeItem(`driver_route_${routeId}_index`);
-      localStorage.removeItem(`driver_route_${routeId}_visited`);
-      localStorage.removeItem(`driver_route_${routeId}_failed`);
-      toast.success("🎉 Rota finalizada com sucesso!", {
-        duration: 3000,
-        icon: "✅",
-      });
-      setTimeout(() => router.push("/routes"), 1500);
-    } else {
-      setCurrentStopIndex(nextIndex);
 
-      window.dispatchEvent(new Event("route-updated"));
-      
-      // 🔥 Dispara evento para o mapa recalcular a rota para o próximo destino
-      window.dispatchEvent(new Event("route-updated"));
-      
-      toast.success(
-        `✅ Visita concluída (COMPLETED)! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
-        { duration: 3000 },
-      );
+      const newVisitedStops = [...visitedStops, currentStop.id!];
+      setVisitedStops(newVisitedStops);
+      previousStopIdRef.current = "";
+
+      const nextIndex = currentStopIndex + 1;
+
+      if (nextIndex >= totalStops) {
+        await updateRoute.mutateAsync({
+          id: routeId!,
+          data: { status: "FINISHED" },
+        });
+        localStorage.removeItem(`driver_route_${routeId}_index`);
+        localStorage.removeItem(`driver_route_${routeId}_visited`);
+        localStorage.removeItem(`driver_route_${routeId}_failed`);
+        toast.success("🎉 Rota finalizada com sucesso!", {
+          duration: 3000,
+          icon: "✅",
+        });
+        setTimeout(() => router.push("/routes"), 1500);
+      } else {
+        setCurrentStopIndex(nextIndex);
+
+        window.dispatchEvent(new Event("route-updated"));
+
+        // 🔥 Dispara evento para o mapa recalcular a rota para o próximo destino
+        window.dispatchEvent(new Event("route-updated"));
+
+        toast.success(
+          `✅ Visita concluída (COMPLETED)! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+          { duration: 3000 },
+        );
+      }
+
+      closeAllModals();
+      await refetch();
+      await refetchTasks();
+    } catch (error) {
+      console.error("Erro ao finalizar:", error);
+      toast.error("Erro ao registrar visita. Tente novamente.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    closeAllModals();
-    await refetch();
-    await refetchTasks();
-  } catch (error) {
-    console.error("Erro ao finalizar:", error);
-    toast.error("Erro ao registrar visita. Tente novamente.");
-  } finally {
-    setIsSubmitting(false);
-  }
-}, [
-  currentStop,
-  markStopVisited,
-  routeId,
-  comment,
-  visitedStops,
-  currentStopIndex,
-  totalStops,
-  updateRoute,
-  router,
-  refetch,
-  refetchTasks,
-  displayStops,
-  closeAllModals,
-]);
+  }, [
+    currentStop,
+    markStopVisited,
+    routeId,
+    comment,
+    visitedStops,
+    currentStopIndex,
+    totalStops,
+    updateRoute,
+    router,
+    refetch,
+    refetchTasks,
+    displayStops,
+    closeAllModals,
+  ]);
 
   // Criar nova tarefa
   const handleCreateNewTask = useCallback(
@@ -939,13 +939,13 @@ const completeTaskOnly = useCallback(async () => {
         await finalizeTask.mutateAsync({
           taskId: currentTaskId,
           data: {
-            status: "FAILED",
-            finalComment: `❌ FALHA NA VISITA (FAILED)\nMotivo: ${data.observations}\nNova data agendada: ${new Date(data.dueDate).toLocaleDateString("pt-BR")}\n${comment ? `Comentário original: ${comment}` : ""}`,
+            status: "RESCHEDULED",
+            finalComment: `🔄 TAREFA REAGENDADA (RESCHEDULED)\nMotivo da falha: ${data.observations}\nNova data agendada: ${new Date(data.dueDate).toLocaleDateString("pt-BR")}\n${comment ? `Comentário original: ${comment}` : ""}`,
             dueDate: data.dueDate,
           },
         });
 
-        const failureNote = `❌ VISITA COM FALHA (FAILED) - REAGENDADA\nMotivo: ${data.observations}\nNova data: ${new Date(data.dueDate).toLocaleDateString("pt-BR")}`;
+        const failureNote = `❌ VISITA REAGENDADA\nMotivo: ${data.observations}\nNova data: ${new Date(data.dueDate).toLocaleDateString("pt-BR")}`;
 
         await markStopVisited.mutateAsync({
           routeId: routeId!,
@@ -1017,81 +1017,84 @@ const completeTaskOnly = useCallback(async () => {
     ],
   );
 
- // Simulação - CORRIGIDA
-const startSimulation = useCallback(() => {
-  // 🔥 IMPORTANTE: Pega o destino atual baseado no currentStopIndex
-  const targetStop = displayStops[currentStopIndex];
-  
-  if (!targetStop) {
-    toast.warning("Destino não encontrado");
-    return;
-  }
-  
-  if (!currentPosition) {
-    toast.warning("Aguardando sinal de GPS");
-    return;
-  }
+  // Simulação - CORRIGIDA
+  const startSimulation = useCallback(() => {
+    // 🔥 IMPORTANTE: Pega o destino atual baseado no currentStopIndex
+    const targetStop = displayStops[currentStopIndex];
 
-  // Verifica se o destino já foi visitado
-  if (visitedStops.includes(targetStop.id)) {
-    toast.warning(`O destino "${targetStop.name}" já foi concluído!`);
-    return;
-  }
-
-  console.log('🎮 Iniciando simulação para:', targetStop.name);
-  console.log('   Posição atual:', currentPosition);
-  console.log('   Destino:', targetStop.latitude, targetStop.longitude);
-
-  setIsGPSActive(false);
-  setIsSimulating(true);
-
-  // Dispara evento para o mapa saber que a simulação começou
-  window.dispatchEvent(new Event("simulation-start"));
-
-  const steps = 150;
-  const speed = 20;
-  let step = 0;
-  const startLat = currentPosition[0];
-  const startLng = currentPosition[1];
-  const endLat = targetStop.latitude;
-  const endLng = targetStop.longitude;
-
-  // Limpa intervalo anterior se existir
-  if (simulationInterval.current) {
-    clearInterval(simulationInterval.current);
-    simulationInterval.current = null;
-  }
-
-  simulationInterval.current = setInterval(() => {
-    step++;
-    const progress = step / steps;
-    const newLat = startLat + (endLat - startLat) * progress;
-    const newLng = startLng + (endLng - startLng) * progress;
-    setCurrentPosition([newLat, newLng]);
-
-    if (step >= steps) {
-      if (simulationInterval.current) {
-        clearInterval(simulationInterval.current);
-        simulationInterval.current = null;
-      }
-      
-      // Posiciona exatamente no destino
-      setCurrentPosition([endLat, endLng]);
-      setIsSimulating(false);
-
-      // Dispara evento para o mapa saber que a simulação terminou
-      window.dispatchEvent(new Event("simulation-end"));
-
-      toast.success(`✅ Simulação concluída! Você chegou em: ${targetStop.name}`, {
-        duration: 3000,
-      });
-
-      // 🔥 Força a verificação de chegada ao destino
-      // O efeito de verificação de chegada vai detectar que está no destino
-      // e abrir o modal automaticamente
+    if (!targetStop) {
+      toast.warning("Destino não encontrado");
+      return;
     }
-  }, speed);
-}, [displayStops, currentStopIndex, currentPosition, visitedStops]);
+
+    if (!currentPosition) {
+      toast.warning("Aguardando sinal de GPS");
+      return;
+    }
+
+    // Verifica se o destino já foi visitado
+    if (visitedStops.includes(targetStop.id)) {
+      toast.warning(`O destino "${targetStop.name}" já foi concluído!`);
+      return;
+    }
+
+    console.log("🎮 Iniciando simulação para:", targetStop.name);
+    console.log("   Posição atual:", currentPosition);
+    console.log("   Destino:", targetStop.latitude, targetStop.longitude);
+
+    setIsGPSActive(false);
+    setIsSimulating(true);
+
+    // Dispara evento para o mapa saber que a simulação começou
+    window.dispatchEvent(new Event("simulation-start"));
+
+    const steps = 150;
+    const speed = 20;
+    let step = 0;
+    const startLat = currentPosition[0];
+    const startLng = currentPosition[1];
+    const endLat = targetStop.latitude;
+    const endLng = targetStop.longitude;
+
+    // Limpa intervalo anterior se existir
+    if (simulationInterval.current) {
+      clearInterval(simulationInterval.current);
+      simulationInterval.current = null;
+    }
+
+    simulationInterval.current = setInterval(() => {
+      step++;
+      const progress = step / steps;
+      const newLat = startLat + (endLat - startLat) * progress;
+      const newLng = startLng + (endLng - startLng) * progress;
+      setCurrentPosition([newLat, newLng]);
+
+      if (step >= steps) {
+        if (simulationInterval.current) {
+          clearInterval(simulationInterval.current);
+          simulationInterval.current = null;
+        }
+
+        // Posiciona exatamente no destino
+        setCurrentPosition([endLat, endLng]);
+        setIsSimulating(false);
+
+        // Dispara evento para o mapa saber que a simulação terminou
+        window.dispatchEvent(new Event("simulation-end"));
+
+        toast.success(
+          `✅ Simulação concluída! Você chegou em: ${targetStop.name}`,
+          {
+            duration: 3000,
+          },
+        );
+
+        // 🔥 Força a verificação de chegada ao destino
+        // O efeito de verificação de chegada vai detectar que está no destino
+        // e abrir o modal automaticamente
+      }
+    }, speed);
+  }, [displayStops, currentStopIndex, currentPosition, visitedStops]);
 
   const resumeRealGPS = useCallback(() => {
     setIsGPSActive(true);

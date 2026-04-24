@@ -554,10 +554,9 @@ export function TaskFormModal({
                       control={form.control}
                       name="intervalTime"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="flex items-center gap-2">
-                            <span> Tempo Intervalo</span>
-                            
+                        <FormItem className="flex flex-col">
+                          <FormLabel>
+                            <span> Tempo Intervalo - ( min )</span>
                           </FormLabel>
                           <FormControl>
                             <Input
