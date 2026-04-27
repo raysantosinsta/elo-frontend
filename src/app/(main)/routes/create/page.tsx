@@ -193,6 +193,25 @@ const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
     return null;
   };
 
+  // Função para verificar se o prazo está próximo ou vencido
+  const getDueDateStyle = (dueDate: string) => {
+    if (!dueDate) return "text-[#95A5A6]";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+
+    if (due < today) {
+      return "text-red-500"; // Vencido
+    }
+    const diffTime = due.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays <= 3) {
+      return "text-amber-600"; // Próximo do vencimento (3 dias ou menos)
+    }
+    return "text-[#95A5A6]"; // Normal
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -220,18 +239,36 @@ const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
           </h4>
           {getStatusBadge()}
         </div>
+
+        {/* 📅 PRAZO FINAL (dueDate) - CORRIGIDO */}
         {task.dueDate && (
-          <p className="text-xs text-[#95A5A6] mt-1 flex items-center gap-1">
+          <p
+            className={cn(
+              "text-xs mt-1 flex items-center gap-1",
+              getDueDateStyle(task.dueDate),
+            )}
+          >
             <CalendarIcon className="h-3 w-3" />
-            Prazo:{" "}
+            Prazo final:{" "}
             {format(new Date(task.dueDate), "dd/MM/yyyy", {
               locale: ptBR,
             })}
           </p>
         )}
+
+        {task.scheduledDate && (
+          <p className="text-xs text-[#95A5A6] mt-1 flex items-center gap-1">
+            <CalendarIcon className="h-3 w-3" />
+            Agendado para:{" "}
+            {format(new Date(task.scheduledDate), "dd/MM/yyyy", {
+              locale: ptBR,
+            })}
+          </p>
+        )}
+
         {task.taskAddress && (
           <p className="text-sm text-[#95A5A6] truncate mt-1">
-            {task.taskAddress.endereco}, {task.taskAddress.cidade}/
+            📍 {task.taskAddress.endereco}, {task.taskAddress.cidade}/
             {task.taskAddress.estado}
           </p>
         )}
@@ -243,7 +280,7 @@ const TaskItem = memo(({ task, isSelected, onToggle }: any) => {
         )}
         {task.description && (
           <p className="text-sm text-[#95A5A6] mt-1 line-clamp-2 italic">
-            Descrição: {task.description}
+            📝 {task.description}
           </p>
         )}
       </div>
@@ -258,6 +295,25 @@ const StopItem = memo(({ stop, index, onRemove }: any) => {
   const handleRemoveClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onRemove(index);
+  };
+
+  // Função para verificar se o prazo está próximo ou vencido
+  const getDueDateStyle = (dueDate: string) => {
+    if (!dueDate) return "text-[#95A5A6]";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+
+    if (due < today) {
+      return "text-red-500"; // Vencido
+    }
+    const diffTime = due.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays <= 3) {
+      return "text-amber-600"; // Próximo do vencimento
+    }
+    return "text-[#95A5A6]";
   };
 
   return (
@@ -276,15 +332,33 @@ const StopItem = memo(({ stop, index, onRemove }: any) => {
             {stop.name}
           </p>
           <p className="text-[#95A5A6] text-xs truncate">
-            {stop.address}, {stop.city}
+            📍 {stop.address}, {stop.city}
           </p>
+
+          {/* 📅 PRAZO FINAL (dueDate) - CORRIGIDO */}
           {stop.dueDate && (
-            <p className="text-xs text-[#95A5A6] mt-1 flex items-center gap-1">
+            <p
+              className={cn(
+                "text-xs mt-1 flex items-center gap-1",
+                getDueDateStyle(stop.dueDate),
+              )}
+            >
               <CalendarIcon className="h-3 w-3" />
-              Prazo:{" "}
+              Prazo final:{" "}
               {format(new Date(stop.dueDate), "dd/MM/yyyy", { locale: ptBR })}
             </p>
           )}
+
+          {stop.scheduledDate && (
+            <p className="text-xs text-[#95A5A6] mt-1 flex items-center gap-1">
+              <CalendarIcon className="h-3 w-3" />
+              Agendado para:{" "}
+              {format(new Date(stop.scheduledDate), "dd/MM/yyyy", {
+                locale: ptBR,
+              })}
+            </p>
+          )}
+
           {stop.assignedToName && (
             <p className="text-xs text-[#95A5A6] mt-1 flex items-center gap-1">
               <UserIcon className="h-3 w-3" />
@@ -293,7 +367,7 @@ const StopItem = memo(({ stop, index, onRemove }: any) => {
           )}
           {stop.notes && (
             <p className="text-[#95A5A6] text-sm truncate mt-0.5 line-clamp-2 italic">
-              {stop.notes}
+              📝 {stop.notes}
             </p>
           )}
         </div>
@@ -438,15 +512,23 @@ export default function CreateRoutePage() {
 
       if (dueDateStart || dueDateEnd) {
         params.dateType = "due";
+
         if (dueDateStart) {
-          const start = new Date(dueDateStart);
-          start.setHours(0, 0, 0, 0);
-          params.startDate = start.toISOString();
+          // 🔥 Envia apenas a data no formato YYYY-MM-DD, sem converter para UTC
+          const year = dueDateStart.getFullYear();
+          const month = String(dueDateStart.getMonth() + 1).padStart(2, "0");
+          const day = String(dueDateStart.getDate()).padStart(2, "0");
+          params.startDate = `${year}-${month}-${day}`;
+          console.log("📅 Data início (YYYY-MM-DD):", params.startDate);
         }
+
         if (dueDateEnd) {
-          const end = new Date(dueDateEnd);
-          end.setHours(23, 59, 59, 999);
-          params.endDate = end.toISOString();
+          // 🔥 Envia apenas a data no formato YYYY-MM-DD, sem converter para UTC
+          const year = dueDateEnd.getFullYear();
+          const month = String(dueDateEnd.getMonth() + 1).padStart(2, "0");
+          const day = String(dueDateEnd.getDate()).padStart(2, "0");
+          params.endDate = `${year}-${month}-${day}`;
+          console.log("📅 Data fim (YYYY-MM-DD):", params.endDate);
         }
       }
 
@@ -1199,38 +1281,75 @@ export default function CreateRoutePage() {
                           Pontos de parada
                         </h4>
                         <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                          {fields.map((field, index) => (
-                            <div
-                              key={field.id}
-                              className="flex items-center gap-3 p-3 rounded-lg bg-[#F5F0E6]"
-                            >
-                              <span className="w-6 h-6 rounded-full bg-[#D35400]/10 text-[#D35400] flex items-center justify-center text-xs font-bold">
-                                {index + 1}
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[#2C3E50] text-sm font-medium truncate">
-                                  {field.name}
-                                </p>
-                                <p className="text-[#95A5A6] text-xs truncate">
-                                  {field.address}, {field.city}
-                                </p>
-                                {field.dueDate && (
-                                  <p className="text-xs text-[#95A5A6] mt-1">
-                                    📅 Prazo:{" "}
-                                    {format(
-                                      new Date(field.dueDate),
-                                      "dd/MM/yyyy",
-                                    )}
+                          {fields.map((field, index) => {
+                            // Função para estilo do prazo
+                            const getDueDateStyle = (dueDate: string) => {
+                              if (!dueDate) return "text-[#95A5A6]";
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              const due = new Date(dueDate);
+                              due.setHours(0, 0, 0, 0);
+
+                              if (due < today) return "text-red-500";
+                              const diffDays = Math.ceil(
+                                (due.getTime() - today.getTime()) /
+                                  (1000 * 60 * 60 * 24),
+                              );
+                              if (diffDays <= 3) return "text-amber-600";
+                              return "text-[#95A5A6]";
+                            };
+
+                            return (
+                              <div
+                                key={field.id}
+                                className="flex items-center gap-3 p-3 rounded-lg bg-[#F5F0E6]"
+                              >
+                                <span className="w-6 h-6 rounded-full bg-[#D35400]/10 text-[#D35400] flex items-center justify-center text-xs font-bold">
+                                  {index + 1}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[#2C3E50] text-sm font-medium truncate">
+                                    {field.name}
                                   </p>
-                                )}
-                                {field.assignedToName && (
-                                  <p className="text-xs text-[#95A5A6] mt-1">
-                                    👤 Responsável: {field.assignedToName}
+                                  <p className="text-[#95A5A6] text-xs truncate">
+                                    📍 {field.address}, {field.city}
                                   </p>
-                                )}
+
+                                  {/* 📅 PRAZO FINAL NA REVISÃO */}
+                                  {field.dueDate && (
+                                    <p
+                                      className={cn(
+                                        "text-xs mt-1",
+                                        getDueDateStyle(field.dueDate),
+                                      )}
+                                    >
+                                      ⏰ Prazo final:{" "}
+                                      {format(
+                                        new Date(field.dueDate),
+                                        "dd/MM/yyyy",
+                                      )}
+                                    </p>
+                                  )}
+
+                                  {field.scheduledDate && (
+                                    <p className="text-xs text-[#95A5A6] mt-1">
+                                      📅 Agendado para:{" "}
+                                      {format(
+                                        new Date(field.scheduledDate),
+                                        "dd/MM/yyyy",
+                                      )}
+                                    </p>
+                                  )}
+
+                                  {field.assignedToName && (
+                                    <p className="text-xs text-[#95A5A6] mt-1">
+                                      👤 Responsável: {field.assignedToName}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
