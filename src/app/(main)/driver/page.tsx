@@ -1017,10 +1017,51 @@ const completeTaskOnly = useCallback(async () => {
     ],
   );
 
- // Simulação - CORRIGIDA
+// Simulação - CORRIGIDA COMPLETAMENTE
 const startSimulation = useCallback(() => {
-  // 🔥 IMPORTANTE: Pega o destino atual baseado no currentStopIndex
-  const targetStop = displayStops[currentStopIndex];
+  // 🔥 PASSO 1: Encontrar o PRÓXIMO destino NÃO VISITADO
+  let nextPendingIndex = -1;
+  
+  for (let i = currentStopIndex; i < displayStops.length; i++) {
+    const stop = displayStops[i];
+    const isVisited = visitedStops.includes(stop.id);
+    const isFailed = failedStops.includes(stop.id);
+    
+    if (!isVisited && !isFailed) {
+      nextPendingIndex = i;
+      break;
+    }
+  }
+  
+  // Se não encontrou próximo destino pendente
+  if (nextPendingIndex === -1) {
+    // Verifica se todas as paradas foram concluídas
+    if (completedStops === totalStops) {
+      toast.success("🎉 Todas as paradas já foram concluídas! Rota finalizada.", {
+        duration: 3000,
+      });
+    } else {
+      toast.warning("⚠️ Não há próximos destinos pendentes.", {
+        duration: 3000,
+      });
+    }
+    return;
+  }
+  
+  // 🔥 PASSO 2: Se o índice atual não é o próximo pendente, atualiza
+  if (nextPendingIndex !== currentStopIndex) {
+    console.log(`🔄 Atualizando índice de ${currentStopIndex} para ${nextPendingIndex} (próximo pendente)`);
+    setCurrentStopIndex(nextPendingIndex);
+    
+    // Pequeno delay para garantir que o estado foi atualizado
+    setTimeout(() => {
+      startSimulation();
+    }, 100);
+    return;
+  }
+  
+  // 🔥 PASSO 3: Pegar o destino alvo (agora garantidamente pendente)
+  const targetStop = displayStops[nextPendingIndex];
   
   if (!targetStop) {
     toast.warning("Destino não encontrado");
@@ -1031,23 +1072,18 @@ const startSimulation = useCallback(() => {
     toast.warning("Aguardando sinal de GPS");
     return;
   }
-
-  // Verifica se o destino já foi visitado
-  if (visitedStops.includes(targetStop.id)) {
-    toast.warning(`O destino "${targetStop.name}" já foi concluído!`);
-    return;
-  }
-
+  
   console.log('🎮 Iniciando simulação para:', targetStop.name);
+  console.log('   Índice:', nextPendingIndex);
   console.log('   Posição atual:', currentPosition);
   console.log('   Destino:', targetStop.latitude, targetStop.longitude);
-
+  
   setIsGPSActive(false);
   setIsSimulating(true);
-
+  
   // Dispara evento para o mapa saber que a simulação começou
   window.dispatchEvent(new Event("simulation-start"));
-
+  
   const steps = 150;
   const speed = 20;
   let step = 0;
@@ -1055,20 +1091,20 @@ const startSimulation = useCallback(() => {
   const startLng = currentPosition[1];
   const endLat = targetStop.latitude;
   const endLng = targetStop.longitude;
-
+  
   // Limpa intervalo anterior se existir
   if (simulationInterval.current) {
     clearInterval(simulationInterval.current);
     simulationInterval.current = null;
   }
-
+  
   simulationInterval.current = setInterval(() => {
     step++;
     const progress = step / steps;
     const newLat = startLat + (endLat - startLat) * progress;
     const newLng = startLng + (endLng - startLng) * progress;
     setCurrentPosition([newLat, newLng]);
-
+    
     if (step >= steps) {
       if (simulationInterval.current) {
         clearInterval(simulationInterval.current);
@@ -1078,20 +1114,20 @@ const startSimulation = useCallback(() => {
       // Posiciona exatamente no destino
       setCurrentPosition([endLat, endLng]);
       setIsSimulating(false);
-
+      
       // Dispara evento para o mapa saber que a simulação terminou
       window.dispatchEvent(new Event("simulation-end"));
-
+      
       toast.success(`✅ Simulação concluída! Você chegou em: ${targetStop.name}`, {
         duration: 3000,
       });
-
+      
       // 🔥 Força a verificação de chegada ao destino
       // O efeito de verificação de chegada vai detectar que está no destino
       // e abrir o modal automaticamente
     }
   }, speed);
-}, [displayStops, currentStopIndex, currentPosition, visitedStops]);
+}, [displayStops, currentStopIndex, currentPosition, visitedStops, failedStops, completedStops, totalStops]);
 
   const resumeRealGPS = useCallback(() => {
     setIsGPSActive(true);

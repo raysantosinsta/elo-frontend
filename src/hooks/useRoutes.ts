@@ -10,20 +10,60 @@ import {
   FinalizeTaskDto,
   AvailableTask,
   TaskInfo,
-  CreateTaskDto, // ← ADICIONE ESTE
-  Task, // ← ADICIONE ESTE
+  CreateTaskDto,
+  Task,
 } from "../services/api";
 
 export const useRoutes = () => {
   const queryClient = useQueryClient();
 
   // =============================================
-  // QUERIES (GET) - Custom Hooks
+  // 🚀 HELPER: buscar tasks com cache (ANTI-FLOOD)
   // =============================================
+  const getTasksWithCache = async (routeId: string) => {
+    const cacheKey = ["tasks-by-route", routeId];
 
-  /**
-   * Hook personalizado para buscar todas as rotas da empresa (COM TASKS)
-   */
+    const cached = queryClient.getQueryData<TaskInfo[]>(cacheKey);
+    if (cached) return cached;
+
+    const { data } = await routesApi.getRouteTasks(routeId);
+
+    queryClient.setQueryData(cacheKey, data);
+
+    return data as TaskInfo[];
+  };
+
+  const useMarkStopVisited = () =>
+  useMutation({
+    mutationFn: ({
+      routeId,
+      stopId,
+      notes,
+    }: {
+      routeId: string;
+      stopId: string;
+      notes?: string;
+    }) => routesApi.markStopVisited(routeId, stopId, notes),
+
+    onSuccess: (_, variables) => {
+      // 🔥 Atualiza apenas o necessário (evita flood)
+      queryClient.invalidateQueries({
+        queryKey: ["routes", variables.routeId],
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: ["tasks-by-route", variables.routeId],
+      });
+
+      // ⚠️ NÃO invalidar tudo
+      // ❌ queryClient.invalidateQueries(["routes"])  ← EVITE
+      // ❌ queryClient.invalidateQueries(["routes-summary"]) ← só se precisar mesmo
+    },
+  });
+
+  // =============================================
+  // 🚀 GET ALL ROUTES (OTIMIZADO)
+  // =============================================
   const useGetAllRoutes = (params?: {
     status?: string;
     startDate?: string;
@@ -34,60 +74,71 @@ export const useRoutes = () => {
       queryFn: async () => {
         const { data } = await routesApi.getAll(params);
 
-        // Buscar tasks para cada rota em paralelo
-        const routesWithTasks = await Promise.all(
-          (data as Route[]).map(async (route) => {
-            try {
-              const tasksResponse = await routesApi.getRouteTasks(route.id);
-              console.log(`📊 Tasks da rota ${route.id}:`, tasksResponse.data); // 🔥 ADICIONE
+        const routes = data as Route[];
 
-              return {
-                ...route,
-                tasks: tasksResponse.data as TaskInfo[],
-              };
-            } catch (error) {
-              console.error(`Erro ao buscar tasks da rota ${route.id}:`, error);
-              return {
-                ...route,
-                tasks: [],
-              };
-            }
-          }),
-        );
+        // 🔥 LIMITAR CONCORRÊNCIA (ANTI-THROTTLE)
+        const CONCURRENCY_LIMIT = 5;
 
-        return routesWithTasks;
+        const results: Route[] = [];
+
+        for (let i = 0; i < routes.length; i += CONCURRENCY_LIMIT) {
+          const chunk = routes.slice(i, i + CONCURRENCY_LIMIT);
+
+          const chunkResults = await Promise.all(
+            chunk.map(async (route) => {
+              try {
+                const tasks = await getTasksWithCache(route.id);
+
+                return {
+                  ...route,
+                  tasks,
+                };
+              } catch (error) {
+                console.error(`Erro ao buscar tasks da rota ${route.id}`, error);
+                return {
+                  ...route,
+                  tasks: [],
+                };
+              }
+            }),
+          );
+
+          results.push(...chunkResults);
+        }
+
+        return results;
       },
+
+      // 🔥 CONFIG ANTI-FLOOD
+      staleTime: 1000 * 60 * 5, // 5 min
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
     });
 
-  /**
-   * Hook personalizado para buscar uma rota específica por ID (COM TASKS)
-   */
+  // =============================================
+  // GET ROUTE BY ID
+  // =============================================
   const useGetRouteById = (id: string) =>
     useQuery({
       queryKey: ["routes", id],
       queryFn: async () => {
         const { data } = await routesApi.getById(id);
 
-        try {
-          const tasksResponse = await routesApi.getRouteTasks(id);
-          return {
-            ...(data as Route),
-            tasks: tasksResponse.data as TaskInfo[],
-          };
-        } catch (error) {
-          console.error(`Erro ao buscar tasks da rota ${id}:`, error);
-          return {
-            ...(data as Route),
-            tasks: [],
-          };
-        }
+        const tasks = await getTasksWithCache(id);
+
+        return {
+          ...(data as Route),
+          tasks,
+        };
       },
       enabled: !!id,
+      staleTime: 1000 * 60 * 5,
     });
 
-  /**
-   * Hook personalizado para buscar estatísticas resumidas das rotas
-   */
+  // =============================================
+  // OUTROS GETS
+  // =============================================
   const useGetSummary = () =>
     useQuery({
       queryKey: ["routes-summary"],
@@ -95,31 +146,22 @@ export const useRoutes = () => {
         const { data } = await routesApi.getSummary();
         return data as RouteStats;
       },
+      staleTime: 1000 * 60 * 2,
     });
 
-  /**
-   * Hook personalizado para buscar tarefas disponíveis para rota (com localização)
-   */
-  const useGetAvailableTasks = (params?: {
-    startDate?: string;
-    endDate?: string;
-    assignedToId?: string;
-  }) =>
+  const useGetAvailableTasks = (params?: any) =>
     useQuery({
       queryKey: ["available-tasks", params],
       queryFn: async () => {
         const { data } = await routesApi.getAvailableTasks(params);
         return data as AvailableTask[];
       },
+      staleTime: 1000 * 60 * 2,
     });
 
   // =============================================
-  // NOVOS QUERIES PARA TAREFAS
+  // TASKS
   // =============================================
-
-  /**
-   * Hook para buscar tarefas associadas a uma rota
-   */
   const useGetTasksByRoute = (routeId: string) =>
     useQuery({
       queryKey: ["tasks-by-route", routeId],
@@ -128,31 +170,19 @@ export const useRoutes = () => {
         return data as TaskInfo[];
       },
       enabled: !!routeId,
+      staleTime: 1000 * 60 * 5,
     });
 
-  /**
-   * Hook para buscar todas as tarefas (com paginação e filtros)
-   */
-  const useGetAllTasks = (params?: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    status?: string;
-    assignedToId?: string;
-    startDate?: string;
-    endDate?: string;
-  }) =>
+  const useGetAllTasks = (params?: any) =>
     useQuery({
       queryKey: ["tasks", params],
       queryFn: async () => {
         const { data } = await routesApi.getAllTasks(params);
         return data;
       },
+      staleTime: 1000 * 60 * 2,
     });
 
-  /**
-   * Hook para buscar uma tarefa específica por ID
-   */
   const useGetTaskById = (id: string) =>
     useQuery({
       queryKey: ["tasks", id],
@@ -163,16 +193,36 @@ export const useRoutes = () => {
       enabled: !!id,
     });
 
-  // =============================================
-  // MUTATIONS (POST, PATCH, DELETE)
-  // =============================================
+    const useFinalizeTask = () =>
+  useMutation({
+    mutationFn: ({
+      taskId,
+      data,
+    }: {
+      taskId: string;
+      data: FinalizeTaskDto;
+    }) => routesApi.finalizeTask(taskId, data),
 
+    onSuccess: (_, variables) => {
+      // 🔥 Atualiza apenas o essencial
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+
+      // Se você souber a rota, melhor ainda:
+      // queryClient.invalidateQueries(["tasks-by-route", routeId])
+
+      // ⚠️ Evitar isso aqui:
+      // ❌ invalidateQueries(["routes"]) em massa
+    },
+  });
+
+  // =============================================
+  // MUTATIONS
+  // =============================================
   const useCreateRoute = () =>
     useMutation({
-      mutationFn: (newRoute: CreateRouteDto) => routesApi.create(newRoute),
+      mutationFn: (data: CreateRouteDto) => routesApi.create(data),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["routes"] });
-        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
       },
     });
 
@@ -180,10 +230,9 @@ export const useRoutes = () => {
     useMutation({
       mutationFn: ({ id, data }: { id: string; data: UpdateRouteDto }) =>
         routesApi.update(id, data),
-      onSuccess: (_, variables) => {
+      onSuccess: (_, { id }) => {
         queryClient.invalidateQueries({ queryKey: ["routes"] });
-        queryClient.invalidateQueries({ queryKey: ["routes", variables.id] });
-        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
+        queryClient.invalidateQueries({ queryKey: ["routes", id] });
       },
     });
 
@@ -192,165 +241,51 @@ export const useRoutes = () => {
       mutationFn: (id: string) => routesApi.delete(id),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["routes"] });
-        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
       },
     });
 
-  const useDuplicateRoute = () =>
-    useMutation({
-      mutationFn: ({
-        id,
-        data,
-      }: {
-        id: string;
-        data: { title?: string; routeDate?: string; description?: string };
-      }) => routesApi.duplicate(id, data),
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["routes"] });
-        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
-      },
-    });
-
-  const useConvertToTasks = () =>
-    useMutation({
-      mutationFn: ({
-        id,
-        data,
-      }: {
-        id: string;
-        data: { columnId?: string; userAssignedId?: string };
-      }) => routesApi.convertToTasks(id, data),
-      onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({ queryKey: ["routes", variables.id] });
-        queryClient.invalidateQueries({ queryKey: ["routes"] });
-      },
-    });
-
-  const useMarkStopVisited = () =>
-    useMutation({
-      mutationFn: ({
-        routeId,
-        stopId,
-        notes,
-      }: {
-        routeId: string;
-        stopId: string;
-        notes?: string;
-      }) => routesApi.markStopVisited(routeId, stopId, notes),
-      onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({
-          queryKey: ["routes", variables.routeId],
-        });
-        queryClient.invalidateQueries({ queryKey: ["routes"] });
-        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
-        // Invalidar também as tarefas da rota
-        queryClient.invalidateQueries({
-          queryKey: ["tasks-by-route", variables.routeId],
-        });
-      },
-    });
-
-  const useOptimizeRoute = () =>
-    useMutation({
-      mutationFn: (data: OptimizeRouteDto) => routesApi.optimizeRoute(data),
-    });
-
-  const useFinalizeTask = () =>
-    useMutation({
-      mutationFn: ({
-        taskId,
-        data,
-      }: {
-        taskId: string;
-        data: FinalizeTaskDto;
-      }) => routesApi.finalizeTask(taskId, data),
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["available-tasks"] });
-        queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      },
-    });
-
-  // =============================================
-  // NOVAS MUTATIONS PARA TAREFAS
-  // =============================================
-
-  /**
-   * Mutation para criar uma nova tarefa
-   */
   const useCreateTask = () =>
     useMutation({
-      mutationFn: (newTask: CreateTaskDto) => routesApi.createTask(newTask),
-      onSuccess: (_, variables) => {
+      mutationFn: (data: CreateTaskDto) => routesApi.createTask(data),
+      onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
-        queryClient.invalidateQueries({ queryKey: ["available-tasks"] });
-        // Se a tarefa tem rota associada, invalidar também
-        if (variables.routeId) {
-          queryClient.invalidateQueries({
-            queryKey: ["tasks-by-route", variables.routeId],
-          });
-          queryClient.invalidateQueries({
-            queryKey: ["routes", variables.routeId],
-          });
-        }
-      },
-    });
-
-  /**
-   * Mutation para atualizar uma tarefa existente
-   */
-  const useUpdateTask = () =>
-    useMutation({
-      mutationFn: ({
-        id,
-        data,
-      }: {
-        id: string;
-        data: Partial<CreateTaskDto>;
-      }) => routesApi.updateTask(id, data),
-      onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({ queryKey: ["tasks"] });
-        queryClient.invalidateQueries({ queryKey: ["tasks", variables.id] });
-        queryClient.invalidateQueries({ queryKey: ["available-tasks"] });
-        // Invalidar também as rotas que possam conter esta tarefa
         queryClient.invalidateQueries({ queryKey: ["routes"] });
       },
     });
 
-  /**
-   * Mutation para deletar uma tarefa
-   */
+  const useUpdateTask = () =>
+    useMutation({
+      mutationFn: ({ id, data }: any) => routesApi.updateTask(id, data),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["tasks"] });
+        queryClient.invalidateQueries({ queryKey: ["routes"] });
+      },
+    });
+
   const useDeleteTask = () =>
     useMutation({
       mutationFn: (id: string) => routesApi.deleteTask(id),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
-        queryClient.invalidateQueries({ queryKey: ["available-tasks"] });
         queryClient.invalidateQueries({ queryKey: ["routes"] });
       },
     });
 
   return {
-    // Query Hooks
     useGetAllRoutes,
     useGetRouteById,
     useGetSummary,
     useGetAvailableTasks,
-    // Novos Query Hooks
     useGetTasksByRoute,
     useGetAllTasks,
     useGetTaskById,
-    // Mutation Hooks
     useCreateRoute,
     useUpdateRoute,
     useDeleteRoute,
-    useDuplicateRoute,
-    useConvertToTasks,
-    useMarkStopVisited,
-    useOptimizeRoute,
-    useFinalizeTask,
-    // Novos Mutation Hooks
     useCreateTask,
     useUpdateTask,
     useDeleteTask,
+    useMarkStopVisited,
+    useFinalizeTask 
   };
 };

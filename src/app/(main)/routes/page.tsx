@@ -748,7 +748,7 @@ export default function RoutesPage() {
         ),
       },
       {
-        header: "Tempo de intervalo",
+        header: "Tempo de visita",
         cell: (route) => {
           const totalIntervalTime = calculateTotalIntervalTime(route);
           return (

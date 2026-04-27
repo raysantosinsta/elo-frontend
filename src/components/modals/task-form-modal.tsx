@@ -556,7 +556,7 @@ export function TaskFormModal({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="flex items-center gap-2">
-                            <span> Tempo Intervalo</span>
+                            <span> Tempo de Visita</span>
                             
                           </FormLabel>
                           <FormControl>
