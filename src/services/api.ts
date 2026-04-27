@@ -296,6 +296,10 @@ export interface TaskInfo {
 // TIPOS PARA TAREFAS (NOVO)
 // =============================================
 
+// =============================================
+// TIPOS PARA TAREFAS (NOVO) - CORRIGIDO
+// =============================================
+
 export interface CreateTaskDto {
   title: string;
   description?: string;
@@ -313,7 +317,7 @@ export interface CreateTaskDto {
     complemento?: string;
     latitude?: number;
     longitude?: number;
-  };
+  } | string; // 👈 ACEITA OBJETO OU STRING
   assignedToId?: string;
   companyId?: string;
   columnId?: string;

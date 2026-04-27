@@ -292,7 +292,7 @@ export default function ProductKanban() {
               dateType: queryDateType,
               isOverdue: queryIsOverdue,
               // 🔥 INCLUIR TAREFAS REAGENDADAS
-              status: "PENDING,IN_PROGRESS,RESCHEDULED",
+              status: "PENDING,IN_PROGRESS,COMPLETED,FAILED,RESCHEDULED",
             },
           }),
           api.get(`/users/company/${user.company.id}`),
@@ -525,7 +525,8 @@ export default function ProductKanban() {
   };
 
   const handleColumnSubmit = async () => {
-    if (!colTitle.trim()) return toast.warning("O título da coluna é obrigatório.");
+    if (!colTitle.trim())
+      return toast.warning("O título da coluna é obrigatório.");
 
     setIsSubmitting(true);
 

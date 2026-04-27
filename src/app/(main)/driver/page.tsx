@@ -827,15 +827,15 @@ export default function DriverPage() {
           longitude: currentStop.longitude,
         };
 
-        const createTaskPayload: CreateTaskDto = {
-          title: taskData.title,
-          description: taskData.description,
-          dueDate: taskData.dueDate,
-          address: taskAddress,
-          companyId: (route as any)?.companyId,
-          columnId: defaultColumnId,
-          priority: 1,
-        };
+const createTaskPayload: CreateTaskDto = {
+  title: taskData.title,
+  description: taskData.description,
+  dueDate: taskData.dueDate,
+  address: JSON.stringify(taskAddress), // 🔥 CORREÇÃO AQUI
+  companyId: (route as any)?.companyId,
+  columnId: defaultColumnId,
+  priority: 1,
+};
 
         await createTask.mutateAsync(createTaskPayload);
 
