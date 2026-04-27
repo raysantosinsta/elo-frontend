@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // hooks/useRoutes.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
+import api, {
   routesApi,
   Route,
   CreateRouteDto,

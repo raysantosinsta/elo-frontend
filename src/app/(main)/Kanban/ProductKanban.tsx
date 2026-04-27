@@ -28,7 +28,6 @@ import { useKanbanDrag } from "@/hooks/use-kanban-drag";
 
 // --- Componentes Base do Kanban ---
 import { KanbanLayout } from "@/components/kanban/kanban-layout";
-// Certifique-se que o caminho abaixo está correto na sua pasta
 import { KanbanHeader } from "@/components/kanban/kanban-header";
 import { KanbanFilter } from "@/components/kanban/kanban-filter";
 import { KanbanBoard } from "@/components/kanban/kanban-board";
@@ -87,7 +86,7 @@ interface Task {
   dueDate?: string;
   scheduledDate?: string;
   finalComment?: string;
-  intervalTime?: number | null; // 🔥 ADICIONE ESTA LINHA
+  intervalTime?: number | null;
   taskAddress?: TaskAddress | null;
   taskImages: MediaFile[];
   taskAudios: MediaFile[];
@@ -116,9 +115,7 @@ export interface Supplier {
 }
 
 // --- Helpers ---
-// Formata a data sem timezone - SIMPLES
 const formatDateShort = (dateStr: string) => {
-  // Pega só a parte YYYY-MM-DD da string
   const [year, month, day] = dateStr.split("T")[0].split("-");
   const months = [
     "jan",
@@ -137,20 +134,20 @@ const formatDateShort = (dateStr: string) => {
   return `${parseInt(day)} ${months[parseInt(month) - 1]}`;
 };
 
-// Verifica se está atrasada - SIMPLES
 const isOverdue = (dateStr: string) => {
-  const datePart = dateStr.split("T")[0]; // "2026-04-23"
+  const datePart = dateStr.split("T")[0];
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   return datePart < todayStr;
 };
 
 const getPriorityColor = (p: number) => {
-  if (p === 1) return "#E74C3C"; // Alta
-  if (p === 2) return "#F1C40F"; // Média
-  return "#27AE60"; // Baixa
+  if (p === 1) return "#E74C3C";
+  if (p === 2) return "#F1C40F";
+  return "#27AE60";
 };
 
+// 🔥 FUNÇÃO CORRIGIDA - Substituir "Falhou" por "Reagendada"
 const getStatusConfig = (status: string) => {
   switch (status) {
     case "PENDING":
@@ -160,7 +157,10 @@ const getStatusConfig = (status: string) => {
     case "COMPLETED":
       return { label: "Concluído", color: "#27AE60" };
     case "FAILED":
-      return { label: "Falhou", color: "#E74C3C" };
+      // 🔥 AGORA EXIBE "REAGENDADA" EM VEZ DE "FALHOU"
+      return { label: "Reagendada", color: "#F39C12" };
+    case "RESCHEDULED":
+      return { label: "Reagendada", color: "#F39C12" };
     default:
       return { label: status, color: "#95A5A6" };
   }
@@ -208,7 +208,6 @@ export default function ProductKanban() {
     return searchParams.get("filter") === "overdue";
   });
 
-  // Estado para o loading do botão de filtrar
   const [isFiltering, setIsFiltering] = useState(false);
 
   // Hook de Drag & Drop
@@ -245,7 +244,6 @@ export default function ProductKanban() {
     },
   });
 
-  // Helper de Normalização
   const normalizeText = (text: string) => {
     return text
       .normalize("NFD")
@@ -256,7 +254,6 @@ export default function ProductKanban() {
   // --- fetchData ---
   const fetchData = useCallback(
     async (forceClear = false) => {
-      // Se forceClear for true, ignoramos COMPLETAMENTE a URL
       const urlType = !forceClear ? searchParams.get("filterType") : null;
       const urlStart = !forceClear ? searchParams.get("startDate") : null;
       const urlEnd = !forceClear ? searchParams.get("endDate") : null;
@@ -269,8 +266,6 @@ export default function ProductKanban() {
       if (!user?.company?.id) return;
       setLoading(true);
       try {
-        // 2. Usa os valores "Ativos" calculados acima
-        // Converte para ISO apenas se existir valor
         const queryStartDate = activeStartDate
           ? new Date(activeStartDate).toISOString()
           : undefined;
@@ -296,6 +291,8 @@ export default function ProductKanban() {
               assignedToId: queryAssigned,
               dateType: queryDateType,
               isOverdue: queryIsOverdue,
+              // 🔥 INCLUIR TAREFAS REAGENDADAS
+              status: "PENDING,IN_PROGRESS,RESCHEDULED",
             },
           }),
           api.get(`/users/company/${user.company.id}`),
@@ -306,7 +303,6 @@ export default function ProductKanban() {
           ? colsRes.data
           : colsRes.data.columns || [];
 
-        // Ordenação inicial (segurança extra na carga)
         const sortedCols = colsData.sort((a: any, b: any) => {
           const titleA = normalizeText(a.title);
           const titleB = normalizeText(b.title);
@@ -326,15 +322,7 @@ export default function ProductKanban() {
           ? tasksRes.data.data
           : tasksRes.data.tasks || [];
 
-        // 🔥 LOG DETALHADO
-        if (tasksData.length > 0) {
-          console.log("📦 Primeira task do backend:", tasksData[0]);
-          console.log("📦 Campos disponíveis:", Object.keys(tasksData[0]));
-          console.log("📦 intervalTime:", tasksData[0].intervalTime);
-        }
-
         setTasks(tasksData);
-
         setUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
         const supData = Array.isArray(suppliersRes.data)
           ? suppliersRes.data
@@ -361,12 +349,11 @@ export default function ProductKanban() {
     const filterParam = searchParams.get("filter");
     const typeParam = searchParams.get("filterType");
     const startDateParam = searchParams.get("startDate");
-    const endDateParam = searchParams.get("endDate"); // Pegar o endDate da URL
+    const endDateParam = searchParams.get("endDate");
 
     if (typeParam === "scheduled" && startDateParam) {
       setFilterDateType("scheduled");
       setFilterStartDate(startDateParam);
-      // Se houver endDate na URL, aplica, senão limpa
       setFilterEndDate(endDateParam || "");
       setFilterOverdue(false);
     } else if (filterParam === "overdue") {
@@ -376,7 +363,6 @@ export default function ProductKanban() {
 
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     user?.company?.id,
     filterStartDate,
@@ -393,24 +379,18 @@ export default function ProductKanban() {
   };
 
   const handleClearFilters = async () => {
-    // 1. Limpa os estados (opcional, já que a página vai recarregar)
     setFilterStartDate("");
     setFilterEndDate("");
     setFilterAssignedTo("all");
     setFilterDateType("created");
     setFilterOverdue(false);
-
-    // 2. Força o navegador a carregar a URL limpa do zero
-    // Isso equivale ao F5 manual, mas redirecionando para a rota sem parâmetros
     window.location.href = "/Kanban";
   };
 
   const toggleOverdueFilter = () => {
     if (filterOverdue) {
-      // Se já estiver selecionado, limpa tudo (URL e Estados)
       handleClearFilters();
     } else {
-      // Se não estiver selecionado, ativa apenas o filtro de atrasadas
       setFilterOverdue(true);
     }
   };
@@ -477,7 +457,6 @@ export default function ProductKanban() {
         values[key] !== null &&
         values[key] !== ""
       ) {
-        // 🔥 TRATAMENTO ESPECIAL PARA intervalTime
         if (key === "intervalTime") {
           const intervalValue = parseInt(values[key]);
           if (!isNaN(intervalValue) && intervalValue >= 0) {
@@ -494,14 +473,12 @@ export default function ProductKanban() {
       formData.append("address", JSON.stringify(addressData));
     }
 
-    // 🔥 SE FOR EDIÇÃO E TIVER intervalTime, GARANTIR QUE ENVIA
     if (
       editingTask &&
       editingTask.intervalTime !== undefined &&
       editingTask.intervalTime !== null
     ) {
       if (!values.intervalTime && values.intervalTime !== 0) {
-        // Se não veio no values mas tem no editingTask, manter o valor
         formData.append("intervalTime", editingTask.intervalTime.toString());
       }
     }
@@ -522,8 +499,6 @@ export default function ProductKanban() {
 
     try {
       const taskId = values.id || editingTask?.id;
-
-      // 🔥 CORREÇÃO: Configuração explícita do Header para Multipart
       const multipartConfig = {
         headers: { "Content-Type": "multipart/form-data" },
       };
@@ -549,47 +524,33 @@ export default function ProductKanban() {
     }
   };
 
-  // 🔥🔥🔥 A CORREÇÃO PRINCIPAL ESTÁ AQUI 🔥🔥🔥
   const handleColumnSubmit = async () => {
-    // 1. Validação básica
-    if (!colTitle.trim())
-      return toast.warning("O título da coluna é obrigatório.");
+    if (!colTitle.trim()) return toast.warning("O título da coluna é obrigatório.");
 
     setIsSubmitting(true);
 
     try {
       if (editingCol) {
-        // --- EDIÇÃO ---
         await api.put(`/kanban-columns/${editingCol.id}`, {
           title: colTitle,
         });
         toast.success("Coluna atualizada com sucesso!");
       } else {
-        // --- CRIAÇÃO ---
-        // O backend calcula a ordem e pega a empresa do token automaticamente.
-        // Enviamos APENAS o título.
         await api.post("/kanban-columns", {
           title: colTitle,
         });
-
         toast.success("Coluna criada com sucesso!");
       }
 
-      // Limpeza e Refresh
       setIsColumnModal(false);
       setColTitle("");
       setEditingCol(null);
-
-      // Pequeno delay para garantir que o banco processou
       setTimeout(() => fetchData(true), 150);
     } catch (err: any) {
       console.error("Erro na coluna:", err);
-
-      // 2. Tratamento de Erro Detalhado
       if (err.response?.status === 403) {
         toast.error("Você não tem permissão para gerenciar colunas.");
       } else if (err.response?.data?.message) {
-        // Mostra o erro que o Backend mandou (ex: "Título duplicado")
         toast.error(err.response.data.message);
       } else {
         toast.error("Erro ao salvar a coluna. Tente novamente.");
@@ -634,11 +595,8 @@ export default function ProductKanban() {
       const isADone = doneVariants.some((v) => titleA.includes(v));
       const isBDone = doneVariants.some((v) => titleB.includes(v));
 
-      // Regra Suprema: Concluído sempre pesa infinito positivo
-      if (isADone && !isBDone) return 1; // A vai pro fundo
-      if (!isADone && isBDone) return -1; // B vai pro fundo
-
-      // Desempate por ordem numérica normal
+      if (isADone && !isBDone) return 1;
+      if (!isADone && isBDone) return -1;
       return (a.order || 0) - (b.order || 0);
     });
   }, [columns]);
@@ -656,7 +614,7 @@ export default function ProductKanban() {
       <KanbanHeader
         title="Fluxo de Tarefas"
         icon={<Layout className="w-5 h-5 text-[#D35400]" />}
-        onAddColumn={handleOpenNewColumn} // <--- AQUI GARANTIMOS QUE O BOTÃO FUNCIONA
+        onAddColumn={handleOpenNewColumn}
         rightContent={
           <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs text-gray-300">
             <span>{tasks.length} Tarefas</span>
@@ -726,10 +684,8 @@ export default function ProductKanban() {
         <div className="flex items-end mt-5">
           <Button
             size="sm"
-            // Mantém o destaque visual se filterOverdue for true
             variant={filterOverdue ? "destructive" : "outline"}
             className={`h-8 text-xs ${filterOverdue ? "bg-red-100 text-red-600 border-red-200 hover:bg-red-200" : ""}`}
-            // 🔥 Troque o onClick antigo por este:
             onClick={toggleOverdueFilter}
           >
             <AlertTriangle className="w-3 h-3 mr-2" />
@@ -775,7 +731,6 @@ export default function ProductKanban() {
       </KanbanFilter>
 
       <KanbanBoard>
-        {/* 🔥 USO DO VISUAL COLUMNS AQUI */}
         {visualColumns.map((col) => {
           const colTasks = tasks.filter((t) => t.columnId === col.id);
           const isDoneColumn = ["concluído", "concluido", "done"].includes(
@@ -790,7 +745,7 @@ export default function ProductKanban() {
               count={colTasks.length}
               color={isDoneColumn ? "#27AE60" : undefined}
               onDropItem={moveItem}
-              showAddButton={!isDoneColumn} // 🔥 MOSTRA BOTÃO EM TODAS AS COLUNAS EXCETO CONCLUÍDO
+              showAddButton={!isDoneColumn}
               onAddClick={
                 isDoneColumn ? undefined : () => handleAddTaskFromColumn(col.id)
               }
@@ -814,15 +769,6 @@ export default function ProductKanban() {
             >
               {colTasks.map((task) => {
                 const statusConfig = getStatusConfig(task.status);
-
-                // 🔥 LOG PARA VERIFICAR
-                console.log("Task:", {
-                  id: task.id,
-                  title: task.title,
-                  finalComment: task.finalComment,
-                  status: task.status,
-                  hasComment: !!task.finalComment,
-                });
 
                 const totalAttachments =
                   (task.taskImages?.length || 0) +
@@ -984,7 +930,7 @@ export default function ProductKanban() {
                       : "Baixa"}
                 </span>
                 <span className="text-[10px] uppercase tracking-wider bg-orange-50 px-2 py-0.5 rounded font-bold text-orange-600">
-                  {previewTask?.status}
+                  {getStatusConfig(previewTask?.status || "").label}
                 </span>
               </div>
             </div>

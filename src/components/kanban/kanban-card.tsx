@@ -148,12 +148,12 @@ export function KanbanCard({
             )}
 
             {/* 🔥 BADGE DE COMENTÁRIO DE ERRO */}
-            {hasErrorComment && (
+            {/* {hasErrorComment && (
               <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white uppercase leading-none inline-flex items-center gap-1">
                 <AlertTriangle size={8} />
                 Com erro
               </span>
-            )}
+            )} */}
 
             {tags}
           </div>
