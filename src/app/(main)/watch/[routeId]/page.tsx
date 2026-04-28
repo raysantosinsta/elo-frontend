@@ -2,20 +2,24 @@
 "use client";
 
 import { useRoutes } from "@/hooks/useRoutes";
-import api from "@/services/api";
-import { motion } from "framer-motion";
+import { useLocationWebSocket } from "@/hooks/useLocationWebSocket";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeft,
+  CheckCircle,
   Loader2,
   MapPin,
   Signal,
   WifiOff,
+  LayoutGrid,
+  PartyPopper,
+  Trophy,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Socket } from "socket.io-client";
 import ObserverMap from "@/components/ObserverMap";
+import api from "@/services/api";
 
 // Skelecton de carregamento
 const WatchSkeleton = () => (
@@ -78,6 +82,156 @@ const ConnectionStatus = ({
   );
 };
 
+// 🔥 COMPONENTE DE MODAL DE FINALIZAÇÃO
+const RouteCompleteModal = ({
+  isOpen,
+  onClose,
+  onGoToKanban,
+  routeTitle,
+  totalStops,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onGoToKanban: () => void;
+  routeTitle: string;
+  totalStops: number;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[1100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl text-center"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+              className="mx-auto w-20 h-20 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mb-4"
+            >
+              <PartyPopper className="text-green-500" size={40} />
+            </motion.div>
+
+            <motion.h2
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="text-2xl font-bold text-green-600 mb-2"
+            >
+              Rota Finalizada! 🎉
+            </motion.h2>
+
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="text-slate-600 text-sm mb-4"
+            >
+              O motorista concluiu todas as {totalStops}{" "}
+              {totalStops === 1 ? "parada" : "paradas"} da rota
+            </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="bg-slate-50 rounded-xl p-3 mb-6"
+            >
+              <p className="text-xs text-slate-500 mb-1">Rota concluída</p>
+              <p className="font-medium text-slate-800">{routeTitle}</p>
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <CheckCircle size={14} className="text-green-500" />
+                <span className="text-xs text-green-600">
+                  Todas as tarefas foram realizadas
+                </span>
+              </div>
+            </motion.div>
+
+            <div className="flex flex-col gap-2">
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                onClick={onGoToKanban}
+                className="w-full py-3 bg-gradient-to-r from-[#D35400] to-[#e67e22] text-white rounded-xl font-bold hover:from-[#b84700] hover:to-[#d35400] transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg"
+              >
+                <LayoutGrid size={18} />
+                Ver Kanban de Tarefas
+              </motion.button>
+
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.7 }}
+                onClick={onClose}
+                className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
+              >
+                Fechar
+              </motion.button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+// 🔥 COMPONENTE DE NOTIFICAÇÃO FLUTUANTE
+const FloatingNotification = ({
+  message,
+  subMessage,
+  isVisible,
+  onClose,
+}: {
+  message: string;
+  subMessage?: string;
+  isVisible: boolean;
+  onClose: () => void;
+}) => {
+  useEffect(() => {
+    if (isVisible) {
+      const timer = setTimeout(() => {
+        onClose();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, onClose]);
+
+  if (!isVisible) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 100 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 100 }}
+      className="fixed top-20 right-4 z-[600] bg-white rounded-xl shadow-2xl p-4 max-w-sm border-l-4 border-green-500"
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0">
+          <Trophy className="text-green-500" size={24} />
+        </div>
+        <div className="flex-1">
+          <h4 className="font-bold text-slate-800 text-sm">{message}</h4>
+          {subMessage && (
+            <p className="text-xs text-slate-500 mt-1">{subMessage}</p>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="text-slate-400 hover:text-slate-600"
+        >
+          ✕
+        </button>
+      </div>
+    </motion.div>
+  );
+};
+
 export default function WatchPage() {
   const params = useParams();
   const router = useRouter();
@@ -88,6 +242,7 @@ export default function WatchPage() {
     data: route,
     isLoading: isLoadingRoute,
     error,
+    refetch,
   } = useGetRouteById(routeId || "");
 
   // 🔥 ORDENAR AS PARADAS
@@ -95,202 +250,196 @@ export default function WatchPage() {
     if (!route?.stops) return [];
 
     const stopsWithOrder = route.stops.filter(
-      (stop: any) => stop.order !== undefined && stop.order !== null
+      (stop: any) => stop.order !== undefined && stop.order !== null,
     );
     const stopsWithoutOrder = route.stops.filter(
-      (stop: any) => stop.order === undefined || stop.order === null
+      (stop: any) => stop.order === undefined || stop.order === null,
     );
 
     const sortedWithOrder = [...stopsWithOrder].sort(
-      (a, b) => (a.order ?? 0) - (b.order ?? 0)
+      (a, b) => (a.order ?? 0) - (b.order ?? 0),
     );
 
     return [...sortedWithOrder, ...stopsWithoutOrder];
   }, [route?.stops]);
 
   // 🔥 ESTADOS
-  const [optimizedRoutePath, setOptimizedRoutePath] = useState<[number, number][]>([]);
-  const [driverLocation, setDriverLocation] = useState<[number, number] | null>(null);
+  const [optimizedRoutePath, setOptimizedRoutePath] = useState<
+    [number, number][]
+  >([]);
+  const [driverLocation, setDriverLocation] = useState<[number, number] | null>(
+    null,
+  );
   const [isDriverOnline, setIsDriverOnline] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [hasReceivedFirstLocation, setHasReceivedFirstLocation] = useState(false);
+  const [hasReceivedFirstLocation, setHasReceivedFirstLocation] =
+    useState(false);
   const [isLoadingRoutePath, setIsLoadingRoutePath] = useState(false);
-  
-  // 🔥 NOVOS ESTADOS PARA CONTROLE DE ROTA
+
+  // 🔥 ESTADOS PARA FEEDBACK DE FINALIZAÇÃO
+  const [isRouteFinished, setIsRouteFinished] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [showFloatingNotification, setShowFloatingNotification] =
+    useState(false);
+
+  // 🔥 ESTADOS PARA CONTROLE DE ROTA
   const [isRouteLoaded, setIsRouteLoaded] = useState(false);
-  
-  const socketRef = useRef<Socket | null>(null);
-  
-  // 🔥 GUARDAR A ÚLTIMA ROTA RECEBIDA DO BACKEND
+
+  // 🔥 GUARDAR A ÚLTIMA ROTA RECEBIDA
   const lastOptimizedRouteRef = useRef<[number, number][]>([]);
-  
-  // 🔥 GUARDAR O ÚLTIMO ESTADO DE PARADAS VISITADAS
   const lastVisitedCountRef = useRef(0);
 
   const totalStops = orderedStops.length;
-  const visitedStops = orderedStops
-    .filter((stop: any) => stop.visited === true)
-    .map((s: any) => s.id) || [];
+  const visitedStops =
+    orderedStops
+      .filter((stop: any) => stop.visited === true)
+      .map((s: any) => s.id) || [];
 
-  // 🔥 FUNÇÃO PARA BUSCAR ROTA UMA ÚNICA VEZ (quando necessário)
-  const fetchOptimizedRouteOnce = useCallback(async (force = false) => {
-    // Se já tem rota carregada e não está forçando, NÃO recalculada
-    if (!force && isRouteLoaded && lastOptimizedRouteRef.current.length > 0) {
-      console.log("✅ [Watch] Rota já carregada, pulando recálculo desnecessário");
-      return;
-    }
+  // 🔥 VERIFICAR SE A ROTA FOI FINALIZADA
+  const isRouteActuallyFinished = useMemo(() => {
+    return (
+      route?.status === "FINISHED" ||
+      (visitedStops.length === totalStops && totalStops > 0)
+    );
+  }, [route?.status, visitedStops, totalStops]);
 
-    if (!route?.stops || orderedStops.length === 0) {
-      console.log("⚠️ [Watch] Sem paradas para calcular rota");
-      return;
-    }
+  // 🔥 CALLBACKS MEMOIZADOS PARA EVITAR RECONEXÕES
+  const handleLocationUpdate = useCallback((location: any) => {
+    console.log(
+      `📍 [Watch] Motorista em: ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`,
+    );
+    setDriverLocation([location.latitude, location.longitude]);
+    setIsDriverOnline(true);
+    setLastUpdate(new Date());
+    setIsSimulating(location.isSimulating || false);
+    setHasReceivedFirstLocation(true);
+  }, []);
 
-    // Pega os IDs das tarefas associadas às paradas
-    const taskIds = orderedStops
-      .map((stop: any) => stop.taskId)
-      .filter((id: string) => id);
+  const handleDriverOffline = useCallback(() => {
+    console.warn("⚠️ [Watch] Motorista offline");
+    setIsDriverOnline(false);
+  }, []);
 
-    if (taskIds.length === 0) {
-      console.log("⚠️ [Watch] Nenhum taskId encontrado, usando fallback");
-      const fallbackPoints = orderedStops.map((stop: any) => [
-        stop.latitude,
-        stop.longitude,
-      ] as [number, number]);
-      setOptimizedRoutePath(fallbackPoints);
-      lastOptimizedRouteRef.current = fallbackPoints;
-      setIsRouteLoaded(true);
-      return;
-    }
+  const handleRouteFinished = useCallback(
+    (data: any) => {
+      console.log("🎉 [Watch] ROTA FINALIZADA! Mostrando feedback...", data);
+      refetch();
+      setIsRouteFinished(true);
+      setShowFloatingNotification(true);
+      setTimeout(() => {
+        setShowCompletionModal(true);
+      }, 1000);
+    },
+    [refetch],
+  );
 
-    setIsLoadingRoutePath(true);
+  // 🔥 WEBSOCKET - Usando callbacks memoizados
+  const { isConnected: wsConnected } = useLocationWebSocket({
+    routeId: routeId || "",
+    driverId: route?.userAssigned?.id,
+    onLocationUpdate: handleLocationUpdate,
+    onDriverOffline: handleDriverOffline,
+    onRouteFinished: handleRouteFinished,
+  });
 
-    try {
-      // Usa a localização atual do motorista (se disponível)
-      let startLat: number;
-      let startLng: number;
-
-      if (driverLocation && driverLocation[0] && driverLocation[1]) {
-        startLat = driverLocation[0];
-        startLng = driverLocation[1];
-        console.log("📍 [Watch] Usando localização REAL do motorista:", startLat, startLng);
-      } else {
-        // Fallback: usa a primeira parada
-        startLat = orderedStops[0]?.latitude;
-        startLng = orderedStops[0]?.longitude;
-        console.log("⚠️ [Watch] Sem localização do motorista, usando primeira parada");
-      }
-
-      console.log("🔄 [Watch] Buscando rota otimizada do backend (APENAS UMA VEZ)...");
-      console.log("   Task IDs:", taskIds.length);
-      console.log("   OrderBy:", route.orderBy);
-
-      const response = await api.post("/routes/calculate-best-path", {
-        taskIds: taskIds,
-        driverLatitude: startLat,
-        driverLongitude: startLng,
-        orderBy: route.orderBy || "DISTANCE",
-      });
-
-      console.log("✅ [Watch] Rota otimizada recebida do backend");
-
-      const optimizedTasks = response.data.route || [];
-      
-      // Construir a rota: motorista + paradas na ordem otimizada
-      const points: [number, number][] = [];
-      
-      // Primeiro ponto: localização atual do motorista
-      if (driverLocation && driverLocation[0] && driverLocation[1]) {
-        points.push(driverLocation);
-      }
-      
-      // Depois as paradas na ordem otimizada pelo backend
-      optimizedTasks.forEach((task: any) => {
-        const lat = task.taskAddress?.latitude || task.latitude;
-        const lng = task.taskAddress?.longitude || task.longitude;
-        if (lat && lng) {
-          points.push([lat, lng]);
-        }
-      });
-
-      console.log(`📍 [Watch] Rota otimizada com ${points.length} pontos`);
-      setOptimizedRoutePath(points);
-      lastOptimizedRouteRef.current = points;
-      setIsRouteLoaded(true);
-    } catch (error) {
-      console.error("❌ [Watch] Erro ao buscar rota otimizada:", error);
-      // Fallback: usa a ordem das paradas
-      const fallbackPoints = [
-        ...(driverLocation ? [driverLocation] : []),
-        ...orderedStops.map((stop: any) => [stop.latitude, stop.longitude] as [number, number])
-      ];
-      setOptimizedRoutePath(fallbackPoints);
-      lastOptimizedRouteRef.current = fallbackPoints;
-      setIsRouteLoaded(true);
-    } finally {
-      setIsLoadingRoutePath(false);
-    }
-  }, [route, orderedStops, driverLocation, isRouteLoaded]);
-
-  // 🔥 WEBSOCKET - APENAS ATUALIZA LOCALIZAÇÃO, NÃO RECALCULA ROTA
-  useEffect(() => {
-    if (!routeId) return;
-
-    import("socket.io-client").then(({ io }) => {
-      const driverId = route?.userAssigned?.id;
-      if (!driverId) {
-        console.log("⚠️ [Watch] Aguardando ID do motorista...");
+  // 🔥 FUNÇÃO PARA BUSCAR ROTA UMA ÚNICA VEZ
+  const fetchOptimizedRouteOnce = useCallback(
+    async (force = false) => {
+      if (!force && isRouteLoaded && lastOptimizedRouteRef.current.length > 0) {
+        console.log("✅ [Watch] Rota já carregada, pulando recálculo");
         return;
       }
 
-      const params = new URLSearchParams({
-        routeId,
-        driverId,
-      });
+      if (!route?.stops || orderedStops.length === 0) {
+        console.log("⚠️ [Watch] Sem paradas para calcular rota");
+        return;
+      }
 
-      const socketUrl = `${process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3000"}/locations?${params}`;
-      console.log(`🔌 [Watch] Conectando WebSocket como observador`);
+      const taskIds = orderedStops
+        .map((stop: any) => stop.taskId)
+        .filter((id: string) => id);
 
-      const socket = io(socketUrl, {
-        transports: ["websocket"],
-      });
+      if (taskIds.length === 0) {
+        console.log("⚠️ [Watch] Nenhum taskId encontrado, usando fallback");
+        const fallbackPoints = orderedStops.map(
+          (stop: any) => [stop.latitude, stop.longitude] as [number, number],
+        );
+        setOptimizedRoutePath(fallbackPoints);
+        lastOptimizedRouteRef.current = fallbackPoints;
+        setIsRouteLoaded(true);
+        return;
+      }
 
-      socketRef.current = socket;
+      setIsLoadingRoutePath(true);
 
-      socket.on("connect", () => {
-        console.log("✅ [Watch] WebSocket conectado (observador)");
-      });
+      try {
+        let startLat: number;
+        let startLng: number;
 
-      socket.on("disconnect", () => {
-        console.log("❌ [Watch] WebSocket desconectado");
-        setIsDriverOnline(false);
-      });
-
-      // 🔥 CRÍTICO: Só atualiza a localização do motorista, NUNCA recalcula a rota aqui
-      socket.on("location-update", (location: any) => {
-        console.log(`📍 [Watch] Motorista em: ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`);
-        setDriverLocation([location.latitude, location.longitude]);
-        setIsDriverOnline(true);
-        setLastUpdate(new Date());
-        setIsSimulating(location.isSimulating || false);
-        setHasReceivedFirstLocation(true);
-      });
-
-      socket.on("driver-offline", () => {
-        console.warn("⚠️ [Watch] Motorista offline");
-        setIsDriverOnline(false);
-      });
-
-      return () => {
-        if (socketRef.current) {
-          socketRef.current.disconnect();
-          socketRef.current = null;
+        if (driverLocation && driverLocation[0] && driverLocation[1]) {
+          startLat = driverLocation[0];
+          startLng = driverLocation[1];
+          console.log("📍 [Watch] Usando localização REAL do motorista");
+        } else {
+          startLat = orderedStops[0]?.latitude;
+          startLng = orderedStops[0]?.longitude;
+          console.log("⚠️ [Watch] Sem localização, usando primeira parada");
         }
-      };
-    });
-  }, [routeId, route?.userAssigned?.id]);
 
-  // 🔥 CARREGAR ROTA PELA PRIMEIRA VEZ (quando tem localização do motorista E paradas)
+        console.log("🔄 [Watch] Buscando rota otimizada (APENAS UMA VEZ)...");
+
+        const response = await api.post("/routes/calculate-best-path", {
+          taskIds: taskIds,
+          driverLatitude: startLat,
+          driverLongitude: startLng,
+          orderBy: route.orderBy || "DISTANCE",
+        });
+
+        const optimizedTasks = response.data.route || [];
+        const points: [number, number][] = [];
+
+        if (driverLocation && driverLocation[0] && driverLocation[1]) {
+          points.push(driverLocation);
+        }
+
+        optimizedTasks.forEach((task: any) => {
+          const lat = task.taskAddress?.latitude || task.latitude;
+          const lng = task.taskAddress?.longitude || task.longitude;
+          if (lat && lng) {
+            points.push([lat, lng]);
+          }
+        });
+
+        console.log(`📍 [Watch] Rota otimizada com ${points.length} pontos`);
+
+        console.log("📋 ORDEM DA ROTA CALCULADA:");
+        optimizedTasks.forEach((task: any, idx: number) => {
+          console.log(`   ${idx + 1}. ${task.title}`);
+        });
+
+        setOptimizedRoutePath(points);
+        lastOptimizedRouteRef.current = points;
+        setIsRouteLoaded(true);
+      } catch (error) {
+        console.error("❌ [Watch] Erro ao buscar rota:", error);
+        const fallbackPoints = [
+          ...(driverLocation ? [driverLocation] : []),
+          ...orderedStops.map(
+            (stop: any) => [stop.latitude, stop.longitude] as [number, number],
+          ),
+        ];
+        setOptimizedRoutePath(fallbackPoints);
+        lastOptimizedRouteRef.current = fallbackPoints;
+        setIsRouteLoaded(true);
+      } finally {
+        setIsLoadingRoutePath(false);
+      }
+    },
+    [route, orderedStops, driverLocation, isRouteLoaded],
+  );
+
+  // 🔥 EFECTS (TODOS ANTES DOS EARLY RETURNS)
   useEffect(() => {
     if (driverLocation && orderedStops.length > 0 && !isRouteLoaded) {
       console.log("🚀 [Watch] Primeira carga da rota...");
@@ -298,31 +447,60 @@ export default function WatchPage() {
     }
   }, [driverLocation, orderedStops, isRouteLoaded, fetchOptimizedRouteOnce]);
 
-  // 🔥 QUANDO UMA PARADA É VISITADA, RECALCULA ROTA (MAS SÓ QUANDO NECESSÁRIO)
   useEffect(() => {
     const currentVisitedCount = visitedStops.length;
-    
-    // Se o número de paradas visitadas mudou
-    if (currentVisitedCount !== lastVisitedCountRef.current && currentVisitedCount > 0) {
-      console.log(`🔄 [Watch] Parada concluída! Recalculando rota (${currentVisitedCount}/${totalStops})`);
+    if (
+      currentVisitedCount !== lastVisitedCountRef.current &&
+      currentVisitedCount > 0
+    ) {
+      console.log(
+        `📊 [Watch] Progresso: ${currentVisitedCount}/${totalStops} paradas concluídas`,
+      );
       lastVisitedCountRef.current = currentVisitedCount;
-      
-      // Limpar flag para forçar recálculo
-      setIsRouteLoaded(false);
-      lastOptimizedRouteRef.current = [];
-      
-      // Pequeno delay para garantir que o estado foi atualizado
-      setTimeout(() => {
-        fetchOptimizedRouteOnce(true);
-      }, 100);
+      refetch();
     }
-  }, [visitedStops, totalStops, fetchOptimizedRouteOnce]);
+  }, [visitedStops, totalStops, refetch]);
+
+  useEffect(() => {
+    if (isRouteActuallyFinished && !isRouteFinished && totalStops > 0) {
+      console.log("🎉 [WatchPage] ROTA FINALIZADA! Mostrando feedback...");
+      setIsRouteFinished(true);
+      setShowFloatingNotification(true);
+      setTimeout(() => {
+        setShowCompletionModal(true);
+      }, 1000);
+    }
+  }, [isRouteActuallyFinished, isRouteFinished, totalStops]);
+
+  useEffect(() => {
+    if (orderedStops.length > 0) {
+      console.log("📋 PARADAS RECEBIDAS DO BACKEND (ordem original):");
+      orderedStops.forEach((stop: any, idx: number) => {
+        console.log(
+          `   ${idx + 1}. ${stop.name} - order: ${stop.order}, visited: ${stop.visited}`,
+        );
+      });
+    }
+  }, [orderedStops]);
 
   // 🔥 HANDLERS
   const handleBack = useCallback(() => router.back(), [router]);
-  const prefetchRoutes = useCallback(() => router.prefetch("/routes"), [router]);
+  const handleGoToKanban = useCallback(() => {
+    setShowCompletionModal(false);
+    router.push("/kanban");
+  }, [router]);
+  const handleCloseModal = useCallback(() => {
+    setShowCompletionModal(false);
+  }, []);
+  const handleCloseNotification = useCallback(() => {
+    setShowFloatingNotification(false);
+  }, []);
+  const prefetchRoutes = useCallback(
+    () => router.prefetch("/routes"),
+    [router],
+  );
 
-  // 🔥 LOADING E ERROR STATES
+  // 🔥 EARLY RETURNS
   if (isLoadingRoute) return <WatchSkeleton />;
 
   if (error || !route) {
@@ -343,6 +521,10 @@ export default function WatchPage() {
       </div>
     );
   }
+
+  const progressPercent =
+    totalStops > 0 ? (visitedStops.length / totalStops) * 100 : 0;
+  const isComplete = progressPercent >= 100;
 
   // 🔥 RENDER
   return (
@@ -402,16 +584,19 @@ export default function WatchPage() {
             <div className="mt-3">
               <div className="flex justify-between text-xs text-slate-400 mb-1">
                 <span>Progresso do motorista</span>
-                <span>
-                  {Math.round((visitedStops.length / totalStops) * 100)}%
+                <span className="flex items-center gap-1">
+                  {isComplete && (
+                    <CheckCircle size={12} className="text-green-500" />
+                  )}
+                  {Math.round(progressPercent)}%
                 </span>
               </div>
               <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[#D35400] rounded-full transition-all duration-500"
-                  style={{
-                    width: `${(visitedStops.length / totalStops) * 100}%`,
-                  }}
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    isComplete ? "bg-green-500" : "bg-[#D35400]"
+                  }`}
+                  style={{ width: `${progressPercent}%` }}
                 />
               </div>
             </div>
@@ -430,8 +615,43 @@ export default function WatchPage() {
         />
       </div>
 
-      {/* 🔥 Indicador de aguardando motorista - SÓ APARECE SE NUNCA RECEBEU LOCALIZAÇÃO */}
-      {!hasReceivedFirstLocation && !driverLocation && (
+      {/* NOTIFICAÇÃO FLUTUANTE */}
+      <FloatingNotification
+        isVisible={showFloatingNotification}
+        message="🎉 Rota Finalizada!"
+        subMessage={`O motorista concluiu todas as ${totalStops} paradas da rota`}
+        onClose={handleCloseNotification}
+      />
+
+      {/* MODAL DE FINALIZAÇÃO */}
+      <RouteCompleteModal
+        isOpen={showCompletionModal}
+        onClose={handleCloseModal}
+        onGoToKanban={handleGoToKanban}
+        routeTitle={route.title}
+        totalStops={totalStops}
+      />
+
+      {/* OVERLAY DE CELEBRAÇÃO */}
+      {isComplete && !showCompletionModal && (
+        <div className="absolute bottom-20 left-4 right-4 z-[500] pointer-events-none">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl p-3 shadow-lg text-center"
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Trophy size={20} className="text-white" />
+              <p className="text-white font-bold text-sm">
+                Rota finalizada! 🎉 Todas as paradas foram concluídas
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Indicador de aguardando motorista */}
+      {!hasReceivedFirstLocation && !driverLocation && !isComplete && (
         <div className="absolute bottom-20 left-4 right-4 z-[500] pointer-events-none">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -448,27 +668,6 @@ export default function WatchPage() {
             <p className="text-amber-600 text-xs mt-1">
               Quando o motorista iniciar a rota, você verá sua localização em
               tempo real
-            </p>
-          </motion.div>
-        </div>
-      )}
-
-      {/* 🔥 Indicador de rota carregada */}
-      {isRouteLoaded && hasReceivedFirstLocation && driverLocation && (
-        <div className="absolute bottom-20 left-4 right-4 z-[500] pointer-events-none">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-green-100/95 backdrop-blur rounded-xl p-3 shadow-lg text-center"
-          >
-            <div className="flex items-center justify-center gap-2">
-              <MapPin size={18} className="text-green-600" />
-              <p className="text-green-700 text-sm font-medium">
-                Acompanhando rota em tempo real
-              </p>
-            </div>
-            <p className="text-green-600 text-xs mt-1">
-              {isSimulating ? "Motorista em modo simulação" : "GPS ativo"}
             </p>
           </motion.div>
         </div>

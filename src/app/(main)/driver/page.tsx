@@ -469,19 +469,21 @@ export default function DriverPage() {
   const [optimizedStops, setOptimizedStops] = useState<any[]>([]);
   const [isReordering, setIsReordering] = useState(false);
 
-  // 🔥 NOVO: WebSocket para enviar localização em tempo real
-  const { sendLocation, isConnected: wsConnected } = useLocationWebSocket({
+  const {
+    sendLocation,
+    emitRouteFinished,
+    isConnected: wsConnected,
+  } = useLocationWebSocket({
     routeId: routeId || "",
     driverId: route?.userAssigned?.id || `driver_${routeId}`,
     onLocationUpdate: (location) => {
-      // Para o motorista, apenas log. Não precisa fazer nada além disso
       console.log("📍 [WS] Localização enviada com sucesso");
     },
     onDriverOffline: () => {
       console.warn("⚠️ [WS] Conexão WebSocket perdida");
-      toast.warning("Conexão em tempo real perdida. Tentando reconectar...", {
-        duration: 3000,
-      });
+    },
+    onRouteFinished: (data) => {
+      console.log("🎉 [WS] Rota finalizada confirmada!", data);
     },
   });
 
@@ -770,7 +772,9 @@ export default function DriverPage() {
 
       const nextIndex = currentStopIndex + 1;
 
-      if (nextIndex >= totalStops) {
+      if (nextIndex >= totalStops && wsConnected) {
+        emitRouteFinished(); // 🔥 Usar a função, não o socket diretamente
+
         await updateRoute.mutateAsync({
           id: routeId!,
           data: { status: "FINISHED" },
