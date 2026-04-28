@@ -24,6 +24,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useLocationWebSocket } from "@/hooks/useLocationWebSocket";
 
 // Importação dinâmica do mapa
 const RouteMap = dynamic(() => import("@/components/DriverMap"), {
@@ -468,6 +469,22 @@ export default function DriverPage() {
   const [optimizedStops, setOptimizedStops] = useState<any[]>([]);
   const [isReordering, setIsReordering] = useState(false);
 
+  // 🔥 NOVO: WebSocket para enviar localização em tempo real
+  const { sendLocation, isConnected: wsConnected } = useLocationWebSocket({
+    routeId: routeId || "",
+    driverId: route?.userAssigned?.id || `driver_${routeId}`,
+    onLocationUpdate: (location) => {
+      // Para o motorista, apenas log. Não precisa fazer nada além disso
+      console.log("📍 [WS] Localização enviada com sucesso");
+    },
+    onDriverOffline: () => {
+      console.warn("⚠️ [WS] Conexão WebSocket perdida");
+      toast.warning("Conexão em tempo real perdida. Tentando reconectar...", {
+        duration: 3000,
+      });
+    },
+  });
+
   // Refs
   const lastReorderedRef = useRef<string>("");
   const watchIdRef = useRef<number | null>(null);
@@ -486,6 +503,32 @@ export default function DriverPage() {
   const isFinished =
     route?.status === "FINISHED" ||
     (completedStops === totalStops && totalStops > 0);
+
+  // 🔥 NOVO: Enviar localização sempre que currentPosition mudar
+  const lastSentLocationRef = useRef<string>("");
+  const lastSendTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!currentPosition || !wsConnected) return;
+
+    // Limitar frequência de envio (máximo a cada 1 segundo)
+    const now = Date.now();
+    if (now - lastSendTimeRef.current < 1000) return;
+
+    // Verificar se a posição mudou significativamente (mais de 5 metros)
+    const locationKey = `${currentPosition[0].toFixed(6)},${currentPosition[1].toFixed(6)}`;
+    if (lastSentLocationRef.current === locationKey) return;
+
+    // Enviar via WebSocket (indicando se está em simulação ou GPS real)
+    sendLocation(currentPosition[0], currentPosition[1], isSimulating);
+
+    lastSentLocationRef.current = locationKey;
+    lastSendTimeRef.current = now;
+
+    console.log(
+      `📡 [WS] Enviando posição: ${locationKey} (${isSimulating ? "simulação" : "GPS real"})`,
+    );
+  }, [currentPosition, wsConnected, sendLocation, isSimulating]);
 
   // Carregar estado salvo do localStorage
   useEffect(() => {
@@ -827,15 +870,15 @@ export default function DriverPage() {
           longitude: currentStop.longitude,
         };
 
-const createTaskPayload: CreateTaskDto = {
-  title: taskData.title,
-  description: taskData.description,
-  dueDate: taskData.dueDate,
-  address: JSON.stringify(taskAddress), // 🔥 CORREÇÃO AQUI
-  companyId: (route as any)?.companyId,
-  columnId: defaultColumnId,
-  priority: 1,
-};
+        const createTaskPayload: CreateTaskDto = {
+          title: taskData.title,
+          description: taskData.description,
+          dueDate: taskData.dueDate,
+          address: JSON.stringify(taskAddress), // 🔥 CORREÇÃO AQUI
+          companyId: (route as any)?.companyId,
+          columnId: defaultColumnId,
+          priority: 1,
+        };
 
         await createTask.mutateAsync(createTaskPayload);
 
@@ -1017,117 +1060,133 @@ const createTaskPayload: CreateTaskDto = {
     ],
   );
 
-// Simulação - CORRIGIDA COMPLETAMENTE
-const startSimulation = useCallback(() => {
-  // 🔥 PASSO 1: Encontrar o PRÓXIMO destino NÃO VISITADO
-  let nextPendingIndex = -1;
-  
-  for (let i = currentStopIndex; i < displayStops.length; i++) {
-    const stop = displayStops[i];
-    const isVisited = visitedStops.includes(stop.id);
-    const isFailed = failedStops.includes(stop.id);
-    
-    if (!isVisited && !isFailed) {
-      nextPendingIndex = i;
-      break;
-    }
-  }
-  
-  // Se não encontrou próximo destino pendente
-  if (nextPendingIndex === -1) {
-    // Verifica se todas as paradas foram concluídas
-    if (completedStops === totalStops) {
-      toast.success("🎉 Todas as paradas já foram concluídas! Rota finalizada.", {
-        duration: 3000,
-      });
-    } else {
-      toast.warning("⚠️ Não há próximos destinos pendentes.", {
-        duration: 3000,
-      });
-    }
-    return;
-  }
-  
-  // 🔥 PASSO 2: Se o índice atual não é o próximo pendente, atualiza
-  if (nextPendingIndex !== currentStopIndex) {
-    console.log(`🔄 Atualizando índice de ${currentStopIndex} para ${nextPendingIndex} (próximo pendente)`);
-    setCurrentStopIndex(nextPendingIndex);
-    
-    // Pequeno delay para garantir que o estado foi atualizado
-    setTimeout(() => {
-      startSimulation();
-    }, 100);
-    return;
-  }
-  
-  // 🔥 PASSO 3: Pegar o destino alvo (agora garantidamente pendente)
-  const targetStop = displayStops[nextPendingIndex];
-  
-  if (!targetStop) {
-    toast.warning("Destino não encontrado");
-    return;
-  }
-  
-  if (!currentPosition) {
-    toast.warning("Aguardando sinal de GPS");
-    return;
-  }
-  
-  console.log('🎮 Iniciando simulação para:', targetStop.name);
-  console.log('   Índice:', nextPendingIndex);
-  console.log('   Posição atual:', currentPosition);
-  console.log('   Destino:', targetStop.latitude, targetStop.longitude);
-  
-  setIsGPSActive(false);
-  setIsSimulating(true);
-  
-  // Dispara evento para o mapa saber que a simulação começou
-  window.dispatchEvent(new Event("simulation-start"));
-  
-  const steps = 150;
-  const speed = 20;
-  let step = 0;
-  const startLat = currentPosition[0];
-  const startLng = currentPosition[1];
-  const endLat = targetStop.latitude;
-  const endLng = targetStop.longitude;
-  
-  // Limpa intervalo anterior se existir
-  if (simulationInterval.current) {
-    clearInterval(simulationInterval.current);
-    simulationInterval.current = null;
-  }
-  
-  simulationInterval.current = setInterval(() => {
-    step++;
-    const progress = step / steps;
-    const newLat = startLat + (endLat - startLat) * progress;
-    const newLng = startLng + (endLng - startLng) * progress;
-    setCurrentPosition([newLat, newLng]);
-    
-    if (step >= steps) {
-      if (simulationInterval.current) {
-        clearInterval(simulationInterval.current);
-        simulationInterval.current = null;
+  // Simulação - CORRIGIDA COMPLETAMENTE
+  const startSimulation = useCallback(() => {
+    // 🔥 PASSO 1: Encontrar o PRÓXIMO destino NÃO VISITADO
+    let nextPendingIndex = -1;
+
+    for (let i = currentStopIndex; i < displayStops.length; i++) {
+      const stop = displayStops[i];
+      const isVisited = visitedStops.includes(stop.id);
+      const isFailed = failedStops.includes(stop.id);
+
+      if (!isVisited && !isFailed) {
+        nextPendingIndex = i;
+        break;
       }
-      
-      // Posiciona exatamente no destino
-      setCurrentPosition([endLat, endLng]);
-      setIsSimulating(false);
-      
-      // Dispara evento para o mapa saber que a simulação terminou
-      window.dispatchEvent(new Event("simulation-end"));
-      
-      toast.success(`✅ Simulação concluída! Você chegou em: ${targetStop.name}`, {
-        duration: 3000,
-      });
-      
-      // 🔥 Força a verificação de chegada ao destino
-      // O efeito de verificação de chegada vai detectar que está no destino
-      // e abrir o modal automaticamente
     }
-  }, speed);
-}, [displayStops, currentStopIndex, currentPosition, visitedStops, failedStops, completedStops, totalStops]);
+
+    // Se não encontrou próximo destino pendente
+    if (nextPendingIndex === -1) {
+      // Verifica se todas as paradas foram concluídas
+      if (completedStops === totalStops) {
+        toast.success(
+          "🎉 Todas as paradas já foram concluídas! Rota finalizada.",
+          {
+            duration: 3000,
+          },
+        );
+      } else {
+        toast.warning("⚠️ Não há próximos destinos pendentes.", {
+          duration: 3000,
+        });
+      }
+      return;
+    }
+
+    // 🔥 PASSO 2: Se o índice atual não é o próximo pendente, atualiza
+    if (nextPendingIndex !== currentStopIndex) {
+      console.log(
+        `🔄 Atualizando índice de ${currentStopIndex} para ${nextPendingIndex} (próximo pendente)`,
+      );
+      setCurrentStopIndex(nextPendingIndex);
+
+      // Pequeno delay para garantir que o estado foi atualizado
+      setTimeout(() => {
+        startSimulation();
+      }, 100);
+      return;
+    }
+
+    // 🔥 PASSO 3: Pegar o destino alvo (agora garantidamente pendente)
+    const targetStop = displayStops[nextPendingIndex];
+
+    if (!targetStop) {
+      toast.warning("Destino não encontrado");
+      return;
+    }
+
+    if (!currentPosition) {
+      toast.warning("Aguardando sinal de GPS");
+      return;
+    }
+
+    console.log("🎮 Iniciando simulação para:", targetStop.name);
+    console.log("   Índice:", nextPendingIndex);
+    console.log("   Posição atual:", currentPosition);
+    console.log("   Destino:", targetStop.latitude, targetStop.longitude);
+
+    setIsGPSActive(false);
+    setIsSimulating(true);
+
+    // Dispara evento para o mapa saber que a simulação começou
+    window.dispatchEvent(new Event("simulation-start"));
+
+    const steps = 150;
+    const speed = 20;
+    let step = 0;
+    const startLat = currentPosition[0];
+    const startLng = currentPosition[1];
+    const endLat = targetStop.latitude;
+    const endLng = targetStop.longitude;
+
+    // Limpa intervalo anterior se existir
+    if (simulationInterval.current) {
+      clearInterval(simulationInterval.current);
+      simulationInterval.current = null;
+    }
+
+    simulationInterval.current = setInterval(() => {
+      step++;
+      const progress = step / steps;
+      const newLat = startLat + (endLat - startLat) * progress;
+      const newLng = startLng + (endLng - startLng) * progress;
+      setCurrentPosition([newLat, newLng]);
+
+      if (step >= steps) {
+        if (simulationInterval.current) {
+          clearInterval(simulationInterval.current);
+          simulationInterval.current = null;
+        }
+
+        // Posiciona exatamente no destino
+        setCurrentPosition([endLat, endLng]);
+        setIsSimulating(false);
+
+        // Dispara evento para o mapa saber que a simulação terminou
+        window.dispatchEvent(new Event("simulation-end"));
+
+        toast.success(
+          `✅ Simulação concluída! Você chegou em: ${targetStop.name}`,
+          {
+            duration: 3000,
+          },
+        );
+
+        // 🔥 Força a verificação de chegada ao destino
+        // O efeito de verificação de chegada vai detectar que está no destino
+        // e abrir o modal automaticamente
+      }
+    }, speed);
+  }, [
+    displayStops,
+    currentStopIndex,
+    currentPosition,
+    visitedStops,
+    failedStops,
+    completedStops,
+    totalStops,
+  ]);
 
   const resumeRealGPS = useCallback(() => {
     setIsGPSActive(true);
