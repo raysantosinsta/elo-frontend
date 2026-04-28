@@ -18,8 +18,19 @@ import {
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ObserverMap from "@/components/ObserverMap";
+import dynamic from "next/dynamic";
 import api from "@/services/api";
+
+// 🔥 IMPORT DINÂMICO DO ObserverMap (evita problemas de hidratação)
+const ObserverMap = dynamic(() => import("@/components/ObserverMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full w-full flex items-center justify-center bg-slate-100">
+      <Loader2 className="animate-spin text-[#D35400]" size={32} />
+      <span className="ml-2 text-slate-500">Carregando mapa...</span>
+    </div>
+  ),
+});
 
 // Skelecton de carregamento
 const WatchSkeleton = () => (
@@ -285,6 +296,7 @@ export default function WatchPage() {
 
   // 🔥 ESTADOS PARA CONTROLE DE ROTA
   const [isRouteLoaded, setIsRouteLoaded] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
   // 🔥 GUARDAR A ÚLTIMA ROTA RECEBIDA
   const lastOptimizedRouteRef = useRef<[number, number][]>([]);
@@ -368,6 +380,7 @@ export default function WatchPage() {
         setOptimizedRoutePath(fallbackPoints);
         lastOptimizedRouteRef.current = fallbackPoints;
         setIsRouteLoaded(true);
+        setMapReady(true);
         return;
       }
 
@@ -421,6 +434,7 @@ export default function WatchPage() {
         setOptimizedRoutePath(points);
         lastOptimizedRouteRef.current = points;
         setIsRouteLoaded(true);
+        setMapReady(true);
       } catch (error) {
         console.error("❌ [Watch] Erro ao buscar rota:", error);
         const fallbackPoints = [
@@ -432,6 +446,7 @@ export default function WatchPage() {
         setOptimizedRoutePath(fallbackPoints);
         lastOptimizedRouteRef.current = fallbackPoints;
         setIsRouteLoaded(true);
+        setMapReady(true);
       } finally {
         setIsLoadingRoutePath(false);
       }
@@ -487,7 +502,7 @@ export default function WatchPage() {
   const handleBack = useCallback(() => router.back(), [router]);
   const handleGoToKanban = useCallback(() => {
     setShowCompletionModal(false);
-    router.push("/kanban");
+    router.push("/Kanban");
   }, [router]);
   const handleCloseModal = useCallback(() => {
     setShowCompletionModal(false);
@@ -525,6 +540,7 @@ export default function WatchPage() {
   const progressPercent =
     totalStops > 0 ? (visitedStops.length / totalStops) * 100 : 0;
   const isComplete = progressPercent >= 100;
+  const showMap = mapReady || hasReceivedFirstLocation || driverLocation;
 
   // 🔥 RENDER
   return (
@@ -604,15 +620,27 @@ export default function WatchPage() {
         </div>
       </div>
 
-      {/* Mapa */}
+      {/* Mapa - condicional para evitar erros */}
       <div className="flex-1 z-0">
-        <ObserverMap
-          stops={orderedStops}
-          driverLocation={driverLocation}
-          routePath={optimizedRoutePath}
-          visitedStops={visitedStops}
-          isLoading={isLoadingRoutePath}
-        />
+        {showMap ? (
+          <ObserverMap
+            stops={orderedStops}
+            driverLocation={driverLocation}
+            routePath={optimizedRoutePath}
+            visitedStops={visitedStops}
+            isLoading={isLoadingRoutePath}
+          />
+        ) : (
+          <div className="h-full w-full flex items-center justify-center bg-slate-100">
+            <div className="text-center">
+              <Loader2 className="animate-spin text-[#D35400] mx-auto mb-4" size={48} />
+              <p className="text-slate-500 font-medium">Carregando mapa...</p>
+              <p className="text-slate-400 text-sm mt-1">
+                Aguardando dados da rota
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* NOTIFICAÇÃO FLUTUANTE */}
