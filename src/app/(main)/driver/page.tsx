@@ -750,7 +750,7 @@ export default function DriverPage() {
     calculateDistance,
   ]);
 
-  // Concluir tarefa (apenas concluir) - COM ATUALIZAÇÃO DA ROTA
+  // 🔥 FUNÇÃO COMPLETE TASK ONLY CORRIGIDA - com atualização da task
   const completeTaskOnly = useCallback(async () => {
     if (!currentStop) return;
 
@@ -760,48 +760,93 @@ export default function DriverPage() {
         ? `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED): ${comment}`
         : `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED)`;
 
+      // 🔥 1. BUSCAR A TASK ASSOCIADA À PARADA
+      let taskId: string | null = currentTaskId || null;
+
+      if (!taskId && currentStop.name) {
+        // Tentar buscar a task pelo título
+        const task = routeTasks?.find((t: any) => t.title === currentStop.name);
+        taskId = task?.id || null;
+        console.log(
+          `🔍 [DriverPage] Task encontrada: ${taskId} para parada: ${currentStop.name}`,
+        );
+      }
+
+      // 🔥 2. SE TEM TASK, FINALIZAR A TASK (mudar status para COMPLETED)
+      if (taskId) {
+        try {
+          await finalizeTask.mutateAsync({
+            taskId: taskId, // ✅ Agora taskId é string garantida
+            data: {
+              status: "COMPLETED",
+              finalComment: successNote,
+            },
+          });
+          console.log(
+            `✅ [DriverPage] Task ${taskId} atualizada para COMPLETED`,
+          );
+        } catch (taskError) {
+          console.error("❌ Erro ao finalizar task:", taskError);
+        }
+      } else {
+        console.warn(
+          `⚠️ [DriverPage] Nenhuma task encontrada para a parada: ${currentStop.name}`,
+        );
+      }
+
+      // 🔥 3. MARCAR A PARADA COMO VISITADA NA ROTA
       await markStopVisited.mutateAsync({
         routeId: routeId!,
         stopId: currentStop.id!,
         notes: successNote,
       });
 
+      // Atualizar estado local
       const newVisitedStops = [...visitedStops, currentStop.id!];
       setVisitedStops(newVisitedStops);
       previousStopIdRef.current = "";
 
       const nextIndex = currentStopIndex + 1;
+      const isLastStop = nextIndex >= totalStops;
 
-      if (nextIndex >= totalStops && wsConnected) {
-        emitRouteFinished(); // 🔥 Usar a função, não o socket diretamente
+      if (isLastStop) {
+        console.log(
+          "🏁 [DriverPage] Última parada concluída! Finalizando rota...",
+        );
 
+        // Atualizar status da rota
         await updateRoute.mutateAsync({
           id: routeId!,
-          data: { status: "FINISHED" },
+          data: { status: "FINISHED" as any },
         });
+
+        if (wsConnected) {
+          emitRouteFinished();
+        }
+
+        // Limpar localStorage
         localStorage.removeItem(`driver_route_${routeId}_index`);
         localStorage.removeItem(`driver_route_${routeId}_visited`);
         localStorage.removeItem(`driver_route_${routeId}_failed`);
+
         toast.success("🎉 Rota finalizada com sucesso!", {
           duration: 3000,
           icon: "✅",
         });
+
+        closeAllModals();
         setTimeout(() => router.push("/routes"), 1500);
       } else {
         setCurrentStopIndex(nextIndex);
-
-        window.dispatchEvent(new Event("route-updated"));
-
-        // 🔥 Dispara evento para o mapa recalcular a rota para o próximo destino
         window.dispatchEvent(new Event("route-updated"));
 
         toast.success(
-          `✅ Visita concluída (COMPLETED)! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+          `✅ Visita concluída! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
           { duration: 3000 },
         );
+        closeAllModals();
       }
 
-      closeAllModals();
       await refetch();
       await refetchTasks();
     } catch (error) {
@@ -812,6 +857,9 @@ export default function DriverPage() {
     }
   }, [
     currentStop,
+    currentTaskId,
+    routeTasks,
+    finalizeTask,
     markStopVisited,
     routeId,
     comment,
@@ -824,9 +872,11 @@ export default function DriverPage() {
     refetchTasks,
     displayStops,
     closeAllModals,
+    wsConnected,
+    emitRouteFinished,
   ]);
 
-  // Criar nova tarefa
+  // 🔥 CRIAR NOVA TAREFA - VERSÃO CORRIGIDA
   const handleCreateNewTask = useCallback(
     async (taskData: {
       title: string;
@@ -841,6 +891,30 @@ export default function DriverPage() {
       });
 
       try {
+        // 🔥 1. FINALIZAR A TASK ATUAL COMO COMPLETED PRIMEIRO
+        if (currentTaskId) {
+          console.log(
+            `📝 [DriverPage] Finalizando task atual: ${currentTaskId}`,
+          );
+          await finalizeTask.mutateAsync({
+            taskId: currentTaskId,
+            data: {
+              status: "COMPLETED",
+              finalComment: comment
+                ? `✅ VISITA CONCLUÍDA. Nova tarefa criada: "${taskData.title}"\nObservações: ${comment}`
+                : `✅ VISITA CONCLUÍDA. Nova tarefa criada: "${taskData.title}"`,
+            },
+          });
+          console.log(
+            `✅ [DriverPage] Task ${currentTaskId} finalizada como COMPLETED`,
+          );
+        } else {
+          console.warn(
+            `⚠️ [DriverPage] Nenhuma task atual encontrada para finalizar`,
+          );
+        }
+
+        // 🔥 2. DEFINIR A COLUNA PADRÃO PARA A NOVA TAREFA
         let defaultColumnId = (route as any)?.columnId;
 
         if (!defaultColumnId) {
@@ -862,6 +936,7 @@ export default function DriverPage() {
           }
         }
 
+        // 🔥 3. PREPARAR O ENDEREÇO DA NOVA TAREFA
         const taskAddress = {
           cep: currentStop.zipCode || "",
           endereco: currentStop.address || "",
@@ -878,14 +953,17 @@ export default function DriverPage() {
           title: taskData.title,
           description: taskData.description,
           dueDate: taskData.dueDate,
-          address: JSON.stringify(taskAddress), // 🔥 CORREÇÃO AQUI
+          address: JSON.stringify(taskAddress),
           companyId: (route as any)?.companyId,
           columnId: defaultColumnId,
           priority: 1,
         };
 
+        // 🔥 4. CRIAR A NOVA TAREFA
         await createTask.mutateAsync(createTaskPayload);
+        console.log(`✅ [DriverPage] Nova tarefa criada: "${taskData.title}"`);
 
+        // 🔥 5. MARCAR A PARADA COMO VISITADA NA ROTA
         const successNote = comment
           ? `✅ VISITA CONCLUÍDA (COMPLETED). Nova tarefa criada: "${taskData.title}"\nObservações: ${comment}`
           : `✅ VISITA CONCLUÍDA (COMPLETED). Nova tarefa criada: "${taskData.title}"`;
@@ -896,41 +974,62 @@ export default function DriverPage() {
           notes: successNote,
         });
 
+        // 🔥 6. ATUALIZAR ESTADO LOCAL
         const newVisitedStops = [...visitedStops, currentStop.id!];
         setVisitedStops(newVisitedStops);
         previousStopIdRef.current = "";
 
         const nextIndex = currentStopIndex + 1;
+        const isLastStop = nextIndex >= totalStops;
 
-        if (nextIndex >= totalStops) {
+        // 🔥 7. VERIFICAR SE É A ÚLTIMA PARADA
+        if (isLastStop) {
+          console.log("🏁 [DriverPage] Última parada! Finalizando rota...");
+
+          // Atualizar status da rota
           await updateRoute.mutateAsync({
             id: routeId!,
-            data: { status: "FINISHED" },
+            data: { status: "FINISHED" as any },
           });
+
+          // 🔥 Emitir evento WebSocket para observadores
+          if (wsConnected) {
+            emitRouteFinished();
+            console.log("📡 [DriverPage] Evento route-finished emitido");
+          }
+
+          // Limpar localStorage
           localStorage.removeItem(`driver_route_${routeId}_index`);
           localStorage.removeItem(`driver_route_${routeId}_visited`);
           localStorage.removeItem(`driver_route_${routeId}_failed`);
-          toast.success("🎉 Rota finalizada com sucesso!", { duration: 3000 });
+
+          toast.dismiss(loadingToast);
+          toast.success("🎉 Rota finalizada com sucesso!", {
+            duration: 3000,
+            icon: "✅",
+          });
+
+          closeAllModals();
           setTimeout(() => router.push("/routes"), 1500);
         } else {
+          // 🔥 8. AVANÇAR PARA PRÓXIMA PARADA
           setCurrentStopIndex(nextIndex);
+
+          toast.dismiss(loadingToast);
           toast.success(
             `✅ Tarefa "${taskData.title}" criada! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
             { duration: 4000 },
           );
+
+          closeAllModals();
         }
 
-        toast.dismiss(loadingToast);
-        toast.success("✅ Nova tarefa criada com sucesso!", {
-          duration: 4000,
-          description: `Título: ${taskData.title} | Data: ${new Date(taskData.dueDate).toLocaleDateString("pt-BR")}`,
-        });
-
-        closeAllModals();
+        // 🔥 9. ATUALIZAR DADOS
         await refetch();
         await refetchTasks();
 
-        if (route?.orderBy === "DISTANCE" && currentPosition) {
+        // 🔥 10. REORDENAR PARADAS SE NECESSÁRIO
+        if (route?.orderBy === "DISTANCE" && currentPosition && !isLastStop) {
           const reordered = reorderStopsByProximity(
             route.stops,
             currentPosition,
@@ -939,7 +1038,7 @@ export default function DriverPage() {
           setOptimizedStops(reordered);
         }
       } catch (error) {
-        console.error("Erro ao criar nova tarefa:", error);
+        console.error("❌ Erro ao criar nova tarefa:", error);
         toast.dismiss(loadingToast);
         toast.error("❌ Erro ao criar nova tarefa", {
           description: "Tente novamente ou contate o suporte.",
@@ -950,6 +1049,8 @@ export default function DriverPage() {
     },
     [
       currentStop,
+      currentTaskId,
+      finalizeTask,
       route,
       comment,
       visitedStops,
@@ -966,6 +1067,8 @@ export default function DriverPage() {
       reorderStopsByProximity,
       router,
       closeAllModals,
+      wsConnected,
+      emitRouteFinished,
     ],
   );
 
@@ -1249,31 +1352,53 @@ export default function DriverPage() {
     toast.info("GPS em tempo real ativado", { duration: 2000 });
   }, []);
 
-  // Finalizar rota automaticamente
   useEffect(() => {
     const checkAndFinishRoute = async () => {
-      if (isFinishing || !route || route.status === "FINISHED") return;
-      if (completedStops === totalStops && totalStops > 0) {
+      // Evitar execução múltipla
+      if (isFinishing || !route || (route.status as string) === "FINISHED")
+        return;
+
+      // Verificar se todas as paradas foram visitadas OU falharam
+      const allStopsProcessed = completedStops === totalStops && totalStops > 0;
+
+      if (allStopsProcessed) {
+        console.log(
+          "🏁 [DriverPage] Detecção automática: todas as paradas processadas!",
+        );
         setIsFinishing(true);
+
         try {
-          await updateRoute.mutateAsync({
-            id: routeId!,
-            data: { status: "FINISHED" },
-          });
+          // Só atualiza se a rota já não estiver FINISHED
+          if (route.status !== "FINISHED") {
+            await updateRoute.mutateAsync({
+              id: routeId!,
+              data: { status: "FINISHED" },
+            });
+
+            // Emitir evento WebSocket
+            if (wsConnected) {
+              emitRouteFinished();
+            }
+          }
+
+          // Limpar localStorage
           localStorage.removeItem(`driver_route_${routeId}_index`);
           localStorage.removeItem(`driver_route_${routeId}_visited`);
           localStorage.removeItem(`driver_route_${routeId}_failed`);
+
           toast.success("🎉 Rota finalizada com sucesso!", {
             duration: 4000,
             icon: "✅",
           });
+
           setTimeout(() => router.push("/routes"), 2000);
         } catch (error) {
-          console.error("Erro ao finalizar rota:", error);
+          console.error("Erro ao finalizar rota automaticamente:", error);
           setIsFinishing(false);
         }
       }
     };
+
     checkAndFinishRoute();
   }, [
     completedStops,
@@ -1283,6 +1408,8 @@ export default function DriverPage() {
     updateRoute,
     router,
     isFinishing,
+    wsConnected,
+    emitRouteFinished,
   ]);
 
   const prefetchRoutes = useCallback(
