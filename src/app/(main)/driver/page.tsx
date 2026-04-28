@@ -1060,9 +1060,9 @@ export default function DriverPage() {
     ],
   );
 
-  // Simulação - CORRIGIDA COMPLETAMENTE
+  // 🔥 FUNÇÃO DE SIMULAÇÃO CORRIGIDA - MAIS DEVAGAR
   const startSimulation = useCallback(() => {
-    // 🔥 PASSO 1: Encontrar o PRÓXIMO destino NÃO VISITADO
+    // Encontrar o PRÓXIMO destino NÃO VISITADO
     let nextPendingIndex = -1;
 
     for (let i = currentStopIndex; i < displayStops.length; i++) {
@@ -1076,15 +1076,11 @@ export default function DriverPage() {
       }
     }
 
-    // Se não encontrou próximo destino pendente
     if (nextPendingIndex === -1) {
-      // Verifica se todas as paradas foram concluídas
       if (completedStops === totalStops) {
         toast.success(
           "🎉 Todas as paradas já foram concluídas! Rota finalizada.",
-          {
-            duration: 3000,
-          },
+          { duration: 3000 },
         );
       } else {
         toast.warning("⚠️ Não há próximos destinos pendentes.", {
@@ -1094,21 +1090,12 @@ export default function DriverPage() {
       return;
     }
 
-    // 🔥 PASSO 2: Se o índice atual não é o próximo pendente, atualiza
     if (nextPendingIndex !== currentStopIndex) {
-      console.log(
-        `🔄 Atualizando índice de ${currentStopIndex} para ${nextPendingIndex} (próximo pendente)`,
-      );
       setCurrentStopIndex(nextPendingIndex);
-
-      // Pequeno delay para garantir que o estado foi atualizado
-      setTimeout(() => {
-        startSimulation();
-      }, 100);
+      setTimeout(() => startSimulation(), 100);
       return;
     }
 
-    // 🔥 PASSO 3: Pegar o destino alvo (agora garantidamente pendente)
     const targetStop = displayStops[nextPendingIndex];
 
     if (!targetStop) {
@@ -1122,36 +1109,83 @@ export default function DriverPage() {
     }
 
     console.log("🎮 Iniciando simulação para:", targetStop.name);
-    console.log("   Índice:", nextPendingIndex);
-    console.log("   Posição atual:", currentPosition);
-    console.log("   Destino:", targetStop.latitude, targetStop.longitude);
+    console.log(
+      "   Distância até o destino:",
+      calculateDistance(
+        currentPosition[0],
+        currentPosition[1],
+        targetStop.latitude,
+        targetStop.longitude,
+      ).toFixed(2),
+      "km",
+    );
 
     setIsGPSActive(false);
     setIsSimulating(true);
 
-    // Dispara evento para o mapa saber que a simulação começou
+    // Disparar evento de início da simulação
     window.dispatchEvent(new Event("simulation-start"));
 
-    const steps = 150;
-    const speed = 20;
+    // 🔥 CONFIGURAÇÕES MAIS DEVAGAR
+    const totalDistance = calculateDistance(
+      currentPosition[0],
+      currentPosition[1],
+      targetStop.latitude,
+      targetStop.longitude,
+    );
+
+    // 🔥 VELOCIDADE MUITO MAIS DEVAGAR (1-2 km/h para simulação)
+    // Queremos que a simulação demore entre 30 segundos a 2 minutos dependendo da distância
+    const DESIRED_SPEED_KMH = 2; // 2 km/h (bem devagar)
+    const estimatedDurationSeconds = (totalDistance / DESIRED_SPEED_KMH) * 3600;
+
+    // Número de passos baseado no tempo desejado (atualização a cada 500ms)
+    const UPDATE_INTERVAL_MS = 500; // 500ms entre cada atualização
+    const steps = Math.max(
+      30,
+      Math.min(
+        200,
+        Math.floor(estimatedDurationSeconds / (UPDATE_INTERVAL_MS / 1000)),
+      ),
+    );
+    const speed = UPDATE_INTERVAL_MS;
+
+    console.log(`   Distância: ${totalDistance.toFixed(2)} km`);
+    console.log(`   Velocidade simulada: ${DESIRED_SPEED_KMH} km/h`);
+    console.log(
+      `   Duração estimada: ${Math.round(estimatedDurationSeconds)} segundos`,
+    );
+    console.log(
+      `   Passos: ${steps} (atualizações a cada ${UPDATE_INTERVAL_MS}ms)`,
+    );
+
     let step = 0;
     const startLat = currentPosition[0];
     const startLng = currentPosition[1];
     const endLat = targetStop.latitude;
     const endLng = targetStop.longitude;
 
-    // Limpa intervalo anterior se existir
+    // Limpar intervalo anterior
     if (simulationInterval.current) {
       clearInterval(simulationInterval.current);
       simulationInterval.current = null;
     }
 
+    // 🔥 USAR INTERVALO MAIS LONGO (500ms) PARA SIMULAÇÃO MAIS DEVAGAR
     simulationInterval.current = setInterval(() => {
       step++;
-      const progress = step / steps;
+      const progress = Math.min(1, step / steps);
+
+      // Usar easing linear para movimento suave
       const newLat = startLat + (endLat - startLat) * progress;
       const newLng = startLng + (endLng - startLng) * progress;
+
       setCurrentPosition([newLat, newLng]);
+
+      // Log a cada 10 passos para não poluir o console
+      if (step % 10 === 0 || step === steps) {
+        console.log(`   Simulação: ${Math.round(progress * 100)}% concluída`);
+      }
 
       if (step >= steps) {
         if (simulationInterval.current) {
@@ -1159,23 +1193,34 @@ export default function DriverPage() {
           simulationInterval.current = null;
         }
 
-        // Posiciona exatamente no destino
+        // Posicionar exatamente no destino
         setCurrentPosition([endLat, endLng]);
         setIsSimulating(false);
 
-        // Dispara evento para o mapa saber que a simulação terminou
+        // Disparar evento de fim da simulação
         window.dispatchEvent(new Event("simulation-end"));
 
         toast.success(
           `✅ Simulação concluída! Você chegou em: ${targetStop.name}`,
-          {
-            duration: 3000,
-          },
+          { duration: 4000 },
         );
 
-        // 🔥 Força a verificação de chegada ao destino
-        // O efeito de verificação de chegada vai detectar que está no destino
-        // e abrir o modal automaticamente
+        // Pequeno delay para garantir que a posição final foi atualizada
+        setTimeout(() => {
+          // Forçar verificação de chegada
+          const distance = calculateDistance(
+            endLat,
+            endLng,
+            targetStop.latitude,
+            targetStop.longitude,
+          );
+          if (distance < 50) {
+            toast.info(
+              `📍 Você chegou em ${targetStop.name}! Abrindo modal de conclusão...`,
+              { duration: 3000 },
+            );
+          }
+        }, 500);
       }
     }, speed);
   }, [
@@ -1186,6 +1231,7 @@ export default function DriverPage() {
     failedStops,
     completedStops,
     totalStops,
+    calculateDistance,
   ]);
 
   const resumeRealGPS = useCallback(() => {
