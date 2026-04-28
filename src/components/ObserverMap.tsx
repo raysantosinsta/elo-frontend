@@ -16,13 +16,16 @@ import { Loader2 } from "lucide-react";
 
 const GRAPHHOPPER_API_KEY = "ab75310a-f959-4b72-b322-11cce5b18f6a";
 
-// Cache de rotas (mais simples, sem persistência longa)
-let routeCache: {
-  [key: string]: { points: [number, number][]; timestamp: number };
-} = {};
-const CACHE_DURATION = 2 * 60 * 1000; // 2 minutos apenas
+// 🔥 CACHE DE ROTAS
+interface RouteCacheItem {
+  points: [number, number][];
+  timestamp: number;
+}
 
-// Ícones
+let routeCache: Map<string, RouteCacheItem> = new Map();
+const CACHE_DURATION = 2 * 60 * 1000; // 2 minutos
+
+// 🔥 ÍCONES
 const defaultIcon = L.icon({
   iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
   shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
@@ -59,146 +62,200 @@ export default function ObserverMap({
   visitedStops = [],
   isLoading = false,
 }: ObserverMapProps) {
-  const [detailedRoute, setDetailedRoute] = useState<[number, number][]>([]);
+  const [displayRoute, setDisplayRoute] = useState<[number, number][]>([]);
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
+  const [routeSource, setRouteSource] = useState<
+    "backend" | "graphhopper" | "none"
+  >("none");
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastRequestKeyRef = useRef<string>("");
+  const lastFetchTimeRef = useRef<number>(0);
 
-  // 🔥 Guardar a última versão das paradas visitadas para detectar mudanças
-  const lastVisitedKeyRef = useRef<string>("");
-
-  // 🔥 Filtrar APENAS as paradas NÃO VISITADAS
+  // 🔥 FILTRAR PARADAS NÃO VISITADAS
   const unvisitedStops = useMemo(() => {
     return stops.filter((stop) => !visitedStops.includes(stop.id));
   }, [stops, visitedStops]);
 
-  // 🔥 Ordenar as paradas NÃO VISITADAS pela ordem original
+  // 🔥 ORDENAR PARADAS
   const sortedUnvisitedStops = useMemo(() => {
     return [...unvisitedStops].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [unvisitedStops]);
 
-  // 🔥 Gerar chave única baseada nas paradas não visitadas
-  const generateCacheKey = useCallback((points: [number, number][]) => {
-    return points.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join("|");
-  }, []);
+  // 🔥 FUNÇÃO PARA BUSCAR ROTA NO GRAPHHOPPER (SEGUINDO RUAS)
+  const fetchGraphHopperRoute = useCallback(
+    async (points: [number, number][]): Promise<[number, number][] | null> => {
+      if (points.length < 2) return points;
 
-  // 🔥 Buscar rota detalhada do GraphHopper
-  const fetchDetailedRoute = useCallback(async () => {
-    // Cancelar requisição anterior
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+      // Construir URL com os pontos
+      const pointsStr = points.map((p) => `${p[0]},${p[1]}`).join("&point=");
+      const url = `https://graphhopper.com/api/1/route?point=${pointsStr}&vehicle=car&points_encoded=false&key=${GRAPHHOPPER_API_KEY}`;
 
-    // Se não tem localização do motorista, não faz nada
-    if (!driverLocation || !driverLocation[0] || !driverLocation[1]) {
-      setDetailedRoute([]);
-      return;
-    }
-
-    // Se não tem paradas não visitadas, limpar rota
-    if (sortedUnvisitedStops.length === 0) {
-      console.log("🏁 [ObserverMap] Todas as paradas foram visitadas!");
-      setDetailedRoute([]);
-      return;
-    }
-
-    // Construir pontos: motorista + paradas NÃO VISITADAS
-    const points: [number, number][] = [driverLocation];
-
-    sortedUnvisitedStops.forEach((stop) => {
-      if (stop.latitude && stop.longitude) {
-        points.push([stop.latitude, stop.longitude]);
-      }
-    });
-
-    if (points.length < 2) {
-      setDetailedRoute(points);
-      return;
-    }
-
-    const cacheKey = generateCacheKey(points);
-    const visitedKey = `${visitedStops.join(",")}|${sortedUnvisitedStops.length}`;
-
-    // 🔥 Se as paradas visitadas mudaram, limpar cache desta rota
-    if (lastVisitedKeyRef.current !== visitedKey) {
+      console.log("🌐 [ObserverMap] Buscando rota no GraphHopper...");
+      console.log(`   URL: ${url.replace(GRAPHHOPPER_API_KEY, "HIDDEN")}`);
       console.log(
-        "🔄 [ObserverMap] Paradas visitadas mudaram, limpando cache...",
+        `   Pontos: ${points.length} (motorista + ${points.length - 1} paradas)`,
       );
-      delete routeCache[cacheKey];
-      lastVisitedKeyRef.current = visitedKey;
+
+      try {
+        const response = await fetch(url, {
+          signal: abortControllerRef.current?.signal,
+        });
+
+        if (!response.ok) {
+          console.error(`❌ GraphHopper HTTP Error: ${response.status}`);
+          return null;
+        }
+
+        const data = await response.json();
+
+        if (data.paths && data.paths.length > 0) {
+          const path = data.paths[0];
+
+          // Extrair as coordenadas da rota (lat, lng)
+          const coordinates = path.points.coordinates.map(
+            (coord: number[]) => [coord[1], coord[0]] as [number, number],
+          );
+
+          console.log(`✅ [ObserverMap] Rota GraphHopper carregada:`);
+          console.log(`   Pontos: ${coordinates.length}`);
+          console.log(`   Distância: ${(path.distance / 1000).toFixed(2)} km`);
+          console.log(`   Tempo: ${Math.round(path.time / 60000)} min`);
+
+          return coordinates;
+        }
+
+        console.warn("⚠️ Nenhum path encontrado na resposta");
+        return null;
+      } catch (error: any) {
+        if (error.name !== "AbortError") {
+          console.error("❌ GraphHopper error:", error.message);
+        }
+        return null;
+      }
+    },
+    [],
+  );
+
+  // 🔥 FUNÇÃO PRINCIPAL PARA CARREGAR A ROTA
+  const loadRoute = useCallback(async () => {
+    // Validações básicas
+    if (!driverLocation || !driverLocation[0] || !driverLocation[1]) {
+      setDisplayRoute([]);
+      setRouteSource("none");
+      return;
     }
 
-    // Verificar cache
-    const cached = routeCache[cacheKey];
+    if (sortedUnvisitedStops.length === 0) {
+      setDisplayRoute([]);
+      setRouteSource("none");
+      return;
+    }
+
+    // Criar chave única para cache
+    const stopsKey = sortedUnvisitedStops
+      .map((s) => `${s.latitude.toFixed(5)},${s.longitude.toFixed(5)}`)
+      .join("|");
+    const cacheKey = `${driverLocation[0].toFixed(5)},${driverLocation[1].toFixed(5)}|${stopsKey}|${visitedStops.length}`;
+
+    // 🔥 VERIFICAR CACHE PRIMEIRO
+    const cached = routeCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
       console.log(
         "✅ [ObserverMap] Usando rota em cache:",
         cached.points.length,
         "pontos",
       );
-      setDetailedRoute(cached.points);
+      setDisplayRoute(cached.points);
+      setRouteSource("graphhopper");
+      return;
+    }
+
+    // 🔥 THROTTLE: Evitar requisições muito frequentes
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < 3000) {
+      // 3 segundos de throttle
+      console.log("⏳ [ObserverMap] Throttle ativo, aguardando...");
       return;
     }
 
     // Evitar requisições duplicadas
-    if (lastRequestKeyRef.current === cacheKey && detailedRoute.length > 0) {
+    if (lastRequestKeyRef.current === cacheKey && displayRoute.length > 0) {
+      console.log("🔄 [ObserverMap] Mesma requisição, ignorando");
       return;
+    }
+
+    // Cancelar requisição anterior
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
 
     setIsFetchingRoute(true);
     lastRequestKeyRef.current = cacheKey;
+    lastFetchTimeRef.current = now;
+
     abortControllerRef.current = new AbortController();
 
     try {
-      const pointsStr = points.map((p) => `${p[0]},${p[1]}`).join("&point=");
-      const url = `https://graphhopper.com/api/1/route?point=${pointsStr}&vehicle=car&optimize=false&points_encoded=false&key=${GRAPHHOPPER_API_KEY}`;
+      // Construir pontos para a rota: motorista + paradas não visitadas
+      const points: [number, number][] = [driverLocation];
 
-      console.log("🌐 [ObserverMap] Buscando nova rota detalhada...");
-      console.log(`   Paradas restantes: ${sortedUnvisitedStops.length}`);
-      console.log(
-        `   Próximos destinos: ${sortedUnvisitedStops.map((s) => s.name).join(" → ")}`,
-      );
-
-      const response = await fetch(url, {
-        signal: abortControllerRef.current.signal,
+      sortedUnvisitedStops.forEach((stop) => {
+        if (stop.latitude && stop.longitude) {
+          points.push([stop.latitude, stop.longitude]);
+        }
       });
 
-      if (!response.ok) {
-        console.error(`❌ HTTP Error: ${response.status}`);
-        // Fallback: linha reta entre os pontos
-        setDetailedRoute(points);
-        return;
-      }
+      console.log(
+        `🎯 [ObserverMap] Calculando rota para ${sortedUnvisitedStops.length} parada(s)`,
+      );
+      console.log(
+        `   Origem: ${driverLocation[0].toFixed(6)}, ${driverLocation[1].toFixed(6)}`,
+      );
+      console.log(`   Destino: ${sortedUnvisitedStops[0]?.name}`);
 
-      const data = await response.json();
+      // Buscar rota do GraphHopper
+      const graphHopperRoute = await fetchGraphHopperRoute(points);
 
-      if (data.paths && data.paths.length > 0) {
-        const path = data.paths[0];
-        const coordinates = path.points.coordinates.map(
-          (coord: number[]) => [coord[1], coord[0]] as [number, number],
-        );
-
+      if (graphHopperRoute && graphHopperRoute.length > 0) {
         console.log(
-          `✅ [ObserverMap] Nova rota carregada: ${coordinates.length} pontos`,
+          "✅ [ObserverMap] Usando rota do GraphHopper (seguindo ruas)",
         );
-        console.log(`   Distância: ${(path.distance / 1000).toFixed(2)} km`);
-        console.log(`   Próximo destino: ${sortedUnvisitedStops[0]?.name}`);
+        setDisplayRoute(graphHopperRoute);
+        setRouteSource("graphhopper");
 
         // Salvar no cache
-        routeCache[cacheKey] = {
-          points: coordinates,
+        routeCache.set(cacheKey, {
+          points: graphHopperRoute,
           timestamp: Date.now(),
-        };
+        });
 
-        setDetailedRoute(coordinates);
+        // Limpar cache antigo (manter apenas 20 rotas)
+        if (routeCache.size > 20) {
+          const oldestKey = Array.from(routeCache.keys())[0];
+          routeCache.delete(oldestKey);
+        }
       } else {
-        console.warn("⚠️ Nenhuma rota encontrada, usando linha reta");
-        setDetailedRoute(points);
+        console.warn("⚠️ GraphHopper falhou, usando linha reta");
+        setDisplayRoute(points);
+        setRouteSource("none");
       }
     } catch (error: any) {
       if (error.name !== "AbortError") {
-        console.error("❌ Erro ao buscar rota detalhada:", error.message);
-        setDetailedRoute(points);
+        console.error("❌ Erro ao carregar rota:", error.message);
+        setDisplayRoute(
+          [
+            driverLocation,
+            sortedUnvisitedStops[0]?.latitude &&
+            sortedUnvisitedStops[0]?.longitude
+              ? [
+                  sortedUnvisitedStops[0].latitude,
+                  sortedUnvisitedStops[0].longitude,
+                ]
+              : driverLocation,
+          ].filter(Boolean) as [number, number][],
+        );
+        setRouteSource("none");
       }
     } finally {
       setIsFetchingRoute(false);
@@ -207,36 +264,22 @@ export default function ObserverMap({
     driverLocation,
     sortedUnvisitedStops,
     visitedStops,
-    generateCacheKey,
-    detailedRoute.length,
+    fetchGraphHopperRoute,
+    displayRoute.length,
   ]);
 
-  // 🔥 Executar busca quando motorista se mover ou paradas visitadas mudarem
+  // 🔥 EXECUTAR CARREGAMENTO QUANDO DEPENDÊNCIAS MUDAREM
   useEffect(() => {
-    fetchDetailedRoute();
+    loadRoute();
 
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [fetchDetailedRoute]);
+  }, [loadRoute]);
 
-  // 🔥 Usar rota detalhada
-  const displayRoute = detailedRoute;
-  const hasRoute = displayRoute.length > 0;
-  const isLoadingRoute = isLoading || isFetchingRoute;
-
-  // Log para debug
-  useEffect(() => {
-    if (sortedUnvisitedStops.length > 0) {
-      console.log(
-        `📍 [ObserverMap] Próximos destinos: ${sortedUnvisitedStops.map((s) => s.name).join(" → ")}`,
-      );
-    }
-  }, [sortedUnvisitedStops]);
-
-  // Calcular bounds
+  // 🔥 CALCULAR BOUNDS PARA ZOOM AUTOMÁTICO
   const bounds = useMemo(() => {
     const allPoints: [number, number][] = [];
 
@@ -270,6 +313,9 @@ export default function ObserverMap({
     ] as L.LatLngBoundsExpression;
   }, [displayRoute, sortedUnvisitedStops, driverLocation]);
 
+  const isLoadingRoute = isLoading || isFetchingRoute;
+  const hasRoute = displayRoute.length > 0;
+
   return (
     <div className="relative w-full h-full border rounded-lg overflow-hidden bg-gray-100">
       <MapContainer
@@ -283,13 +329,13 @@ export default function ObserverMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* Linha da rota detalhada */}
+        {/* 🔥 LINHA DA ROTA - SEGUINDO AS RUAS */}
         {hasRoute && (
           <Polyline
             positions={displayRoute}
             pathOptions={{
               color: "#D35400",
-              weight: 4,
+              weight: 5,
               opacity: 0.9,
               lineCap: "round",
               lineJoin: "round",
@@ -297,38 +343,36 @@ export default function ObserverMap({
           />
         )}
 
-        {/* Marcadores das paradas NÃO VISITADAS */}
-        {sortedUnvisitedStops.map((stop, index) => {
-          return (
-            <Marker
-              key={stop.id || index}
-              position={[stop.latitude, stop.longitude]}
-              icon={index === 0 ? defaultIcon : defaultIcon}
-            >
-              <Popup>
-                <div className="text-sm">
-                  <strong>
-                    {index + 1}. {stop.name || "Parada"}
-                  </strong>
-                  <p className="text-xs text-gray-500 mt-1">{stop.address}</p>
-                  <p className="text-xs text-gray-500">
-                    {stop.city}/{stop.state}
+        {/* 🔥 MARCADORES DAS PARADAS NÃO VISITADAS */}
+        {sortedUnvisitedStops.map((stop, index) => (
+          <Marker
+            key={stop.id || index}
+            position={[stop.latitude, stop.longitude]}
+            icon={defaultIcon}
+          >
+            <Popup>
+              <div className="text-sm">
+                <strong>
+                  {index + 1}. {stop.name || "Parada"}
+                </strong>
+                <p className="text-xs text-gray-500 mt-1">{stop.address}</p>
+                <p className="text-xs text-gray-500">
+                  {stop.city}/{stop.state}
+                </p>
+                {index === 0 && (
+                  <p className="text-orange-600 text-xs mt-1 font-semibold">
+                    🎯 Próximo destino
                   </p>
-                  {index === 0 && (
-                    <p className="text-orange-600 text-xs mt-1 font-semibold">
-                      🎯 Próximo destino
-                    </p>
-                  )}
-                </div>
-              </Popup>
-            </Marker>
-          );
-        })}
+                )}
+              </div>
+            </Popup>
+          </Marker>
+        ))}
 
-        {/* Marcadores das paradas VISITADAS (verdes) */}
+        {/* 🔥 MARCADORES DAS PARADAS VISITADAS */}
         {stops
           .filter((s) => visitedStops.includes(s.id))
-          .map((stop, index) => (
+          .map((stop) => (
             <Marker
               key={`visited-${stop.id}`}
               position={[stop.latitude, stop.longitude]}
@@ -346,7 +390,7 @@ export default function ObserverMap({
             </Marker>
           ))}
 
-        {/* Localização do motorista */}
+        {/* 🔥 LOCALIZAÇÃO DO MOTORISTA */}
         {driverLocation && (
           <Marker
             position={driverLocation}
@@ -367,50 +411,49 @@ export default function ObserverMap({
         )}
       </MapContainer>
 
-      {/* Indicador de carregamento */}
+      {/* 🔥 INDICADOR DE CARREGAMENTO */}
       {isLoadingRoute && !hasRoute && (
         <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-[1000]">
           <div className="bg-white rounded-xl p-4 shadow-lg flex items-center gap-3">
             <Loader2 className="animate-spin text-[#D35400]" size={24} />
             <span className="text-slate-700 font-medium">
-              Calculando nova rota...
+              Calculando melhor rota...
             </span>
           </div>
         </div>
       )}
 
-      {/* Informações da rota */}
+      {/* 🔥 INFORMAÇÕES DA ROTA */}
       {hasRoute && !isLoadingRoute && sortedUnvisitedStops.length > 0 && (
         <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur rounded-lg p-2 shadow-md z-[1000] text-xs">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-[#D35400] rounded-full" />
-              <span>Próximo: {sortedUnvisitedStops[0]?.name}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>🚗 Motorista online</span>
-            </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-[#D35400] rounded-full" />
+            <span>
+              Rota por ruas • {sortedUnvisitedStops.length} parada(s)
+              restante(s)
+            </span>
           </div>
         </div>
       )}
 
-      {/* Legenda */}
+      {/* 🔥 LEGENDA */}
       <div className="absolute top-4 right-4 bg-white/90 backdrop-blur rounded-lg p-2 shadow-md z-[1000] text-xs">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-[#D35400] rounded-full" />
-            <span>Rota</span>
+            <span>Rota por ruas</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <div
               className="w-4 h-4 bg-contain bg-no-repeat bg-center"
               style={{
                 backgroundImage: `url(https://cdn-icons-png.flaticon.com/512/3097/3097180.png)`,
+                backgroundSize: "contain",
               }}
             />
             <span>Motorista</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-green-500 rounded-full" />
             <span>Concluída</span>
           </div>

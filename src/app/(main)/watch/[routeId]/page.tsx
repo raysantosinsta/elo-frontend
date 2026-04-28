@@ -90,7 +90,7 @@ export default function WatchPage() {
     error,
   } = useGetRouteById(routeId || "");
 
-  // 🔥 1. ORDENAR AS PARADAS
+  // 🔥 ORDENAR AS PARADAS
   const orderedStops = useMemo(() => {
     if (!route?.stops) return [];
 
@@ -108,31 +108,138 @@ export default function WatchPage() {
     return [...sortedWithOrder, ...stopsWithoutOrder];
   }, [route?.stops]);
 
-  // 🔥 2. ESTADOS
+  // 🔥 ESTADOS
   const [optimizedRoutePath, setOptimizedRoutePath] = useState<[number, number][]>([]);
-  const [isLoadingRoutePath, setIsLoadingRoutePath] = useState(false);
-  
-  // Localização do motorista (vem do WebSocket)
   const [driverLocation, setDriverLocation] = useState<[number, number] | null>(null);
   const [isDriverOnline, setIsDriverOnline] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [hasReceivedFirstLocation, setHasReceivedFirstLocation] = useState(false); // 🔥 NOVO
+  const [hasReceivedFirstLocation, setHasReceivedFirstLocation] = useState(false);
+  const [isLoadingRoutePath, setIsLoadingRoutePath] = useState(false);
+  
+  // 🔥 NOVOS ESTADOS PARA CONTROLE DE ROTA
+  const [isRouteLoaded, setIsRouteLoaded] = useState(false);
+  
   const socketRef = useRef<Socket | null>(null);
+  
+  // 🔥 GUARDAR A ÚLTIMA ROTA RECEBIDA DO BACKEND
+  const lastOptimizedRouteRef = useRef<[number, number][]>([]);
+  
+  // 🔥 GUARDAR O ÚLTIMO ESTADO DE PARADAS VISITADAS
+  const lastVisitedCountRef = useRef(0);
 
   const totalStops = orderedStops.length;
   const visitedStops = orderedStops
     .filter((stop: any) => stop.visited === true)
     .map((s: any) => s.id) || [];
 
-  // 🔥 3. WEBSOCKET - CONECTAR PARA RECEBER LOCALIZAÇÃO DO MOTORISTA
+  // 🔥 FUNÇÃO PARA BUSCAR ROTA UMA ÚNICA VEZ (quando necessário)
+  const fetchOptimizedRouteOnce = useCallback(async (force = false) => {
+    // Se já tem rota carregada e não está forçando, NÃO recalculada
+    if (!force && isRouteLoaded && lastOptimizedRouteRef.current.length > 0) {
+      console.log("✅ [Watch] Rota já carregada, pulando recálculo desnecessário");
+      return;
+    }
+
+    if (!route?.stops || orderedStops.length === 0) {
+      console.log("⚠️ [Watch] Sem paradas para calcular rota");
+      return;
+    }
+
+    // Pega os IDs das tarefas associadas às paradas
+    const taskIds = orderedStops
+      .map((stop: any) => stop.taskId)
+      .filter((id: string) => id);
+
+    if (taskIds.length === 0) {
+      console.log("⚠️ [Watch] Nenhum taskId encontrado, usando fallback");
+      const fallbackPoints = orderedStops.map((stop: any) => [
+        stop.latitude,
+        stop.longitude,
+      ] as [number, number]);
+      setOptimizedRoutePath(fallbackPoints);
+      lastOptimizedRouteRef.current = fallbackPoints;
+      setIsRouteLoaded(true);
+      return;
+    }
+
+    setIsLoadingRoutePath(true);
+
+    try {
+      // Usa a localização atual do motorista (se disponível)
+      let startLat: number;
+      let startLng: number;
+
+      if (driverLocation && driverLocation[0] && driverLocation[1]) {
+        startLat = driverLocation[0];
+        startLng = driverLocation[1];
+        console.log("📍 [Watch] Usando localização REAL do motorista:", startLat, startLng);
+      } else {
+        // Fallback: usa a primeira parada
+        startLat = orderedStops[0]?.latitude;
+        startLng = orderedStops[0]?.longitude;
+        console.log("⚠️ [Watch] Sem localização do motorista, usando primeira parada");
+      }
+
+      console.log("🔄 [Watch] Buscando rota otimizada do backend (APENAS UMA VEZ)...");
+      console.log("   Task IDs:", taskIds.length);
+      console.log("   OrderBy:", route.orderBy);
+
+      const response = await api.post("/routes/calculate-best-path", {
+        taskIds: taskIds,
+        driverLatitude: startLat,
+        driverLongitude: startLng,
+        orderBy: route.orderBy || "DISTANCE",
+      });
+
+      console.log("✅ [Watch] Rota otimizada recebida do backend");
+
+      const optimizedTasks = response.data.route || [];
+      
+      // Construir a rota: motorista + paradas na ordem otimizada
+      const points: [number, number][] = [];
+      
+      // Primeiro ponto: localização atual do motorista
+      if (driverLocation && driverLocation[0] && driverLocation[1]) {
+        points.push(driverLocation);
+      }
+      
+      // Depois as paradas na ordem otimizada pelo backend
+      optimizedTasks.forEach((task: any) => {
+        const lat = task.taskAddress?.latitude || task.latitude;
+        const lng = task.taskAddress?.longitude || task.longitude;
+        if (lat && lng) {
+          points.push([lat, lng]);
+        }
+      });
+
+      console.log(`📍 [Watch] Rota otimizada com ${points.length} pontos`);
+      setOptimizedRoutePath(points);
+      lastOptimizedRouteRef.current = points;
+      setIsRouteLoaded(true);
+    } catch (error) {
+      console.error("❌ [Watch] Erro ao buscar rota otimizada:", error);
+      // Fallback: usa a ordem das paradas
+      const fallbackPoints = [
+        ...(driverLocation ? [driverLocation] : []),
+        ...orderedStops.map((stop: any) => [stop.latitude, stop.longitude] as [number, number])
+      ];
+      setOptimizedRoutePath(fallbackPoints);
+      lastOptimizedRouteRef.current = fallbackPoints;
+      setIsRouteLoaded(true);
+    } finally {
+      setIsLoadingRoutePath(false);
+    }
+  }, [route, orderedStops, driverLocation, isRouteLoaded]);
+
+  // 🔥 WEBSOCKET - APENAS ATUALIZA LOCALIZAÇÃO, NÃO RECALCULA ROTA
   useEffect(() => {
     if (!routeId) return;
 
     import("socket.io-client").then(({ io }) => {
       const driverId = route?.userAssigned?.id;
       if (!driverId) {
-        console.log("⚠️ Aguardando ID do motorista...");
+        console.log("⚠️ [Watch] Aguardando ID do motorista...");
         return;
       }
 
@@ -142,7 +249,7 @@ export default function WatchPage() {
       });
 
       const socketUrl = `${process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3000"}/locations?${params}`;
-      console.log(`🔌 Conectando WebSocket como observador: ${socketUrl}`);
+      console.log(`🔌 [Watch] Conectando WebSocket como observador`);
 
       const socket = io(socketUrl, {
         transports: ["websocket"],
@@ -151,25 +258,26 @@ export default function WatchPage() {
       socketRef.current = socket;
 
       socket.on("connect", () => {
-        console.log("✅ WebSocket conectado (observador)");
+        console.log("✅ [Watch] WebSocket conectado (observador)");
       });
 
       socket.on("disconnect", () => {
-        console.log("❌ WebSocket desconectado");
+        console.log("❌ [Watch] WebSocket desconectado");
         setIsDriverOnline(false);
       });
 
+      // 🔥 CRÍTICO: Só atualiza a localização do motorista, NUNCA recalcula a rota aqui
       socket.on("location-update", (location: any) => {
-        console.log(`📍 Motorista em: ${location.latitude}, ${location.longitude}`);
+        console.log(`📍 [Watch] Motorista em: ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`);
         setDriverLocation([location.latitude, location.longitude]);
         setIsDriverOnline(true);
         setLastUpdate(new Date());
         setIsSimulating(location.isSimulating || false);
-        setHasReceivedFirstLocation(true); // 🔥 Marca que já recebeu a primeira localização
+        setHasReceivedFirstLocation(true);
       });
 
       socket.on("driver-offline", () => {
-        console.warn("⚠️ Motorista offline");
+        console.warn("⚠️ [Watch] Motorista offline");
         setIsDriverOnline(false);
       });
 
@@ -182,102 +290,39 @@ export default function WatchPage() {
     });
   }, [routeId, route?.userAssigned?.id]);
 
-  // 🔥 4. BUSCAR ROTA OTIMIZADA DO BACKEND (usa a localização REAL do motorista)
+  // 🔥 CARREGAR ROTA PELA PRIMEIRA VEZ (quando tem localização do motorista E paradas)
   useEffect(() => {
-    const fetchOptimizedRoute = async () => {
-      if (!route?.stops || orderedStops.length === 0) return;
-
-      // Pega os IDs das tarefas associadas às paradas
-      const taskIds = orderedStops
-        .map((stop: any) => stop.taskId)
-        .filter((id: string) => id);
-
-      if (taskIds.length === 0) {
-        console.log("⚠️ Nenhum taskId encontrado nas paradas");
-        const fallbackPoints = orderedStops.map((stop: any) => [
-          stop.latitude,
-          stop.longitude,
-        ] as [number, number]);
-        setOptimizedRoutePath(fallbackPoints);
-        return;
-      }
-
-      setIsLoadingRoutePath(true);
-
-      try {
-        // 🔥 USAR A LOCALIZAÇÃO REAL DO MOTORISTA (do WebSocket)
-        let startLat: number;
-        let startLng: number;
-
-        if (driverLocation && driverLocation[0] && driverLocation[1]) {
-          startLat = driverLocation[0];
-          startLng = driverLocation[1];
-          console.log("📍 Usando localização REAL do motorista:", startLat, startLng);
-        } else {
-          // Fallback: usa a primeira parada (aguardando o motorista conectar)
-          startLat = orderedStops[0]?.latitude;
-          startLng = orderedStops[0]?.longitude;
-          console.log("⚠️ Sem localização do motorista, usando primeira parada:", startLat, startLng);
-        }
-
-        console.log("🔄 Buscando rota otimizada do backend...");
-        console.log("   Task IDs:", taskIds);
-        console.log("   OrderBy:", route.orderBy);
-        console.log("   🔥 Driver Lat/Lng:", startLat, startLng);
-
-        const response = await api.post("/routes/calculate-best-path", {
-          taskIds: taskIds,
-          driverLatitude: startLat,
-          driverLongitude: startLng,
-          orderBy: route.orderBy || "DISTANCE",
-        });
-
-        console.log("✅ Rota otimizada recebida:", response.data);
-
-        const optimizedTasks = response.data.route || [];
-        
-        // 🔥 Construir a rota: motorista + paradas na ordem otimizada
-        const points: [number, number][] = [];
-        
-        // Primeiro ponto: localização atual do motorista
-        if (driverLocation && driverLocation[0] && driverLocation[1]) {
-          points.push(driverLocation);
-        }
-        
-        // Depois as paradas na ordem otimizada pelo backend
-        optimizedTasks.forEach((task: any) => {
-          const lat = task.taskAddress?.latitude || task.latitude;
-          const lng = task.taskAddress?.longitude || task.longitude;
-          if (lat && lng) {
-            points.push([lat, lng]);
-          }
-        });
-
-        console.log(`📍 Rota otimizada com ${points.length} pontos`);
-        setOptimizedRoutePath(points);
-      } catch (error) {
-        console.error("❌ Erro ao buscar rota otimizada:", error);
-        // Fallback: usa a ordem das paradas
-        const fallbackPoints = [
-          ...(driverLocation ? [driverLocation] : []),
-          ...orderedStops.map((stop: any) => [stop.latitude, stop.longitude] as [number, number])
-        ];
-        setOptimizedRoutePath(fallbackPoints);
-      } finally {
-        setIsLoadingRoutePath(false);
-      }
-    };
-
-    if (orderedStops.length > 0) {
-      fetchOptimizedRoute();
+    if (driverLocation && orderedStops.length > 0 && !isRouteLoaded) {
+      console.log("🚀 [Watch] Primeira carga da rota...");
+      fetchOptimizedRouteOnce(true);
     }
-  }, [route, orderedStops, driverLocation]);
+  }, [driverLocation, orderedStops, isRouteLoaded, fetchOptimizedRouteOnce]);
 
-  // 🔥 5. HANDLERS
+  // 🔥 QUANDO UMA PARADA É VISITADA, RECALCULA ROTA (MAS SÓ QUANDO NECESSÁRIO)
+  useEffect(() => {
+    const currentVisitedCount = visitedStops.length;
+    
+    // Se o número de paradas visitadas mudou
+    if (currentVisitedCount !== lastVisitedCountRef.current && currentVisitedCount > 0) {
+      console.log(`🔄 [Watch] Parada concluída! Recalculando rota (${currentVisitedCount}/${totalStops})`);
+      lastVisitedCountRef.current = currentVisitedCount;
+      
+      // Limpar flag para forçar recálculo
+      setIsRouteLoaded(false);
+      lastOptimizedRouteRef.current = [];
+      
+      // Pequeno delay para garantir que o estado foi atualizado
+      setTimeout(() => {
+        fetchOptimizedRouteOnce(true);
+      }, 100);
+    }
+  }, [visitedStops, totalStops, fetchOptimizedRouteOnce]);
+
+  // 🔥 HANDLERS
   const handleBack = useCallback(() => router.back(), [router]);
   const prefetchRoutes = useCallback(() => router.prefetch("/routes"), [router]);
 
-  // 🔥 6. LOADING E ERROR STATES
+  // 🔥 LOADING E ERROR STATES
   if (isLoadingRoute) return <WatchSkeleton />;
 
   if (error || !route) {
@@ -299,7 +344,7 @@ export default function WatchPage() {
     );
   }
 
-  // 🔥 7. RENDER
+  // 🔥 RENDER
   return (
     <div className="relative h-screen w-full flex flex-col bg-slate-100 overflow-hidden">
       {/* Header do observador */}
@@ -403,6 +448,27 @@ export default function WatchPage() {
             <p className="text-amber-600 text-xs mt-1">
               Quando o motorista iniciar a rota, você verá sua localização em
               tempo real
+            </p>
+          </motion.div>
+        </div>
+      )}
+
+      {/* 🔥 Indicador de rota carregada */}
+      {isRouteLoaded && hasReceivedFirstLocation && driverLocation && (
+        <div className="absolute bottom-20 left-4 right-4 z-[500] pointer-events-none">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-green-100/95 backdrop-blur rounded-xl p-3 shadow-lg text-center"
+          >
+            <div className="flex items-center justify-center gap-2">
+              <MapPin size={18} className="text-green-600" />
+              <p className="text-green-700 text-sm font-medium">
+                Acompanhando rota em tempo real
+              </p>
+            </div>
+            <p className="text-green-600 text-xs mt-1">
+              {isSimulating ? "Motorista em modo simulação" : "GPS ativo"}
             </p>
           </motion.div>
         </div>
