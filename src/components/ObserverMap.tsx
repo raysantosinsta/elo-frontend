@@ -64,10 +64,8 @@ export default function ObserverMap({
 }: ObserverMapProps) {
   const [displayRoute, setDisplayRoute] = useState<[number, number][]>([]);
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
-  const [routeSource, setRouteSource] = useState<
-    "backend" | "graphhopper" | "none"
-  >("none");
-
+  const [routeSource, setRouteSource] = useState<"backend" | "graphhopper" | "none">("none");
+  
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastRequestKeyRef = useRef<string>("");
   const lastFetchTimeRef = useRef<number>(0);
@@ -83,59 +81,56 @@ export default function ObserverMap({
   }, [unvisitedStops]);
 
   // 🔥 FUNÇÃO PARA BUSCAR ROTA NO GRAPHHOPPER (SEGUINDO RUAS)
-  const fetchGraphHopperRoute = useCallback(
-    async (points: [number, number][]): Promise<[number, number][] | null> => {
-      if (points.length < 2) return points;
+  const fetchGraphHopperRoute = useCallback(async (
+    points: [number, number][]
+  ): Promise<[number, number][] | null> => {
+    if (points.length < 2) return points;
 
-      // Construir URL com os pontos
-      const pointsStr = points.map((p) => `${p[0]},${p[1]}`).join("&point=");
-      const url = `https://graphhopper.com/api/1/route?point=${pointsStr}&vehicle=car&points_encoded=false&key=${GRAPHHOPPER_API_KEY}`;
+    // Construir URL com os pontos
+    const pointsStr = points.map((p) => `${p[0]},${p[1]}`).join("&point=");
+    const url = `https://graphhopper.com/api/1/route?point=${pointsStr}&vehicle=car&points_encoded=false&key=${GRAPHHOPPER_API_KEY}`;
 
-      console.log("🌐 [ObserverMap] Buscando rota no GraphHopper...");
-      console.log(`   URL: ${url.replace(GRAPHHOPPER_API_KEY, "HIDDEN")}`);
-      console.log(
-        `   Pontos: ${points.length} (motorista + ${points.length - 1} paradas)`,
-      );
+    console.log("🌐 [ObserverMap] Buscando rota no GraphHopper...");
+    console.log(`   URL: ${url.replace(GRAPHHOPPER_API_KEY, "HIDDEN")}`);
+    console.log(`   Pontos: ${points.length} (motorista + ${points.length - 1} paradas)`);
 
-      try {
-        const response = await fetch(url, {
-          signal: abortControllerRef.current?.signal,
-        });
+    try {
+      const response = await fetch(url, {
+        signal: abortControllerRef.current?.signal,
+      });
 
-        if (!response.ok) {
-          console.error(`❌ GraphHopper HTTP Error: ${response.status}`);
-          return null;
-        }
-
-        const data = await response.json();
-
-        if (data.paths && data.paths.length > 0) {
-          const path = data.paths[0];
-
-          // Extrair as coordenadas da rota (lat, lng)
-          const coordinates = path.points.coordinates.map(
-            (coord: number[]) => [coord[1], coord[0]] as [number, number],
-          );
-
-          console.log(`✅ [ObserverMap] Rota GraphHopper carregada:`);
-          console.log(`   Pontos: ${coordinates.length}`);
-          console.log(`   Distância: ${(path.distance / 1000).toFixed(2)} km`);
-          console.log(`   Tempo: ${Math.round(path.time / 60000)} min`);
-
-          return coordinates;
-        }
-
-        console.warn("⚠️ Nenhum path encontrado na resposta");
-        return null;
-      } catch (error: any) {
-        if (error.name !== "AbortError") {
-          console.error("❌ GraphHopper error:", error.message);
-        }
+      if (!response.ok) {
+        console.error(`❌ GraphHopper HTTP Error: ${response.status}`);
         return null;
       }
-    },
-    [],
-  );
+
+      const data = await response.json();
+
+      if (data.paths && data.paths.length > 0) {
+        const path = data.paths[0];
+        
+        // Extrair as coordenadas da rota (lat, lng)
+        const coordinates = path.points.coordinates.map(
+          (coord: number[]) => [coord[1], coord[0]] as [number, number]
+        );
+
+        console.log(`✅ [ObserverMap] Rota GraphHopper carregada:`);
+        console.log(`   Pontos: ${coordinates.length}`);
+        console.log(`   Distância: ${(path.distance / 1000).toFixed(2)} km`);
+        console.log(`   Tempo: ${Math.round(path.time / 60000)} min`);
+        
+        return coordinates;
+      }
+      
+      console.warn("⚠️ Nenhum path encontrado na resposta");
+      return null;
+    } catch (error: any) {
+      if (error.name !== "AbortError") {
+        console.error("❌ GraphHopper error:", error.message);
+      }
+      return null;
+    }
+  }, []);
 
   // 🔥 FUNÇÃO PRINCIPAL PARA CARREGAR A ROTA
   const loadRoute = useCallback(async () => {
@@ -153,19 +148,13 @@ export default function ObserverMap({
     }
 
     // Criar chave única para cache
-    const stopsKey = sortedUnvisitedStops
-      .map((s) => `${s.latitude.toFixed(5)},${s.longitude.toFixed(5)}`)
-      .join("|");
+    const stopsKey = sortedUnvisitedStops.map(s => `${s.latitude.toFixed(5)},${s.longitude.toFixed(5)}`).join("|");
     const cacheKey = `${driverLocation[0].toFixed(5)},${driverLocation[1].toFixed(5)}|${stopsKey}|${visitedStops.length}`;
 
     // 🔥 VERIFICAR CACHE PRIMEIRO
     const cached = routeCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log(
-        "✅ [ObserverMap] Usando rota em cache:",
-        cached.points.length,
-        "pontos",
-      );
+      console.log("✅ [ObserverMap] Usando rota em cache:", cached.points.length, "pontos");
       setDisplayRoute(cached.points);
       setRouteSource("graphhopper");
       return;
@@ -173,8 +162,7 @@ export default function ObserverMap({
 
     // 🔥 THROTTLE: Evitar requisições muito frequentes
     const now = Date.now();
-    if (now - lastFetchTimeRef.current < 3000) {
-      // 3 segundos de throttle
+    if (now - lastFetchTimeRef.current < 3000) { // 3 segundos de throttle
       console.log("⏳ [ObserverMap] Throttle ativo, aguardando...");
       return;
     }
@@ -193,43 +181,37 @@ export default function ObserverMap({
     setIsFetchingRoute(true);
     lastRequestKeyRef.current = cacheKey;
     lastFetchTimeRef.current = now;
-
+    
     abortControllerRef.current = new AbortController();
 
     try {
       // Construir pontos para a rota: motorista + paradas não visitadas
       const points: [number, number][] = [driverLocation];
-
+      
       sortedUnvisitedStops.forEach((stop) => {
         if (stop.latitude && stop.longitude) {
           points.push([stop.latitude, stop.longitude]);
         }
       });
 
-      console.log(
-        `🎯 [ObserverMap] Calculando rota para ${sortedUnvisitedStops.length} parada(s)`,
-      );
-      console.log(
-        `   Origem: ${driverLocation[0].toFixed(6)}, ${driverLocation[1].toFixed(6)}`,
-      );
+      console.log(`🎯 [ObserverMap] Calculando rota para ${sortedUnvisitedStops.length} parada(s)`);
+      console.log(`   Origem: ${driverLocation[0].toFixed(6)}, ${driverLocation[1].toFixed(6)}`);
       console.log(`   Destino: ${sortedUnvisitedStops[0]?.name}`);
 
       // Buscar rota do GraphHopper
       const graphHopperRoute = await fetchGraphHopperRoute(points);
-
+      
       if (graphHopperRoute && graphHopperRoute.length > 0) {
-        console.log(
-          "✅ [ObserverMap] Usando rota do GraphHopper (seguindo ruas)",
-        );
+        console.log("✅ [ObserverMap] Usando rota do GraphHopper (seguindo ruas)");
         setDisplayRoute(graphHopperRoute);
         setRouteSource("graphhopper");
-
+        
         // Salvar no cache
         routeCache.set(cacheKey, {
           points: graphHopperRoute,
           timestamp: Date.now(),
         });
-
+        
         // Limpar cache antigo (manter apenas 20 rotas)
         if (routeCache.size > 20) {
           const oldestKey = Array.from(routeCache.keys())[0];
@@ -243,30 +225,14 @@ export default function ObserverMap({
     } catch (error: any) {
       if (error.name !== "AbortError") {
         console.error("❌ Erro ao carregar rota:", error.message);
-        setDisplayRoute(
-          [
-            driverLocation,
-            sortedUnvisitedStops[0]?.latitude &&
-            sortedUnvisitedStops[0]?.longitude
-              ? [
-                  sortedUnvisitedStops[0].latitude,
-                  sortedUnvisitedStops[0].longitude,
-                ]
-              : driverLocation,
-          ].filter(Boolean) as [number, number][],
-        );
+        setDisplayRoute([driverLocation, sortedUnvisitedStops[0]?.latitude && sortedUnvisitedStops[0]?.longitude ? 
+          [sortedUnvisitedStops[0].latitude, sortedUnvisitedStops[0].longitude] : driverLocation].filter(Boolean) as [number, number][]);
         setRouteSource("none");
       }
     } finally {
       setIsFetchingRoute(false);
     }
-  }, [
-    driverLocation,
-    sortedUnvisitedStops,
-    visitedStops,
-    fetchGraphHopperRoute,
-    displayRoute.length,
-  ]);
+  }, [driverLocation, sortedUnvisitedStops, visitedStops, fetchGraphHopperRoute, displayRoute.length]);
 
   // 🔥 EXECUTAR CARREGAMENTO QUANDO DEPENDÊNCIAS MUDAREM
   useEffect(() => {
@@ -429,8 +395,7 @@ export default function ObserverMap({
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-[#D35400] rounded-full" />
             <span>
-              Rota por ruas • {sortedUnvisitedStops.length} parada(s)
-              restante(s)
+              Rota por ruas • {sortedUnvisitedStops.length} parada(s) restante(s)
             </span>
           </div>
         </div>
