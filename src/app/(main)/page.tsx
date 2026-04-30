@@ -434,7 +434,7 @@ export default function DashboardPage() {
                 className="pl-10 bg-[#F5F6FA] border-[#E2E8F0]"
               />
             </div>
-            <div className="flex gap-2 flex-wrap">
+            {/* <div className="flex gap-2 flex-wrap">
               <Button
                 variant={filter === "all" ? "default" : "outline"}
                 onClick={() => setFilter("all")}
@@ -457,7 +457,7 @@ export default function DashboardPage() {
               >
                 <AlertTriangle className="h-4 w-4 mr-1" /> Atrasadas
               </Button>
-            </div>
+            </div> */}
           </CardContent>
         </Card>
 
@@ -494,7 +494,7 @@ export default function DashboardPage() {
             </Card>
 
             {/* LISTA 2: PRÓXIMOS VENCIMENTOS */}
-            <Card className="bg-white shadow-lg rounded-xl h-full border-t-4 border-[#2F80ED]/50">
+            {/* <Card className="bg-white shadow-lg rounded-xl h-full border-t-4 border-[#2F80ED]/50">
               <CardHeader className="border-b pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg text-[#353A40]">
                   <Calendar className="h-5 w-5 text-[#2F80ED]" /> Próximos
@@ -536,7 +536,7 @@ export default function DashboardPage() {
                   );
                 })()}
               </CardContent>
-            </Card>
+            </Card> */}
           </main>
         )}
       </div>
