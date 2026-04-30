@@ -322,11 +322,11 @@ export default function UserManagementPage() {
             <Badge variant="outline" className="w-fit text-[10px] uppercase">
               {user.role}
             </Badge>
-            {user.professionalRole && (
+            {/* {user.professionalRole && (
               <span className="text-xs text-slate-600 flex items-center gap-1">
                 <Briefcase className="h-3 w-3" /> {user.professionalRole}
               </span>
-            )}
+            )} */}
           </div>
         )
       },
