@@ -81,7 +81,9 @@ export function useLocationWebSocket({
     const params = new URLSearchParams({ routeId });
     if (driverId) params.append('driverId', driverId);
     
-    const socketUrl = `${process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3000'}/locations?${params}`;
+    const rawUrl = process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000';
+    const baseUrl = rawUrl.replace(/\/$/, '');
+    const socketUrl = `${baseUrl}/locations?${params}`;
     
     const socket = io(socketUrl, {
       transports: ['websocket'],
