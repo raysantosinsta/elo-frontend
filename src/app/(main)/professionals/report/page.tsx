@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 // Services & Contexts
 import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/services/api"; // <--- Importação do Axios
+import { api } from "@/services/api";
 import { cn } from "@/lib/utils";
 
 // UI Components
@@ -70,7 +70,7 @@ import {
   Trash2,
   UserPlus,
   UsersIcon,
-  XCircle
+  XCircle,
 } from "lucide-react";
 
 // Charts
@@ -122,6 +122,12 @@ interface ProfessionalReportItem {
     id: string;
     name: string;
   };
+  companyRole?: {
+    id: string;
+    name: string;
+    level: number;
+    description?: string;
+  };
   metrics: ProfessionalMetrics;
 }
 
@@ -131,6 +137,45 @@ interface ReportSummary {
   inactiveProfessionals: number;
   companies: string[];
 }
+
+// --- FUNÇÕES HELPER PARA RENDERIZAÇÃO SEGURA ---
+
+/**
+ * Converte qualquer valor para string de forma segura
+ * Evita erro "Objects are not valid as a React child"
+ */
+const safeString = (value: any): string => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    // Se for um objeto, tenta pegar a propriedade 'name'
+    if (value.name && typeof value.name === "string") return value.name;
+    if (value.label && typeof value.label === "string") return value.label;
+    // Se não tiver name, retorna vazio
+    console.warn("Objeto não pôde ser convertido para string:", value);
+    return "";
+  }
+  return String(value);
+};
+
+/**
+ * Obtém o nome da empresa de forma segura
+ */
+const getCompanyName = (company?: { id: string; name: string }): string => {
+  if (!company) return "";
+  if (typeof company === "object") return company.name || "";
+  return safeString(company);
+};
+
+/**
+ * Obtém o nome do cargo na empresa de forma segura
+ */
+const getCompanyRoleName = (
+  companyRole?: { id: string; name: string } | string | null,
+): string => {
+  if (!companyRole) return "";
+  if (typeof companyRole === "object") return companyRole.name || "";
+  return safeString(companyRole);
+};
 
 // --- SUB-COMPONENTS ---
 
@@ -158,7 +203,9 @@ const SummaryCard = ({
     </CardHeader>
     <CardContent>
       <div className="flex items-center justify-between">
-        <div className="text-3xl font-bold text-[#2D3436]">{value}</div>
+        <div className="text-3xl font-bold text-[#2D3436]">
+          {safeString(value)}
+        </div>
         <Icon className="h-6 w-6 opacity-80" style={{ color: colorClass }} />
       </div>
       <p className="text-xs text-[#95A5A6] mt-2 font-medium">{subtext}</p>
@@ -169,15 +216,16 @@ const SummaryCard = ({
 // --- MAIN PAGE COMPONENT ---
 
 export default function ProfessionalsReportPage() {
-  // 1. CORREÇÃO: Removemos authFetch daqui
-  const { user } = useAuth(); 
+  const { user } = useAuth();
   const router = useRouter();
 
   // State Data
-  const [professionals, setProfessionals] = useState<ProfessionalReportItem[]>([]);
+  const [professionals, setProfessionals] = useState<ProfessionalReportItem[]>(
+    [],
+  );
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false); // Mantido caso implemente no futuro
+  const [exporting, setExporting] = useState(false);
 
   // Filters State
   const [statusFilter, setStatusFilter] = useState("all");
@@ -186,7 +234,9 @@ export default function ProfessionalsReportPage() {
 
   // Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<ProfessionalReportItem | null>(null);
+  const [editingUser, setEditingUser] = useState<ProfessionalReportItem | null>(
+    null,
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   // --- API HANDLERS ---
@@ -194,13 +244,11 @@ export default function ProfessionalsReportPage() {
   const fetchReport = useCallback(async () => {
     setLoading(true);
     try {
-      // Axios Params simplifica a construção da query string
       const params: any = {};
       if (statusFilter && statusFilter !== "all") params.status = statusFilter;
       if (startDate) params.startDate = startDate.toISOString();
       if (endDate) params.endDate = endDate.toISOString();
 
-      // Chamada simplificada com api.get
       const { data } = await api.get("/reports/professionals/", { params });
 
       setProfessionals(data.professionals);
@@ -220,11 +268,12 @@ export default function ProfessionalsReportPage() {
     try {
       await api.patch(`/users/${id}/status/${newStatus}`);
 
-      toast.success(`Usuário ${newStatus === "ACTIVE" ? "ativado" : "desativado"} com sucesso!`);
-      
-      // Atualização Otimista
+      toast.success(
+        `Usuário ${newStatus === "ACTIVE" ? "ativado" : "desativado"} com sucesso!`,
+      );
+
       setProfessionals((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p))
+        prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p)),
       );
     } catch (error: any) {
       console.error(error);
@@ -234,7 +283,12 @@ export default function ProfessionalsReportPage() {
   };
 
   const handleDeleteUser = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir este usuário? Essa ação não pode ser desfeita.")) return;
+    if (
+      !confirm(
+        "Tem certeza que deseja excluir este usuário? Essa ação não pode ser desfeita.",
+      )
+    )
+      return;
 
     try {
       await api.delete(`/users/${id}`);
@@ -277,9 +331,9 @@ export default function ProfessionalsReportPage() {
       await api.patch(`/users/${editingUser.id}`, payload);
 
       toast.success("Usuário atualizado com sucesso!");
-      
+
       setProfessionals((prev) =>
-        prev.map((p) => (p.id === editingUser.id ? { ...p, ...payload } : p))
+        prev.map((p) => (p.id === editingUser.id ? { ...p, ...payload } : p)),
       );
       setIsEditModalOpen(false);
     } catch (error: any) {
@@ -316,9 +370,9 @@ export default function ProfessionalsReportPage() {
 
   const pieData = summary
     ? [
-      { name: "Ativos", value: summary.activeProfessionals },
-      { name: "Inativos", value: summary.inactiveProfessionals },
-    ]
+        { name: "Ativos", value: summary.activeProfessionals },
+        { name: "Inativos", value: summary.inactiveProfessionals },
+      ]
     : [];
 
   if (loading && !summary) {
@@ -343,7 +397,7 @@ export default function ProfessionalsReportPage() {
               Gerenciamento e análise de profissionais.
             </p>
           </div>
-          <div className="flex gap-2">
+          {/* <div className="flex gap-2">
             <Button
               onClick={() => router.push("/signup")}
               className="bg-[#2C3E50] hover:bg-[#34495E] text-white shadow-md transition-all active:scale-95"
@@ -351,7 +405,7 @@ export default function ProfessionalsReportPage() {
               <UserPlus className="mr-2 h-4 w-4" />
               Novo Profissional
             </Button>
-          </div>
+          </div> */}
         </header>
 
         {/* SUMMARY CARDS */}
@@ -372,7 +426,10 @@ export default function ProfessionalsReportPage() {
           />
           <SummaryCard
             title="Total Tarefas"
-            value={professionals.reduce((acc, curr) => acc + curr.metrics.totalTasks, 0)}
+            value={professionals.reduce(
+              (acc, curr) => acc + curr.metrics.totalTasks,
+              0,
+            )}
             icon={BriefcaseIcon}
             subtext="Distribuídas entre a equipe"
             colorClass={COLORS.grafite}
@@ -432,61 +489,96 @@ export default function ProfessionalsReportPage() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="list" className="animate-in fade-in-50 duration-500">
+          <TabsContent
+            value="list"
+            className="animate-in fade-in-50 duration-500"
+          >
             <Card className="border-[#95A5A6]/20 shadow-sm bg-white overflow-hidden">
               <CardHeader className="bg-[#FAFAFA] border-b border-[#95A5A6]/20">
-                <CardTitle className="text-[#2D3436]">Profissionais Cadastrados</CardTitle>
-                <CardDescription>Gerencie o status e visualize o desempenho da equipe.</CardDescription>
+                <CardTitle className="text-[#2D3436]">
+                  Profissionais Cadastrados
+                </CardTitle>
+                <CardDescription>
+                  Gerencie o status e visualize o desempenho da equipe.
+                </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[300px] text-[#2C3E50] font-bold">Profissional</TableHead>
-                      <TableHead className="text-[#2C3E50] font-bold">Cargo</TableHead>
-                      {/* COLUNA EFICIÊNCIA REMOVIDA DAQUI */}
-                      <TableHead className="text-[#2C3E50] font-bold text-center">Tarefas</TableHead>
-                      <TableHead className="text-[#2C3E50] font-bold text-center">Status</TableHead>
-                      <TableHead className="text-right text-[#2C3E50] font-bold">Ações</TableHead>
+                      <TableHead className="w-[300px] text-[#2C3E50] font-bold">
+                        Profissional
+                      </TableHead>
+                      <TableHead className="text-[#2C3E50] font-bold">
+                        Cargo
+                      </TableHead>
+                      <TableHead className="text-[#2C3E50] font-bold text-center">
+                        Tarefas
+                      </TableHead>
+                      <TableHead className="text-[#2C3E50] font-bold text-center">
+                        Status
+                      </TableHead>
+                      <TableHead className="text-right text-[#2C3E50] font-bold">
+                        Ações
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {professionals.length > 0 ? (
                       professionals.map((prof) => (
-                        <TableRow key={prof.id} className="hover:bg-[#F5F0E6]/50 transition-colors">
+                        <TableRow
+                          key={prof.id}
+                          className="hover:bg-[#F5F0E6]/50 transition-colors"
+                        >
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <Avatar className="h-9 w-9 border border-[#95A5A6]">
                                 <AvatarFallback className="bg-[#2C3E50] text-white">
-                                  {prof.name.substring(0, 2).toUpperCase()}
+                                  {safeString(
+                                    prof.name.substring(0, 2).toUpperCase(),
+                                  )}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <div className="font-semibold text-[#2D3436]">{prof.name}</div>
-                                <div className="text-xs text-[#95A5A6]">{prof.email}</div>
+                                <div className="font-semibold text-[#2D3436]">
+                                  {safeString(prof.name)}
+                                </div>
+                                <div className="text-xs text-[#95A5A6]">
+                                  {safeString(prof.email)}
+                                </div>
                               </div>
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="text-sm font-medium text-[#2D3436]">
-                              {prof.professionalRole || "Não informado"}
+                              {safeString(
+                                prof.professionalRole || "Não informado",
+                              )}
                             </div>
+                            {/* Exibe o nome da empresa com segurança */}
                             {user?.role === "MASTER" && prof.company && (
-                              <div className="text-xs text-[#95A5A6] mt-1">{prof.company.name}</div>
+                              <div className="text-xs text-[#95A5A6] mt-1">
+                                Empresa: {getCompanyName(prof.company)}
+                              </div>
+                            )}
+                            {/* Exibe o cargo na empresa com segurança */}
+                            {prof.companyRole && (
+                              <div className="text-xs text-[#95A5A6] mt-1">
+                                Cargo: {getCompanyRoleName(prof.companyRole)}
+                              </div>
                             )}
                           </TableCell>
-                          {/* CÉLULA EFICIÊNCIA REMOVIDA DAQUI */}
-                          
                           <TableCell className="text-center">
                             <div className="flex flex-col items-center">
                               <Badge
                                 variant="secondary"
                                 className="bg-[#2C3E50] text-white hover:bg-[#34495E]"
                               >
-                                Total: {prof.metrics.totalTasks}
+                                Total: {safeString(prof.metrics.totalTasks)}
                               </Badge>
                               <span className="text-[10px] text-gray-500 mt-1">
-                                {prof.metrics.completedTasks} concluídas
+                                {safeString(prof.metrics.completedTasks)}{" "}
+                                concluídas
                               </span>
                             </div>
                           </TableCell>
@@ -497,7 +589,7 @@ export default function ProfessionalsReportPage() {
                                 "shadow-none",
                                 prof.status === "ACTIVE"
                                   ? "bg-[#27AE60] hover:bg-[#219150]"
-                                  : "bg-[#95A5A6] hover:bg-[#7F8C8D]"
+                                  : "bg-[#95A5A6] hover:bg-[#7F8C8D]",
                               )}
                             >
                               {prof.status === "ACTIVE" ? "Ativo" : "Inativo"}
@@ -513,18 +605,30 @@ export default function ProfessionalsReportPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                <DropdownMenuItem onClick={() => openEditModal(prof)}>
+                                <DropdownMenuItem
+                                  onClick={() => openEditModal(prof)}
+                                >
                                   <Edit className="mr-2 h-4 w-4" /> Editar
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => router.push(`/professionals/report/${prof.id}`)}>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    router.push(
+                                      `/professionals/report/${prof.id}`,
+                                    )
+                                  }
+                                >
                                   <Eye className="mr-2 h-4 w-4" /> Ver Relatório
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => handleToggleStatus(prof.id, prof.status)}
+                                  onClick={() =>
+                                    handleToggleStatus(prof.id, prof.status)
+                                  }
                                 >
                                   <Power className="mr-2 h-4 w-4" />
-                                  {prof.status === "ACTIVE" ? "Desativar" : "Ativar"}
+                                  {prof.status === "ACTIVE"
+                                    ? "Desativar"
+                                    : "Ativar"}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => handleDeleteUser(prof.id)}
@@ -540,7 +644,7 @@ export default function ProfessionalsReportPage() {
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={5} // Ajustado o colspan
+                          colSpan={5}
                           className="text-center py-12 text-[#95A5A6]"
                         >
                           <div className="flex flex-col items-center justify-center">
@@ -557,19 +661,39 @@ export default function ProfessionalsReportPage() {
           </TabsContent>
 
           {/* GRAPHICS TAB */}
-          <TabsContent value="charts" className="animate-in fade-in-50 duration-500">
+          <TabsContent
+            value="charts"
+            className="animate-in fade-in-50 duration-500"
+          >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <Card className="border-[#95A5A6]/20 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-[#2D3436]">Top 10 - Volume de Tarefas</CardTitle>
-                  <CardDescription>Comparativo de tarefas completas vs pendentes</CardDescription>
+                  <CardTitle className="text-[#2D3436]">
+                    Top 10 - Volume de Tarefas
+                  </CardTitle>
+                  <CardDescription>
+                    Comparativo de tarefas completas vs pendentes
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fill: "#95A5A6" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: "#95A5A6" }} axisLine={false} tickLine={false} />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="#e0e0e0"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fill: "#95A5A6" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: "#95A5A6" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
                       <Tooltip
                         cursor={{ fill: "#F5F0E6" }}
                         contentStyle={{
@@ -600,7 +724,9 @@ export default function ProfessionalsReportPage() {
 
               <Card className="border-[#95A5A6]/20 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-[#2D3436]">Status da Equipe</CardTitle>
+                  <CardTitle className="text-[#2D3436]">
+                    Status da Equipe
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
@@ -617,7 +743,11 @@ export default function ProfessionalsReportPage() {
                         {pieData.map((entry, index) => (
                           <Cell
                             key={`cell-${index}`}
-                            fill={entry.name === "Ativos" ? COLORS.success : COLORS.areia}
+                            fill={
+                              entry.name === "Ativos"
+                                ? COLORS.success
+                                : COLORS.areia
+                            }
                             stroke="none"
                           />
                         ))}
@@ -639,7 +769,8 @@ export default function ProfessionalsReportPage() {
           <DialogHeader>
             <DialogTitle>Editar Profissional</DialogTitle>
             <DialogDescription>
-              Faça alterações no perfil do usuário aqui. Clique em salvar quando terminar.
+              Faça alterações no perfil do usuário aqui. Clique em salvar quando
+              terminar.
             </DialogDescription>
           </DialogHeader>
 
@@ -649,8 +780,10 @@ export default function ProfessionalsReportPage() {
                 <Label htmlFor="name">Nome Completo</Label>
                 <Input
                   id="name"
-                  value={editingUser.name}
-                  onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
+                  value={safeString(editingUser.name)}
+                  onChange={(e) =>
+                    setEditingUser({ ...editingUser, name: e.target.value })
+                  }
                 />
               </div>
               <div className="grid gap-2">
@@ -658,16 +791,20 @@ export default function ProfessionalsReportPage() {
                 <Input
                   id="email"
                   type="email"
-                  value={editingUser.email}
-                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                  value={safeString(editingUser.email)}
+                  onChange={(e) =>
+                    setEditingUser({ ...editingUser, email: e.target.value })
+                  }
                 />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="contact">Telefone</Label>
                 <Input
                   id="contact"
-                  value={editingUser.contact || ""}
-                  onChange={(e) => setEditingUser({ ...editingUser, contact: e.target.value })}
+                  value={safeString(editingUser.contact || "")}
+                  onChange={(e) =>
+                    setEditingUser({ ...editingUser, contact: e.target.value })
+                  }
                   placeholder="(00) 00000-0000"
                 />
               </div>
@@ -675,8 +812,13 @@ export default function ProfessionalsReportPage() {
                 <Label htmlFor="profRole">Cargo Profissional</Label>
                 <Input
                   id="profRole"
-                  value={editingUser.professionalRole || ""}
-                  onChange={(e) => setEditingUser({ ...editingUser, professionalRole: e.target.value })}
+                  value={safeString(editingUser.professionalRole || "")}
+                  onChange={(e) =>
+                    setEditingUser({
+                      ...editingUser,
+                      professionalRole: e.target.value,
+                    })
+                  }
                   placeholder="Ex: Costureira, Modelista"
                 />
               </div>
@@ -705,7 +847,6 @@ export default function ProfessionalsReportPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </main>
   );
 }

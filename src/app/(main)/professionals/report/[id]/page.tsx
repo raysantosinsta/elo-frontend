@@ -36,7 +36,7 @@ import {
   Loader2,
   MailIcon,
   PhoneIcon,
-  TargetIcon
+  TargetIcon,
 } from "lucide-react";
 
 // Charts
@@ -133,6 +133,44 @@ interface ProfessionalDetails {
   }>;
 }
 
+// --- FUNÇÕES HELPER PARA RENDERIZAÇÃO SEGURA ---
+
+/**
+ * Converte qualquer valor para string de forma segura
+ * Evita erro "Objects are not valid as a React child"
+ */
+const safeString = (value: any): string => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    if (value.name && typeof value.name === "string") return value.name;
+    if (value.title && typeof value.title === "string") return value.title;
+    if (value.label && typeof value.label === "string") return value.label;
+    console.warn("Objeto não pôde ser convertido para string:", value);
+    return "";
+  }
+  return String(value);
+};
+
+/**
+ * Obtém o nome da empresa de forma segura
+ */
+const getCompanyName = (
+  company?: { id: string; name: string } | null,
+): string => {
+  if (!company) return "";
+  if (typeof company === "object") return company.name || "";
+  return safeString(company);
+};
+
+/**
+ * Obtém o título da coluna de forma segura
+ */
+const getColumnTitle = (column?: { title: string } | null): string => {
+  if (!column) return "";
+  if (typeof column === "object") return column.title || "";
+  return safeString(column);
+};
+
 // --- SUB-COMPONENTS ---
 
 const StatCard = ({
@@ -149,17 +187,21 @@ const StatCard = ({
   >
     <CardHeader className="pb-2">
       <CardTitle className="text-sm font-semibold tracking-wide uppercase text-[#95A5A6] flex justify-between items-center">
-        {title}
+        {safeString(title)}
         {Icon && <Icon className="h-4 w-4 opacity-50" />}
       </CardTitle>
     </CardHeader>
     <CardContent>
-      <div className="text-3xl font-bold text-[#2D3436]">{value}</div>
+      <div className="text-3xl font-bold text-[#2D3436]">
+        {safeString(value)}
+      </div>
       {progress !== undefined && (
         <Progress value={progress} className="mt-2 h-1.5 bg-[#F5F0E6]" />
       )}
       {subtext && (
-        <div className="text-xs text-[#95A5A6] mt-2 font-medium">{subtext}</div>
+        <div className="text-xs text-[#95A5A6] mt-2 font-medium">
+          {safeString(subtext)}
+        </div>
       )}
     </CardContent>
   </Card>
@@ -180,7 +222,7 @@ const ActivityItem = ({
             "p-2 rounded-full",
             isCompleted
               ? "bg-[#27AE60]/10 text-[#27AE60]"
-              : "bg-[#2C3E50]/10 text-[#2C3E50]"
+              : "bg-[#2C3E50]/10 text-[#2C3E50]",
           )}
         >
           {isCompleted ? (
@@ -190,16 +232,19 @@ const ActivityItem = ({
           )}
         </div>
         <div>
-          <h4 className="font-semibold text-[#2D3436]">{activity.title}</h4>
+          <h4 className="font-semibold text-[#2D3436]">
+            {safeString(activity.title)}
+          </h4>
           <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-[#95A5A6]">
             <Badge
               variant="outline"
               className="text-xs font-normal border-[#95A5A6]/40"
             >
-              {activity.status}
+              {safeString(activity.status)}
             </Badge>
             <span className="flex items-center gap-1">
-              <TargetIcon className="h-3 w-3" /> Prio: {activity.priority}
+              <TargetIcon className="h-3 w-3" /> Prio:{" "}
+              {safeString(activity.priority)}
             </span>
           </div>
           <div className="text-xs text-[#95A5A6] mt-1">
@@ -216,7 +261,6 @@ const ActivityItem = ({
 
 export default function ProfessionalReportPage() {
   const { id } = useParams();
-  // 2. CORREÇÃO: Removemos authFetch daqui
   const { user } = useAuth();
   const router = useRouter();
 
@@ -236,7 +280,6 @@ export default function ProfessionalReportPage() {
     if (!user || !id) return;
     setLoading(true);
     try {
-      // 3. CORREÇÃO: Usando api.get e caminho relativo
       const { data } = await api.get(`/reports/professionals/${id}/details`);
       setDetails(data);
     } catch (error) {
@@ -276,12 +319,12 @@ export default function ProfessionalReportPage() {
 
     return {
       taskStatusData: details.statistics.tasks.byStatus.map((item) => ({
-        name: item.status,
+        name: safeString(item.status),
         value: item._count,
         color: getStatusColor(item.status),
       })),
       productivityData: details.statistics.productivity.map((item) => ({
-        month: item.month,
+        month: safeString(item.month),
         tasks: item.total_tasks,
         completed: item.completed_tasks,
       })),
@@ -334,7 +377,7 @@ export default function ProfessionalReportPage() {
               <ArrowLeftIcon className="mr-2 h-4 w-4" /> Voltar para lista
             </Button>
             <h1 className="text-3xl font-bold tracking-tight text-[#2D3436]">
-              {professional.name}
+              {safeString(professional.name)}
             </h1>
             <p className="text-[#95A5A6] mt-1 text-lg">
               Relatório Detalhado de Performance
@@ -354,28 +397,32 @@ export default function ProfessionalReportPage() {
               <div className="flex flex-col items-center text-center mb-6">
                 <Avatar className="h-24 w-24 border-4 border-[#F5F0E6] shadow-sm mb-4">
                   <AvatarFallback className="text-2xl bg-[#2C3E50] text-white">
-                    {professional.name.substring(0, 2).toUpperCase()}
+                    {safeString(
+                      professional.name.substring(0, 2).toUpperCase(),
+                    )}
                   </AvatarFallback>
                 </Avatar>
                 <h3 className="text-xl font-bold text-[#2D3436]">
-                  {professional.name}
+                  {safeString(professional.name)}
                 </h3>
                 <p className="text-[#95A5A6]">
-                  {professional.professionalRole || "Cargo não definido"}
+                  {safeString(
+                    professional.professionalRole || "Cargo não definido",
+                  )}
                 </p>
                 <div className="flex gap-2 mt-3">
                   <Badge
                     variant="secondary"
                     className="bg-[#F5F0E6] text-[#2C3E50]"
                   >
-                    {professional.role}
+                    {safeString(professional.role)}
                   </Badge>
                   <Badge
                     className={cn(
                       "text-white",
                       professional.status === "ACTIVE"
                         ? "bg-[#27AE60]"
-                        : "bg-[#C0392B]"
+                        : "bg-[#C0392B]",
                     )}
                   >
                     {professional.status === "ACTIVE" ? "Ativo" : "Inativo"}
@@ -388,21 +435,23 @@ export default function ProfessionalReportPage() {
               <div className="space-y-4 text-sm">
                 <div className="flex items-center gap-3 text-[#2D3436]">
                   <MailIcon className="h-4 w-4 text-[#D35400]" />
-                  <span className="truncate">{professional.email}</span>
+                  <span className="truncate">
+                    {safeString(professional.email)}
+                  </span>
                 </div>
                 <div className="flex items-center gap-3 text-[#2D3436]">
                   <PhoneIcon className="h-4 w-4 text-[#D35400]" />
-                  <span>{professional.contact}</span>
+                  <span>{safeString(professional.contact)}</span>
                 </div>
                 {professional.company && (
                   <div className="flex items-start gap-3 text-[#2D3436]">
                     <BuildingIcon className="h-4 w-4 text-[#D35400] mt-1" />
                     <div>
                       <div className="font-medium">
-                        {professional.company.name}
+                        {getCompanyName(professional.company)}
                       </div>
                       <div className="text-xs text-[#95A5A6]">
-                        {professional.company.email}
+                        {safeString(professional.company.email)}
                       </div>
                     </div>
                   </div>
@@ -420,7 +469,6 @@ export default function ProfessionalReportPage() {
 
           {/* KEY METRICS */}
           <div className="lg:col-span-2 space-y-4">
-            {/* GRID AJUSTADO PARA 1 COLUNA POIS SÓ RESTOU UM CARD */}
             <div className="grid grid-cols-1 gap-4">
               <StatCard
                 title="Conclusão"
@@ -430,7 +478,6 @@ export default function ProfessionalReportPage() {
                 progress={statistics.tasks.completionRate}
                 color={THEME.success}
               />
-              {/* Cards de Volume Total e Orçamentos Removidos */}
             </div>
 
             {/* CHART: PRODUCTIVITY */}
@@ -510,7 +557,6 @@ export default function ProfessionalReportPage() {
             >
               Atividades Recentes
             </TabsTrigger>
-            {/* Aba Timeline Removida */}
           </TabsList>
 
           <TabsContent
@@ -600,8 +646,6 @@ export default function ProfessionalReportPage() {
               </CardContent>
             </Card>
           </TabsContent>
-          
-          {/* Conteúdo da Timeline Removido */}
         </Tabs>
       </div>
     </main>
