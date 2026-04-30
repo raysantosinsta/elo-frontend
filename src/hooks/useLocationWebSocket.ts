@@ -24,12 +24,14 @@ export function useLocationWebSocket({
   onLocationUpdate,
   onDriverOffline,
   onRouteFinished,
+  isDriver,
 }: {
   routeId: string;
   driverId?: string;
   onLocationUpdate?: (location: LocationData) => void;
   onDriverOffline?: (data: any) => void;
   onRouteFinished?: (data: RouteFinishedData) => void;
+  isDriver?: boolean;
 }) {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
@@ -80,6 +82,7 @@ export function useLocationWebSocket({
     
     const params = new URLSearchParams({ routeId });
     if (driverId) params.append('driverId', driverId);
+    if (isDriver) params.append('isDriver', 'true');
     
     const rawUrl = process.env.NEXT_PUBLIC_NESTJS_API_URL || 'http://localhost:3000';
     const baseUrl = rawUrl.replace(/\/$/, '');
@@ -143,7 +146,7 @@ export function useLocationWebSocket({
       }
       setIsConnected(false);
     };
-  }, [routeId, driverId]); // 🔥 APENAS routeId e driverId
+  }, [routeId, driverId, isDriver]); // 🔥 APENAS routeId, driverId e isDriver
 
   return { 
     sendLocation, 

@@ -349,7 +349,7 @@ export default function WatchPage() {
   // 🔥 WEBSOCKET - Usando callbacks memoizados
   const { isConnected: wsConnected } = useLocationWebSocket({
     routeId: routeId || "",
-    driverId: route?.userAssigned?.id,
+    driverId: route?.userAssigned?.id || `driver_${routeId}`,
     onLocationUpdate: handleLocationUpdate,
     onDriverOffline: handleDriverOffline,
     onRouteFinished: handleRouteFinished,
@@ -456,11 +456,11 @@ export default function WatchPage() {
 
   // 🔥 EFECTS (TODOS ANTES DOS EARLY RETURNS)
   useEffect(() => {
-    if (driverLocation && orderedStops.length > 0 && !isRouteLoaded) {
+    if (orderedStops.length > 0 && !isRouteLoaded) {
       console.log("🚀 [Watch] Primeira carga da rota...");
       fetchOptimizedRouteOnce(true);
     }
-  }, [driverLocation, orderedStops, isRouteLoaded, fetchOptimizedRouteOnce]);
+  }, [orderedStops, isRouteLoaded, fetchOptimizedRouteOnce]);
 
   useEffect(() => {
     const currentVisitedCount = visitedStops.length;

@@ -485,6 +485,7 @@ export default function DriverPage() {
     onRouteFinished: (data) => {
       console.log("🎉 [WS] Rota finalizada confirmada!", data);
     },
+    isDriver: true,
   });
 
   // Refs
