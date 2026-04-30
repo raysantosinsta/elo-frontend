@@ -49,17 +49,25 @@ const driverIcon = L.icon({
 
 const GRAPHHOPPER_API_KEY = "ab75310a-f959-4b72-b322-11cce5b18f6a";
 
+// 🔥 COMPONENTE RECENTER MAP CORRIGIDO
 function RecenterMap({ location }: { location: [number, number] }) {
   const map = useMap();
   const lastLoc = useRef<string>("");
 
   useEffect(() => {
+    if (!map) return;
+    
     const locString = location.join(",");
     if (lastLoc.current !== locString) {
-      map.flyTo(location, map.getZoom(), { animate: true, duration: 0.5 });
-      lastLoc.current = locString;
+      try {
+        map.flyTo(location, map.getZoom(), { animate: true, duration: 0.5 });
+        lastLoc.current = locString;
+      } catch (error) {
+        console.warn("Erro ao centralizar mapa:", error);
+      }
     }
   }, [location, map]);
+  
   return null;
 }
 
@@ -74,7 +82,6 @@ interface RouteStop {
   order?: number;
 }
 
-// components/DriverMap.tsx
 interface RouteMapProps {
   stops: RouteStop[];
   currentStopIndex: number;
@@ -82,8 +89,8 @@ interface RouteMapProps {
   visitedStops?: string[];
   onStopClick?: (stop: RouteStop, index: number) => void;
   preserveOrder?: boolean;
-  useBackendRoute?: boolean; // 🔥 NOVA PROP
-  backendRoute?: [number, number][]; // 🔥 ROTA VINDA DO BACKEND
+  useBackendRoute?: boolean;
+  backendRoute?: [number, number][];
 }
 
 export default function RouteMap({
@@ -93,14 +100,40 @@ export default function RouteMap({
   visitedStops = [],
   onStopClick,
   preserveOrder = false,
-  useBackendRoute = false, // 🔥 OBSERVADOR USA A ROTA DO BACKEND
-  backendRoute = [], // 🔥 ROTA PRONTA DO BACKEND
+  useBackendRoute = false,
+  backendRoute = [],
 }: RouteMapProps) {
   const [fullRoutePath, setFullRoutePath] = useState<[number, number][]>([]);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [isMapReady, setIsMapReady] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastRouteKeyRef = useRef<string>("");
   const [isSimulating, setIsSimulating] = useState(false);
+  const tilesLoadedRef = useRef(false);
+
+  // 🔥 FORÇAR O MAPA COMO PRONTO APÓS 1 SEGUNDO (FALLBACK GARANTIDO)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (!isMapReady) {
+        console.log("🗺️ [RouteMap] Forçando ready state (fallback)");
+        setIsMapReady(true);
+        tilesLoadedRef.current = true;
+      }
+    }, 1500);
+
+    return () => clearTimeout(timeoutId);
+  }, [isMapReady]);
+
+  // 🔥 TAMBÉM FORÇA READY QUANDO MYLOCATION CHEGA
+  useEffect(() => {
+    if (myLocation && !isMapReady) {
+      console.log("🗺️ [RouteMap] MyLocation recebido, forçando ready");
+      setTimeout(() => {
+        setIsMapReady(true);
+        tilesLoadedRef.current = true;
+      }, 500);
+    }
+  }, [myLocation, isMapReady]);
 
   // 🔥 SE FOR OBSERVADOR, USA A ROTA DO BACKEND
   useEffect(() => {
@@ -114,21 +147,15 @@ export default function RouteMap({
     }
   }, [useBackendRoute, backendRoute]);
 
-  // 🔥 PEGA SOMENTE AS PARADAS NÃO VISITADAS, MANTENDO A ORDEM ORIGINAL DO BACKEND
+  // 🔥 PEGA SOMENTE AS PARADAS NÃO VISITADAS
   const unvisitedStops = useMemo(() => {
     if (preserveOrder) {
-      // OBSERVADOR: MANTER ORDEM ORIGINAL DO BACKEND
       const notVisited = stops.filter(
         (stop, index) => !visitedStops.includes(stop.id || String(index)),
       );
-      console.log("📊 [OBSERVADOR] Mantendo ordem original:");
-      notVisited.forEach((stop, idx) => {
-        console.log(`   ${idx + 1}. ${stop.name}`);
-      });
       return notVisited;
     }
 
-    // MOTORISTA: PODE REORDENAR
     const notVisited = stops.filter(
       (stop, index) => !visitedStops.includes(stop.id || String(index)),
     );
@@ -141,46 +168,29 @@ export default function RouteMap({
   ): Promise<[number, number][] | null> => {
     try {
       const routePoints = points.join("&point=");
-
-      // 🔥 ADICIONAR optimize=false para manter a ordem exata
       const url = `https://graphhopper.com/api/1/route?point=${routePoints}&vehicle=car&optimize=false&points_encoded=false&key=${GRAPHHOPPER_API_KEY}`;
 
-      console.log("🌐 Chamando GraphHopper API (mantendo ordem)...");
-      console.log(`   URL: ${url.replace(GRAPHHOPPER_API_KEY, "HIDDEN")}`);
+      console.log("🌐 Chamando GraphHopper API...");
 
       const response = await fetch(url, {
         signal: abortControllerRef.current?.signal,
       });
 
       if (!response.ok) {
-        console.error(
-          `❌ HTTP Error: ${response.status} - ${response.statusText}`,
-        );
+        console.error(`❌ HTTP Error: ${response.status}`);
         return null;
       }
 
       const data = await response.json();
 
       if (data.paths && data.paths.length > 0) {
-        console.log("📊 Pontos da rota retornados (primeiros 5):");
-
-        data.paths[0].points.coordinates
-          .slice(0, 5)
-          .forEach((coord: number[], idx: number) => {
-            console.log(`   ${idx + 1}. ${coord[1]}, ${coord[0]}`);
-          });
-
         const coordinates = data.paths[0].points.coordinates.map(
           (coord: number[]) => [coord[1], coord[0]],
         );
         console.log(`✅ Rota recebida: ${coordinates.length} pontos`);
-        console.log(
-          `📏 Distância: ${(data.paths[0].distance / 1000).toFixed(2)} km`,
-        );
         return coordinates;
       }
 
-      console.warn("⚠️ Nenhum path encontrado na resposta da API");
       return null;
     } catch (error: any) {
       if (error.name !== "AbortError") {
@@ -190,9 +200,8 @@ export default function RouteMap({
     }
   };
 
-  // 🔥 FUNÇÃO PARA CRIAR ROTA COMPLETA NA ORDEM DO BACKEND
+  // 🔥 FUNÇÃO PARA CRIAR ROTA COMPLETA
   const fetchCompleteRoute = useCallback(async () => {
-    // Se está em simulação e já tem rota carregada, não recalcula
     if (isSimulating && fullRoutePath.length > 0) {
       console.log("🎮 Modo simulação ativo, mantendo rota atual");
       return;
@@ -210,7 +219,6 @@ export default function RouteMap({
       return;
     }
 
-    // Valida se todas as coordenadas são válidas
     const invalidStop = unvisitedStops.find(
       (stop) =>
         isNaN(stop.latitude) ||
@@ -223,25 +231,15 @@ export default function RouteMap({
       return;
     }
 
-    // Cria chave única para a rota
     const routeKey = `${myLocation[0].toFixed(6)},${myLocation[1].toFixed(6)}|${unvisitedStops.map((s) => s.id).join(",")}`;
 
-    // Se a rota não mudou e já temos uma rota carregada, mantém
     if (lastRouteKeyRef.current === routeKey && fullRoutePath.length > 0) {
       console.log("🔄 Rota não mudou, mantendo atual");
       return;
     }
 
     console.log("🆕 Calculando nova rota...");
-    console.log(`📍 Motorista: ${myLocation[0]}, ${myLocation[1]}`);
-    console.log(`📍 Próximas paradas (na ordem do backend):`);
-    unvisitedStops.forEach((stop, idx) => {
-      console.log(
-        `   ${idx + 1}. ${stop.name} (${stop.latitude}, ${stop.longitude})`,
-      );
-    });
 
-    // Cancela requisição anterior
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -251,20 +249,11 @@ export default function RouteMap({
 
     try {
       const points: string[] = [];
-
-      // 🔥 PONTO 0: LOCALIZAÇÃO ATUAL DO MOTORISTA
       points.push(`${myLocation[0]},${myLocation[1]}`);
-      console.log(`   Ponto 0 (motorista): ${myLocation[0]}, ${myLocation[1]}`);
 
-      // 🔥 ADICIONA PARADAS NA ORDEM DO BACKEND (SEM REORDENAR!)
-      unvisitedStops.forEach((stop, idx) => {
+      unvisitedStops.forEach((stop) => {
         points.push(`${stop.latitude},${stop.longitude}`);
-        console.log(
-          `   Ponto ${idx + 1} (${stop.name}): ${stop.latitude}, ${stop.longitude}`,
-        );
       });
-
-      console.log(`🎯 Total de pontos: ${points.length}`);
 
       const routeCoordinates = await fetchRouteFromGraphHopper(points);
 
@@ -274,7 +263,6 @@ export default function RouteMap({
         console.log(`✅ Rota carregada com sucesso!`);
       } else {
         console.warn("⚠️ Falha ao obter rota da API");
-        // Não limpa a rota existente para não sumir do mapa
       }
     } catch (error: any) {
       if (error.name !== "AbortError") {
@@ -283,46 +271,36 @@ export default function RouteMap({
     } finally {
       setIsLoadingRoute(false);
     }
-  }, [
-    myLocation,
-    unvisitedStops,
-    isSimulating,
-    fullRoutePath.length,
-    useBackendRoute,
-  ]);
+  }, [myLocation, unvisitedStops, isSimulating, fullRoutePath.length]);
 
-  // 🔥 Escuta evento de rota atualizada
+  // 🔥 Eventos de atualização
   useEffect(() => {
     const handleRouteUpdated = () => {
-      console.log("🔄 Rota atualizada pelo driver, recalculando...");
+      console.log("🔄 Rota atualizada, recalculando...");
       fetchCompleteRoute();
     };
 
     window.addEventListener("route-updated", handleRouteUpdated);
-
-    return () => {
-      window.removeEventListener("route-updated", handleRouteUpdated);
-    };
+    return () => window.removeEventListener("route-updated", handleRouteUpdated);
   }, [fetchCompleteRoute]);
 
-  // 🔥 Efeito para quando as paradas não visitadas mudam (parada concluída)
+  // 🔥 Quando paradas mudam
   useEffect(() => {
     if (myLocation && unvisitedStops.length > 0) {
-      console.log("📌 Paradas atualizadas, recalculando rota...");
       fetchCompleteRoute();
     } else if (unvisitedStops.length === 0) {
       setFullRoutePath([]);
     }
   }, [unvisitedStops, myLocation, fetchCompleteRoute]);
 
-  // 🔥 Efeito para quando a localização muda significativamente
+  // 🔥 Quando localização muda
   useEffect(() => {
     if (myLocation && unvisitedStops.length > 0 && !isSimulating) {
       fetchCompleteRoute();
     }
   }, [myLocation, fetchCompleteRoute]);
 
-  // 🔥 Escuta eventos de simulação
+  // 🔥 Eventos de simulação
   useEffect(() => {
     const handleSimulationStart = () => {
       console.log("🎮 Simulação iniciada, congelando rota");
@@ -332,9 +310,7 @@ export default function RouteMap({
     const handleSimulationEnd = () => {
       console.log("🎮 Simulação finalizada, recalculando rota");
       setIsSimulating(false);
-      setTimeout(() => {
-        fetchCompleteRoute();
-      }, 500);
+      setTimeout(() => fetchCompleteRoute(), 500);
     };
 
     window.addEventListener("simulation-start", handleSimulationStart);
@@ -348,7 +324,7 @@ export default function RouteMap({
 
   const calculateDistance = useCallback(
     (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-      const R = 6371000; // Raio da Terra em metros
+      const R = 6371000;
       const dLat = ((lat2 - lat1) * Math.PI) / 180;
       const dLon = ((lon2 - lon1) * Math.PI) / 180;
       const a =
@@ -363,13 +339,12 @@ export default function RouteMap({
     [],
   );
 
-  // 🔥 FUNÇÃO DE BOUNDS FOCADA NO MOTORISTA (substituir a atual)
+  // 🔥 BOUNDS FOCADO NO MOTORISTA
   const navigationBounds = useMemo(() => {
     if (!myLocation) return undefined;
 
-    // Se não há paradas restantes, foca apenas no motorista
     if (unvisitedStops.length === 0) {
-      const padding = 0.002; // ~200 metros
+      const padding = 0.002;
       return [
         [myLocation[0] - padding, myLocation[1] - padding],
         [myLocation[0] + padding, myLocation[1] + padding],
@@ -384,17 +359,14 @@ export default function RouteMap({
       nextStop.longitude,
     );
 
-    // Se a próxima parada está longe (> 800m), foca no motorista com zoom próximo
     if (distanceToNextStop > 800) {
-      // Zoom nível 17-18 (raio ~100-200m)
-      const padding = 0.0015; // ~150 metros
+      const padding = 0.0015;
       return [
         [myLocation[0] - padding, myLocation[1] - padding],
         [myLocation[0] + padding, myLocation[1] + padding],
       ] as L.LatLngBoundsExpression;
     }
 
-    // Se está perto da próxima parada, mostra ambas com zoom adequado
     const points = [
       [myLocation[0], myLocation[1]],
       [nextStop.latitude, nextStop.longitude],
@@ -408,7 +380,6 @@ export default function RouteMap({
     const minLng = Math.min(...lngs);
     const maxLng = Math.max(...lngs);
 
-    // Padding dinâmico: mais zoom quando mais perto
     const basePadding = Math.min(
       0.008,
       Math.max(0.002, distanceToNextStop / 250000),
@@ -420,24 +391,59 @@ export default function RouteMap({
     ] as L.LatLngBoundsExpression;
   }, [myLocation, unvisitedStops, calculateDistance]);
 
+  // 🔥 Centro inicial do mapa (São Paulo)
+  const defaultCenter: [number, number] = [-23.5505, -46.6333];
+
   return (
     <div className="relative w-full h-full border rounded-lg overflow-hidden bg-gray-100">
+      {/* OVERLAY DE LOADING - SÓ MOSTRA NOS PRIMEIROS 2 SEGUNDOS */}
+      {!isMapReady && (
+        <div className="absolute inset-0 z-[2000] bg-slate-100 flex flex-col items-center justify-center gap-3">
+          <div className="relative">
+            <div className="w-14 h-14 border-4 border-slate-200 rounded-full"></div>
+            <div className="absolute top-0 left-0 w-14 h-14 border-4 border-[#D35400] border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <div className="text-center">
+            <p className="text-slate-700 font-medium text-base">
+              Carregando mapa...
+            </p>
+            <p className="text-slate-400 text-sm mt-1">
+              Aguarde, estamos preparando sua rota
+            </p>
+          </div>
+        </div>
+      )}
+
       <MapContainer
-        bounds={navigationBounds}
-        zoom={13}
+        center={myLocation || defaultCenter}
+        zoom={15}
         className="w-full h-full"
-        style={{ height: "100%", width: "100%" }}
+        style={{
+          height: "100%",
+          width: "100%",
+        }}
+        whenReady={() => {
+          console.log("🗺️ [RouteMap] MapContainer whenReady disparado");
+          setIsMapReady(true);
+          tilesLoadedRef.current = true;
+        }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          eventHandlers={{
+            load: () => {
+              console.log("✅ [RouteMap] TileLayer carregado");
+            },
+            error: (err) => {
+              console.error("❌ [RouteMap] Erro ao carregar tiles:", err);
+            },
+          }}
         />
 
         {stops.map((stop, index) => {
           const isVisited = visitedStops.includes(stop.id || String(index));
           const isCurrent = index === currentStopIndex && !isVisited;
-
-          // Mostra a posição na ordem da rota
           const routePosition =
             unvisitedStops.findIndex((s) => s.id === stop.id) + 1;
 
@@ -509,6 +515,8 @@ export default function RouteMap({
             }}
           />
         )}
+
+        {myLocation && <RecenterMap location={myLocation} />}
 
         {isLoadingRoute && (
           <div className="absolute top-4 right-4 bg-white/90 px-3 py-1.5 rounded-full shadow-md z-[1000] text-xs font-bold flex items-center gap-2">
