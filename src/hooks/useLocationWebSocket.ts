@@ -1,49 +1,35 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
 
-interface LocationData {
-  driverId: string;
-  routeId: string;
-  latitude: number;
-  longitude: number;
-  timestamp: Date;
-  isSimulating: boolean;
-}
+import { useCallback, useEffect, useRef, useState } from "react";
+import { io } from "socket.io-client";
 
-interface RouteFinishedData {
-  routeId: string;
-  driverId: string;
-  message: string;
-  timestamp: Date;
-}
-
+// useLocationWebSocket.ts - CORREÇÃO COMPLETA
 export function useLocationWebSocket({
   routeId,
   driverId,
   onLocationUpdate,
   onDriverOffline,
   onRouteFinished,
-  isDriver,
+  isDriver = false, // Padrão é observador
 }: {
   routeId: string;
   driverId?: string;
-  onLocationUpdate?: (location: LocationData) => void;
+  onLocationUpdate?: (location: any) => void;
   onDriverOffline?: (data: any) => void;
-  onRouteFinished?: (data: RouteFinishedData) => void;
+  onRouteFinished?: (data: any) => void;
   isDriver?: boolean;
 }) {
   const [isConnected, setIsConnected] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<any | null>(null);
   const isMountedRef = useRef(true);
   const reconnectAttemptsRef = useRef(0);
+  const shouldReconnectRef = useRef(true);
   
-  // 🔥 USAR REFS PARA OS CALLBACKS
+  // Refs para callbacks
   const onLocationUpdateRef = useRef(onLocationUpdate);
   const onDriverOfflineRef = useRef(onDriverOffline);
   const onRouteFinishedRef = useRef(onRouteFinished);
   
-  // Atualizar refs quando callbacks mudarem
   useEffect(() => {
     onLocationUpdateRef.current = onLocationUpdate;
     onDriverOfflineRef.current = onDriverOffline;
@@ -51,34 +37,38 @@ export function useLocationWebSocket({
   }, [onLocationUpdate, onDriverOffline, onRouteFinished]);
 
   const sendLocation = useCallback((latitude: number, longitude: number, isSimulating = false) => {
-    if (socketRef.current?.connected && driverId) {
+    if (socketRef.current?.connected && driverId && isDriver) {
       socketRef.current.emit('update-location', { latitude, longitude, isSimulating });
+    } else if (!isDriver) {
+      console.log('👀 Observador: não envia localização');
     }
-  }, [driverId]);
+  }, [driverId, isDriver]);
 
   const emitRouteFinished = useCallback(() => {
-    if (socketRef.current?.connected && driverId) {
-      console.log('🏁 [useLocationWebSocket] Emitindo route-finished para rota:', routeId);
-      socketRef.current.emit('route-finished', { routeId, message: 'Rota finalizada com sucesso!' });
+    if (socketRef.current?.connected && driverId && isDriver) {
+      console.log('🏁 [useLocationWebSocket] Emitindo route-finished');
+      socketRef.current.emit('route-finished', { routeId, message: 'Rota finalizada!' });
     }
-  }, [driverId, routeId]);
+  }, [driverId, routeId, isDriver]);
 
-  // 🔥 FUNÇÃO PARA DESCONECTAR
   const disconnect = useCallback(() => {
+    shouldReconnectRef.current = false;
     if (socketRef.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
   }, []);
 
-  // 🔥 CONEXÃO DO WEBSOCKET - UMA ÚNICA VEZ
+  // CONEXÃO - SEPARADA POR TIPO
   useEffect(() => {
     if (!routeId) return;
+    if (!driverId && !isDriver) return; // Observador precisa do driverId para monitorar
 
     isMountedRef.current = true;
+    shouldReconnectRef.current = true;
     reconnectAttemptsRef.current = 0;
 
-    console.log('🔌 [useLocationWebSocket] Iniciando conexão...');
+    console.log(`🔌 [${isDriver ? 'MOTORISTA' : 'OBSERVADOR'}] Conectando à rota ${routeId}...`);
     
     const params = new URLSearchParams({ routeId });
     if (driverId) params.append('driverId', driverId);
@@ -91,7 +81,7 @@ export function useLocationWebSocket({
     const socket = io(socketUrl, {
       transports: ['websocket'],
       reconnection: true,
-      reconnectionAttempts: 3,
+      reconnectionAttempts: isDriver ? 3 : 10, // Observador tenta mais vezes
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 10000,
@@ -101,52 +91,60 @@ export function useLocationWebSocket({
     
     socket.on('connect', () => {
       if (!isMountedRef.current) return;
-      console.log('✅ [useLocationWebSocket] Conectado');
+      console.log(`✅ [${isDriver ? 'MOTORISTA' : 'OBSERVADOR'}] Conectado ao WebSocket`);
       setIsConnected(true);
       reconnectAttemptsRef.current = 0;
     });
     
     socket.on('disconnect', (reason) => {
       if (!isMountedRef.current) return;
-      console.log('❌ [useLocationWebSocket] Desconectado:', reason);
+      console.log(`❌ [${isDriver ? 'MOTORISTA' : 'OBSERVADOR'}] Desconectado: ${reason}`);
       setIsConnected(false);
+      
+      // Se for observador e desconectou, não tentar reconectar se o motivo for "io server disconnect"
+      if (!isDriver && reason === 'io server disconnect') {
+        shouldReconnectRef.current = false;
+      }
     });
     
     socket.on('connect_error', (error) => {
-      console.error('⚠️ [useLocationWebSocket] Erro de conexão:', error.message);
+      console.error(`⚠️ [${isDriver ? 'MOTORISTA' : 'OBSERVADOR'}] Erro de conexão:`, error.message);
       reconnectAttemptsRef.current++;
       
-      if (reconnectAttemptsRef.current >= 3) {
-        console.log('🔌 [useLocationWebSocket] Máximo de tentativas atingido, parando...');
+      if (!shouldReconnectRef.current || reconnectAttemptsRef.current >= (isDriver ? 3 : 10)) {
+        console.log(`🔌 [${isDriver ? 'MOTORISTA' : 'OBSERVADOR'}] Parando tentativas de reconexão`);
         socket.disconnect();
       }
     });
     
     socket.on('location-update', (loc) => {
       if (!isMountedRef.current) return;
+      console.log(`📍 [${isDriver ? 'MOTORISTA' : 'OBSERVADOR'}] Recebeu localização:`, loc.latitude, loc.longitude);
       onLocationUpdateRef.current?.(loc);
     });
     
     socket.on('driver-offline', (data) => {
       if (!isMountedRef.current) return;
+      console.warn(`⚠️ [${isDriver ? 'MOTORISTA' : 'OBSERVADOR'}] Motorista offline`);
       onDriverOfflineRef.current?.(data);
     });
     
     socket.on('route-completed', (data) => {
       if (!isMountedRef.current) return;
-      console.log('🎉 [useLocationWebSocket] Rota finalizada!', data);
+      console.log(`🎉 [${isDriver ? 'MOTORISTA' : 'OBSERVADOR'}] Rota finalizada!`);
       onRouteFinishedRef.current?.(data);
     });
     
     return () => {
       isMountedRef.current = false;
+      shouldReconnectRef.current = false;
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
       setIsConnected(false);
     };
-  }, [routeId, driverId, isDriver]); // 🔥 APENAS routeId, driverId e isDriver
+  }, [routeId, driverId, isDriver]); // Dependências corretas
 
   return { 
     sendLocation, 

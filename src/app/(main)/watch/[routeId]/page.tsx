@@ -287,6 +287,8 @@ export default function WatchPage() {
   const [hasReceivedFirstLocation, setHasReceivedFirstLocation] =
     useState(false);
   const [isLoadingRoutePath, setIsLoadingRoutePath] = useState(false);
+  const [wsConnectionAttempts, setWsConnectionAttempts] = useState(0);
+  const [manualCheckTrigger, setManualCheckTrigger] = useState(0);
 
   // 🔥 ESTADOS PARA FEEDBACK DE FINALIZAÇÃO
   const [isRouteFinished, setIsRouteFinished] = useState(false);
@@ -301,6 +303,7 @@ export default function WatchPage() {
   // 🔥 GUARDAR A ÚLTIMA ROTA RECEBIDA
   const lastOptimizedRouteRef = useRef<[number, number][]>([]);
   const lastVisitedCountRef = useRef(0);
+  const healthCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const totalStops = orderedStops.length;
   const visitedStops =
@@ -326,6 +329,7 @@ export default function WatchPage() {
     setLastUpdate(new Date());
     setIsSimulating(location.isSimulating || false);
     setHasReceivedFirstLocation(true);
+    setWsConnectionAttempts(0); // Reset tentativas ao receber dados
   }, []);
 
   const handleDriverOffline = useCallback(() => {
@@ -346,14 +350,84 @@ export default function WatchPage() {
     [refetch],
   );
 
-  // 🔥 WEBSOCKET - Usando callbacks memoizados
-  const { isConnected: wsConnected } = useLocationWebSocket({
+  // 🔥 FUNÇÃO PARA VERIFICAR STATUS DO MOTORISTA VIA HTTP (FALLBACK)
+  const checkDriverStatusViaHttp = useCallback(async () => {
+    if (!routeId || !route?.userAssigned?.id) return;
+
+    try {
+      console.log("🔍 [Watch] Verificando status do motorista via HTTP...");
+      const response = await api.get(`/locations/status/${route.userAssigned.id}/${routeId}`);
+      
+      if (response.data) {
+        const { isOnline, lastLocation } = response.data;
+        
+        if (isOnline !== isDriverOnline) {
+          setIsDriverOnline(isOnline);
+        }
+        
+        if (lastLocation && !hasReceivedFirstLocation) {
+          setDriverLocation([lastLocation.latitude, lastLocation.longitude]);
+          setLastUpdate(new Date(lastLocation.timestamp));
+          setIsSimulating(lastLocation.isSimulating || false);
+          setHasReceivedFirstLocation(true);
+          console.log("📡 [Watch] Recuperou última localização via HTTP");
+        }
+      }
+    } catch (error) {
+      console.error("❌ [Watch] Erro ao verificar status via HTTP:", error);
+    }
+  }, [routeId, route?.userAssigned?.id, isDriverOnline, hasReceivedFirstLocation]);
+
+  // 🔥 WEBSOCKET - CORREÇÃO: isDriver: false para observador
+  const { isConnected: wsConnected, disconnect: disconnectWs } = useLocationWebSocket({
     routeId: routeId || "",
     driverId: route?.userAssigned?.id || `driver_${routeId}`,
     onLocationUpdate: handleLocationUpdate,
     onDriverOffline: handleDriverOffline,
     onRouteFinished: handleRouteFinished,
+    isDriver: false, // 🔥 EXPLICITAMENTE false para observador
   });
+
+  // 🔥 MONITORAR CONEXÃO DO WEBSOCKET
+  useEffect(() => {
+    if (!wsConnected && !hasReceivedFirstLocation && route?.userAssigned?.id) {
+      // Incrementar contador de tentativas
+      setWsConnectionAttempts(prev => prev + 1);
+      
+      // Se não receber dados após 10 segundos, tentar HTTP fallback
+      const timer = setTimeout(() => {
+        if (!hasReceivedFirstLocation && !isDriverOnline) {
+          console.log("⏰ [Watch] Timeout sem dados do WebSocket, usando fallback HTTP");
+          checkDriverStatusViaHttp();
+        }
+      }, 10000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [wsConnected, hasReceivedFirstLocation, route?.userAssigned?.id, isDriverOnline, checkDriverStatusViaHttp]);
+
+  // 🔥 HEALTH CHECK PERIÓDICO (a cada 30 segundos)
+  useEffect(() => {
+    // Iniciar health check apenas se não estiver recebendo dados
+    if (!hasReceivedFirstLocation && route?.userAssigned?.id) {
+      if (healthCheckIntervalRef.current) {
+        clearInterval(healthCheckIntervalRef.current);
+      }
+      
+      healthCheckIntervalRef.current = setInterval(() => {
+        console.log("🩺 [Watch] Executando health check...");
+        checkDriverStatusViaHttp();
+        setManualCheckTrigger(prev => prev + 1);
+      }, 30000);
+    }
+    
+    return () => {
+      if (healthCheckIntervalRef.current) {
+        clearInterval(healthCheckIntervalRef.current);
+        healthCheckIntervalRef.current = null;
+      }
+    };
+  }, [hasReceivedFirstLocation, route?.userAssigned?.id, checkDriverStatusViaHttp]);
 
   // 🔥 FUNÇÃO PARA BUSCAR ROTA UMA ÚNICA VEZ
   const fetchOptimizedRouteOnce = useCallback(
@@ -454,7 +528,7 @@ export default function WatchPage() {
     [route, orderedStops, driverLocation, isRouteLoaded],
   );
 
-  // 🔥 EFECTS (TODOS ANTES DOS EARLY RETURNS)
+  // 🔥 EFECTS
   useEffect(() => {
     if (orderedStops.length > 0 && !isRouteLoaded) {
       console.log("🚀 [Watch] Primeira carga da rota...");
@@ -499,21 +573,35 @@ export default function WatchPage() {
   }, [orderedStops]);
 
   // 🔥 HANDLERS
-  const handleBack = useCallback(() => router.back(), [router]);
+  const handleBack = useCallback(() => {
+    disconnectWs(); // Limpar conexão ao sair
+    router.back();
+  }, [router, disconnectWs]);
+  
   const handleGoToKanban = useCallback(() => {
     setShowCompletionModal(false);
     router.push("/Kanban");
   }, [router]);
+  
   const handleCloseModal = useCallback(() => {
     setShowCompletionModal(false);
   }, []);
+  
   const handleCloseNotification = useCallback(() => {
     setShowFloatingNotification(false);
   }, []);
-  const prefetchRoutes = useCallback(
-    () => router.prefetch("/routes"),
-    [router],
-  );
+  
+  const prefetchRoutes = useCallback(() => router.prefetch("/routes"), [router]);
+
+  // 🔥 LIMPAR CONEXÃO AO DESMONTAR
+  useEffect(() => {
+    return () => {
+      if (healthCheckIntervalRef.current) {
+        clearInterval(healthCheckIntervalRef.current);
+      }
+      disconnectWs();
+    };
+  }, [disconnectWs]);
 
   // 🔥 EARLY RETURNS
   if (isLoadingRoute) return <WatchSkeleton />;
@@ -593,6 +681,12 @@ export default function WatchPage() {
                 Calculando rota...
               </span>
             )}
+            {!wsConnected && !hasReceivedFirstLocation && (
+              <span className="flex items-center gap-1 text-amber-600">
+                <WifiOff size={12} />
+                Conectando...
+              </span>
+            )}
           </div>
 
           {/* Barra de progresso */}
@@ -633,7 +727,10 @@ export default function WatchPage() {
         ) : (
           <div className="h-full w-full flex items-center justify-center bg-slate-100">
             <div className="text-center">
-              <Loader2 className="animate-spin text-[#D35400] mx-auto mb-4" size={48} />
+              <Loader2
+                className="animate-spin text-[#D35400] mx-auto mb-4"
+                size={48}
+              />
               <p className="text-slate-500 font-medium">Carregando mapa...</p>
               <p className="text-slate-400 text-sm mt-1">
                 Aguardando dados da rota
@@ -697,6 +794,14 @@ export default function WatchPage() {
               Quando o motorista iniciar a rota, você verá sua localização em
               tempo real
             </p>
+            {wsConnectionAttempts > 3 && (
+              <button
+                onClick={checkDriverStatusViaHttp}
+                className="mt-3 text-xs bg-amber-200 hover:bg-amber-300 text-amber-800 px-3 py-1 rounded-full transition-colors"
+              >
+                🔄 Verificar manualmente
+              </button>
+            )}
           </motion.div>
         </div>
       )}
