@@ -34,7 +34,7 @@ import {
   MessageSquare,
   RefreshCw,
   Shield,
-  Users
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -130,7 +130,7 @@ function NotificationsPopover() {
         >
           <Bell className="w-5 h-5" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#D35400] text-[10px] font-bold text-white ring-2 ring-[#2C3E50]">
+            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#2F80ED] text-[10px] font-bold text-white ring-2 ring-[#353A40]">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
@@ -139,7 +139,7 @@ function NotificationsPopover() {
       <PopoverContent
         align="end"
         sideOffset={5}
-        className="w-80 p-0 bg-[#2C3E50] border-white/10 text-white"
+        className="w-80 p-0 bg-[#353A40] border-white/10 text-white"
       >
         {/* Header do Popover */}
         <div className="flex items-center justify-between p-3 border-b border-white/10">
@@ -148,7 +148,7 @@ function NotificationsPopover() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-gray-400 hover:text-white hover:bg-white/10"
+              className="h-7 w-7 text-gray-300 hover:text-white hover:bg-white/10"
               onClick={handleRefresh}
               disabled={loading}
             >
@@ -158,7 +158,7 @@ function NotificationsPopover() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 text-xs text-gray-400 hover:text-white hover:bg-white/10"
+                className="h-7 text-xs text-gray-300 hover:text-white hover:bg-white/10"
                 onClick={handleMarkAllAsRead}
               >
                 <CheckCheck className="w-3 h-3 mr-1" />
@@ -172,20 +172,20 @@ function NotificationsPopover() {
         <ScrollArea className="max-h-96">
           {loading && notifications.length === 0 ? (
             <div className="flex items-center justify-center py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-gray-500" />
+              <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
             </div>
           ) : notifications.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 text-sm">
+            <div className="text-center py-8 text-gray-300 text-sm">
               Nenhuma notificação
             </div>
           ) : (
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-white/10">
               {notifications.map((notif: any) => (
                 <div
                   key={notif.id}
                   className={cn(
                     "p-3 hover:bg-white/5 transition-colors cursor-pointer",
-                    !notif.isRead && "bg-white/5"
+                    !notif.isRead && "bg-white/5",
                   )}
                   onClick={() => handleMarkAsRead(notif.id)}
                 >
@@ -194,15 +194,15 @@ function NotificationsPopover() {
                       <p className="text-sm font-medium text-white">
                         {notif.title || "Notificação"}
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">
+                      <p className="text-xs text-gray-300 mt-0.5 line-clamp-2">
                         {notif.message || notif.content}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-gray-400 mt-1">
                         {formatDate(notif.createdAt)}
                       </p>
                     </div>
                     {!notif.isRead && (
-                      <div className="w-2 h-2 rounded-full bg-[#D35400] flex-shrink-0 mt-2" />
+                      <div className="w-2 h-2 rounded-full bg-[#2F80ED] flex-shrink-0 mt-2" />
                     )}
                   </div>
                 </div>
@@ -225,8 +225,6 @@ function SidebarContent({
   const pathname = usePathname();
   const { user } = useAuth();
 
-  // LOG 1: Verificar o usuário
-
   const [userToggledMenus, setUserToggledMenus] = useState<
     Record<string, boolean>
   >({});
@@ -235,72 +233,44 @@ function SidebarContent({
     setUserToggledMenus((prev) => ({ ...prev, [title]: !prev[title] }));
   };
 
-  // LOG 2: Verificar todos os itens do menu antes do filtro
-  // useEffect(() => {
-  //   console.log(
-  //     "📋 [Sidebar] Todos os itens do menu:",
-  //     menuItems.map((item) => item.title),
-  //   );
-  // }, []);
-
   // --- 2. LÓGICA DE PERMISSÕES PARA MASTER ---
   const filteredMenuItems = useMemo(() => {
     if (!user) {
       return [];
     }
 
-
     // 👇 SE FOR MASTER, MOSTRA APENAS OS ITENS ESPECÍFICOS
     if (user.role === "MASTER") {
-      
       const masterItems = menuItems.filter((item) => {
-        // Lista de títulos permitidos para MASTER
         const allowedTitles = ["Empresas", "Usuários", "Dashboard", "Audit"];
-        
         if (allowedTitles.includes(item.title)) {
           return true;
         }
-        
         return false;
       });
-      
-      // console.log(
-      //   "📊 [Sidebar] Itens para MASTER:",
-      //   masterItems.map((item) => item.title),
-      // );
       return masterItems;
     }
 
     // Para outros usuários (ADMIN, EMPLOYER)
     const filtered = menuItems.filter((item) => {
-      // LOG 3: Verificar cada item
-
-      // Se for ADMIN, mostra todos os itens
       if (user.role === "ADMIN") {
         return true;
       }
-
-      // Para EMPLOYER, remove alguns itens
       if (user.role === "EMPLOYER") {
         if (item.href === "/empresas" || item.href === "/users") {
           return false;
         }
       }
-
       return true;
     });
 
-    // console.log(
-    //   "📊 [Sidebar] Itens após filtro:",
-    //   filtered.map((item) => item.title),
-    // );
     return filtered;
   }, [user]);
 
   return (
     <div
       className={cn(
-        "flex flex-col h-full bg-[#2C3E50] text-white transition-all duration-300",
+        "flex flex-col h-full bg-[#353A40] text-white transition-all duration-300",
         collapsed ? "w-20" : "w-full",
       )}
     >
@@ -313,7 +283,7 @@ function SidebarContent({
       >
         {!collapsed && (
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-[#D35400] rounded-xl flex items-center justify-center shadow-md">
+            <div className="w-10 h-10 bg-[#2F80ED] rounded-xl flex items-center justify-center shadow-md">
               <Home className="w-5 h-5 text-white" />
             </div>
             <span className="font-bold text-xl tracking-tight">Highlander</span>
@@ -322,7 +292,6 @@ function SidebarContent({
         <div
           className={cn("flex items-center", collapsed ? "justify-center" : "")}
         >
-          {/* Componente de Notificações */}
           <NotificationsPopover />
         </div>
       </div>
@@ -350,8 +319,8 @@ function SidebarContent({
                         className={cn(
                           "flex items-center justify-center rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 cursor-pointer",
                           isGroupActive
-                            ? "bg-[#D35400] text-white"
-                            : "text-gray-300 hover:bg-white/10 hover:text-white",
+                            ? "bg-[#2F80ED] text-white"
+                            : "text-gray-200 hover:bg-white/10 hover:text-white",
                         )}
                       >
                         <Icon className="w-5 h-5" />
@@ -359,9 +328,9 @@ function SidebarContent({
                     </PopoverTrigger>
                     <PopoverContent
                       side="right"
-                      className="w-56 p-2 bg-[#2C3E50] border-white/10 text-white ml-2"
+                      className="w-56 p-2 bg-[#2A2F35] border-white/10 text-white ml-2"
                     >
-                      <p className="text-xs font-bold text-gray-400 px-2 py-1 mb-1">
+                      <p className="text-xs font-bold text-gray-300 px-2 py-1 mb-1">
                         {item.title}
                       </p>
                       {item.subItems.map((sub) => (
@@ -374,7 +343,7 @@ function SidebarContent({
                             className={cn(
                               "rounded-md px-2 py-2 text-sm hover:bg-white/10 transition-colors",
                               pathname === sub.href &&
-                                "bg-white/10 text-[#D35400]",
+                                "bg-white/10 text-[#2F80ED]",
                             )}
                           >
                             {sub.title}
@@ -392,14 +361,14 @@ function SidebarContent({
                     onClick={() => toggleMenu(item.title)}
                     className={cn(
                       "w-full flex items-center justify-between rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 group hover:bg-white/10 hover:text-white",
-                      isGroupActive ? "text-white" : "text-gray-300",
+                      isGroupActive ? "text-white" : "text-gray-200",
                     )}
                   >
                     <div className="flex items-center">
                       <Icon
                         className={cn(
                           "w-5 h-5 mr-3 transition-transform",
-                          isGroupActive ? "text-[#D35400]" : "text-gray-400",
+                          isGroupActive ? "text-[#2F80ED]" : "text-gray-300",
                         )}
                       />
                       <span>{item.title}</span>
@@ -426,8 +395,8 @@ function SidebarContent({
                               className={cn(
                                 "flex items-center rounded-lg px-3 py-2 text-sm transition-all",
                                 isSubActive
-                                  ? "text-[#D35400] font-bold bg-white/5"
-                                  : "text-gray-400 hover:text-white hover:bg-white/5",
+                                  ? "text-[#2F80ED] font-bold bg-white/5"
+                                  : "text-gray-300 hover:text-white hover:bg-white/5",
                               )}
                             >
                               <span>{sub.title}</span>
@@ -455,8 +424,8 @@ function SidebarContent({
                   className={cn(
                     "flex items-center rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 group relative overflow-hidden",
                     isActive
-                      ? "bg-[#D35400] text-white shadow-md"
-                      : "text-gray-300 hover:bg-white/10 hover:text-white",
+                      ? "bg-[#2F80ED] text-white shadow-md"
+                      : "text-gray-200 hover:bg-white/10 hover:text-white",
                     collapsed ? "justify-center" : "justify-start",
                   )}
                   title={collapsed ? item.title : undefined}
@@ -467,7 +436,7 @@ function SidebarContent({
                       collapsed ? "mr-0" : "mr-3",
                       isActive
                         ? "text-white"
-                        : "text-gray-400 group-hover:text-white",
+                        : "text-gray-300 group-hover:text-white",
                     )}
                   />
                   {!collapsed && <span className="truncate">{item.title}</span>}
@@ -489,18 +458,18 @@ export function Sidebar({ className }: SidebarProps) {
     <>
       <div
         className={cn(
-          "hidden md:flex flex-col h-full border-r border-white/10 transition-all duration-300 bg-[#2C3E50]",
+          "hidden md:flex flex-col h-full border-r border-white/10 transition-all duration-300 bg-[#353A40]",
           collapsed ? "w-20" : "w-72",
           className,
         )}
       >
         <SidebarContent collapsed={collapsed} />
-        <div className="bg-[#2C3E50] p-2 flex justify-center border-t border-white/10">
+        <div className="bg-[#2A2F35] p-2 flex justify-center border-t border-white/10">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setCollapsed(!collapsed)}
-            className="text-gray-400 hover:text-white hover:bg-white/10 w-full"
+            className="text-gray-300 hover:text-white hover:bg-white/10 w-full"
           >
             {collapsed ? (
               <ChevronRight className="w-4 h-4" />
@@ -513,7 +482,7 @@ export function Sidebar({ className }: SidebarProps) {
       <Sheet open={isOpen} onOpenChange={close}>
         <SheetContent
           side="left"
-          className="p-0 border-none w-72 bg-[#2C3E50] text-white"
+          className="p-0 border-none w-72 bg-[#353A40] text-white"
         >
           <SidebarContent collapsed={false} onItemClick={close} />
         </SheetContent>

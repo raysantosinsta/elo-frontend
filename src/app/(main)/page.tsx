@@ -133,7 +133,6 @@ export default function DashboardPage() {
   const router = useRouter();
 
   const navigateToKanbanOverdue = () => {
-    // Redireciona para /kanban com o query param ?filter=overdue
     router.push("/Kanban?filter=overdue");
   };
 
@@ -150,7 +149,6 @@ export default function DashboardPage() {
       task.completedAt ||
       task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
 
-    // Só é atrasado se a data já passou E não está concluída
     return targetDate.getTime() < today.getTime() && !isCompleted;
   };
 
@@ -170,7 +168,6 @@ export default function DashboardPage() {
     const diffTime = targetDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // 🔥 CORREÇÃO: Exclui o dia atual (diffDays > 0) e mostra apenas até 7 dias
     return diffDays > 0 && diffDays <= 7;
   };
 
@@ -208,11 +205,9 @@ export default function DashboardPage() {
     setLoading(true);
     setError("");
     try {
-      // 🔥 CORREÇÃO: Adicionado limit=100 para garantir que tarefas novas apareçam
-      // Se não passar params, o backend pega só as 10 primeiras
       const response = await api.get("/tasks", {
         params: {
-          limit: 100, // Aumente conforme necessário
+          limit: 100,
           page: 1,
         },
       });
@@ -260,7 +255,6 @@ export default function DashboardPage() {
   }, [router, fetchAllTasks]);
 
   const navigateToAgenda = (task: Task) => {
-    // Usa data de vencimento, ou agendamento, ou criação
     const dateToFocus = task.dueDate || task.scheduledDate || task.createdAt;
     const focusDate = new Date(dateToFocus).toISOString().split("T")[0];
     router.push(`/agenda?focusDate=${focusDate}&highlightTask=${task.id}`);
@@ -270,13 +264,11 @@ export default function DashboardPage() {
   const filteredTasks = (() => {
     let result = allTasks;
 
-    // Filtros Rápidos
     if (filter === "overdue") result = result.filter(isTaskOverdue);
     if (filter === "due-soon") result = result.filter(isTaskDueSoon);
     if (filter === "my-tasks")
       result = result.filter((t) => t.assignedTo?.id === user?.id);
 
-    // Busca Textual
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -300,7 +292,6 @@ export default function DashboardPage() {
   ).length;
 
   const tasksForTodayCount = allTasks.filter((task) => {
-    // Verifica se tem scheduledDate ou dueDate
     const targetDate = getEffectiveDueDate(task);
     if (!targetDate) return false;
 
@@ -311,7 +302,6 @@ export default function DashboardPage() {
     const diffTime = targetDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // Mostra tarefas que vencem nos próximos 7 dias (excluindo hoje)
     const isUpcoming = diffDays > 0 && diffDays <= 7;
 
     const isCompleted =
@@ -323,7 +313,6 @@ export default function DashboardPage() {
 
   const navigateToTodayTasks = () => {
     const today = new Date().toISOString().split("T")[0];
-    // URL limpa: filterType, startDate, endDate e um timestamp para forçar o refresh
     router.push(
       `/Kanban?filterType=scheduled&startDate=${today}&endDate=${today}&t=${Date.now()}`,
     );
@@ -332,8 +321,8 @@ export default function DashboardPage() {
   // Render Loading
   if (!user && loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#F5F0E6]">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#D35400]"></div>
+      <div className="flex h-screen items-center justify-center bg-[#F5F6FA]">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#2F80ED]"></div>
       </div>
     );
   }
@@ -341,24 +330,24 @@ export default function DashboardPage() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-6 font-sans">
+    <div className="min-h-screen bg-[#F5F6FA] p-4 md:p-6 font-sans">
       <div className="max-w-7xl mx-auto">
         {/* HEADER */}
         <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-[#2D3436] mb-2">
+            <h1 className="text-3xl md:text-4xl font-extrabold text-[#353A40] mb-2">
               ELO PRODUTIVO
             </h1>
             <div className="flex items-center gap-3">
-              <span className="text-lg text-[#2D3436]">
+              <span className="text-lg text-[#353A40]">
                 Olá, <strong>{user.name}</strong>
               </span>
-              <Badge className="bg-[#D35400] text-white hover:bg-[#A04000]">
+              <Badge className="bg-[#2F80ED] text-white hover:bg-[#1E5CB8]">
                 {user.role}
               </Badge>
             </div>
             {user.company && (
-              <p className="text-sm text-[#95A5A6] mt-1">{user.company.name}</p>
+              <p className="text-sm text-[#7A7E83] mt-1">{user.company.name}</p>
             )}
           </div>
 
@@ -370,7 +359,7 @@ export default function DashboardPage() {
                   variant="outline"
                   size="icon"
                   disabled={loading}
-                  className="border-[#95A5A6] text-[#2D3436]"
+                  className="border-[#CBD5E1] text-[#353A40] bg-white hover:bg-gray-50"
                 >
                   <RefreshCcw
                     className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
@@ -384,33 +373,33 @@ export default function DashboardPage() {
           </TooltipProvider>
         </header>
 
-        <hr className="border-[#95A5A6] mb-6" />
+        <hr className="border-[#E2E8F0] mb-6" />
 
         {/* ESTATÍSTICAS */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
           <Card
-            className={`bg-white border-b-2 ${overdueTasksCount > 0 ? "border-red-500" : "border-gray-300"} shadow-sm hover:shadow-md transition-all`}
+            className={`bg-white border-b-2 ${overdueTasksCount > 0 ? "border-red-500" : "border-gray-300"} shadow-sm hover:shadow-md transition-all cursor-pointer`}
             onClick={navigateToKanbanOverdue}
           >
             <CardContent className="p-4 text-center">
               <div
-                className={`text-2xl md:text-3xl font-extrabold ${overdueTasksCount > 0 ? "text-red-600" : "text-gray-700"}`}
+                className={`text-2xl md:text-3xl font-extrabold ${overdueTasksCount > 0 ? "text-red-600" : "text-[#353A40]"}`}
               >
                 {overdueTasksCount}
               </div>
-              <div className="text-xs text-[#95A5A6] mt-1">Atrasadas</div>
+              <div className="text-xs text-[#7A7E83] mt-1">Atrasadas</div>
             </CardContent>
           </Card>
 
           <Card
-            onClick={() => router.push("/Kanban")} // <--- Adiciona o evento de clique
-            className="bg-white border-b-2 border-green-500 shadow-sm hover:shadow-md transition-all cursor-pointer" // <--- Adiciona cursor-pointer
+            onClick={() => router.push("/Kanban")}
+            className="bg-white border-b-2 border-green-500 shadow-sm hover:shadow-md transition-all cursor-pointer"
           >
             <CardContent className="p-4 text-center">
               <div className="text-2xl md:text-3xl font-extrabold text-green-600">
                 {completedTasksCount}
               </div>
-              <div className="text-xs text-[#95A5A6] mt-1">Concluídas</div>
+              <div className="text-xs text-[#7A7E83] mt-1">Concluídas</div>
             </CardContent>
           </Card>
 
@@ -422,27 +411,27 @@ export default function DashboardPage() {
               <div className="text-2xl md:text-3xl font-extrabold text-blue-600">
                 {tasksForTodayCount}
               </div>
-              <div className="text-xs text-[#95A5A6] mt-1 flex justify-center items-center gap-1 font-bold">
+              <div className="text-xs text-[#7A7E83] mt-1 flex justify-center items-center gap-1 font-bold">
                 <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
                 Próximos a vencer
               </div>
-              <div className="text-xs text-[#95A5A6] mt-1 flex justify-center items-center gap-1 font-bold">
-                ( 7 dias )
+              <div className="text-xs text-[#7A7E83] mt-1 flex justify-center items-center gap-1 font-bold">
+                (7 dias)
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* CONTROLES */}
-        <Card className="mb-8 bg-white border-t-4 border-[#2C3E50]/50 shadow-sm">
+        <Card className="mb-8 bg-white border-t-4 border-[#2F80ED]/20 shadow-sm">
           <CardContent className="p-4 flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#95A5A6]" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#7A7E83]" />
               <Input
                 placeholder="Buscar tarefas..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 bg-[#F5F0E6]/50"
+                className="pl-10 bg-[#F5F6FA] border-[#E2E8F0]"
               />
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -450,7 +439,9 @@ export default function DashboardPage() {
                 variant={filter === "all" ? "default" : "outline"}
                 onClick={() => setFilter("all")}
                 className={
-                  filter === "all" ? "bg-[#2C3E50] hover:bg-[#2C3E50]/90" : ""
+                  filter === "all"
+                    ? "bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
+                    : "border-[#CBD5E1] text-[#353A40] hover:bg-gray-50"
                 }
               >
                 Todas
@@ -476,17 +467,16 @@ export default function DashboardPage() {
             {/* LISTA 1: TODAS / FILTRADAS */}
             <Card className="bg-white shadow-lg rounded-xl h-full">
               <CardHeader className="border-b pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg text-[#2D3436]">
-                  <Clock className="h-5 w-5" /> Atividades
-                  <span className="text-sm font-normal text-gray-400 ml-auto">
+                <CardTitle className="flex items-center gap-2 text-lg text-[#353A40]">
+                  <Clock className="h-5 w-5 text-[#2F80ED]" /> Atividades
+                  <span className="text-sm font-normal text-[#7A7E83] ml-auto">
                     {filteredTasks.length} itens
                   </span>
                 </CardTitle>
               </CardHeader>
-              {/* TODO: AO CLICAR NA TASK IR PARA PAGINA DE KANBAN  COM A TASK ABERTA NA VISUALIZAÇÃO */}
               <CardContent className="p-0 max-h-[600px] overflow-y-auto">
                 {filteredTasks.length === 0 ? (
-                  <div className="p-8 text-center text-gray-400">
+                  <div className="p-8 text-center text-[#7A7E83]">
                     Nenhuma tarefa encontrada.
                   </div>
                 ) : (
@@ -504,13 +494,13 @@ export default function DashboardPage() {
             </Card>
 
             {/* LISTA 2: PRÓXIMOS VENCIMENTOS */}
-            <Card className="bg-white shadow-lg rounded-xl h-full border-t-4 border-orange-400">
+            <Card className="bg-white shadow-lg rounded-xl h-full border-t-4 border-[#2F80ED]/50">
               <CardHeader className="border-b pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg text-[#2D3436]">
-                  <Calendar className="h-5 w-5 text-orange-500" /> Próximos
+                <CardTitle className="flex items-center gap-2 text-lg text-[#353A40]">
+                  <Calendar className="h-5 w-5 text-[#2F80ED]" /> Próximos
                   Vencimentos
                 </CardTitle>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-[#7A7E83]">
                   Tarefas agendadas ou com prazo para os próximos 7 dias
                 </p>
               </CardHeader>
@@ -526,7 +516,7 @@ export default function DashboardPage() {
 
                   if (upcoming.length === 0) {
                     return (
-                      <div className="p-8 text-center text-gray-400">
+                      <div className="p-8 text-center text-[#7A7E83]">
                         Nenhuma tarefa vencendo em breve.
                       </div>
                     );
@@ -554,7 +544,7 @@ export default function DashboardPage() {
   );
 }
 
-// --- Subcomponente de Item de Lista (Para evitar repetição) ---
+// --- Subcomponente de Item de Lista ---
 const TaskListItem = ({
   task,
   onClick,
@@ -568,7 +558,6 @@ const TaskListItem = ({
   const isOverdue =
     effectiveDate && effectiveDate < new Date() && !task.completedAt;
 
-  // Prioridade do vencimento: DueDate > ScheduledDate
   const dateLabel = task.dueDate ? "Vence" : "Agendado";
   const displayDate = effectiveDate?.toLocaleDateString("pt-BR", {
     day: "2-digit",
@@ -576,7 +565,7 @@ const TaskListItem = ({
   });
 
   return (
-    <li className="group hover:bg-slate-50 transition-colors">
+    <li className="group hover:bg-gray-50 transition-colors">
       <a
         href="#"
         onClick={(e) => {
@@ -586,18 +575,26 @@ const TaskListItem = ({
         className="flex items-start gap-3 p-4 block"
       >
         <div
-          className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${isOverdue ? "bg-red-500" : "bg-[#D35400]"}`}
+          className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${
+            isOverdue ? "bg-red-500" : "bg-[#2F80ED]"
+          }`}
         />
 
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-start">
-            <p className="font-semibold text-gray-800 line-clamp-1 group-hover:text-[#D35400] transition-colors">
+            <p className="font-semibold text-[#353A40] line-clamp-1 group-hover:text-[#2F80ED] transition-colors">
               {task.title}
             </p>
             {effectiveDate && (
               <span
                 className={`text-xs font-mono whitespace-nowrap ml-2 
-                ${isOverdue ? "text-red-600 font-bold" : isUpcomingView ? "text-orange-600 font-bold" : "text-gray-500"}`}
+                ${
+                  isOverdue
+                    ? "text-red-600 font-bold"
+                    : isUpcomingView
+                      ? "text-[#2F80ED] font-bold"
+                      : "text-[#7A7E83]"
+                }`}
               >
                 {dateLabel}: {displayDate}
               </span>
@@ -607,27 +604,31 @@ const TaskListItem = ({
           <div className="flex flex-wrap gap-2 mt-2 items-center">
             <Badge
               variant="outline"
-              className={`${getPriorityClasses(task.priority).bg} ${getPriorityClasses(task.priority).text} border-0 text-[10px]`}
+              className={`${getPriorityClasses(task.priority).bg} ${
+                getPriorityClasses(task.priority).text
+              } border-0 text-[10px]`}
             >
               {getPriorityText(task.priority)}
             </Badge>
             {task.column && (
               <Badge
                 variant="outline"
-                className={`${getStatusClasses(task.column.title).bg} ${getStatusClasses(task.column.title).text} border-0 text-[10px]`}
+                className={`${getStatusClasses(task.column.title).bg} ${
+                  getStatusClasses(task.column.title).text
+                } border-0 text-[10px]`}
               >
                 {task.column.title}
               </Badge>
             )}
             {task.assignedTo && (
-              <div className="flex items-center gap-1 text-xs text-gray-400 ml-auto">
+              <div className="flex items-center gap-1 text-xs text-[#7A7E83] ml-auto">
                 <User className="h-3 w-3" /> {task.assignedTo.name}
               </div>
             )}
           </div>
         </div>
 
-        <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-[#D35400] self-center" />
+        <ArrowRight className="h-4 w-4 text-[#CBD5E1] group-hover:text-[#2F80ED] self-center" />
       </a>
     </li>
   );
