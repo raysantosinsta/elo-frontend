@@ -11,7 +11,7 @@ import {
   RouteStats,
   Task,
   TaskInfo,
-  UpdateRouteDto
+  UpdateRouteDto,
 } from "../services/api";
 
 export const useRoutes = () => {
@@ -34,32 +34,32 @@ export const useRoutes = () => {
   };
 
   const useMarkStopVisited = () =>
-  useMutation({
-    mutationFn: ({
-      routeId,
-      stopId,
-      notes,
-    }: {
-      routeId: string;
-      stopId: string;
-      notes?: string;
-    }) => routesApi.markStopVisited(routeId, stopId, notes),
+    useMutation({
+      mutationFn: ({
+        routeId,
+        stopId,
+        notes,
+      }: {
+        routeId: string;
+        stopId: string;
+        notes?: string;
+      }) => routesApi.markStopVisited(routeId, stopId, notes),
 
-    onSuccess: (_, variables) => {
-      // 🔥 Atualiza apenas o necessário (evita flood)
-      queryClient.invalidateQueries({
-        queryKey: ["routes", variables.routeId],
-      });
+      onSuccess: (_, variables) => {
+        // 🔥 Atualiza apenas o necessário (evita flood)
+        queryClient.invalidateQueries({
+          queryKey: ["routes", variables.routeId],
+        });
 
-      queryClient.invalidateQueries({
-        queryKey: ["tasks-by-route", variables.routeId],
-      });
+        queryClient.invalidateQueries({
+          queryKey: ["tasks-by-route", variables.routeId],
+        });
 
-      // ⚠️ NÃO invalidar tudo
-      // ❌ queryClient.invalidateQueries(["routes"])  ← EVITE
-      // ❌ queryClient.invalidateQueries(["routes-summary"]) ← só se precisar mesmo
-    },
-  });
+        // ⚠️ NÃO invalidar tudo
+        // ❌ queryClient.invalidateQueries(["routes"])  ← EVITE
+        // ❌ queryClient.invalidateQueries(["routes-summary"]) ← só se precisar mesmo
+      },
+    });
 
   // =============================================
   // 🚀 GET ALL ROUTES (OTIMIZADO)
@@ -94,7 +94,10 @@ export const useRoutes = () => {
                   tasks,
                 };
               } catch (error) {
-                console.error(`Erro ao buscar tasks da rota ${route.id}`, error);
+                console.error(
+                  `Erro ao buscar tasks da rota ${route.id}`,
+                  error,
+                );
                 return {
                   ...route,
                   tasks: [],
@@ -108,12 +111,13 @@ export const useRoutes = () => {
 
         return results;
       },
-
-      // 🔥 CONFIG ANTI-FLOOD
-      staleTime: 1000 * 60 * 5, // 5 min
+      // 🔥 ALTERAR ESTAS CONFIGURAÇÕES
+      staleTime: 1000 * 10, // Mudar para 10 segundos (ou 0 para sempre buscar)
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
+      refetchOnMount: true, // 🔥 Mudar para true
+      // 🔥 Adicionar esta configuração
+      gcTime: 1000 * 60 * 5, // Manter no cache por 5 minutos (antigo cacheTime)
     });
 
   // =============================================
@@ -193,36 +197,47 @@ export const useRoutes = () => {
       enabled: !!id,
     });
 
-    const useFinalizeTask = () =>
-  useMutation({
-    mutationFn: ({
-      taskId,
-      data,
-    }: {
-      taskId: string;
-      data: FinalizeTaskDto;
-    }) => routesApi.finalizeTask(taskId, data),
+  const useFinalizeTask = () =>
+    useMutation({
+      mutationFn: ({
+        taskId,
+        data,
+      }: {
+        taskId: string;
+        data: FinalizeTaskDto;
+      }) => routesApi.finalizeTask(taskId, data),
 
-    onSuccess: (_, variables) => {
-      // 🔥 Atualiza apenas o essencial
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      onSuccess: (_, variables) => {
+        // 🔥 Atualiza apenas o essencial
+        queryClient.invalidateQueries({ queryKey: ["tasks"] });
 
-      // Se você souber a rota, melhor ainda:
-      // queryClient.invalidateQueries(["tasks-by-route", routeId])
+        // Se você souber a rota, melhor ainda:
+        // queryClient.invalidateQueries(["tasks-by-route", routeId])
 
-      // ⚠️ Evitar isso aqui:
-      // ❌ invalidateQueries(["routes"]) em massa
-    },
-  });
+        // ⚠️ Evitar isso aqui:
+        // ❌ invalidateQueries(["routes"]) em massa
+      },
+    });
 
   // =============================================
   // MUTATIONS
   // =============================================
+
   const useCreateRoute = () =>
     useMutation({
       mutationFn: (data: CreateRouteDto) => routesApi.create(data),
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["routes"] });
+      onSuccess: async () => {
+        // 🔥 Isso já é suficiente - o React Query vai atualizar automaticamente
+        await queryClient.invalidateQueries({ queryKey: ["routes"] });
+
+        // Se você tem queries com parâmetros (filtros), invalida também
+        await queryClient.invalidateQueries({
+          queryKey: ["routes"],
+          exact: false,
+        });
+
+        // Se tiver summary, invalida também
+        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
       },
     });
 
@@ -286,6 +301,6 @@ export const useRoutes = () => {
     useUpdateTask,
     useDeleteTask,
     useMarkStopVisited,
-    useFinalizeTask 
+    useFinalizeTask,
   };
 };
