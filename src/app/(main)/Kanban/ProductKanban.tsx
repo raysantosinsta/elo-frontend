@@ -713,21 +713,16 @@ export default function ProductKanban() {
             )}
           </Button>
 
-          {(filterStartDate ||
-            filterEndDate ||
-            filterAssignedTo !== "all" ||
-            filterDateType !== "created") && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
-              onClick={handleClearFilters}
-              title="Limpar Filtros"
-              disabled={isFiltering}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+            onClick={handleClearFilters}
+            title="Limpar Filtros"
+            disabled={isFiltering}
+          >
+            <X className="w-4 h-4" />
+          </Button>
         </div>
       </KanbanFilter>
 

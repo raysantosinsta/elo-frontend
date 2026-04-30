@@ -156,7 +156,7 @@ export default function DashboardPage() {
 
   const isTaskDueSoon = (task: Task) => {
     const targetDate = getEffectiveDueDate(task);
-    if (!targetDate || isTaskOverdue(task)) return false; // Se já venceu, não é "próximo"
+    if (!targetDate || isTaskOverdue(task)) return false;
 
     const isCompleted =
       task.completedAt ||
@@ -170,8 +170,8 @@ export default function DashboardPage() {
     const diffTime = targetDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // Retorna true se faltam entre 0 e 7 dias (aumentei a margem para 1 semana)
-    return diffDays >= 0 && diffDays <= 7;
+    // 🔥 CORREÇÃO: Exclui o dia atual (diffDays > 0) e mostra apenas até 7 dias
+    return diffDays > 0 && diffDays <= 7;
   };
 
   const hasAttachments = (task: Task) => {
@@ -298,26 +298,27 @@ export default function DashboardPage() {
       t.completedAt ||
       t.column?.title?.toLowerCase().match(/(concluído|finalizado)/),
   ).length;
-  // 🔥 REGRA ATUALIZADA: Próximos a vencer (Sem validar título de coluna)
+
   const tasksForTodayCount = allTasks.filter((task) => {
-    // 1. A tarefa deve possuir o campo scheduledDate preenchido
-    if (!task.scheduledDate) return false;
+    // Verifica se tem scheduledDate ou dueDate
+    const targetDate = getEffectiveDueDate(task);
+    if (!targetDate) return false;
 
-    // 2. A data em scheduledDate deve ser igual à data atual (ignore as horas)
     const today = new Date();
-    const taskDate = new Date(task.scheduledDate);
+    today.setHours(0, 0, 0, 0);
+    targetDate.setHours(0, 0, 0, 0);
 
-    const isSameDay =
-      today.getUTCDate() === taskDate.getUTCDate() &&
-      today.getUTCMonth() === taskDate.getUTCMonth() &&
-      today.getUTCFullYear() === taskDate.getUTCFullYear();
+    const diffTime = targetDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // 3. (Opcional) Filtrar para não mostrar tarefas já concluídas hoje
+    // Mostra tarefas que vencem nos próximos 7 dias (excluindo hoje)
+    const isUpcoming = diffDays > 0 && diffDays <= 7;
+
     const isCompleted =
       task.completedAt ||
       task.column?.title?.toLowerCase().match(/(concluído|finalizado|pronto)/);
 
-    return isSameDay && !isCompleted;
+    return isUpcoming && !isCompleted;
   }).length;
 
   const navigateToTodayTasks = () => {
@@ -414,19 +415,22 @@ export default function DashboardPage() {
           </Card>
 
           <Card
-              className="bg-white border-b-2 border-blue-500 shadow-sm hover:shadow-md transition-all cursor-pointer animate-in fade-in duration-500"
-              onClick={navigateToTodayTasks}
-            >
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl md:text-3xl font-extrabold text-blue-600">
-                  {tasksForTodayCount}
-                </div>
-                <div className="text-xs text-[#95A5A6] mt-1 flex justify-center items-center gap-1 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                  Próximos a vencer
-                </div>
-              </CardContent>
-            </Card>
+            className="bg-white border-b-2 border-blue-500 shadow-sm hover:shadow-md transition-all cursor-pointer animate-in fade-in duration-500"
+            onClick={navigateToTodayTasks}
+          >
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl md:text-3xl font-extrabold text-blue-600">
+                {tasksForTodayCount}
+              </div>
+              <div className="text-xs text-[#95A5A6] mt-1 flex justify-center items-center gap-1 font-bold">
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                Próximos a vencer
+              </div>
+              <div className="text-xs text-[#95A5A6] mt-1 flex justify-center items-center gap-1 font-bold">
+                ( 7 dias )
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* CONTROLES */}
