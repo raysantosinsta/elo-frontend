@@ -102,10 +102,14 @@ export default function RouteMap({
   const lastRouteKeyRef = useRef<string>("");
   const [isSimulating, setIsSimulating] = useState(false);
 
-   // 🔥 SE FOR OBSERVADOR, USA A ROTA DO BACKEND
+  // 🔥 SE FOR OBSERVADOR, USA A ROTA DO BACKEND
   useEffect(() => {
     if (useBackendRoute && backendRoute.length > 0) {
-      console.log('🗺️ [OBSERVADOR] Usando rota pronta do backend:', backendRoute.length, 'pontos');
+      console.log(
+        "🗺️ [OBSERVADOR] Usando rota pronta do backend:",
+        backendRoute.length,
+        "pontos",
+      );
       setFullRoutePath(backendRoute);
     }
   }, [useBackendRoute, backendRoute]);
@@ -279,7 +283,13 @@ export default function RouteMap({
     } finally {
       setIsLoadingRoute(false);
     }
-  }, [myLocation, unvisitedStops, isSimulating, fullRoutePath.length, useBackendRoute]);
+  }, [
+    myLocation,
+    unvisitedStops,
+    isSimulating,
+    fullRoutePath.length,
+    useBackendRoute,
+  ]);
 
   // 🔥 Escuta evento de rota atualizada
   useEffect(() => {
@@ -336,41 +346,84 @@ export default function RouteMap({
     };
   }, [fetchCompleteRoute]);
 
-  // 🔥 CALCULAR BOUNDS
-  const bounds = useMemo(() => {
-    const allPoints: [number, number][] = [];
+  const calculateDistance = useCallback(
+    (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371000; // Raio da Terra em metros
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    },
+    [],
+  );
 
-    if (myLocation) {
-      allPoints.push([myLocation[0], myLocation[1]]);
+  // 🔥 FUNÇÃO DE BOUNDS FOCADA NO MOTORISTA (substituir a atual)
+  const navigationBounds = useMemo(() => {
+    if (!myLocation) return undefined;
+
+    // Se não há paradas restantes, foca apenas no motorista
+    if (unvisitedStops.length === 0) {
+      const padding = 0.002; // ~200 metros
+      return [
+        [myLocation[0] - padding, myLocation[1] - padding],
+        [myLocation[0] + padding, myLocation[1] + padding],
+      ] as L.LatLngBoundsExpression;
     }
 
-    unvisitedStops.forEach((stop) => {
-      allPoints.push([stop.latitude, stop.longitude]);
-    });
+    const nextStop = unvisitedStops[0];
+    const distanceToNextStop = calculateDistance(
+      myLocation[0],
+      myLocation[1],
+      nextStop.latitude,
+      nextStop.longitude,
+    );
 
-    if (allPoints.length === 0) return undefined;
+    // Se a próxima parada está longe (> 800m), foca no motorista com zoom próximo
+    if (distanceToNextStop > 800) {
+      // Zoom nível 17-18 (raio ~100-200m)
+      const padding = 0.0015; // ~150 metros
+      return [
+        [myLocation[0] - padding, myLocation[1] - padding],
+        [myLocation[0] + padding, myLocation[1] + padding],
+      ] as L.LatLngBoundsExpression;
+    }
 
-    const lats = allPoints.map((p) => p[0]);
-    const lngs = allPoints.map((p) => p[1]);
+    // Se está perto da próxima parada, mostra ambas com zoom adequado
+    const points = [
+      [myLocation[0], myLocation[1]],
+      [nextStop.latitude, nextStop.longitude],
+    ];
+
+    const lats = points.map((p) => p[0]);
+    const lngs = points.map((p) => p[1]);
 
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs);
     const maxLng = Math.max(...lngs);
 
-    const latPadding = (maxLat - minLat) * 0.2;
-    const lngPadding = (maxLng - minLng) * 0.2;
+    // Padding dinâmico: mais zoom quando mais perto
+    const basePadding = Math.min(
+      0.008,
+      Math.max(0.002, distanceToNextStop / 250000),
+    );
 
     return [
-      [minLat - latPadding, minLng - lngPadding],
-      [maxLat + latPadding, maxLng + lngPadding],
+      [minLat - basePadding, minLng - basePadding],
+      [maxLat + basePadding, maxLng + basePadding],
     ] as L.LatLngBoundsExpression;
-  }, [unvisitedStops, myLocation]);
+  }, [myLocation, unvisitedStops, calculateDistance]);
 
   return (
     <div className="relative w-full h-full border rounded-lg overflow-hidden bg-gray-100">
       <MapContainer
-        bounds={bounds}
+        bounds={navigationBounds}
         zoom={13}
         className="w-full h-full"
         style={{ height: "100%", width: "100%" }}
