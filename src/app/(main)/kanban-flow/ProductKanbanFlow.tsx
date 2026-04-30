@@ -711,51 +711,71 @@ export default function ProductFlowKanban() {
     }
   };
 
-  // ===========================================================================
-  // 🛡️ LÓGICA DE PERMISSÃO
-  // ===========================================================================
   const canUserEditStage = useCallback(
-    (stage: FlowStage) => {
-      if (!user) return false;
-      const systemRole = (user as any).role || "";
+  (stage: FlowStage) => {
+    if (!user) {
+      console.log("❌ [canUserEditStage] Usuário não encontrado");
+      return false;
+    }
 
-      // Admin tem acesso a tudo
-      if (["MASTER", "ADMIN", "MANAGER"].includes(systemRole)) return true;
+    const systemRole = (user as any).role || "";
 
-      // Se a etapa não tem restrição, qualquer um pode editar
-      if (
-        !stage.allowedRole ||
-        stage.allowedRole.trim() === "" ||
-        stage.allowedRole === "all"
-      )
-        return true;
+    // Admin tem acesso a tudo
+    if (["MASTER", "ADMIN", "MANAGER"].includes(systemRole)) {
+      console.log(`✅ [canUserEditStage] Acesso liberado para ${systemRole}`);
+      return true;
+    }
 
-      // 🔥 CORREÇÃO: Acessar o nome do cargo profissional corretamente
-      const userProfessionalRole = user.professionalRole;
+    // Se a etapa não tem restrição, qualquer um pode editar
+    if (
+      !stage.allowedRole ||
+      stage.allowedRole.trim() === "" ||
+      stage.allowedRole === "all" ||
+      stage.allowedRole === "null"
+    ) {
+      console.log(`✅ [canUserEditStage] Etapa sem restrição: ${stage.name}`);
+      return true;
+    }
 
-      // Se o usuário não tem cargo profissional definido, não pode editar etapas restritas
-      if (!userProfessionalRole) return false;
+    // 🔥 EXTRAIR O CARGO DO USUÁRIO CORRETAMENTE
+    let userProfessionalRoleName = "";
 
-      // Se o cargo profissional for um objeto, pega o name
-      const userRole =
-        typeof userProfessionalRole === "object" && userProfessionalRole !== null
-          ? ((userProfessionalRole as any).name || "").toLowerCase()
-          : String(userProfessionalRole).toLowerCase();
+    // Caso 1: user.professionalRole é string
+    if (typeof user.professionalRole === "string") {
+      userProfessionalRoleName = user.professionalRole;
+    }
+    // Caso 2: user.professionalRole é objeto com name
+    else if (user.professionalRole && typeof user.professionalRole === "object") {
+      userProfessionalRoleName = (user.professionalRole as any).name || "";
+    }
+    // Caso 3: user.professionalRole é undefined/null
+    else {
+      console.warn(`⚠️ [canUserEditStage] ${user.name} não tem professionalRole definido`);
+      return false;
+    }
 
-      const requiredRole = stage.allowedRole.toLowerCase();
+    const userRoleLower = userProfessionalRoleName.toLowerCase().trim();
+    const requiredRoleLower = stage.allowedRole.toLowerCase().trim();
 
-      // Comparação parcial
-      const hasAccess =
-        userRole.includes(requiredRole) || requiredRole.includes(userRole);
+    // 🔥 LOG DETALHADO
+    console.log(`🔍 [canUserEditStage] Etapa: "${stage.name}"`);
+    console.log(`   - allowedRole: "${stage.allowedRole}"`);
+    console.log(`   - user professionalRole: "${userProfessionalRoleName}"`);
+    console.log(`   - userRoleLower: "${userRoleLower}"`);
+    console.log(`   - requiredRoleLower: "${requiredRoleLower}"`);
 
-      console.log(
-        `🔍 [canUserEditStage] Stage: ${stage.name}, required: ${requiredRole}, user: ${userRole}, hasAccess: ${hasAccess}`,
-      );
+    // Comparação flexível
+    const hasAccess = 
+      userRoleLower === requiredRoleLower ||
+      userRoleLower.includes(requiredRoleLower) ||
+      requiredRoleLower.includes(userRoleLower);
 
-      return hasAccess;
-    },
-    [user],
-  );
+    console.log(`   - hasAccess: ${hasAccess ? "✅ SIM" : "❌ NÃO"}`);
+
+    return hasAccess;
+  },
+  [user],
+);
 
   // ===========================================================================
   // 🔄 FUNÇÕES DE FILTRO POR COLUNA
@@ -2362,7 +2382,8 @@ export default function ProductFlowKanban() {
         stages={currentItemStages}
         flows={flows}
         initialStageId={activeStageId}
-        currentUserRole={user?.professionalRole}
+          currentUserRole={user?.professionalRole ?? undefined} // 🔥 CORREÇÃO: converte null para undefined
+
         currentUserSystemRole={user?.role}
         isReadOnly={false}
         hasMultipleFlows={selectedFlowIds.length > 1}
@@ -2401,7 +2422,8 @@ export default function ProductFlowKanban() {
           setItemToDelete({ type: "item", id });
           setDeleteModalOpen(true);
         }}
-        currentUserRole={user?.professionalRole}
+          currentUserRole={user?.professionalRole ?? undefined} // 🔥 CORREÇÃO: converte null para undefined
+
         currentUserSystemRole={user?.role}
         isReadOnly={isModalReadOnly}
         hasMultipleFlows={selectedFlowIds.length > 1}

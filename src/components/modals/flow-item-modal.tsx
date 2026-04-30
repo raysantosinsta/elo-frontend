@@ -126,7 +126,8 @@ interface FlowItemModalProps {
   suppliers: { id: string; name: string; category?: string }[];
   stages: FlowStage[];
   flows?: { id: string; name: string; color?: string }[];
-  currentUserRole?: string;
+  currentUserRole?: string | null; // 🔥 ADICIONAR null
+
   currentUserSystemRole?: string;
   isReadOnly?: boolean;
   hasMultipleFlows?: boolean;
@@ -1160,72 +1161,78 @@ export function FlowItemModal({
                     onValueChange={setActiveTab}
                     className="w-full"
                   >
-                   <TabsList className="w-full bg-transparent p-0 mb-6">
-  <div className="grid w-full grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-    {/* Tab 1 - Detalhes */}
-    <TabsTrigger
-      value="details"
-      className={cn(
-        "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
-        "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
-        "data-[state=active]:scale-[1.02]",
-        "hover:bg-orange-100 hover:text-orange-700",
-        "bg-white border border-slate-200 text-slate-600",
-      )}
-    >
-      <Info size={16} className="shrink-0" />
-      <span className="hidden sm:inline">Detalhes & Datas</span>
-      <span className="sm:hidden">Detalhes</span>
-    </TabsTrigger>
+                    <TabsList className="w-full bg-transparent p-0 mb-6">
+                      <div className="grid w-full grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                        {/* Tab 1 - Detalhes */}
+                        <TabsTrigger
+                          value="details"
+                          className={cn(
+                            "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
+                            "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
+                            "data-[state=active]:scale-[1.02]",
+                            "hover:bg-orange-100 hover:text-orange-700",
+                            "bg-white border border-slate-200 text-slate-600",
+                          )}
+                        >
+                          <Info size={16} className="shrink-0" />
+                          <span className="hidden sm:inline">
+                            Detalhes & Datas
+                          </span>
+                          <span className="sm:hidden">Detalhes</span>
+                        </TabsTrigger>
 
-    {/* Tab 2 - Prazos por Etapa */}
-    <TabsTrigger
-      value="stages-deadlines"
-      className={cn(
-        "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
-        "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
-        "data-[state=active]:scale-[1.02]",
-        "hover:bg-orange-100 hover:text-orange-700",
-        "bg-white border border-slate-200 text-slate-600",
-      )}
-    >
-      <CalendarClock size={16} className="shrink-0" />
-      <span className="hidden sm:inline">Prazos por Etapa</span>
-      <span className="sm:hidden">Prazos</span>
-    </TabsTrigger>
+                        {/* Tab 2 - Prazos por Etapa */}
+                        <TabsTrigger
+                          value="stages-deadlines"
+                          className={cn(
+                            "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
+                            "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
+                            "data-[state=active]:scale-[1.02]",
+                            "hover:bg-orange-100 hover:text-orange-700",
+                            "bg-white border border-slate-200 text-slate-600",
+                          )}
+                        >
+                          <CalendarClock size={16} className="shrink-0" />
+                          <span className="hidden sm:inline">
+                            Prazos por Etapa
+                          </span>
+                          <span className="sm:hidden">Prazos</span>
+                        </TabsTrigger>
 
-    {/* Tab 3 - Mídias e Anexos */}
-    <TabsTrigger
-      value="media"
-      className={cn(
-        "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
-        "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
-        "data-[state=active]:scale-[1.02]",
-        "hover:bg-orange-100 hover:text-orange-700",
-        "bg-white border border-slate-200 text-slate-600",
-      )}
-    >
-      <Paperclip size={16} className="shrink-0" />
-      <span className="hidden sm:inline">Mídias & Anexos</span>
-      <span className="sm:hidden">Anexos</span>
-    </TabsTrigger>
+                        {/* Tab 3 - Mídias e Anexos */}
+                        <TabsTrigger
+                          value="media"
+                          className={cn(
+                            "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
+                            "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
+                            "data-[state=active]:scale-[1.02]",
+                            "hover:bg-orange-100 hover:text-orange-700",
+                            "bg-white border border-slate-200 text-slate-600",
+                          )}
+                        >
+                          <Paperclip size={16} className="shrink-0" />
+                          <span className="hidden sm:inline">
+                            Mídias & Anexos
+                          </span>
+                          <span className="sm:hidden">Anexos</span>
+                        </TabsTrigger>
 
-    {/* Tab 4 - Histórico */}
-    <TabsTrigger
-      value="history"
-      className={cn(
-        "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
-        "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
-        "data-[state=active]:scale-[1.02]",
-        "hover:bg-orange-100 hover:text-orange-700",
-        "bg-white border border-slate-200 text-slate-600",
-      )}
-    >
-      <History size={16} className="shrink-0" />
-      <span>Histórico</span>
-    </TabsTrigger>
-  </div>
-</TabsList>
+                        {/* Tab 4 - Histórico */}
+                        <TabsTrigger
+                          value="history"
+                          className={cn(
+                            "flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200",
+                            "data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg",
+                            "data-[state=active]:scale-[1.02]",
+                            "hover:bg-orange-100 hover:text-orange-700",
+                            "bg-white border border-slate-200 text-slate-600",
+                          )}
+                        >
+                          <History size={16} className="shrink-0" />
+                          <span>Histórico</span>
+                        </TabsTrigger>
+                      </div>
+                    </TabsList>
 
                     {/* 🔥 NOVO: Banner de Prazo Final (Visível em todas as abas para referência) */}
                     <div className="mb-6 flex items-center justify-between p-4 bg-orange-50 border border-orange-100 rounded-xl">

@@ -41,23 +41,25 @@ export interface CreateChatMessageDto {
   mentionedProfessionalId?: string;
 }
 
-
-
-// types/chat.ts - Adicionar tipos faltantes
+// types/chat.ts
 export interface User {
-  professionalRoleId: any;
-  companyId: string;
   id: string;
   name: string;
   email: string;
   phone?: string;
-  professionalRole?: string;
-  // isProfessional: boolean;
+  professionalRole?: string | null; // 🔥 PERMITIR null
+  professionalRoleId?: string | null; // 🔥 ADICIONAR este campo
+  companyId: string;
   role: string;
   company?: {
     id: string;
     name: string;
   };
+  status?: string;
+  contact?: string;
+  document?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MentionResult {
@@ -73,10 +75,21 @@ interface UseMentionsReturn {
   showMentionList: boolean;
   mentionPosition: { top: number; left: number };
   selectedIndex: number;
-  handleInputChange: (text: string, cursorPosition: number, inputElement?: HTMLInputElement) => void;
-  insertMention: (text: string, user: User, cursorPosition: number) => { newText: string; newCursorPosition: number };
+  handleInputChange: (
+    text: string,
+    cursorPosition: number,
+    inputElement?: HTMLInputElement,
+  ) => void;
+  insertMention: (
+    text: string,
+    user: User,
+    cursorPosition: number,
+  ) => { newText: string; newCursorPosition: number };
   closeMentionList: () => void;
-  handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, onSelect: (user: User) => void) => void;
+  handleKeyDown: (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    onSelect: (user: User) => void,
+  ) => void;
 }
 
 export type { UseMentionsReturn };

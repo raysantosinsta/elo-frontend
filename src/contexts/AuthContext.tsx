@@ -3,8 +3,8 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/services/api"; // Importa do arquivo novo
-import { User } from "@/types/chat"; // Unifique seus tipos
+import { api } from "@/services/api";
+import { User } from "@/types/chat";
 
 interface AuthContextType {
   user: User | null;
@@ -12,6 +12,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -29,32 +30,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push("/login");
   }, [router]);
 
+  const refreshUser = useCallback(async () => {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+
+    try {
+      const { data } = await api.get<User>("/auth/profile");
+      
+      // 🔥 Garantir que professionalRole seja string | null
+      const normalizedUser: User = {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        phone: data.phone || data.contact,
+        professionalRole: data.professionalRole ?? null,
+        professionalRoleId: data.professionalRoleId ?? null,
+        companyId: data.companyId,
+        role: data.role,
+        company: data.company,
+        status: data.status,
+        contact: data.contact,
+        document: data.document,
+      };
+      
+      console.log('🔍 [refreshUser] Perfil recarregado:', {
+        id: normalizedUser.id,
+        name: normalizedUser.name,
+        professionalRole: normalizedUser.professionalRole,
+        type: typeof normalizedUser.professionalRole
+      });
+      
+      setUser(normalizedUser);
+    } catch (error) {
+      console.error('Erro ao recarregar perfil:', error);
+    }
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     try {
-    const { data } = await api.post("/auth/login", { email, password });
+      const { data } = await api.post("/auth/login", { email, password });
 
       console.log('🔍 Dados do login:', {
-      user: data.user,
-      professionalRole: data.user?.professionalRole,
-      professionalRoleId: data.user?.professionalRoleId,
-      role: data.user?.role
-    });
-
+        user: data.user,
+        professionalRole: data.user?.professionalRole,
+      });
 
       localStorage.setItem("accessToken", data.accessToken);
       localStorage.setItem("refreshToken", data.refreshToken);
 
       const isProduction = process.env.NODE_ENV === 'production';
-      const secureFlag = isProduction ? '; Secure' : '';
-
-      // Mantivemos SameSite=Lax, que é bom para navegação padrão.
-      // O 'Secure' é OBRIGATÓRIO para o cookie funcionar no https da Vercel.
-      document.cookie = `access_token=${data.accessToken}; path=/; max-age=86400; SameSite=None; Secure`;
+      document.cookie = `access_token=${data.accessToken}; path=/; max-age=86400; SameSite=None; ${isProduction ? 'Secure' : ''}`;
       
-      setUser(data.user);
+      // 🔥 Normalizar usuário
+      const normalizedUser: User = {
+        id: data.user.id,
+        name: data.user.name,
+        email: data.user.email,
+        phone: data.user.phone || data.user.contact,
+        professionalRole: data.user.professionalRole ?? null,
+        professionalRoleId: data.user.professionalRoleId ?? null,
+        companyId: data.user.companyId,
+        role: data.user.role,
+        company: data.user.company,
+        status: data.user.status,
+        contact: data.user.contact,
+        document: data.user.document,
+      };
+      
+      setUser(normalizedUser);
       router.push("/");
     } catch (error) {
-      throw error; // Deixe o componente de UI lidar com o erro visual
+      throw error;
     }
   }, [router]);
 
@@ -67,24 +113,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const { data } = await api.get<User>("/auth/profile");
-         console.log('🔍 Profile carregado:', {
-        user: data,
-        professionalRole: data?.professionalRole,
-        professionalRoleId: data?.professionalRoleId
-      });
-        setUser(data);
-      } catch {
-        // Se falhar o profile (token inválido), o interceptor do axios 
-        // ou a lógica de erro já vai redirecionar ou limpar.
+        
+        // 🔥 Normalizar usuário
+        const normalizedUser: User = {
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          phone: data.phone || data.contact,
+          professionalRole: data.professionalRole ?? null,
+          professionalRoleId: data.professionalRoleId ?? null,
+          companyId: data.companyId,
+          role: data.role,
+          company: data.company,
+          status: data.status,
+          contact: data.contact,
+          document: data.document,
+        };
+        
+        console.log('🔍 Profile carregado:', {
+          user: normalizedUser,
+          professionalRole: normalizedUser?.professionalRole,
+        });
+        
+        setUser(normalizedUser);
+      } catch (error) {
+        console.error('Erro ao carregar profile:', error);
+        logout();
       } finally {
         setLoading(false);
       }
     };
     initAuth();
-  }, []);
+  }, [logout]);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout, loading }}>
+    <AuthContext.Provider 
+      value={{ 
+        user, 
+        isAuthenticated: !!user, 
+        login, 
+        logout, 
+        loading,
+        refreshUser
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

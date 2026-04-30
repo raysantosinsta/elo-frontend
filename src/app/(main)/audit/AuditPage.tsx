@@ -547,7 +547,7 @@ export function AuditPage() {
             </div>
 
             {/* ID da Entidade (busca rápida) */}
-            <div>
+            {/* <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">
                 ID do Registro
               </label>
@@ -561,7 +561,7 @@ export function AuditPage() {
                   })
                 }
               />
-            </div>
+            </div> */}
 
             {/* Botões */}
             <div className="flex items-end gap-2">
