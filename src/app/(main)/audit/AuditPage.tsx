@@ -48,9 +48,6 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-// 🔥 IMPORTANTE: NENHUM COMPANYID É ENVIADO DO FRONTEND!
-// O backend pega automaticamente do token/CLS
-
 // Constantes para os selects - com "all" em vez de string vazia
 const ENTITIES = [
   { value: "all", label: "Todas" },
@@ -68,17 +65,12 @@ const ENTITIES = [
 
 const ACTIONS = [
   { value: "all", label: "Todas" },
-  // Ações básicas
   { value: "CREATE", label: "Criação", icon: PlusCircle },
   { value: "UPDATE", label: "Atualização", icon: Pencil },
   { value: "DELETE", label: "Exclusão", icon: Trash2 },
   { value: "MOVE", label: "Movimentação", icon: Move },
   { value: "ASSIGN", label: "Atribuição", icon: UserPlus },
   { value: "COMPLETE", label: "Conclusão", icon: CheckCircle },
-
-  
-
-  // Ações específicas de Flow
   { value: "CREATE_ITEM", label: "Criar Item", icon: PlusCircle },
   { value: "UPDATE_ITEM", label: "Atualizar Item", icon: Pencil },
   { value: "DELETE_ITEM", label: "Excluir Item", icon: Trash2 },
@@ -87,16 +79,12 @@ const ACTIONS = [
   { value: "CREATE_STAGE", label: "Criar Etapa", icon: PlusCircle },
   { value: "UPDATE_STAGE", label: "Atualizar Etapa", icon: Pencil },
   { value: "DELETE_STAGE", label: "Excluir Etapa", icon: Trash2 },
-
-  // Ações de mídia
   { value: "ADD_IMAGE", label: "Adicionar Imagem", icon: Image },
   { value: "ADD_AUDIO", label: "Adicionar Áudio", icon: Mic },
   { value: "ADD_VIDEO", label: "Adicionar Vídeo", icon: Video },
   { value: "DELETE_IMAGE", label: "Remover Imagem", icon: Trash2 },
   { value: "DELETE_AUDIO", label: "Remover Áudio", icon: Trash2 },
   { value: "DELETE_VIDEO", label: "Remover Vídeo", icon: Trash2 },
-
-  // Ações de template
   { value: "APPLY_TEMPLATE", label: "Aplicar Template", icon: FilePlus },
   { value: "SAVE_TEMPLATE", label: "Salvar Template", icon: Save },
   { value: "DELETE_TEMPLATE", label: "Excluir Template", icon: Trash2 },
@@ -116,20 +104,16 @@ export function AuditPage() {
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [showDetails, setShowDetails] = useState(false);
 
-  // Carregar logs - SEM companyId, o backend resolve
+  // Carregar logs
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      // 🔥 IMPORTANTE: NÃO PASSAMOS companyId!
-      // O backend pega do CLS: this.cls.get('tenantId')
       const response = await auditService.getLogs(
         filters,
         pagination.page,
         pagination.limit,
       );
-
       console.log("📦 Dados recebidos da API:", response);
-      
       setLogs(response.data);
       setPagination(response.meta);
     } catch (error) {
@@ -144,20 +128,17 @@ export function AuditPage() {
     fetchLogs();
   }, [filters, pagination.page]);
 
-  // Aplicar filtros
   const applyFilters = () => {
     setFilters(tempFilters);
     setPagination((prev) => ({ ...prev, page: 1 }));
   };
 
-  // Limpar filtros
   const clearFilters = () => {
     setTempFilters({});
     setFilters({});
     setPagination((prev) => ({ ...prev, page: 1 }));
   };
 
-  // Formatar data
   const formatDate = (dateString: string) => {
     try {
       return format(parseISO(dateString), "dd/MM/yyyy HH:mm", { locale: ptBR });
@@ -166,7 +147,6 @@ export function AuditPage() {
     }
   };
 
-  // Ícone da ação
   const getActionIcon = (action: string) => {
     const found = ACTIONS.find((a) => a.value === action);
     if (found && found.icon) {
@@ -176,7 +156,6 @@ export function AuditPage() {
     return <AlertCircle className="w-4 h-4" />;
   };
 
-  // Cor da ação
   const getActionColor = (action: string) => {
     const colors: Record<string, string> = {
       CREATE: "bg-emerald-100 text-emerald-800 border-emerald-200",
@@ -206,7 +185,6 @@ export function AuditPage() {
     return colors[action] || "bg-gray-100 text-gray-800 border-gray-200";
   };
 
-  // Renderizar detalhes do log
   const renderLogDetails = (log: AuditLog) => {
     if (log.action === "CREATE" && log.newData) {
       return (
@@ -228,7 +206,9 @@ export function AuditPage() {
           </div>
           {log.oldData && log.oldData.name && log.newData.name && (
             <div className="flex items-center gap-1 text-xs text-gray-500">
-              <span className="line-through text-red-400">{log.oldData.name}</span>
+              <span className="line-through text-red-400">
+                {log.oldData.name}
+              </span>
               <ArrowRight className="w-3 h-3 text-gray-400" />
               <span className="text-green-500">{log.newData.name}</span>
             </div>
@@ -257,7 +237,9 @@ export function AuditPage() {
           </div>
           {log.oldData && log.oldData.title && log.newData.title && (
             <div className="flex items-center gap-1 text-xs text-gray-500">
-              <span className="line-through text-red-400">{log.oldData.title}</span>
+              <span className="line-through text-red-400">
+                {log.oldData.title}
+              </span>
               <ArrowRight className="w-3 h-3 text-gray-400" />
               <span className="text-green-500">{log.newData.title}</span>
             </div>
@@ -307,136 +289,108 @@ export function AuditPage() {
       );
     }
 
-    if (log.action === "ADVANCE_ITEM" && log.metadata) {
-      return (
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm">
-            <ArrowRight className="w-3 h-3 text-indigo-500" />
-            <span className="text-indigo-600 font-medium">
-              {log.metadata.fromStageName} → {log.metadata.toStageName}
-            </span>
-          </div>
-          {log.metadata.itemTitle && (
-            <div className="text-xs text-gray-500">
-              Item: {log.metadata.itemTitle}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    if (
-      log.action?.startsWith("ADD_") &&
-      ["IMAGE", "AUDIO", "VIDEO"].includes(log.action.replace("ADD_", "")) &&
-      log.metadata
-    ) {
-      const mediaType = log.action.replace("ADD_", "").toLowerCase();
-      const Icon =
-        mediaType === "image" ? Image : mediaType === "audio" ? Mic : Video;
-      return (
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm text-pink-600">
-            <Icon className="w-3 h-3" />
-            <span className="truncate max-w-[200px]">
-              {log.metadata.filename}
-            </span>
-          </div>
-          {log.metadata.size && (
-            <div className="text-xs text-gray-500">
-              Tamanho: {(log.metadata.size / 1024).toFixed(2)} KB
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    if (log.action === "APPLY_TEMPLATE" && log.metadata) {
-      return (
-        <div className="space-y-1">
-          <div className="text-sm text-orange-600 font-medium">
-            Template: {log.metadata.templateName}
-          </div>
-          <div className="text-xs text-gray-500">
-            {log.metadata.stagesAdded} etapas adicionadas
-          </div>
-        </div>
-      );
-    }
-
-    if (log.action === "SAVE_TEMPLATE" && log.metadata) {
-      return (
-        <div className="space-y-1">
-          <div className="text-sm text-teal-600 font-medium">
-            Template: {log.metadata.templateName}
-          </div>
-          <div className="text-xs text-gray-500">
-            {log.metadata.stagesCount} etapas salvas
-          </div>
-        </div>
-      );
-    }
-
-    if (log.action === "ASSIGN" && log.metadata) {
-      return (
-        <div className="space-y-1">
-          <div className="text-sm">
-            {log.newData?.assignedToName ? (
-              <span className="text-purple-600">
-                Atribuído para: {log.newData.assignedToName}
-              </span>
-            ) : (
-              <span className="text-gray-500">Responsável removido</span>
-            )}
-          </div>
-          {log.metadata.itemTitle && (
-            <div className="text-xs text-gray-500">
-              Item: {log.metadata.itemTitle}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    if (log.action === "CREATE_STAGE" && log.newData) {
-      return (
-        <div className="text-sm">
-          <span className="text-emerald-600 font-medium">
-            Etapa: {log.newData.name}
-          </span>
-        </div>
-      );
-    }
-
-    if (log.action === "UPDATE_STAGE" && log.newData) {
-      return (
-        <div className="space-y-1">
-          <div className="text-sm">
-            <span className="text-yellow-600 font-medium">
-              Etapa: {log.newData.name}
-            </span>
-          </div>
-          {log.oldData && log.oldData.name && log.newData.name && (
-            <div className="flex items-center gap-1 text-xs text-gray-500">
-              <span className="line-through text-red-400">{log.oldData.name}</span>
-              <ArrowRight className="w-3 h-3 text-gray-400" />
-              <span className="text-green-500">{log.newData.name}</span>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    if (log.action === "DELETE_STAGE" && log.oldData) {
-      return (
-        <div className="text-sm">
-          <span className="text-red-600 line-through font-medium">
-            Etapa: {log.oldData.name}
-          </span>
-        </div>
-      );
-    }
-
     return null;
+  };
+
+  // Função para formatar nome do campo
+  const formatFieldName = (key: string) => {
+    const names: Record<string, string> = {
+      title: "Título",
+      status: "Status",
+      dueDate: "Data de Vencimento",
+      stageId: "Etapa",
+      priority: "Prioridade",
+      quantity: "Quantidade",
+      productRef: "Referência do Produto",
+      supplierId: "Fornecedor",
+      orderNumber: "Número do Pedido",
+      assignedToId: "Responsável",
+      name: "Nome",
+      email: "E-mail",
+      phone: "Telefone",
+      role: "Função",
+      companyName: "Empresa",
+      cnpj: "CNPJ",
+      flowId: "ID do Fluxo",
+      createdAt: "Data de Criação",
+      stageName: "Nome da Etapa",
+      contact: "Contato",
+      document: "Documento",
+      companyId: "Empresa",
+    };
+    return (
+      names[key] ||
+      key.replace(/([A-Z])/g, " $1").replace(/^./, (str) => str.toUpperCase())
+    );
+  };
+
+  // Função para formatar valor
+  const formatValue = (value: any) => {
+    if (value === null || value === undefined || value === "") return "—";
+
+    // Status
+    if (value === "PENDENTE")
+      return (
+        <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-200">
+          📋 Pendente
+        </Badge>
+      );
+    if (value === "EM_ANDAMENTO")
+      return (
+        <Badge className="bg-blue-500/10 text-blue-700 border-blue-200">
+          ⚙️ Em Andamento
+        </Badge>
+      );
+    if (value === "CONCLUIDO")
+      return (
+        <Badge className="bg-green-500/10 text-green-700 border-green-200">
+          ✅ Concluído
+        </Badge>
+      );
+    if (value === "CANCELADO")
+      return (
+        <Badge className="bg-red-500/10 text-red-700 border-red-200">
+          ❌ Cancelado
+        </Badge>
+      );
+
+    // Prioridades
+    if (typeof value === "number") {
+      if (value === 1) return "🟢 Baixa";
+      if (value === 2) return "🟡 Média";
+      if (value === 3) return "🟠 Alta";
+      if (value === 4) return "🔴 Urgente";
+      return value;
+    }
+
+    // UUIDs (mostrar apenas os primeiros 8 caracteres)
+    if (
+      typeof value === "string" &&
+      value.match(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      )
+    ) {
+      return (
+        <span className="font-mono text-xs">{value.substring(0, 8)}...</span>
+      );
+    }
+
+    // Datas
+    if (
+      typeof value === "string" &&
+      value.includes("T") &&
+      value.includes("Z")
+    ) {
+      return new Date(value).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    return value;
   };
 
   return (
@@ -458,7 +412,6 @@ export function AuditPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-            {/* Entidade */}
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">
                 Entidade
@@ -485,7 +438,6 @@ export function AuditPage() {
               </Select>
             </div>
 
-            {/* Ação */}
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">
                 Ação
@@ -512,7 +464,6 @@ export function AuditPage() {
               </Select>
             </div>
 
-            {/* Data Inicial */}
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">
                 Data Inicial
@@ -529,7 +480,6 @@ export function AuditPage() {
               />
             </div>
 
-            {/* Data Final */}
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">
                 Data Final
@@ -546,24 +496,6 @@ export function AuditPage() {
               />
             </div>
 
-            {/* ID da Entidade (busca rápida) */}
-            {/* <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">
-                ID do Registro
-              </label>
-              <Input
-                placeholder="UUID..."
-                value={tempFilters.entityId || ""}
-                onChange={(e) =>
-                  setTempFilters({
-                    ...tempFilters,
-                    entityId: e.target.value || undefined,
-                  })
-                }
-              />
-            </div> */}
-
-            {/* Botões */}
             <div className="flex items-end gap-2">
               <Button onClick={applyFilters} className="flex-1">
                 <Filter className="w-4 h-4 mr-2" />
@@ -719,106 +651,424 @@ export function AuditPage() {
         </div>
       )}
 
-      {/* Modal de Detalhes */}
+      {/* Modal de Detalhes - Versão Amigável (SEM JSON) */}
       {showDetails && selectedLog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b sticky top-0 bg-white">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
+            {/* Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-gray-50 to-white border-b px-6 py-4">
               <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold">Detalhes da Ação</h2>
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      "p-2 rounded-lg",
+                      selectedLog.action === "CREATE" && "bg-emerald-100",
+                      selectedLog.action === "UPDATE" && "bg-yellow-100",
+                      selectedLog.action === "DELETE" && "bg-red-100",
+                      !["CREATE", "UPDATE", "DELETE"].includes(
+                        selectedLog.action,
+                      ) && "bg-blue-100",
+                    )}
+                  >
+                    {selectedLog.action === "CREATE" && (
+                      <PlusCircle className="w-5 h-5 text-emerald-600" />
+                    )}
+                    {selectedLog.action === "UPDATE" && (
+                      <Pencil className="w-5 h-5 text-yellow-600" />
+                    )}
+                    {selectedLog.action === "DELETE" && (
+                      <Trash2 className="w-5 h-5 text-red-600" />
+                    )}
+                    {selectedLog.action === "MOVE_ITEM" && (
+                      <Move className="w-5 h-5 text-blue-600" />
+                    )}
+                    {!["CREATE", "UPDATE", "DELETE", "MOVE_ITEM"].includes(
+                      selectedLog.action,
+                    ) && <AlertCircle className="w-5 h-5 text-gray-600" />}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Detalhes da Ação
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                      Informações completas da operação
+                    </p>
+                  </div>
+                </div>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="sm"
                   onClick={() => setShowDetails(false)}
+                  className="hover:bg-gray-100 rounded-full w-8 h-8 p-0"
                 >
                   <X className="w-4 h-4" />
                 </Button>
               </div>
             </div>
+
             <div className="p-6 space-y-6">
-              {/* Informações básicas */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Data/Hora</p>
-                  <p className="font-medium">
-                    {formatDate(selectedLog.createdAt)}
-                  </p>
+              {/* Informações básicas em cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="p-2 bg-white rounded-lg shadow-sm">
+                    <svg
+                      className="w-5 h-5 text-gray-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">
+                      Data/Hora
+                    </p>
+                    <p className="font-medium text-gray-900">
+                      {formatDate(selectedLog.createdAt)}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Usuário</p>
-                  <p className="font-medium">{selectedLog.user.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {selectedLog.user.email}
-                  </p>
+
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="p-2 bg-white rounded-lg shadow-sm">
+                    <User className="w-5 h-5 text-gray-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">
+                      Usuário
+                    </p>
+                    <p className="font-medium text-gray-900">
+                      {selectedLog.user.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {selectedLog.user.email}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Ação</p>
-                  <Badge
-                    className={cn("gap-1", getActionColor(selectedLog.action))}
-                  >
-                    {getActionIcon(selectedLog.action)}
-                    {selectedLog.action.replace(/_/g, " ")}
-                  </Badge>
+
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="p-2 bg-white rounded-lg shadow-sm">
+                    <svg
+                      className="w-5 h-5 text-gray-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">
+                      Ação
+                    </p>
+                    <Badge
+                      className={cn("mt-1", getActionColor(selectedLog.action))}
+                    >
+                      {getActionIcon(selectedLog.action)}
+                      <span className="ml-1">
+                        {selectedLog.action.replace(/_/g, " ")}
+                      </span>
+                    </Badge>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Entidade</p>
-                  <Badge variant="outline">{selectedLog.entity}</Badge>
-                  <p className="text-xs font-mono text-gray-400 mt-1">
-                    ID: {selectedLog.entityId}
-                  </p>
+
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="p-2 bg-white rounded-lg shadow-sm">
+                    <svg
+                      className="w-5 h-5 text-gray-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">
+                      Entidade
+                    </p>
+                    <p className="font-medium text-gray-900">
+                      {selectedLog.entity}
+                    </p>
+                    <p className="text-xs font-mono text-gray-400 mt-1">
+                      ID: {selectedLog.entityId}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Dados Antigos */}
+              {/* Separador */}
+              <div className="border-t border-gray-200 my-4"></div>
+
+              {/* Dados Antigos - Formatado (sem JSON) */}
               {selectedLog.oldData &&
-              Object.keys(selectedLog.oldData).length > 0 ? (
-                <div>
-                  <h3 className="text-sm font-semibold mb-2 text-red-600">
-                    Dados Antigos
-                  </h3>
-                  <pre className="bg-red-50 p-4 rounded-lg text-xs overflow-x-auto max-h-60">
-                    {JSON.stringify(selectedLog.oldData, null, 2)}
-                  </pre>
-                </div>
-              ) : (
-                <div className="text-sm text-gray-400 italic border-t pt-4">
-                  Nenhum dado antigo registrado para esta ação
-                </div>
-              )}
+                Object.keys(selectedLog.oldData).length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-red-100 rounded-lg">
+                        <Trash2 className="w-4 h-4 text-red-600" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-red-700">
+                        Dados Anteriores
+                      </h3>
+                      <span className="text-xs text-gray-400 ml-auto">
+                        Antes da alteração
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {Object.entries(selectedLog.oldData).map(
+                        ([key, value]) => {
+                          if (
+                            value === null ||
+                            value === undefined ||
+                            value === ""
+                          )
+                            return null;
+                          if (
+                            key.includes("Id") &&
+                            typeof value === "string" &&
+                            value.length > 30
+                          )
+                            return null;
+                          return (
+                            <div
+                              key={key}
+                              className="flex justify-between p-3 bg-red-50 rounded-lg border border-red-100"
+                            >
+                              <span className="text-sm text-red-600">
+                                {formatFieldName(key)}
+                              </span>
+                              <span className="text-sm font-medium text-red-800 text-right">
+                                {formatValue(value)}
+                              </span>
+                            </div>
+                          );
+                        },
+                      )}
+                    </div>
+                  </div>
+                )}
 
-              {/* Dados Novos */}
+              {/* Dados Novos - Formatado (sem JSON) - Principal */}
               {selectedLog.newData &&
-              Object.keys(selectedLog.newData).length > 0 ? (
-                <div>
-                  <h3 className="text-sm font-semibold mb-2 text-green-600">
-                    Dados Novos
-                  </h3>
-                  <pre className="bg-green-50 p-4 rounded-lg text-xs overflow-x-auto max-h-60">
-                    {JSON.stringify(selectedLog.newData, null, 2)}
-                  </pre>
-                </div>
-              ) : (
-                <div className="text-sm text-gray-400 italic border-t pt-4">
-                  Nenhum dado novo registrado para esta ação
-                </div>
-              )}
+                Object.keys(selectedLog.newData).length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-green-100 rounded-lg">
+                        <PlusCircle className="w-4 h-4 text-green-600" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-green-700">
+                        Dados do Registro
+                      </h3>
+                      <span className="text-xs text-gray-400 ml-auto">
+                        Informações salvas
+                      </span>
+                    </div>
 
-              {/* Metadados */}
+                    {/* Cards principais em destaque */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Título em destaque */}
+                      {(selectedLog.newData.title ||
+                        selectedLog.newData.name) && (
+                        <div className="col-span-full bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
+                          <p className="text-xs text-green-600 uppercase tracking-wide mb-1">
+                            Título
+                          </p>
+                          <p className="text-lg font-semibold text-green-900">
+                            {selectedLog.newData.title ||
+                              selectedLog.newData.name}
+                          </p>
+                          {selectedLog.newData.productRef && (
+                            <p className="text-sm text-gray-600 mt-1">
+                              Ref: {selectedLog.newData.productRef}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Status */}
+                      {selectedLog.newData.status && (
+                        <div className="bg-white rounded-lg p-3 border border-gray-200">
+                          <p className="text-xs text-gray-500 mb-1">Status</p>
+                          {formatValue(selectedLog.newData.status)}
+                        </div>
+                      )}
+
+                      {/* Prioridade */}
+                      {selectedLog.newData.priority && (
+                        <div className="bg-white rounded-lg p-3 border border-gray-200">
+                          <p className="text-xs text-gray-500 mb-1">
+                            Prioridade
+                          </p>
+                          <p className="font-medium">
+                            {formatValue(selectedLog.newData.priority)}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Quantidade */}
+                      {selectedLog.newData.quantity && (
+                        <div className="bg-white rounded-lg p-3 border border-gray-200">
+                          <p className="text-xs text-gray-500 mb-1">
+                            Quantidade
+                          </p>
+                          <p className="text-2xl font-bold text-gray-900">
+                            {selectedLog.newData.quantity}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Data de Vencimento */}
+                      {selectedLog.newData.dueDate && (
+                        <div className="bg-white rounded-lg p-3 border border-gray-200">
+                          <p className="text-xs text-gray-500 mb-1">
+                            Data de Vencimento
+                          </p>
+                          <p className="text-gray-900">
+                            {formatValue(selectedLog.newData.dueDate)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Outros campos menos importantes */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                      {Object.entries(selectedLog.newData).map(
+                        ([key, value]) => {
+                          // Pular campos já exibidos
+                          if (
+                            [
+                              "title",
+                              "name",
+                              "productRef",
+                              "status",
+                              "priority",
+                              "quantity",
+                              "dueDate",
+                            ].includes(key)
+                          )
+                            return null;
+                          if (
+                            value === null ||
+                            value === undefined ||
+                            value === ""
+                          )
+                            return null;
+                          if (
+                            key.includes("Id") &&
+                            typeof value === "string" &&
+                            value.length > 30
+                          )
+                            return null;
+
+                          return (
+                            <div
+                              key={key}
+                              className="flex justify-between p-2 bg-gray-50 rounded-lg"
+                            >
+                              <span className="text-xs text-gray-500">
+                                {formatFieldName(key)}
+                              </span>
+                              <span className="text-xs font-medium text-gray-700">
+                                {formatValue(value)}
+                              </span>
+                            </div>
+                          );
+                        },
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              {/* Metadados - Formatado */}
               {selectedLog.metadata &&
-              Object.keys(selectedLog.metadata).length > 0 ? (
-                <div>
-                  <h3 className="text-sm font-semibold mb-2 text-gray-600">
-                    Metadados
-                  </h3>
-                  <pre className="bg-gray-50 p-4 rounded-lg text-xs overflow-x-auto max-h-60">
-                    {JSON.stringify(selectedLog.metadata, null, 2)}
-                  </pre>
-                </div>
-              ) : (
-                <div className="text-sm text-gray-400 italic border-t pt-4">
-                  Nenhum metadado registrado para esta ação
-                </div>
-              )}
+                Object.keys(selectedLog.metadata).length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-purple-100 rounded-lg">
+                        <AlertCircle className="w-4 h-4 text-purple-600" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-purple-700">
+                        Informações do Fluxo
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {selectedLog.metadata.stageName && (
+                        <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg border border-purple-100">
+                          <span className="text-sm text-purple-600">Etapa</span>
+                          <span className="text-sm font-medium text-purple-800">
+                            {selectedLog.metadata.stageName}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLog.metadata.createdAt && (
+                        <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg border border-purple-100">
+                          <span className="text-sm text-purple-600">
+                            Criado em
+                          </span>
+                          <span className="text-sm font-medium text-purple-800">
+                            {formatValue(selectedLog.metadata.createdAt)}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLog.metadata.fromStageName &&
+                        selectedLog.metadata.toStageName && (
+                          <div className="col-span-full flex justify-between items-center p-3 bg-purple-50 rounded-lg border border-purple-100">
+                            <span className="text-sm text-purple-600">
+                              Movimentação
+                            </span>
+                            <span className="text-sm font-medium text-purple-800">
+                              {selectedLog.metadata.fromStageName} →{" "}
+                              {selectedLog.metadata.toStageName}
+                            </span>
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                )}
+
+              {/* Mensagem quando não há dados */}
+              {(!selectedLog.oldData ||
+                Object.keys(selectedLog.oldData).length === 0) &&
+                (!selectedLog.newData ||
+                  Object.keys(selectedLog.newData).length === 0) &&
+                (!selectedLog.metadata ||
+                  Object.keys(selectedLog.metadata).length === 0) && (
+                  <div className="text-center py-8">
+                    <div className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 rounded-full mb-3">
+                      <AlertCircle className="w-6 h-6 text-gray-400" />
+                    </div>
+                    <p className="text-gray-500 text-sm">
+                      Nenhum dado adicional disponível para esta ação
+                    </p>
+                    <p className="text-gray-400 text-xs mt-1">
+                      Esta é uma ação simples sem dados estruturados
+                    </p>
+                  </div>
+                )}
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex justify-end">
+              <Button onClick={() => setShowDetails(false)} variant="outline">
+                Fechar
+              </Button>
             </div>
           </div>
         </div>
