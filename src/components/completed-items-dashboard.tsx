@@ -1,9 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useState } from "react";
-import { api } from "@/services/api";
+import { Column, GenericTable } from "@/components/generic-table";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -11,25 +14,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { GenericTable, Column } from "@/components/generic-table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { api } from "@/services/api";
 import {
-  Package,
-  CheckCircle,
-  Clock,
   Calendar,
-  Users,
+  CheckCircle,
   Factory,
-  X,
-  Image as ImageIcon,
   Hash,
+  Image as ImageIcon,
+  Package,
+  RefreshCcw,
   RotateCcw,
+  Users,
+  X
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface CompletedItem {
   id: string;
@@ -67,7 +67,7 @@ interface ResponsibleOption {
   count: number;
 }
 
-// Componente de paginação
+// Componente de paginação com o novo design
 const PaginationControls = ({
   currentPage,
   totalPages,
@@ -85,14 +85,14 @@ const PaginationControls = ({
   const end = Math.min(currentPage * itemsPerPage, totalItems);
 
   return (
-    <div className="flex items-center justify-between py-3 border-t border-[#95A5A6]/20">
+    <div className="flex items-center justify-between py-3 border-t border-[#E2E8F0]">
       <div className="flex-1">
-        <span className="text-sm text-[#95A5A6]">
+        <span className="text-sm text-[#7A7E83]">
           Mostrando{" "}
-          <span className="font-medium text-[#2D3436]">
+          <span className="font-medium text-[#353A40]">
             {start}-{end}
           </span>{" "}
-          de <span className="font-medium text-[#2D3436]">{totalItems}</span>
+          de <span className="font-medium text-[#353A40]">{totalItems}</span>
         </span>
       </div>
 
@@ -100,7 +100,7 @@ const PaginationControls = ({
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8 border-[#95A5A6]/30 text-[#2D3436]"
+          className="h-8 w-8 border-[#CBD5E1] text-[#353A40] hover:bg-gray-50"
           onClick={() => onPageChange(1)}
           disabled={currentPage === 1}
         >
@@ -122,7 +122,7 @@ const PaginationControls = ({
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8 border-[#95A5A6]/30 text-[#2D3436]"
+          className="h-8 w-8 border-[#CBD5E1] text-[#353A40] hover:bg-gray-50"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
         >
@@ -141,13 +141,13 @@ const PaginationControls = ({
             />
           </svg>
         </Button>
-        <span className="text-sm font-medium text-[#2D3436] min-w-[4rem] text-center">
+        <span className="text-sm font-medium text-[#353A40] min-w-[4rem] text-center">
           {currentPage} / {totalPages}
         </span>
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8 border-[#95A5A6]/30 text-[#2D3436]"
+          className="h-8 w-8 border-[#CBD5E1] text-[#353A40] hover:bg-gray-50"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
         >
@@ -169,7 +169,7 @@ const PaginationControls = ({
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8 border-[#95A5A6]/30 text-[#2D3436]"
+          className="h-8 w-8 border-[#CBD5E1] text-[#353A40] hover:bg-gray-50"
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages}
         >
@@ -193,34 +193,34 @@ const PaginationControls = ({
   );
 };
 
-// Skeleton da tabela
+// Skeleton da tabela com novo design
 function TableSkeleton() {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-4 p-3 bg-[#F5F0E6]/50 rounded-t-lg">
-        <Skeleton className="h-4 w-[250px] bg-slate-300 animate-pulse" />
-        <Skeleton className="h-4 w-[100px] bg-slate-300 animate-pulse" />
-        <Skeleton className="h-4 w-[120px] bg-slate-300 animate-pulse" />
-        <Skeleton className="h-4 w-[150px] bg-slate-300 animate-pulse" />
-        <Skeleton className="h-4 w-[80px] bg-slate-300 animate-pulse" />
+      <div className="flex items-center gap-4 p-3 bg-[#F5F6FA] rounded-t-lg">
+        <Skeleton className="h-4 w-[250px] bg-[#E2E8F0] animate-pulse" />
+        <Skeleton className="h-4 w-[100px] bg-[#E2E8F0] animate-pulse" />
+        <Skeleton className="h-4 w-[120px] bg-[#E2E8F0] animate-pulse" />
+        <Skeleton className="h-4 w-[150px] bg-[#E2E8F0] animate-pulse" />
+        <Skeleton className="h-4 w-[80px] bg-[#E2E8F0] animate-pulse" />
       </div>
 
       {Array.from({ length: 5 }).map((_, i) => (
         <div
           key={i}
-          className="flex items-center gap-4 p-3 border-b border-[#95A5A6]/20"
+          className="flex items-center gap-4 p-3 border-b border-[#E2E8F0]"
         >
           <div className="flex items-center gap-3 flex-1">
-            <Skeleton className="h-10 w-10 rounded-md bg-slate-300 animate-pulse" />
+            <Skeleton className="h-10 w-10 rounded-md bg-[#E2E8F0] animate-pulse" />
             <div className="space-y-2">
-              <Skeleton className="h-4 w-[200px] bg-slate-300 animate-pulse" />
-              <Skeleton className="h-3 w-[150px] bg-slate-300 animate-pulse" />
+              <Skeleton className="h-4 w-[200px] bg-[#E2E8F0] animate-pulse" />
+              <Skeleton className="h-3 w-[150px] bg-[#E2E8F0] animate-pulse" />
             </div>
           </div>
-          <Skeleton className="h-6 w-[100px] rounded-full bg-slate-300 animate-pulse" />
-          <Skeleton className="h-4 w-[120px] bg-slate-300 animate-pulse" />
-          <Skeleton className="h-4 w-[150px] bg-slate-300 animate-pulse" />
-          <Skeleton className="h-6 w-[80px] rounded-full bg-slate-300 animate-pulse" />
+          <Skeleton className="h-6 w-[100px] rounded-full bg-[#E2E8F0] animate-pulse" />
+          <Skeleton className="h-4 w-[120px] bg-[#E2E8F0] animate-pulse" />
+          <Skeleton className="h-4 w-[150px] bg-[#E2E8F0] animate-pulse" />
+          <Skeleton className="h-6 w-[80px] rounded-full bg-[#E2E8F0] animate-pulse" />
         </div>
       ))}
     </div>
@@ -269,17 +269,6 @@ export function CompletedItemsDashboard() {
     toast.success("Filtros limpos com sucesso");
   };
 
-  useEffect(() => {
-    loadData();
-  }, [
-    currentPage,
-    selectedFlowId,
-    selectedResponsibleId,
-    selectedPeriod,
-    searchRefClean,
-    itemsPerPage,
-  ]);
-
   const loadData = async () => {
     setLoading(true);
 
@@ -293,13 +282,10 @@ export function CompletedItemsDashboard() {
         limit: itemsPerPage,
       });
 
-      // 🔥 CORREÇÃO: Carregar estatísticas considerando o fluxo selecionado
       const statsUrl =
         selectedFlowId !== "all"
           ? `/flow/completed-items/stats?period=${selectedPeriod}&flowId=${selectedFlowId}`
           : `/flow/completed-items/stats?period=${selectedPeriod}`;
-
-      console.log("📊 URL das estatísticas:", statsUrl);
 
       const statsResponse = await api.get(statsUrl);
       setStats(statsResponse.data);
@@ -320,14 +306,11 @@ export function CompletedItemsDashboard() {
         console.error("Erro ao carregar fluxos:", error);
       }
 
-      // 🔥 Carregar responsáveis - APENAS QUEM JÁ CONCLUIU ITENS (qualquer cargo)
+      // Carregar responsáveis
       try {
-        console.log("🔍 Buscando usuários que já concluíram itens...");
-
         let allUsers: any[] = [];
         const limit = 100;
 
-        // 🔥 CORREÇÃO: usar const em vez de let
         const firstResponse = await api.get(
           `/users?status=ACTIVE&page=1&limit=${limit}`,
         );
@@ -342,15 +325,10 @@ export function CompletedItemsDashboard() {
           allUsers = [...firstResponse.data.data];
         }
 
-        // Calcular total de páginas
         const total = firstResponse.data?.total || allUsers.length;
         const totalPages = Math.ceil(total / limit);
 
-        console.log(`📊 Total de usuários: ${total}, Páginas: ${totalPages}`);
-
-        // Buscar páginas restantes (começando da página 2)
         for (let page = 2; page <= totalPages; page++) {
-          console.log(`📄 Buscando página ${page} de ${totalPages}...`);
           const response = await api.get(
             `/users?status=ACTIVE&page=${page}&limit=${limit}`,
           );
@@ -366,34 +344,14 @@ export function CompletedItemsDashboard() {
           }
         }
 
-        console.log(`✅ Total de usuários carregados: ${allUsers.length}`);
-
-        // 🔥 PEGAR LISTA DE QUEM JÁ CONCLUIU ITENS DAS ESTATÍSTICAS
         const responsaveisQueConcluiram = statsResponse.data?.byResponsible
           ? Object.keys(statsResponse.data.byResponsible)
           : [];
 
-        console.log(
-          "📊 Responsáveis que já concluíram itens (das estatísticas):",
-          responsaveisQueConcluiram,
+        const filteredUsers = allUsers.filter((user: any) =>
+          responsaveisQueConcluiram.includes(user.name),
         );
 
-        // 🔥 FILTRAR APENAS USUÁRIOS QUE APARECEM NAS ESTATÍSTICAS
-        const filteredUsers = allUsers.filter((user: any) => {
-          const concluiuItens = responsaveisQueConcluiram.includes(user.name);
-          if (concluiuItens) {
-            console.log(
-              `✅ ${user.name} (${user.role}) - concluiu ${statsResponse.data?.byResponsible?.[user.name] || 0} itens`,
-            );
-          }
-          return concluiuItens;
-        });
-
-        console.log(
-          `\n🎯 Total de usuários que já concluíram itens: ${filteredUsers.length}`,
-        );
-
-        // Mapear para o formato que precisamos
         const responsibleList = filteredUsers.map((user: any) => ({
           id: user.id,
           name: user.name,
@@ -402,20 +360,11 @@ export function CompletedItemsDashboard() {
           count: statsResponse.data?.byResponsible?.[user.name] || 0,
         }));
 
-        // Ordenar por quantidade de itens concluídos (maior primeiro)
         responsibleList.sort((a, b) => b.count - a.count);
-
-        console.log(
-          "📋 Lista final de responsáveis (ordenada por conclusões):",
-          responsibleList,
-        );
         setResponsibles(responsibleList);
       } catch (error) {
         console.error("❌ Erro ao carregar responsáveis:", error);
-
-        // Fallback: usar as estatísticas diretamente
         if (statsResponse.data?.byResponsible) {
-          console.log("⚠️ Usando fallback com estatísticas");
           const fallbackList = Object.entries(
             statsResponse.data.byResponsible,
           ).map(([name, count]) => ({
@@ -441,16 +390,12 @@ export function CompletedItemsDashboard() {
         params.set("flowId", selectedFlowId);
       }
 
-      // 🔥 Envia o ID do responsável, não o nome
       if (selectedResponsibleId && selectedResponsibleId !== "all") {
         params.set("assignedToId", selectedResponsibleId);
       }
 
       const url = `/flow/completed-items?${params.toString()}`;
-      console.log("🔍 URL:", url);
-
       const response = await api.get(url);
-      console.log("📦 Resposta da API:", response.data);
 
       if (response.data && response.data.data) {
         setItems(response.data.data);
@@ -469,6 +414,17 @@ export function CompletedItemsDashboard() {
     }
   };
 
+  useEffect(() => {
+    loadData();
+  }, [
+    currentPage,
+    selectedFlowId,
+    selectedResponsibleId,
+    selectedPeriod,
+    searchRefClean,
+    itemsPerPage,
+  ]);
+
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString("pt-BR", {
       day: "2-digit",
@@ -479,28 +435,10 @@ export function CompletedItemsDashboard() {
     });
   };
 
-  const getPeriodLabel = (period: string) => {
-    const labels = {
-      today: "Hoje",
-      week: "Últimos 7 dias",
-      month: "Último mês",
-      year: "Último ano",
-    };
-    return labels[period as keyof typeof labels] || period;
-  };
-
   const getSelectedFlowName = () => {
     if (selectedFlowId === "all") return "Todos os fluxos";
     const flow = flows.find((f) => f.id === selectedFlowId);
     return flow ? flow.name : "Carregando...";
-  };
-
-  const getSelectedResponsibleName = () => {
-    if (selectedResponsibleId === "all") return "Todos os responsáveis";
-    const responsible = responsibles.find(
-      (r) => r.id === selectedResponsibleId,
-    );
-    return responsible ? responsible.name : "Carregando...";
   };
 
   const handleSearchChange = (value: string) => {
@@ -517,13 +455,11 @@ export function CompletedItemsDashboard() {
   };
 
   const handlePageChange = (page: number) => {
-    console.log("📄 Mudando para página:", page);
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleItemsPerPageChange = (newLimit: number) => {
-    console.log("📄 Mudando items por página para:", newLimit);
     setItemsPerPage(newLimit);
     setCurrentPage(1);
   };
@@ -532,22 +468,22 @@ export function CompletedItemsDashboard() {
     {
       header: "Item",
       cell: (item: any) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {item.imageUrl ? (
             <Avatar className="h-10 w-10 rounded-md">
               <AvatarImage src={item.imageUrl} alt={item.title} />
-              <AvatarFallback className="rounded-md bg-[#F5F0E6]">
-                <ImageIcon size={16} className="text-[#95A5A6]" />
+              <AvatarFallback className="rounded-md bg-[#F5F6FA]">
+                <ImageIcon size={16} className="text-[#7A7E83]" />
               </AvatarFallback>
             </Avatar>
           ) : (
-            <div className="h-10 w-10 rounded-md bg-[#F5F0E6] flex items-center justify-center">
-              <Package size={16} className="text-[#95A5A6]" />
+            <div className="h-10 w-10 rounded-md bg-[#F5F6FA] flex items-center justify-center">
+              <Package size={16} className="text-[#7A7E83]" />
             </div>
           )}
           <div>
-            <p className="font-medium text-[#2D3436]">{item.title}</p>
-            <p className="text-xs text-[#95A5A6]">
+            <p className="font-semibold text-[#353A40]">{item.title}</p>
+            <p className="text-xs text-[#7A7E83]">
               Ref: {item.productRef} • Qtd: {item.quantity}
             </p>
           </div>
@@ -558,7 +494,10 @@ export function CompletedItemsDashboard() {
       header: "Fluxo",
       cell: (item: any) => (
         <Badge
-          style={{ backgroundColor: item.flowColor, color: "#fff" }}
+          style={{
+            backgroundColor: item.flowColor || "#2F80ED",
+            color: "#fff",
+          }}
           className="font-normal"
         >
           {item.flowName}
@@ -568,9 +507,9 @@ export function CompletedItemsDashboard() {
     {
       header: "Responsável",
       cell: (item: any) => (
-        <div className="flex items-center gap-1">
-          <Users size={14} className="text-[#95A5A6]" />
-          <span className="text-sm text-[#2D3436]">
+        <div className="flex items-center gap-2">
+          <Users size={14} className="text-[#7A7E83]" />
+          <span className="text-sm text-[#353A40]">
             {item.assignedToName || item.supplierName || "Não atribuído"}
           </span>
         </div>
@@ -579,9 +518,9 @@ export function CompletedItemsDashboard() {
     {
       header: "Concluído em",
       cell: (item: any) => (
-        <div className="flex items-center gap-1">
-          <Calendar size={14} className="text-[#95A5A6]" />
-          <span className="text-sm text-[#2D3436]">
+        <div className="flex items-center gap-2">
+          <Calendar size={14} className="text-[#7A7E83]" />
+          <span className="text-sm text-[#353A40]">
             {formatDate(item.completedAt)}
           </span>
         </div>
@@ -603,187 +542,215 @@ export function CompletedItemsDashboard() {
   ];
 
   return (
-    <div className="space-y-4">
-      {/* Cabeçalho */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Package className="text-orange-500" size={24} />
-            Itens Finalizados
-          </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Acompanhe todos os itens que finalizaram o fluxo de produção
-          </p>
-        </div>
-        <Button variant="outline" onClick={loadData} className="gap-2">
-          <Clock size={16} />
-          Atualizar
-        </Button>
-      </div>
+    <div className="min-h-screen bg-[#F5F6FA] p-4 md:p-6 font-sans">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* HEADER */}
+        <header className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-extrabold text-[#353A40] mb-2">
+              Itens Finalizados
+            </h1>
+            <p className="text-[#7A7E83]">
+              Acompanhe todos os itens que finalizaram o fluxo de produção
+            </p>
+          </div>
 
-      {/* Filtros */}
-      <Card>
-        <CardContent className="pt-4 pb-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-            {/* Filtro por Referência */}
-            <div className="col-span-1 sm:col-span-2 lg:col-span-1">
-              <label className="text-xs text-slate-500 mb-1 block">
-                Referência do Produto
-              </label>
-              <div className="relative">
-                <Hash
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
-                  size={16}
-                />
-                <Input
-                  placeholder="Digite a referência..."
-                  value={searchRefInput}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pl-9"
-                />
-                {searchRefInput && (
-                  <button
-                    onClick={clearSearch}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2"
-                  >
-                    <X
-                      size={16}
-                      className="text-slate-400 hover:text-slate-600"
-                    />
-                  </button>
-                )}
+          <Button
+            onClick={loadData}
+            variant="outline"
+            size="default"
+            className="border-[#CBD5E1] text-[#353A40] bg-white hover:bg-gray-50 gap-2"
+          >
+            <RefreshCcw className="h-4 w-4 text-[#2F80ED]" />
+            Atualizar
+          </Button>
+        </header>
+
+        <hr className="border-[#E2E8F0] mb-6" />
+
+        {/* FILTROS */}
+        <Card className="bg-white border-t-4 border-t-[#2F80ED]/20 shadow-sm">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+              {/* Filtro por Referência */}
+              <div className="col-span-1 sm:col-span-2 lg:col-span-1">
+                <label className="text-xs font-semibold uppercase tracking-wider text-[#7A7E83] mb-1 block">
+                  Referência do Produto
+                </label>
+                <div className="relative">
+                  <Hash
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#7A7E83]"
+                    size={16}
+                  />
+                  <Input
+                    placeholder="Digite a referência..."
+                    value={searchRefInput}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="pl-9 bg-[#F5F6FA] border-[#E2E8F0]"
+                  />
+                  {searchRefInput && (
+                    <button
+                      onClick={clearSearch}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                    >
+                      <X
+                        size={16}
+                        className="text-[#7A7E83] hover:text-[#353A40]"
+                      />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Filtro por Fluxo */}
+              <div className="col-span-1">
+                <label className="text-xs font-semibold uppercase tracking-wider text-[#7A7E83] mb-1 block">
+                  Fluxo
+                </label>
+                <Select
+                  value={selectedFlowId}
+                  onValueChange={(value) => {
+                    setSelectedFlowId(value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger className="bg-[#F5F6FA] border-[#E2E8F0] text-[#353A40]">
+                    <Factory size={16} className="mr-2 text-[#7A7E83]" />
+                    <SelectValue placeholder="Todos os fluxos">
+                      {getSelectedFlowName()}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os fluxos</SelectItem>
+                    {flows.map((flow) => (
+                      <SelectItem key={flow.id} value={flow.id}>
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{
+                                backgroundColor: flow.color || "#2F80ED",
+                              }}
+                            />
+                            <span className="text-[#353A40]">{flow.name}</span>
+                          </div>
+                          {flow.count > 0 && (
+                            <Badge
+                              variant="secondary"
+                              className="bg-[#F5F6FA] text-[#7A7E83]"
+                            >
+                              {flow.count}
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro por Período */}
+              <div className="col-span-1">
+                <label className="text-xs font-semibold uppercase tracking-wider text-[#7A7E83] mb-1 block">
+                  Data de Conclusão
+                </label>
+                <Select
+                  value={selectedPeriod}
+                  onValueChange={(
+                    value: "today" | "week" | "month" | "year",
+                  ) => {
+                    setSelectedPeriod(value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger className="bg-[#F5F6FA] border-[#E2E8F0] text-[#353A40]">
+                    <Calendar size={16} className="mr-2 text-[#7A7E83]" />
+                    <SelectValue placeholder="Período" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today">Hoje</SelectItem>
+                    <SelectItem value="week">Últimos 7 dias</SelectItem>
+                    <SelectItem value="month">Último mês</SelectItem>
+                    <SelectItem value="year">Último ano</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Botão Limpar Filtros */}
+              <div className="col-span-1">
+                <Button
+                  variant="outline"
+                  onClick={clearFilters}
+                  className="gap-2 w-full border-[#CBD5E1] text-[#353A40] hover:bg-gray-50"
+                  disabled={!hasActiveFilters()}
+                >
+                  <RotateCcw size={16} className="text-[#2F80ED]" />
+                  Limpar filtros
+                </Button>
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            {/* Filtro por Fluxo - Única instância */}
-            <div className="col-span-1">
-              <label className="text-xs text-slate-500 mb-1 block">Fluxo</label>
+        {/* TABELA */}
+        <Card className="bg-white shadow-lg rounded-xl">
+          <CardHeader className="border-b border-[#E2E8F0] pb-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-lg text-[#353A40]">
+              Itens Finalizados
+            </CardTitle>
+
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-[#7A7E83]">Itens por página:</span>
               <Select
-                value={selectedFlowId}
-                onValueChange={(value) => {
-                  console.log("🏭 Mudando fluxo para:", value);
-                  setSelectedFlowId(value);
-                  setCurrentPage(1);
-                }}
+                value={itemsPerPage.toString()}
+                onValueChange={(value) =>
+                  handleItemsPerPageChange(Number(value))
+                }
               >
-                <SelectTrigger>
-                  <Factory size={16} className="mr-2" />
-                  <SelectValue placeholder="Todos os fluxos">
-                    {getSelectedFlowName()}
-                  </SelectValue>
+                <SelectTrigger className="w-[80px] bg-[#F5F6FA] border-[#E2E8F0]">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos os fluxos</SelectItem>
-                  {flows.map((flow) => (
-                    <SelectItem key={flow.id} value={flow.id}>
-                      <div className="flex items-center justify-between w-full gap-4">
-                        <span>{flow.name}</span>
-                        {flow.count > 0 && (
-                          <Badge variant="secondary" className="ml-2">
-                            {flow.count}
-                          </Badge>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Filtro por Período */}
-            <div className="col-span-1">
-              <label className="text-xs text-slate-500 mb-1 block">
-                Data de Conclusão
-              </label>
-              <Select
-                value={selectedPeriod}
-                onValueChange={(value: "today" | "week" | "month" | "year") => {
-                  setSelectedPeriod(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger>
-                  <Calendar size={16} className="mr-2" />
-                  <SelectValue placeholder="Período" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Hoje</SelectItem>
-                  <SelectItem value="week">Últimos 7 dias</SelectItem>
-                  <SelectItem value="month">Último mês</SelectItem>
-                  <SelectItem value="year">Último ano</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Botão Limpar Filtros */}
-            <div className="col-span-1">
-              <Button
-                variant="outline"
-                onClick={clearFilters}
-                className="gap-2 w-full"
-                disabled={!hasActiveFilters()}
-              >
-                <RotateCcw size={16} />
-                Limpar filtros
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Tabela com Paginação */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-4">
-          <CardTitle className="text-xl text-[#2D3436]">
-            Itens Finalizados
-          </CardTitle>
-
-          {/* Selector de itens por página */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-500">Itens por página:</span>
-            <Select
-              value={itemsPerPage.toString()}
-              onValueChange={(value) => handleItemsPerPageChange(Number(value))}
-            >
-              <SelectTrigger className="w-[80px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5</SelectItem>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0 px-4 pb-4">
-          {loading ? (
-            <TableSkeleton />
-          ) : (
-            <GenericTable
-              title=""
-              data={items}
-              columns={columns}
-              isLoading={false}
-              emptyMessage={
-                searchRefClean ||
-                selectedFlowId !== "all" ||
-                selectedResponsibleId !== "all"
-                  ? "Nenhum item encontrado com os filtros aplicados"
-                  : "Nenhum item concluído no período selecionado"
-              }
-              pagination={{
-                currentPage,
-                totalPages,
-                onPageChange: handlePageChange,
-                totalItems,
-                itemsPerPage,
-              }}
-            />
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="pt-4">
+            {loading ? (
+              <TableSkeleton />
+            ) : (
+              <>
+                <GenericTable
+                  title=""
+                  data={items}
+                  columns={columns}
+                  isLoading={false}
+                  emptyMessage={
+                    searchRefClean ||
+                    selectedFlowId !== "all" ||
+                    selectedResponsibleId !== "all"
+                      ? "Nenhum item encontrado com os filtros aplicados"
+                      : "Nenhum item concluído no período selecionado"
+                  }
+                />
+                {totalItems > 0 && (
+                  <PaginationControls
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={handlePageChange}
+                    totalItems={totalItems}
+                    itemsPerPage={itemsPerPage}
+                  />
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
