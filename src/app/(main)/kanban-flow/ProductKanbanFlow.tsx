@@ -712,70 +712,75 @@ export default function ProductFlowKanban() {
   };
 
   const canUserEditStage = useCallback(
-  (stage: FlowStage) => {
-    if (!user) {
-      console.log("❌ [canUserEditStage] Usuário não encontrado");
-      return false;
-    }
+    (stage: FlowStage) => {
+      if (!user) {
+        console.log("❌ [canUserEditStage] Usuário não encontrado");
+        return false;
+      }
 
-    const systemRole = (user as any).role || "";
+      const systemRole = (user as any).role || "";
 
-    // Admin tem acesso a tudo
-    if (["MASTER", "ADMIN", "MANAGER"].includes(systemRole)) {
-      console.log(`✅ [canUserEditStage] Acesso liberado para ${systemRole}`);
-      return true;
-    }
+      // Admin tem acesso a tudo
+      if (["MASTER", "ADMIN", "MANAGER"].includes(systemRole)) {
+        console.log(`✅ [canUserEditStage] Acesso liberado para ${systemRole}`);
+        return true;
+      }
 
-    // Se a etapa não tem restrição, qualquer um pode editar
-    if (
-      !stage.allowedRole ||
-      stage.allowedRole.trim() === "" ||
-      stage.allowedRole === "all" ||
-      stage.allowedRole === "null"
-    ) {
-      console.log(`✅ [canUserEditStage] Etapa sem restrição: ${stage.name}`);
-      return true;
-    }
+      // Se a etapa não tem restrição, qualquer um pode editar
+      if (
+        !stage.allowedRole ||
+        stage.allowedRole.trim() === "" ||
+        stage.allowedRole === "all" ||
+        stage.allowedRole === "null"
+      ) {
+        console.log(`✅ [canUserEditStage] Etapa sem restrição: ${stage.name}`);
+        return true;
+      }
 
-    // 🔥 EXTRAIR O CARGO DO USUÁRIO CORRETAMENTE
-    let userProfessionalRoleName = "";
+      // 🔥 EXTRAIR O CARGO DO USUÁRIO CORRETAMENTE
+      let userProfessionalRoleName = "";
 
-    // Caso 1: user.professionalRole é string
-    if (typeof user.professionalRole === "string") {
-      userProfessionalRoleName = user.professionalRole;
-    }
-    // Caso 2: user.professionalRole é objeto com name
-    else if (user.professionalRole && typeof user.professionalRole === "object") {
-      userProfessionalRoleName = (user.professionalRole as any).name || "";
-    }
-    // Caso 3: user.professionalRole é undefined/null
-    else {
-      console.warn(`⚠️ [canUserEditStage] ${user.name} não tem professionalRole definido`);
-      return false;
-    }
+      // Caso 1: user.professionalRole é string
+      if (typeof user.professionalRole === "string") {
+        userProfessionalRoleName = user.professionalRole;
+      }
+      // Caso 2: user.professionalRole é objeto com name
+      else if (
+        user.professionalRole &&
+        typeof user.professionalRole === "object"
+      ) {
+        userProfessionalRoleName = (user.professionalRole as any).name || "";
+      }
+      // Caso 3: user.professionalRole é undefined/null
+      else {
+        console.warn(
+          `⚠️ [canUserEditStage] ${user.name} não tem professionalRole definido`,
+        );
+        return false;
+      }
 
-    const userRoleLower = userProfessionalRoleName.toLowerCase().trim();
-    const requiredRoleLower = stage.allowedRole.toLowerCase().trim();
+      const userRoleLower = userProfessionalRoleName.toLowerCase().trim();
+      const requiredRoleLower = stage.allowedRole.toLowerCase().trim();
 
-    // 🔥 LOG DETALHADO
-    console.log(`🔍 [canUserEditStage] Etapa: "${stage.name}"`);
-    console.log(`   - allowedRole: "${stage.allowedRole}"`);
-    console.log(`   - user professionalRole: "${userProfessionalRoleName}"`);
-    console.log(`   - userRoleLower: "${userRoleLower}"`);
-    console.log(`   - requiredRoleLower: "${requiredRoleLower}"`);
+      // 🔥 LOG DETALHADO
+      console.log(`🔍 [canUserEditStage] Etapa: "${stage.name}"`);
+      console.log(`   - allowedRole: "${stage.allowedRole}"`);
+      console.log(`   - user professionalRole: "${userProfessionalRoleName}"`);
+      console.log(`   - userRoleLower: "${userRoleLower}"`);
+      console.log(`   - requiredRoleLower: "${requiredRoleLower}"`);
 
-    // Comparação flexível
-    const hasAccess = 
-      userRoleLower === requiredRoleLower ||
-      userRoleLower.includes(requiredRoleLower) ||
-      requiredRoleLower.includes(userRoleLower);
+      // Comparação flexível
+      const hasAccess =
+        userRoleLower === requiredRoleLower ||
+        userRoleLower.includes(requiredRoleLower) ||
+        requiredRoleLower.includes(userRoleLower);
 
-    console.log(`   - hasAccess: ${hasAccess ? "✅ SIM" : "❌ NÃO"}`);
+      console.log(`   - hasAccess: ${hasAccess ? "✅ SIM" : "❌ NÃO"}`);
 
-    return hasAccess;
-  },
-  [user],
-);
+      return hasAccess;
+    },
+    [user],
+  );
 
   // ===========================================================================
   // 🔄 FUNÇÕES DE FILTRO POR COLUNA
@@ -1799,7 +1804,7 @@ export default function ProductFlowKanban() {
       <div className="hidden md:block">
         <KanbanFilter>
           <div className="grid gap-1 min-w-[200px]">
-            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+            <label className="text-[10px] uppercase font-bold text-[#7A7E83] tracking-wider">
               Filtrar por Coluna
             </label>
             <Popover
@@ -1811,25 +1816,28 @@ export default function ProductFlowKanban() {
                   variant="outline"
                   role="combobox"
                   aria-expanded={openColumnSelector}
-                  className="h-8 w-full justify-between bg-background pl-8 pr-2 text-xs font-normal border-input hover:bg-accent"
+                  className="h-8 w-full justify-between bg-white border-[#CBD5E1] pl-8 pr-2 text-xs font-normal text-[#353A40] hover:bg-[#F5F6FA] hover:text-[#353A40]"
                 >
                   <div className="flex items-center gap-2 truncate pl-6 relative">
-                    <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
+                    <Layers className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-[#7A7E83] pointer-events-none" />
                     <span className="truncate">
                       {columnNameFilter || "Todas as colunas"}
                     </span>
                   </div>
-                  <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                  <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50 text-[#7A7E83]" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[250px] p-0" align="start">
-                <Command>
+              <PopoverContent
+                className="w-[250px] p-0 bg-white border border-[#E2E8F0] shadow-lg rounded-xl"
+                align="start"
+              >
+                <Command className="bg-transparent">
                   <CommandInput
                     placeholder="Buscar etapa..."
-                    className="h-8 text-xs"
+                    className="h-8 text-xs border-b border-[#E2E8F0] text-[#353A40] placeholder:text-[#7A7E83]"
                   />
                   <CommandList className="max-h-[300px]">
-                    <CommandEmpty className="py-3 text-center text-xs text-slate-500">
+                    <CommandEmpty className="py-3 text-center text-xs text-[#7A7E83]">
                       Nenhuma coluna encontrada.
                     </CommandEmpty>
                     <CommandGroup>
@@ -1839,17 +1847,19 @@ export default function ProductFlowKanban() {
                           setColumnNameFilter("");
                           setOpenColumnSelector(false);
                         }}
-                        className="text-xs cursor-pointer"
+                        className="text-xs cursor-pointer text-[#353A40] aria-selected:bg-[#F5F6FA]"
                       >
                         <div
                           className={cn(
-                            "mr-2 flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-primary",
+                            "mr-2 flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-[#CBD5E1]",
                             !columnNameFilter
-                              ? "bg-primary text-primary-foreground"
+                              ? "bg-[#2F80ED] border-[#2F80ED]"
                               : "opacity-50",
                           )}
                         >
-                          {!columnNameFilter && <Check className="h-3 w-3" />}
+                          {!columnNameFilter && (
+                            <Check className="h-3 w-3 text-white" />
+                          )}
                         </div>
                         Todas as colunas
                       </CommandItem>
@@ -1863,11 +1873,11 @@ export default function ProductFlowKanban() {
                             );
                             setOpenColumnSelector(false);
                           }}
-                          className="text-xs cursor-pointer"
+                          className="text-xs cursor-pointer text-[#353A40] aria-selected:bg-[#F5F6FA]"
                         >
                           <Check
                             className={cn(
-                              "mr-2 h-3 w-3 text-orange-600",
+                              "mr-2 h-3 w-3 text-[#2F80ED]",
                               columnNameFilter === option
                                 ? "opacity-100"
                                 : "opacity-0",
@@ -1884,11 +1894,11 @@ export default function ProductFlowKanban() {
           </div>
 
           <div className="grid gap-1 min-w-[140px]">
-            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+            <label className="text-[10px] uppercase font-bold text-[#7A7E83] tracking-wider">
               Responsável
             </label>
             <select
-              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+              className="flex h-8 w-full rounded-md border border-[#CBD5E1] bg-white px-3 py-1 text-xs text-[#353A40] focus:outline-none focus:ring-1 focus:ring-[#2F80ED] focus:border-[#2F80ED] cursor-pointer"
               value={tempFilterAssignedTo}
               onChange={(e) => setTempFilterAssignedTo(e.target.value)}
             >
@@ -1902,11 +1912,11 @@ export default function ProductFlowKanban() {
           </div>
 
           <div className="grid gap-1 min-w-[140px]">
-            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+            <label className="text-[10px] uppercase font-bold text-[#7A7E83] tracking-wider">
               Oficina
             </label>
             <select
-              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+              className="flex h-8 w-full rounded-md border border-[#CBD5E1] bg-white px-3 py-1 text-xs text-[#353A40] focus:outline-none focus:ring-1 focus:ring-[#2F80ED] focus:border-[#2F80ED] cursor-pointer"
               value={tempFilterSupplier}
               onChange={(e) => setTempFilterSupplier(e.target.value)}
             >
@@ -1921,14 +1931,14 @@ export default function ProductFlowKanban() {
           </div>
 
           <div className="grid gap-1 min-w-[180px]">
-            <label className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+            <label className="text-[10px] uppercase font-bold text-[#7A7E83] tracking-wider">
               Referência do Produto
             </label>
             <div className="relative">
               <Input
                 type="text"
                 placeholder="Buscar por ref..."
-                className="h-8 text-xs pl-8 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                className="h-8 text-xs pl-8 bg-white border-[#CBD5E1] text-[#353A40] placeholder:text-[#7A7E83] focus:ring-[#2F80ED] focus:border-[#2F80ED]"
                 value={tempFilterProductRef}
                 onChange={(e) => setTempFilterProductRef(e.target.value)}
                 onKeyDown={(e) => {
@@ -1937,22 +1947,24 @@ export default function ProductFlowKanban() {
                   }
                 }}
               />
-              <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-500 dark:text-slate-400" />
+              <Package className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-[#7A7E83]" />
             </div>
           </div>
 
           <div className="flex items-end gap-2">
             <Button
               size="sm"
-              variant={tempFilterOverdue ? "destructive" : "outline"}
+              variant={tempFilterOverdue ? "default" : "outline"}
               className={`h-8 text-xs font-medium touch-feedback ${
                 tempFilterOverdue
-                  ? "bg-red-500 text-white hover:bg-red-600"
-                  : "text-foreground"
+                  ? "bg-red-500 hover:bg-red-600 text-white border-none"
+                  : "border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
               }`}
               onClick={toggleOverdueFilter}
             >
-              <AlertTriangle className="w-3 h-3 mr-2" />
+              <AlertTriangle
+                className={`w-3 h-3 mr-2 ${tempFilterOverdue ? "text-white" : "text-red-500"}`}
+              />
               Atrasados
             </Button>
 
@@ -1961,12 +1973,14 @@ export default function ProductFlowKanban() {
               variant={tempFilterUpcoming ? "default" : "outline"}
               className={`h-8 text-xs font-medium touch-feedback ${
                 tempFilterUpcoming
-                  ? "bg-orange-600 text-white hover:bg-orange-700"
-                  : "text-foreground"
+                  ? "bg-[#2F80ED] hover:bg-[#1E5CB8] text-white border-none"
+                  : "border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
               }`}
               onClick={toggleUpcomingFilter}
             >
-              <Clock className="w-3 h-3 mr-2" />
+              <Clock
+                className={`w-3 h-3 mr-2 ${tempFilterUpcoming ? "text-white" : "text-[#2F80ED]"}`}
+              />
               Próximos a vencer ({notificationDays} dias)
             </Button>
           </div>
@@ -1975,7 +1989,7 @@ export default function ProductFlowKanban() {
             <Button
               size="sm"
               variant="default"
-              className="h-8 text-xs font-medium min-w-[100px] bg-orange-600 hover:bg-orange-700 text-white touch-feedback"
+              className="h-8 text-xs font-medium min-w-[100px] bg-[#2F80ED] hover:bg-[#1E5CB8] text-white touch-feedback"
               onClick={handleFilterClick}
               disabled={isFiltering}
             >
@@ -1994,7 +2008,7 @@ export default function ProductFlowKanban() {
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-8 w-8 p-0 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                className="h-8 w-8 p-0 text-[#7A7E83] hover:text-red-500 hover:bg-red-50"
                 onClick={handleClearFilters}
                 title="Limpar Filtros"
               >
@@ -2007,7 +2021,7 @@ export default function ProductFlowKanban() {
             <Button
               size="sm"
               variant="ghost"
-              className="h-8 text-xs text-slate-500 hover:text-red-600"
+              className="h-8 text-xs text-[#7A7E83] hover:text-red-500 hover:bg-red-50"
               onClick={() =>
                 setActiveColumnFilter({ columnId: null, filterType: null })
               }
@@ -2382,8 +2396,7 @@ export default function ProductFlowKanban() {
         stages={currentItemStages}
         flows={flows}
         initialStageId={activeStageId}
-          currentUserRole={user?.professionalRole ?? undefined} // 🔥 CORREÇÃO: converte null para undefined
-
+        currentUserRole={user?.professionalRole ?? undefined} // 🔥 CORREÇÃO: converte null para undefined
         currentUserSystemRole={user?.role}
         isReadOnly={false}
         hasMultipleFlows={selectedFlowIds.length > 1}
@@ -2422,8 +2435,7 @@ export default function ProductFlowKanban() {
           setItemToDelete({ type: "item", id });
           setDeleteModalOpen(true);
         }}
-          currentUserRole={user?.professionalRole ?? undefined} // 🔥 CORREÇÃO: converte null para undefined
-
+        currentUserRole={user?.professionalRole ?? undefined} // 🔥 CORREÇÃO: converte null para undefined
         currentUserSystemRole={user?.role}
         isReadOnly={isModalReadOnly}
         hasMultipleFlows={selectedFlowIds.length > 1}

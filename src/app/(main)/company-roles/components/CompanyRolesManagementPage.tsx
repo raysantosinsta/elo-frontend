@@ -337,12 +337,12 @@ export default function CompanyRolesManagementPage() {
         header: "Cargo",
         cell: (role) => (
           <div className="flex flex-col">
-            <span className="font-medium text-[#2D3436] flex items-center gap-2">
-              <Briefcase className="h-4 w-4 text-[#D35400]" />
+            <span className="font-semibold text-[#353A40] flex items-center gap-2">
+              <Briefcase className="h-4 w-4 text-[#2F80ED]" />
               {role.name}
             </span>
             {role.description && (
-              <span className="text-xs text-[#95A5A6] mt-1 line-clamp-1">
+              <span className="text-xs text-[#7A7E83] mt-1 line-clamp-1">
                 {role.description}
               </span>
             )}
@@ -375,20 +375,28 @@ export default function CompanyRolesManagementPage() {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="h-8 w-8 p-0 text-[#2C3E50] hover:text-[#D35400] hover:bg-transparent"
+                  className="h-8 w-8 p-0 text-[#7A7E83] hover:text-[#2F80ED] hover:bg-transparent"
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Opções</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => handleOpenEdit(role)}>
-                  <Edit className="mr-2 h-4 w-4" /> Editar
+              <DropdownMenuContent
+                align="end"
+                className="bg-white border border-[#E2E8F0] rounded-xl shadow-lg"
+              >
+                <DropdownMenuLabel className="text-[#353A40]">
+                  Opções
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => handleOpenEdit(role)}
+                  className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
+                >
+                  <Edit className="mr-2 h-4 w-4 text-[#2F80ED]" /> Editar
                 </DropdownMenuItem>
                 {role.status === "ACTIVE" ? (
                   <DropdownMenuItem
                     onClick={() => handleToggleStatus(role.id, role.status)}
-                    className="text-amber-600"
+                    className="text-amber-600 cursor-pointer hover:bg-amber-50"
                   >
                     <Power className="mr-2 h-4 w-4" /> Inativar
                   </DropdownMenuItem>
@@ -398,16 +406,16 @@ export default function CompanyRolesManagementPage() {
                       setRestoreId(role.id);
                       setIsRestoreOpen(true);
                     }}
-                    className="text-green-600"
+                    className="text-green-600 cursor-pointer hover:bg-green-50"
                   >
                     <Power className="mr-2 h-4 w-4" /> Reativar
                   </DropdownMenuItem>
                 )}
                 {role.status === "INACTIVE" && (
                   <>
-                    <DropdownMenuSeparator />
+                    <DropdownMenuSeparator className="bg-[#E2E8F0]" />
                     <DropdownMenuItem
-                      className="text-red-600 focus:text-red-600"
+                      className="text-red-600 focus:text-red-600 cursor-pointer hover:bg-red-50"
                       onClick={() => {
                         setDeleteId(role.id);
                         setIsDeleteOpen(true);
@@ -428,15 +436,15 @@ export default function CompanyRolesManagementPage() {
 
   if (authLoading)
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#F5F0E6]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
+      <div className="flex h-screen w-full items-center justify-center bg-[#F5F6FA]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#2F80ED]" />
       </div>
     );
 
   if (!user || (!isMaster && !isAdmin)) return null;
 
   return (
-    <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8 font-sans">
+    <div className="min-h-screen w-full bg-[#F5F6FA] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <PageHeader
@@ -453,8 +461,8 @@ export default function CompanyRolesManagementPage() {
               onClick={() => setIncludeInactive(!includeInactive)}
               className={
                 includeInactive
-                  ? "bg-[#D35400] hover:bg-[#D35400]/90"
-                  : "border-[#D35400] text-[#D35400] hover:bg-[#D35400]/10"
+                  ? "bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
+                  : "border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
               }
             >
               {includeInactive ? "Ocultar Inativos" : "Mostrar Inativos"}
@@ -467,13 +475,13 @@ export default function CompanyRolesManagementPage() {
                     <Button
                       onClick={handleOpenCreate}
                       size="icon"
-                      className="bg-[#D35400] hover:bg-[#D35400]/90 text-white shadow-md transition-transform hover:scale-105 rounded-full h-10 w-10"
+                      className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white shadow-sm transition-transform hover:scale-105 rounded-full h-10 w-10"
                     >
                       <Plus className="h-5 w-5" />
                       <span className="sr-only">Criar novo cargo</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>
+                  <TooltipContent className="bg-[#353A40] text-white">
                     <p>Criar novo cargo</p>
                   </TooltipContent>
                 </Tooltip>
@@ -500,12 +508,12 @@ export default function CompanyRolesManagementPage() {
 
         {/* Modal de Formulário */}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="sm:max-w-[500px] bg-white">
+          <DialogContent className="sm:max-w-[500px] bg-white border border-[#E2E8F0] rounded-xl">
             <DialogHeader>
-              <DialogTitle className="text-[#2D3436]">
+              <DialogTitle className="text-[#353A40] font-bold">
                 {editingRole ? "Editar Cargo" : "Novo Cargo"}
               </DialogTitle>
-              <DialogDescription className="text-[#95A5A6]">
+              <DialogDescription className="text-[#7A7E83]">
                 {editingRole
                   ? "Altere as informações do cargo existente."
                   : "Preencha os dados para criar um novo cargo."}
@@ -514,7 +522,7 @@ export default function CompanyRolesManagementPage() {
 
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-[#2D3436]">
+                <Label htmlFor="name" className="text-[#353A40] font-medium">
                   Nome do Cargo *
                 </Label>
                 <Input
@@ -522,34 +530,15 @@ export default function CompanyRolesManagementPage() {
                   value={formData.name}
                   onChange={(e) => handleFormChange("name", e.target.value)}
                   placeholder="Ex: Coordenador de Produção"
-                  className="border-[#E5E5E5] focus:border-[#D35400] focus:ring-[#D35400]"
+                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
                 />
               </div>
 
-              {/* <div className="space-y-2">
-                <Label htmlFor="level" className="text-[#2D3436]">
-                  Nível Hierárquico (1-100)
-                </Label>
-                <Input
-                  id="level"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={formData.level}
-                  onChange={(e) =>
-                    handleFormChange("level", parseInt(e.target.value) || 1)
-                  }
-                  placeholder="Ex: 5"
-                  className="border-[#E5E5E5] focus:border-[#D35400] focus:ring-[#D35400]"
-                />
-                <p className="text-xs text-[#95A5A6]">
-                  Valores menores = maior hierarquia (ex: 1 = Diretor, 10 =
-                  Estagiário)
-                </p>
-              </div> */}
-
               <div className="space-y-2">
-                <Label htmlFor="description" className="text-[#2D3436]">
+                <Label
+                  htmlFor="description"
+                  className="text-[#353A40] font-medium"
+                >
                   Descrição
                 </Label>
                 <Textarea
@@ -560,7 +549,7 @@ export default function CompanyRolesManagementPage() {
                   }
                   placeholder="Descreva as responsabilidades do cargo..."
                   rows={3}
-                  className="border-[#E5E5E5] focus:border-[#D35400] focus:ring-[#D35400]"
+                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
                 />
               </div>
             </div>
@@ -569,14 +558,14 @@ export default function CompanyRolesManagementPage() {
               <Button
                 variant="outline"
                 onClick={handleCloseModal}
-                className="border-[#E5E5E5] text-[#2D3436]"
+                className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
               >
                 Cancelar
               </Button>
               <Button
                 onClick={onSubmit}
                 disabled={isFormLoading}
-                className="bg-[#D35400] hover:bg-[#D35400]/90 text-white"
+                className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
               >
                 {isFormLoading && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -589,12 +578,13 @@ export default function CompanyRolesManagementPage() {
 
         {/* Alerta de Exclusão */}
         <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-          <AlertDialogContent>
+          <AlertDialogContent className="bg-white border border-[#E2E8F0] rounded-xl">
             <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-[#D35400]">
-                <AlertTriangle className="h-5 w-5" /> Confirmar Exclusão
+              <AlertDialogTitle className="flex items-center gap-2 text-[#353A40]">
+                <AlertTriangle className="h-5 w-5 text-red-500" /> Confirmar
+                Exclusão
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-[#2D3436]">
+              <AlertDialogDescription className="text-[#7A7E83]">
                 Tem certeza que deseja excluir este cargo permanentemente?
                 <br />
                 <span className="text-sm text-red-500 font-medium">
@@ -605,7 +595,7 @@ export default function CompanyRolesManagementPage() {
             <AlertDialogFooter>
               <AlertDialogCancel
                 disabled={isDeleting}
-                className="text-[#2D3436]"
+                className="text-[#353A40] border-[#CBD5E1] hover:bg-[#F5F6FA]"
               >
                 Cancelar
               </AlertDialogCancel>
@@ -615,7 +605,7 @@ export default function CompanyRolesManagementPage() {
                   handleDelete();
                 }}
                 disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700 text-white"
+                className="bg-red-500 hover:bg-red-600 text-white"
               >
                 {isDeleting ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -628,18 +618,18 @@ export default function CompanyRolesManagementPage() {
 
         {/* Alerta de Restauração */}
         <AlertDialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
-          <AlertDialogContent>
+          <AlertDialogContent className="bg-white border border-[#E2E8F0] rounded-xl">
             <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-[#D35400]">
-                <Power className="h-5 w-5" /> Reativar Cargo
+              <AlertDialogTitle className="flex items-center gap-2 text-[#353A40]">
+                <Power className="h-5 w-5 text-[#2F80ED]" /> Reativar Cargo
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-[#2D3436]">
+              <AlertDialogDescription className="text-[#7A7E83]">
                 Deseja reativar este cargo? Ele ficará disponível novamente para
                 atribuição aos usuários.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="text-[#2D3436]">
+              <AlertDialogCancel className="text-[#353A40] border-[#CBD5E1] hover:bg-[#F5F6FA]">
                 Cancelar
               </AlertDialogCancel>
               <AlertDialogAction
@@ -647,7 +637,7 @@ export default function CompanyRolesManagementPage() {
                   e.preventDefault();
                   handleRestore();
                 }}
-                className="bg-green-600 hover:bg-green-700 text-white"
+                className="bg-green-500 hover:bg-green-600 text-white"
               >
                 Sim, reativar
               </AlertDialogAction>

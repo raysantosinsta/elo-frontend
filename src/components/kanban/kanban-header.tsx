@@ -46,14 +46,6 @@ interface Template {
   name: string;
 }
 
-// interface Flow {
-//   id: string;
-//   name: string;
-//   color?: string;
-//   deadline?: string;
-//   [key: string]: any; // Permite propriedades adicionais
-// }
-
 interface ConfigAction {
   label: string;
   onClick: () => void;
@@ -61,7 +53,6 @@ interface ConfigAction {
   variant?: "default" | "destructive";
 }
 
-// Ou melhor, torne o componente genérico:
 interface KanbanHeaderProps<
   T extends { id: string; name: string; color?: string; deadline?: string },
 > {
@@ -130,14 +121,14 @@ export function KanbanHeader<
   };
 
   return (
-    <header className="bg-[#2C3E50] text-[#F5F0E6] px-6 py-4 shadow-lg border-b border-[#95A5A6]/20 z-20 sticky top-0">
+    <header className="bg-white border-b border-[#E2E8F0] px-6 py-4 shadow-sm z-20 sticky top-0">
       <div className="flex justify-between items-center max-w-[1920px] mx-auto w-full">
         {/* LADO ESQUERDO: Branding */}
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden text-[#F5F0E6] hover:bg-white/10"
+            className="md:hidden text-[#7A7E83] hover:bg-[#F5F6FA] hover:text-[#353A40]"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -145,16 +136,16 @@ export function KanbanHeader<
 
           <div className="flex items-center gap-3">
             {icon && (
-              <div className="p-2 bg-white/5 rounded-lg text-[#D35400]">
+              <div className="p-2 bg-[#F5F6FA] rounded-lg text-[#2F80ED]">
                 {icon}
               </div>
             )}
             <div className="flex flex-col">
-              <h1 className="text-xl font-extrabold tracking-tight leading-none text-[#F5F0E6]">
+              <h1 className="text-xl font-extrabold tracking-tight leading-none text-[#353A40]">
                 {title}
               </h1>
               {subtitle && (
-                <p className="text-[11px] text-[#95A5A6] font-bold uppercase tracking-widest mt-1 hidden md:block">
+                <p className="text-[11px] text-[#7A7E83] font-medium uppercase tracking-widest mt-1 hidden md:block">
                   {subtitle}
                 </p>
               )}
@@ -171,29 +162,29 @@ export function KanbanHeader<
                 <Button
                   variant="outline"
                   role="combobox"
-                  className="bg-white/10 text-white border-white/20 h-9 text-xs max-w-[280px] justify-between hover:bg-white/15"
+                  className="bg-white border-[#CBD5E1] text-[#353A40] h-9 text-xs max-w-[280px] justify-between hover:bg-[#F5F6FA]"
                 >
                   <div className="flex items-center gap-2 truncate">
-                    <Layers size={16} className="flex-shrink-0" />
+                    <Layers size={16} className="flex-shrink-0 text-[#7A7E83]" />
                     <span className="truncate">{getFlowButtonText()}</span>
                   </div>
                   <ChevronDown
                     size={14}
-                    className="ml-2 opacity-50 flex-shrink-0"
+                    className="ml-2 opacity-50 flex-shrink-0 text-[#7A7E83]"
                   />
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-96 p-0 bg-[#2C3E50] border-white/10 text-white shadow-2xl"
+                className="w-96 p-0 bg-white border border-[#E2E8F0] text-[#353A40] shadow-lg rounded-xl"
                 align="end"
               >
                 <Command className="bg-transparent">
                   <CommandInput
                     placeholder="Buscar coleção por nome..."
-                    className="border-none text-white placeholder:text-slate-400 h-10"
+                    className="border-b border-[#E2E8F0] text-[#353A40] placeholder:text-[#7A7E83] h-10"
                   />
                   <CommandList>
-                    <CommandEmpty className="py-6 text-center text-sm text-slate-400">
+                    <CommandEmpty className="py-6 text-center text-sm text-[#7A7E83]">
                       Nenhuma coleção encontrada.
                     </CommandEmpty>
                     <CommandGroup>
@@ -212,13 +203,13 @@ export function KanbanHeader<
                               console.log("Selecionado:", flow.name);
                               onToggleFlow?.(flow.id);
                             }}
-                            className="flex items-center justify-between py-2 px-2 text-white aria-selected:bg-white/10 cursor-pointer group"
+                            className="flex items-center justify-between py-2 px-2 text-[#353A40] aria-selected:bg-[#F5F6FA] cursor-pointer group"
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">
                               <div
                                 className="w-3 h-3 rounded-full flex-shrink-0"
                                 style={{
-                                  backgroundColor: flow.color || "#D35400",
+                                  backgroundColor: flow.color || "#2F80ED",
                                 }}
                               />
                               <span className="text-sm font-medium truncate">
@@ -233,12 +224,12 @@ export function KanbanHeader<
                                   className={cn(
                                     "text-[9px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap",
                                     daysRemaining < 0
-                                      ? "bg-red-500/20 text-red-400 border-red-500/30"
+                                      ? "bg-red-100 text-red-700 border-red-200"
                                       : daysRemaining === 0
-                                        ? "bg-orange-500/20 text-orange-400 border-orange-500/30"
+                                        ? "bg-orange-100 text-orange-700 border-orange-200"
                                         : daysRemaining <= 3
-                                          ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-                                          : "bg-green-500/20 text-green-400 border-green-500/30",
+                                          ? "bg-yellow-100 text-yellow-700 border-yellow-200"
+                                          : "bg-green-100 text-green-700 border-green-200",
                                   )}
                                 >
                                   {daysRemaining < 0
@@ -251,7 +242,7 @@ export function KanbanHeader<
 
                               {/* Check de seleção */}
                               {isSelected && (
-                                <Check size={14} className="text-orange-500" />
+                                <Check size={14} className="text-[#2F80ED]" />
                               )}
 
                               {/* Botões de ação */}
@@ -262,7 +253,7 @@ export function KanbanHeader<
                                       e.stopPropagation();
                                       onEditFlow(flow);
                                     }}
-                                    className="p-1 text-blue-400 hover:bg-blue-500/10 rounded"
+                                    className="p-1 text-[#2F80ED] hover:bg-[#F5F6FA] rounded"
                                   >
                                     <Edit size={14} />
                                   </button>
@@ -274,7 +265,7 @@ export function KanbanHeader<
                                       e.stopPropagation();
                                       onDeleteFlow(flow.id);
                                     }}
-                                    className="p-1 text-red-400 hover:bg-red-500/10 rounded"
+                                    className="p-1 text-red-500 hover:bg-red-50 rounded"
                                   >
                                     <Trash2 size={14} />
                                   </button>
@@ -289,14 +280,14 @@ export function KanbanHeader<
 
                   {/* Legenda de prazos */}
                   {flows.some((f) => f.deadline) && (
-                    <div className="p-2 border-t border-white/10">
-                      <div className="flex items-center gap-2 text-[9px] text-slate-400">
+                    <div className="p-2 border-t border-[#E2E8F0]">
+                      <div className="flex items-center gap-2 text-[9px] text-[#7A7E83]">
                         <Calendar size={10} />
                         <span>Prazos:</span>
-                        <span className="text-green-400">● OK</span>
-                        <span className="text-yellow-400">● ≤3d</span>
-                        <span className="text-orange-400">● Hoje</span>
-                        <span className="text-red-400">● Atrasado</span>
+                        <span className="text-green-600">● OK</span>
+                        <span className="text-yellow-600">● ≤3d</span>
+                        <span className="text-orange-600">● Hoje</span>
+                        <span className="text-red-600">● Atrasado</span>
                       </div>
                     </div>
                   )}
@@ -309,15 +300,15 @@ export function KanbanHeader<
 
           {/* GESTÃO DE TEMPLATES */}
           {(onSaveTemplate || onApplyTemplate) && (
-            <div className="flex items-center gap-2 bg-[#2D3436]/40 p-1 rounded-lg border border-[#95A5A6]/30">
+            <div className="flex items-center gap-2 bg-[#F5F6FA] p-1 rounded-lg border border-[#E2E8F0]">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 text-[11px] font-semibold text-[#95A5A6] hover:text-[#F5F0E6] hover:bg-white/5"
+                    className="h-8 text-[11px] font-semibold text-[#7A7E83] hover:text-[#353A40] hover:bg-[#F5F6FA]"
                   >
-                    <LayoutTemplate size={14} className="mr-2 text-[#95A5A6]" />
+                    <LayoutTemplate size={14} className="mr-2 text-[#7A7E83]" />
                     <span className="max-w-[120px] truncate">
                       {selectedTemplateName}
                     </span>
@@ -325,10 +316,10 @@ export function KanbanHeader<
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent
-                  className="w-64 p-2 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] shadow-2xl"
+                  className="w-64 p-2 bg-white border border-[#E2E8F0] text-[#353A40] shadow-lg rounded-xl"
                   align="end"
                 >
-                  <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest px-2 py-2">
+                  <div className="text-[10px] font-bold text-[#7A7E83] uppercase tracking-widest px-2 py-2">
                     Modelos de Estrutura
                   </div>
                   <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar">
@@ -340,8 +331,8 @@ export function KanbanHeader<
                           className={cn(
                             "group flex items-center justify-between p-2 rounded-md transition-all cursor-pointer",
                             isActive
-                              ? "bg-[#D35400] text-white"
-                              : "text-[#95A5A6] hover:bg-white/5 hover:text-[#F5F0E6]",
+                              ? "bg-[#2F80ED] text-white"
+                              : "text-[#7A7E83] hover:bg-[#F5F6FA] hover:text-[#353A40]",
                           )}
                           onClick={() => onSelectTemplate?.(t.id)}
                         >
@@ -349,7 +340,7 @@ export function KanbanHeader<
                             <Copy
                               size={14}
                               className={cn(
-                                isActive ? "text-white" : "text-[#95A5A6]",
+                                isActive ? "text-white" : "text-[#7A7E83]",
                               )}
                             />
                             <span className="text-sm font-medium truncate">
@@ -367,7 +358,7 @@ export function KanbanHeader<
                               e.stopPropagation();
                               onDeleteTemplate?.(t.id);
                             }}
-                            className="opacity-100 p-1 text-red-400 hover:bg-red-500/20 rounded transition-opacity"
+                            className="opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -375,12 +366,12 @@ export function KanbanHeader<
                       );
                     })}
                   </div>
-                  <div className="h-px bg-[#95A5A6]/20 my-2" />
+                  <div className="h-px bg-[#E2E8F0] my-2" />
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={onSaveTemplate}
-                    className="w-full justify-start text-[11px] font-bold text-[#D35400] hover:bg-[#D35400]/10 hover:text-[#D35400]"
+                    className="w-full justify-start text-[11px] font-bold text-[#2F80ED] hover:bg-[#F5F6FA] hover:text-[#1E5CB8]"
                   >
                     <Save size={14} className="mr-2" /> Salvar estrutura atual
                   </Button>
@@ -391,7 +382,7 @@ export function KanbanHeader<
                 <Button
                   size="sm"
                   onClick={onApplyTemplate}
-                  className="h-8 px-4 text-[10px] bg-[#D35400] hover:bg-[#A04000] text-white font-black border-none shadow-md transition-all active:scale-95"
+                  className="h-8 px-4 text-[10px] bg-[#2F80ED] hover:bg-[#1E5CB8] text-white font-black border-none shadow-sm transition-all active:scale-95"
                 >
                   APLICAR
                 </Button>
@@ -403,7 +394,7 @@ export function KanbanHeader<
           {(onAddFlow || onAddStage || onAddColumn) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="bg-[#D35400] hover:bg-[#A04000] text-white gap-2 font-bold shadow-md transition-all active:scale-95 h-9 border-none">
+                <Button className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white gap-2 font-bold shadow-sm transition-all active:scale-95 h-9 border-none">
                   <Plus size={18} strokeWidth={3} />
                   <span className="hidden sm:inline text-xs">Adicionar</span>
                   <ChevronDown size={14} className="opacity-50" />
@@ -411,18 +402,18 @@ export function KanbanHeader<
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="w-64 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl"
+                className="w-64 bg-white border border-[#E2E8F0] text-[#353A40] p-1 shadow-lg rounded-xl"
               >
                 {/* OPÇÃO PARA FLUXO */}
                 {onAddFlow && (
                   <DropdownMenuItem
                     onClick={onAddFlow}
-                    className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 focus:text-white rounded-md border-none outline-none"
+                    className="gap-3 cursor-pointer py-2.5 focus:bg-[#F5F6FA] focus:text-[#353A40] rounded-md border-none outline-none"
                   >
-                    <Layers size={16} className="text-[#D35400]" />
+                    <Layers size={16} className="text-[#2F80ED]" />
                     <div className="flex flex-col">
                       <span className="text-sm font-bold">Novo Fluxo</span>
-                      <span className="text-[10px] text-[#95A5A6]">
+                      <span className="text-[10px] text-[#7A7E83]">
                         Criar uma nova esteira
                       </span>
                     </div>
@@ -433,12 +424,12 @@ export function KanbanHeader<
                 {onAddStage && (
                   <DropdownMenuItem
                     onClick={onAddStage}
-                    className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 focus:text-white rounded-md border-none outline-none"
+                    className="gap-3 cursor-pointer py-2.5 focus:bg-[#F5F6FA] focus:text-[#353A40] rounded-md border-none outline-none"
                   >
-                    <Plus size={16} className="text-[#95A5A6]" />
+                    <Plus size={16} className="text-[#7A7E83]" />
                     <div className="flex flex-col">
                       <span className="text-sm font-bold">Nova Etapa</span>
-                      <span className="text-[10px] text-[#95A5A6]">
+                      <span className="text-[10px] text-[#7A7E83]">
                         Adicionar coluna ao fluxo
                       </span>
                     </div>
@@ -449,12 +440,12 @@ export function KanbanHeader<
                 {onAddColumn && (
                   <DropdownMenuItem
                     onClick={onAddColumn}
-                    className="gap-3 cursor-pointer py-2.5 focus:bg-white/10 focus:text-white rounded-md border-none outline-none"
+                    className="gap-3 cursor-pointer py-2.5 focus:bg-[#F5F6FA] focus:text-[#353A40] rounded-md border-none outline-none"
                   >
-                    <Columns size={16} className="text-[#3498DB]" />
+                    <Columns size={16} className="text-[#2F80ED]" />
                     <div className="flex flex-col">
                       <span className="text-sm font-bold">Nova Coluna</span>
-                      <span className="text-[10px] text-[#95A5A6]">
+                      <span className="text-[10px] text-[#7A7E83]">
                         Adicionar coluna ao kanban
                       </span>
                     </div>
@@ -471,16 +462,16 @@ export function KanbanHeader<
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-[#95A5A6] hover:text-[#F5F0E6] hover:bg-white/5 ml-1"
+                  className="text-[#7A7E83] hover:text-[#353A40] hover:bg-[#F5F6FA] ml-1"
                 >
                   <Settings size={20} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="w-56 bg-[#2D3436] border border-[#95A5A6]/30 text-[#F5F0E6] p-1 shadow-2xl"
+                className="w-56 bg-white border border-[#E2E8F0] text-[#353A40] p-1 shadow-lg rounded-xl"
               >
-                <div className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest px-3 py-2">
+                <div className="text-[10px] font-bold text-[#7A7E83] uppercase tracking-widest px-3 py-2">
                   Configurações
                 </div>
                 {configActions.map((action, index) => (
@@ -488,10 +479,10 @@ export function KanbanHeader<
                     key={index}
                     onClick={action.onClick}
                     className={cn(
-                      "flex items-center gap-2 cursor-pointer py-2 px-3 rounded-md focus:bg-white/10 border-none outline-none",
+                      "flex items-center gap-2 cursor-pointer py-2 px-3 rounded-md focus:bg-[#F5F6FA] border-none outline-none",
                       action.variant === "destructive"
-                        ? "text-red-400 focus:bg-red-500/10 focus:text-red-400"
-                        : "text-[#F5F0E6] focus:text-white",
+                        ? "text-red-600 focus:bg-red-50 focus:text-red-600"
+                        : "text-[#353A40] focus:text-[#353A40]",
                     )}
                   >
                     {action.icon}
@@ -506,11 +497,11 @@ export function KanbanHeader<
 
       {/* MENU MOBILE */}
       {isMobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 bg-[#2C3E50] border-t border-[#95A5A6]/20 shadow-xl p-4 flex flex-col gap-4 animate-in slide-in-from-top-5">
+        <div className="md:hidden absolute top-full left-0 right-0 bg-white border-t border-[#E2E8F0] shadow-xl p-4 flex flex-col gap-4 animate-in slide-in-from-top-5 z-50">
           {/* Seletor de Fluxos Mobile */}
           {flows.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest">
+              <p className="text-[10px] font-bold text-[#7A7E83] uppercase tracking-widest">
                 Coleções
               </p>
               <div className="space-y-1 max-h-40 overflow-y-auto">
@@ -523,19 +514,19 @@ export function KanbanHeader<
                       className={cn(
                         "flex items-center justify-between w-full p-2 rounded text-sm text-left",
                         isSelected
-                          ? "bg-white/10 text-white"
-                          : "text-[#95A5A6] hover:bg-white/5",
+                          ? "bg-[#F5F6FA] text-[#353A40]"
+                          : "text-[#7A7E83] hover:bg-[#F5F6FA]",
                       )}
                     >
                       <div className="flex items-center gap-2">
                         <div
                           className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: flow.color || "#D35400" }}
+                          style={{ backgroundColor: flow.color || "#2F80ED" }}
                         />
                         <span className="truncate">{flow.name}</span>
                       </div>
                       {isSelected && (
-                        <Check size={14} className="text-orange-500" />
+                        <Check size={14} className="text-[#2F80ED]" />
                       )}
                     </button>
                   );
@@ -553,9 +544,9 @@ export function KanbanHeader<
                   setIsMobileMenuOpen(false);
                 }}
                 variant="outline"
-                className="bg-transparent border-[#95A5A6]/30 text-[#F5F0E6] hover:bg-white/5 justify-start"
+                className="bg-white border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA] justify-start"
               >
-                <Layers size={16} className="mr-2 text-[#D35400]" /> Novo Fluxo
+                <Layers size={16} className="mr-2 text-[#2F80ED]" /> Novo Fluxo
               </Button>
             )}
             {onAddStage && (
@@ -565,9 +556,9 @@ export function KanbanHeader<
                   setIsMobileMenuOpen(false);
                 }}
                 variant="outline"
-                className="bg-transparent border-[#95A5A6]/30 text-[#F5F0E6] hover:bg-white/5 justify-start"
+                className="bg-white border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA] justify-start"
               >
-                <Plus size={16} className="mr-2 text-[#95A5A6]" /> Nova Etapa
+                <Plus size={16} className="mr-2 text-[#7A7E83]" /> Nova Etapa
               </Button>
             )}
             {onAddColumn && (
@@ -577,9 +568,9 @@ export function KanbanHeader<
                   setIsMobileMenuOpen(false);
                 }}
                 variant="outline"
-                className="bg-transparent border-[#95A5A6]/30 text-[#F5F0E6] hover:bg-white/5 justify-start"
+                className="bg-white border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA] justify-start"
               >
-                <Columns size={16} className="mr-2 text-[#3498DB]" /> Nova
+                <Columns size={16} className="mr-2 text-[#2F80ED]" /> Nova
                 Coluna
               </Button>
             )}
@@ -588,7 +579,7 @@ export function KanbanHeader<
           {/* Templates Mobile */}
           {templates.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-bold text-[#95A5A6] uppercase tracking-widest">
+              <p className="text-[10px] font-bold text-[#7A7E83] uppercase tracking-widest">
                 Templates
               </p>
               <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
@@ -602,8 +593,8 @@ export function KanbanHeader<
                     className={cn(
                       "flex items-center p-2 rounded text-sm text-left",
                       selectedTemplateId === t.id
-                        ? "bg-[#D35400] text-white"
-                        : "text-[#95A5A6] hover:bg-white/5",
+                        ? "bg-[#2F80ED] text-white"
+                        : "text-[#7A7E83] hover:bg-[#F5F6FA] hover:text-[#353A40]",
                     )}
                   >
                     <span className="flex-1 truncate">{t.name}</span>
@@ -614,7 +605,7 @@ export function KanbanHeader<
               {onApplyTemplate && (
                 <Button
                   onClick={onApplyTemplate}
-                  className="w-full bg-[#D35400] hover:bg-[#A04000] text-white h-8 text-xs"
+                  className="w-full bg-[#2F80ED] hover:bg-[#1E5CB8] text-white h-8 text-xs"
                 >
                   Aplicar Template Selecionado
                 </Button>
@@ -624,7 +615,7 @@ export function KanbanHeader<
 
           {/* Configs Mobile */}
           {configActions && (
-            <div className="pt-2 border-t border-[#95A5A6]/20">
+            <div className="pt-2 border-t border-[#E2E8F0]">
               {configActions.map((action, i) => (
                 <Button
                   key={i}
@@ -636,8 +627,8 @@ export function KanbanHeader<
                   className={cn(
                     "w-full justify-start h-8",
                     action.variant === "destructive"
-                      ? "text-red-400 hover:text-red-300"
-                      : "text-[#95A5A6] hover:text-white",
+                      ? "text-red-600 hover:text-red-700 hover:bg-red-50"
+                      : "text-[#7A7E83] hover:text-[#353A40] hover:bg-[#F5F6FA]",
                   )}
                 >
                   {action.icon}

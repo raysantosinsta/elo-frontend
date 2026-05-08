@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Calendar, Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  Calendar,
+  Loader2,
+  MessageSquare,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
 // UI Components
 import {
@@ -22,7 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Utils & Services
 import { cn } from "@/lib/utils";
-import { chatService } from "@/services/chatService"; // Importe o service novo
+import { chatService } from "@/services/chatService";
 import { Chat } from "@/types/chat";
 
 interface ChatListProps {
@@ -39,7 +46,9 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const canDelete = ["ADM", "MASTER"].includes(userRole?.toUpperCase() || "");
+  const canDelete = ["MASTER", "ADMIN"].includes(
+    userRole?.toUpperCase() || "",
+  );
 
   // --- BUSCAR CHATS ---
   useEffect(() => {
@@ -49,7 +58,6 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
       setLoading(true);
       setError(null);
       try {
-        // Agora usamos o chatService limpo
         const data = await chatService.getChats(companyId);
         setChats(data);
       } catch (error) {
@@ -69,13 +77,8 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
 
     setCreatingChat(true);
     try {
-      // 1. Cria o chat
       const newChat = await chatService.createChat({ companyId });
-      
-      // 2. Atualiza a lista localmente para parecer instantâneo
       setChats((prev) => [newChat, ...prev]);
-      
-      // 3. Redireciona
       router.push(`/chats/${newChat.id}`);
     } catch (error) {
       console.error(error);
@@ -87,7 +90,6 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
 
   // --- DELETAR CHAT ---
   const handleDeleteClick = (e: React.MouseEvent) => {
-    // Impede que o clique no lixo abra o chat
     e.stopPropagation();
   };
 
@@ -95,7 +97,6 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
     setDeletingId(chatId);
     try {
       await chatService.deleteChat(chatId);
-      // Remove da lista localmente
       setChats((prev) => prev.filter((c) => c.id !== chatId));
     } catch (error) {
       console.error("Erro ao deletar:", error);
@@ -119,25 +120,29 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
   const getLastMessagePreview = (chat: Chat) => {
     if (!chat.messages?.length) return "Nova conversa iniciada";
     const lastMsg = chat.messages[chat.messages.length - 1];
-    
-    // Tratamento seguro caso sender seja null
+
     const senderName = lastMsg.sender?.name || "Usuário";
-    const text = lastMsg.message.length > 35 
-      ? lastMsg.message.substring(0, 35) + "..." 
-      : lastMsg.message;
-      
+    const text =
+      lastMsg.message.length > 35
+        ? lastMsg.message.substring(0, 35) + "..."
+        : lastMsg.message;
+
     return `${senderName}: ${text}`;
   };
 
   return (
-    <Card className="h-full w-full border-0 shadow-none sm:border sm:border-[#95A5A6]/20 sm:shadow-sm">
+    <Card className="h-full w-full border-0 shadow-none sm:border sm:border-[#E2E8F0] sm:shadow-sm rounded-xl">
       {/* HEADER */}
-      <CardHeader className="border-b border-[#95A5A6]/10 bg-white pb-4 pt-6">
+      <CardHeader className="border-b border-[#E2E8F0] bg-white pb-4 pt-6 rounded-t-xl">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-xl font-bold text-[#2D3436]">Atendimentos</CardTitle>
-            <p className="text-xs text-[#95A5A6]">
-              {loading ? "Sincronizando..." : `${chats.length} conversas ativas`}
+            <CardTitle className="text-xl font-bold text-[#353A40]">
+              Atendimentos
+            </CardTitle>
+            <p className="text-xs text-[#7A7E83]">
+              {loading
+                ? "Sincronizando..."
+                : `${chats.length} conversas ativas`}
             </p>
           </div>
 
@@ -145,12 +150,12 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
             onClick={createNewChat}
             disabled={creatingChat || !companyId}
             size="sm"
-            className="bg-[#D35400] text-white shadow-md transition-all hover:bg-[#D35400]/90 disabled:opacity-50"
+            className="bg-[#2F80ED] text-white shadow-sm transition-all hover:bg-[#1E5CB8] disabled:opacity-50 gap-2"
           >
             {creatingChat ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="h-4 w-4" />
             )}
             Novo Chat
           </Button>
@@ -160,15 +165,15 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
       {/* LISTA */}
       <CardContent className="p-0">
         {error && (
-          <div className="m-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+          <div className="m-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <AlertCircle className="h-4 w-4" />
             <p>{error}</p>
           </div>
         )}
 
         {loading && (
-          <div className="flex flex-col items-center justify-center py-12 text-[#95A5A6]">
-            <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
+          <div className="flex flex-col items-center justify-center py-12 text-[#7A7E83]">
+            <Loader2 className="h-8 w-8 animate-spin text-[#2F80ED]" />
             <p className="mt-2 text-sm font-medium">Carregando...</p>
           </div>
         )}
@@ -177,11 +182,15 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
           <div className="custom-scrollbar max-h-[calc(100vh-200px)] overflow-y-auto p-2 sm:p-3">
             {chats.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-center">
-                <div className="mb-3 rounded-full bg-[#F5F0E6] p-4">
-                  <MessageSquare className="h-8 w-8 text-[#95A5A6]" />
+                <div className="mb-3 rounded-full bg-[#F5F6FA] p-4">
+                  <MessageSquare className="h-8 w-8 text-[#7A7E83]" />
                 </div>
-                <h3 className="text-sm font-semibold text-[#2D3436]">Nenhum chat</h3>
-                <p className="text-xs text-[#95A5A6]">Clique em Novo Chat para começar</p>
+                <h3 className="text-sm font-semibold text-[#353A40]">
+                  Nenhum chat
+                </h3>
+                <p className="text-xs text-[#7A7E83]">
+                  Clique em Novo Chat para começar
+                </p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -190,27 +199,27 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
                     <button
                       onClick={() => router.push(`/chats/${chat.id}`)}
                       className={cn(
-                        "flex w-full items-start gap-3 rounded-xl border border-transparent bg-white p-3 text-left transition-all hover:border-[#D35400]/20 hover:bg-[#F5F0E6] hover:shadow-sm",
-                        canDelete ? "pr-12" : "pr-3"
+                        "flex w-full items-start gap-3 rounded-xl border border-transparent bg-white p-3 text-left transition-all hover:border-[#2F80ED]/20 hover:bg-[#F5F6FA] hover:shadow-sm",
+                        canDelete ? "pr-12" : "pr-3",
                       )}
                     >
                       {/* Avatar */}
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2C3E50]/10 text-[#2C3E50] transition-colors group-hover:bg-white">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2F80ED]/10 text-[#2F80ED] transition-colors group-hover:bg-white">
                         <MessageSquare className="h-5 w-5" />
                       </div>
 
                       {/* Texto */}
                       <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <div className="flex items-center justify-between">
-                          <span className="truncate text-sm font-semibold text-[#2D3436]">
+                          <span className="truncate text-sm font-semibold text-[#353A40]">
                             Chat #{chat.id.slice(-4)}
                           </span>
-                          <div className="flex items-center gap-1 text-[10px] text-[#95A5A6]">
+                          <div className="flex items-center gap-1 text-[10px] text-[#7A7E83]">
                             <Calendar className="h-3 w-3" />
                             {formatDate(chat.createdAt)}
                           </div>
                         </div>
-                        <p className="truncate text-xs text-[#95A5A6] group-hover:text-[#2D3436]/80">
+                        <p className="truncate text-xs text-[#7A7E83] group-hover:text-[#353A40]/80">
                           {getLastMessagePreview(chat)}
                         </p>
                       </div>
@@ -218,7 +227,10 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
                       {/* Contador de Mensagens */}
                       {(chat.messages?.length || 0) > 0 && (
                         <div className="flex h-full items-center">
-                          <Badge variant="secondary" className="bg-[#2C3E50] text-white hover:bg-[#2C3E50]/90">
+                          <Badge
+                            variant="secondary"
+                            className="bg-[#2F80ED] text-white hover:bg-[#1E5CB8]"
+                          >
                             {chat.messages?.length}
                           </Badge>
                         </div>
@@ -233,7 +245,7 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-[#95A5A6] hover:bg-red-50 hover:text-red-600"
+                              className="h-8 w-8 text-[#7A7E83] hover:bg-red-50 hover:text-red-600"
                               onClick={handleDeleteClick}
                             >
                               {deletingId === chat.id ? (
@@ -243,20 +255,23 @@ export function ChatList({ companyId, userRole }: ChatListProps) {
                               )}
                             </Button>
                           </AlertDialogTrigger>
-                          <AlertDialogContent className="border-[#95A5A6]/20 bg-[#F5F0E6]">
+                          <AlertDialogContent className="border border-[#E2E8F0] bg-white shadow-lg rounded-xl">
                             <AlertDialogHeader>
-                              <AlertDialogTitle className="text-[#2D3436]">Excluir atendimento?</AlertDialogTitle>
-                              <AlertDialogDescription className="text-[#95A5A6]">
-                                Esta ação não pode ser desfeita. Todo o histórico será apagado.
+                              <AlertDialogTitle className="text-[#353A40]">
+                                Excluir atendimento?
+                              </AlertDialogTitle>
+                              <AlertDialogDescription className="text-[#7A7E83]">
+                                Esta ação não pode ser desfeita. Todo o
+                                histórico será apagado.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel className="border-none text-[#2D3436] hover:bg-[#95A5A6]/10">
+                              <AlertDialogCancel className="border border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]">
                                 Cancelar
                               </AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => confirmDelete(chat.id)}
-                                className="bg-red-600 text-white hover:bg-red-700"
+                                className="bg-red-500 text-white hover:bg-red-600"
                               >
                                 Sim, excluir
                               </AlertDialogAction>

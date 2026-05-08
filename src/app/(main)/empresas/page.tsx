@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query"; // 🔥 IMPORTA
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Building2,
@@ -53,7 +53,6 @@ import {
 
 import { GenericTable, type Column } from "@/components/generic-table";
 import { PageHeader } from "@/components/page-header";
-// 🔥 IMPORT DO NOVO COMPONENTE DE MODAL
 import { CompanyFormModal } from "@/components/modals/company-form-modal";
 
 // --- Types ---
@@ -79,6 +78,7 @@ const cleanMask = (value: string | undefined) => {
   if (!value) return "";
   return value.replace(/\D/g, "");
 };
+
 const formatPhone = (v: string | undefined) => {
   if (!v) return "";
   let r = v.replace(/\D/g, "");
@@ -89,6 +89,7 @@ const formatPhone = (v: string | undefined) => {
   else if (r.length > 2) return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
   return r.replace(/^(\d*)/, "($1");
 };
+
 const formatCNPJ = (v: string | undefined) => {
   if (!v) return "";
   return v
@@ -103,7 +104,7 @@ export default function CompanyManagementPage() {
   const router = useRouter();
   const { showError } = useError();
   const { user, loading: authLoading } = useAuth();
-  const queryClient = useQueryClient(); // 🔥 ADICIONAR
+  const queryClient = useQueryClient();
 
   // Estados
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -181,11 +182,9 @@ export default function CompanyManagementPage() {
     setEditingCompany(null);
   };
 
-  // CompanyManagementPage - onSubmit ajustado e completo
   const onSubmit = async (values: any) => {
     setIsFormLoading(true);
 
-    // 1. Construção do Payload Limpo
     const payload: any = {
       name: values.name,
       email: values.email,
@@ -196,31 +195,21 @@ export default function CompanyManagementPage() {
       bairro: values.bairro,
       cidade: values.cidade,
       estado: values.estado,
-      // Garante que o notificationDays seja enviado como número
       notificationDays: Number(values.notificationDays),
     };
 
-    // Campos opcionais (envia null se estiver vazio para limpar no banco)
     payload.complemento = values.complemento?.trim() || null;
     payload.ramoAtividade = values.ramoAtividade?.trim() || null;
 
-    // 2. Lógica de CNPJ (Evita erro de duplicidade se não alterado)
     const cnpjClean = cleanMask(values.cnpj);
     if (editingCompany) {
       const originalCnpj = cleanMask(editingCompany.cnpj);
       if (cnpjClean && cnpjClean.length === 14 && cnpjClean !== originalCnpj) {
         payload.cnpj = cnpjClean;
-      } else {
-        console.log(
-          "🔍 [CompanyManagementPage] CNPJ idêntico ou inválido, não enviando no payload",
-        );
-        delete payload.cnpj; // Garante que não vá string vazia
       }
     } else if (cnpjClean && cnpjClean.length === 14) {
       payload.cnpj = cnpjClean;
     }
-
-    console.log("📦 [CompanyManagementPage] Payload final enviado:", payload);
 
     try {
       if (editingCompany) {
@@ -229,20 +218,10 @@ export default function CompanyManagementPage() {
           payload,
         );
 
-        console.log("✅ Resposta real do Banco de Dados:", response.data);
-        // Se o log abaixo mostrar notificationDays: 2, o erro é 100% no seu Backend
-        if (response.data.notificationDays !== payload.notificationDays) {
-          console.error("❌ ERRO: O banco não persistiu o valor correto!");
-        }
-        console.log("📡 [CompanyManagementPage] Resposta API:", response.data);
-
-        // 🔥 PASSO CRUCIAL 1: Invalida o cache do React Query para o Hook useCompanySettings
-        // Isso força o 'NotificationTab' a buscar o valor novo (ex: 3)
         await queryClient.invalidateQueries({
           queryKey: ["company-settings", editingCompany.id],
         });
 
-        // 🔥 PASSO CRUCIAL 2: Dispara o evento customizado que seu hook useCompanySettings está escutando
         window.dispatchEvent(
           new CustomEvent("companyUpdated", {
             detail: { companyId: editingCompany.id, updatedAt: new Date() },
@@ -250,11 +229,8 @@ export default function CompanyManagementPage() {
         );
 
         toast.success("Empresa atualizada com sucesso!");
-
-        // Atualiza a listagem da tabela
         await fetchCompanies();
       } else {
-        // CRIAÇÃO
         const response = await api.post<Company>("/companies", payload);
         toast.success("Empresa criada com sucesso!");
         setCompanies((prev) => [response.data, ...prev]);
@@ -280,7 +256,9 @@ export default function CompanyManagementPage() {
     const newApiStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     try {
       await api.patch(`/companies/${id}`, { status: newApiStatus });
-      toast.success(`Status alterado para ${newApiStatus}`);
+      toast.success(
+        `Status alterado para ${newApiStatus === "ACTIVE" ? "Ativo" : "Inativo"}`,
+      );
       setCompanies((prev) =>
         prev.map((c) => (c.id === id ? { ...c, status: newApiStatus } : c)),
       );
@@ -311,8 +289,8 @@ export default function CompanyManagementPage() {
         className: "w-[280px]",
         cell: (company) => (
           <div className="flex flex-col">
-            <span className="font-medium text-[#2D3436]">{company.name}</span>
-            <span className="text-xs text-[#95A5A6] flex items-center gap-1 mt-0.5">
+            <span className="font-semibold text-[#353A40]">{company.name}</span>
+            <span className="text-xs text-[#7A7E83] flex items-center gap-1 mt-0.5">
               <Building2 className="h-3 w-3" /> {formatCNPJ(company.cnpj)}
             </span>
           </div>
@@ -321,9 +299,9 @@ export default function CompanyManagementPage() {
       {
         header: "Contato",
         cell: (company) => (
-          <div className="text-sm text-[#2C3E50] flex flex-col gap-1">
+          <div className="text-sm text-[#353A40] flex flex-col gap-1">
             <span className="flex items-center gap-1">✉️ {company.email}</span>
-            <span className="flex items-center gap-1 text-[#95A5A6]">
+            <span className="flex items-center gap-1 text-[#7A7E83]">
               <Phone className="h-3 w-3" /> {formatPhone(company.telefone)}
             </span>
           </div>
@@ -332,8 +310,8 @@ export default function CompanyManagementPage() {
       {
         header: "Localização",
         cell: (company) => (
-          <span className="text-sm text-[#2C3E50] flex items-center gap-1">
-            <MapPin className="h-3 w-3 text-[#D35400]" /> {company.cidade}/
+          <span className="text-sm text-[#353A40] flex items-center gap-1">
+            <MapPin className="h-3 w-3 text-[#2F80ED]" /> {company.cidade}/
             {company.estado}
           </span>
         ),
@@ -363,29 +341,38 @@ export default function CompanyManagementPage() {
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                className="h-8 w-8 p-0 text-[#2C3E50] hover:text-[#D35400] hover:bg-transparent"
+                className="h-8 w-8 p-0 text-[#7A7E83] hover:text-[#2F80ED] hover:bg-transparent"
               >
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Opções</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => handleOpenEdit(company)}>
-                <Edit className="mr-2 h-4 w-4" /> Editar
+            <DropdownMenuContent
+              align="end"
+              className="bg-white border border-[#E2E8F0] rounded-xl shadow-lg"
+            >
+              <DropdownMenuLabel className="text-[#353A40]">
+                Opções
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => handleOpenEdit(company)}
+                className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
+              >
+                <Edit className="mr-2 h-4 w-4 text-[#2F80ED]" /> Editar
               </DropdownMenuItem>
               {isMaster && (
                 <DropdownMenuItem
                   onClick={() => handleToggleStatus(company.id, company.status)}
+                  className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
                 >
-                  <Power className="mr-2 h-4 w-4" />{" "}
+                  <Power className="mr-2 h-4 w-4 text-[#2F80ED]" />{" "}
                   {company.status === "ACTIVE" ? "Desativar" : "Ativar"}
                 </DropdownMenuItem>
               )}
               {isMaster && (
                 <>
-                  <DropdownMenuSeparator />
+                  <DropdownMenuSeparator className="bg-[#E2E8F0]" />
                   <DropdownMenuItem
-                    className="text-red-600 focus:text-red-600"
+                    className="text-red-600 focus:text-red-600 cursor-pointer hover:bg-red-50"
                     onClick={() => {
                       setDeleteId(company.id);
                       setIsDeleteOpen(true);
@@ -405,14 +392,14 @@ export default function CompanyManagementPage() {
 
   if (authLoading)
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#F5F0E6]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#D35400]" />
+      <div className="flex h-screen w-full items-center justify-center bg-[#F5F6FA]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#2F80ED]" />
       </div>
     );
   if (!user || (user.role !== "MASTER" && user.role !== "ADMIN")) return null;
 
   return (
-    <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8 font-sans">
+    <div className="min-h-screen w-full bg-[#F5F6FA] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <PageHeader
@@ -429,13 +416,13 @@ export default function CompanyManagementPage() {
                   <Button
                     onClick={handleOpenCreate}
                     size="icon"
-                    className="bg-[#D35400] hover:bg-[#D35400]/90 text-white shadow-md transition-transform hover:scale-105 rounded-full h-10 w-10"
+                    className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white shadow-sm transition-transform hover:scale-105 rounded-full h-10 w-10"
                   >
                     <Plus className="h-5 w-5" />
                     <span className="sr-only">Criar nova empresa</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
+                <TooltipContent className="bg-[#353A40] text-white">
                   <p>Criar nova empresa</p>
                 </TooltipContent>
               </Tooltip>
@@ -460,30 +447,30 @@ export default function CompanyManagementPage() {
           }}
         />
 
-        {/* 🔥 COMPONENTE DE MODAL (ISOLADO) */}
+        {/* Modal */}
         <CompanyFormModal
           isOpen={isModalOpen}
           onClose={handleCloseModal}
-          initialData={editingCompany as any} // Cast para garantir compatibilidade se a interface do modal for mais estrita
+          initialData={editingCompany as any}
           onSubmit={onSubmit}
           isLoading={isFormLoading}
         />
 
         {/* Alerta de Exclusão */}
         <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-          <AlertDialogContent>
+          <AlertDialogContent className="bg-white border border-[#E2E8F0] rounded-xl">
             <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-[#D35400]">
-                <AlertTriangle className="h-5 w-5" /> Atenção
+              <AlertDialogTitle className="flex items-center gap-2 text-[#353A40]">
+                <AlertTriangle className="h-5 w-5 text-red-500" /> Atenção
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-[#2D3436]">
+              <AlertDialogDescription className="text-[#7A7E83]">
                 Tem certeza que deseja excluir esta empresa? Ação irreversível.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel
                 disabled={isDeleting}
-                className="text-[#2D3436]"
+                className="text-[#353A40] border-[#CBD5E1] hover:bg-[#F5F6FA]"
               >
                 Cancelar
               </AlertDialogCancel>
@@ -493,7 +480,7 @@ export default function CompanyManagementPage() {
                   handleDelete();
                 }}
                 disabled={isDeleting}
-                className="bg-[#D35400] hover:bg-[#D35400]/90 text-white"
+                className="bg-red-500 hover:bg-red-600 text-white"
               >
                 {isDeleting ? "Excluindo..." : "Sim, excluir"}
               </AlertDialogAction>

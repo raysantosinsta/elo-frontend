@@ -64,7 +64,7 @@ const ENTITIES = [
 ];
 
 const ACTIONS = [
-  { value: "all", label: "Todas" },
+  { value: "all", label: "Todas", icon: null },
   { value: "CREATE", label: "Criação", icon: PlusCircle },
   { value: "UPDATE", label: "Atualização", icon: Pencil },
   { value: "DELETE", label: "Exclusão", icon: Trash2 },
@@ -113,7 +113,6 @@ export function AuditPage() {
         pagination.page,
         pagination.limit,
       );
-      console.log("📦 Dados recebidos da API:", response);
       setLogs(response.data);
       setPagination(response.meta);
     } catch (error) {
@@ -158,31 +157,31 @@ export function AuditPage() {
 
   const getActionColor = (action: string) => {
     const colors: Record<string, string> = {
-      CREATE: "bg-emerald-100 text-emerald-800 border-emerald-200",
-      UPDATE: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      DELETE: "bg-red-100 text-red-800 border-red-200",
-      MOVE: "bg-blue-100 text-blue-800 border-blue-200",
-      ASSIGN: "bg-purple-100 text-purple-800 border-purple-200",
-      COMPLETE: "bg-green-100 text-green-800 border-green-200",
-      CREATE_ITEM: "bg-emerald-100 text-emerald-800 border-emerald-200",
-      UPDATE_ITEM: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      DELETE_ITEM: "bg-red-100 text-red-800 border-red-200",
-      MOVE_ITEM: "bg-blue-100 text-blue-800 border-blue-200",
-      ADVANCE_ITEM: "bg-indigo-100 text-indigo-800 border-indigo-200",
-      CREATE_STAGE: "bg-emerald-100 text-emerald-800 border-emerald-200",
-      UPDATE_STAGE: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      DELETE_STAGE: "bg-red-100 text-red-800 border-red-200",
-      ADD_IMAGE: "bg-pink-100 text-pink-800 border-pink-200",
-      ADD_AUDIO: "bg-pink-100 text-pink-800 border-pink-200",
-      ADD_VIDEO: "bg-pink-100 text-pink-800 border-pink-200",
-      DELETE_IMAGE: "bg-red-100 text-red-800 border-red-200",
-      DELETE_AUDIO: "bg-red-100 text-red-800 border-red-200",
-      DELETE_VIDEO: "bg-red-100 text-red-800 border-red-200",
-      APPLY_TEMPLATE: "bg-orange-100 text-orange-800 border-orange-200",
-      SAVE_TEMPLATE: "bg-teal-100 text-teal-800 border-teal-200",
-      DELETE_TEMPLATE: "bg-red-100 text-red-800 border-red-200",
+      CREATE: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      UPDATE: "bg-amber-50 text-amber-700 border-amber-200",
+      DELETE: "bg-red-50 text-red-700 border-red-200",
+      MOVE: "bg-blue-50 text-blue-700 border-blue-200",
+      ASSIGN: "bg-purple-50 text-purple-700 border-purple-200",
+      COMPLETE: "bg-green-50 text-green-700 border-green-200",
+      CREATE_ITEM: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      UPDATE_ITEM: "bg-amber-50 text-amber-700 border-amber-200",
+      DELETE_ITEM: "bg-red-50 text-red-700 border-red-200",
+      MOVE_ITEM: "bg-blue-50 text-blue-700 border-blue-200",
+      ADVANCE_ITEM: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      CREATE_STAGE: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      UPDATE_STAGE: "bg-amber-50 text-amber-700 border-amber-200",
+      DELETE_STAGE: "bg-red-50 text-red-700 border-red-200",
+      ADD_IMAGE: "bg-pink-50 text-pink-700 border-pink-200",
+      ADD_AUDIO: "bg-pink-50 text-pink-700 border-pink-200",
+      ADD_VIDEO: "bg-pink-50 text-pink-700 border-pink-200",
+      DELETE_IMAGE: "bg-red-50 text-red-700 border-red-200",
+      DELETE_AUDIO: "bg-red-50 text-red-700 border-red-200",
+      DELETE_VIDEO: "bg-red-50 text-red-700 border-red-200",
+      APPLY_TEMPLATE: "bg-orange-50 text-orange-700 border-orange-200",
+      SAVE_TEMPLATE: "bg-teal-50 text-teal-700 border-teal-200",
+      DELETE_TEMPLATE: "bg-red-50 text-red-700 border-red-200",
     };
-    return colors[action] || "bg-gray-100 text-gray-800 border-gray-200";
+    return colors[action] || "bg-gray-50 text-gray-700 border-gray-200";
   };
 
   const renderLogDetails = (log: AuditLog) => {
@@ -200,16 +199,16 @@ export function AuditPage() {
       return (
         <div className="space-y-1">
           <div className="text-sm">
-            <span className="text-yellow-600 font-medium">
+            <span className="text-amber-600 font-medium">
               {log.newData.name || "Fluxo atualizado"}
             </span>
           </div>
           {log.oldData && log.oldData.name && log.newData.name && (
-            <div className="flex items-center gap-1 text-xs text-gray-500">
+            <div className="flex items-center gap-1 text-xs text-[#7A7E83]">
               <span className="line-through text-red-400">
                 {log.oldData.name}
               </span>
-              <ArrowRight className="w-3 h-3 text-gray-400" />
+              <ArrowRight className="w-3 h-3 text-[#7A7E83]" />
               <span className="text-green-500">{log.newData.name}</span>
             </div>
           )}
@@ -231,16 +230,16 @@ export function AuditPage() {
       return (
         <div className="space-y-1">
           <div className="text-sm">
-            <span className="text-yellow-600 font-medium">
+            <span className="text-amber-600 font-medium">
               {log.newData.title || "Item atualizado"}
             </span>
           </div>
           {log.oldData && log.oldData.title && log.newData.title && (
-            <div className="flex items-center gap-1 text-xs text-gray-500">
+            <div className="flex items-center gap-1 text-xs text-[#7A7E83]">
               <span className="line-through text-red-400">
                 {log.oldData.title}
               </span>
-              <ArrowRight className="w-3 h-3 text-gray-400" />
+              <ArrowRight className="w-3 h-3 text-[#7A7E83]" />
               <span className="text-green-500">{log.newData.title}</span>
             </div>
           )}
@@ -275,13 +274,13 @@ export function AuditPage() {
             <span className="text-red-500 font-medium">
               {log.metadata.fromStageName || "?"}
             </span>
-            <Move className="w-3 h-3 text-gray-400" />
+            <Move className="w-3 h-3 text-[#7A7E83]" />
             <span className="text-green-500 font-medium">
               {log.metadata.toStageName || "?"}
             </span>
           </div>
           {log.metadata.itemTitle && (
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-[#7A7E83]">
               Item: {log.metadata.itemTitle}
             </div>
           )}
@@ -331,25 +330,25 @@ export function AuditPage() {
     // Status
     if (value === "PENDENTE")
       return (
-        <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-200">
+        <Badge className="bg-yellow-50 text-yellow-700 border-yellow-200">
           📋 Pendente
         </Badge>
       );
     if (value === "EM_ANDAMENTO")
       return (
-        <Badge className="bg-blue-500/10 text-blue-700 border-blue-200">
+        <Badge className="bg-blue-50 text-blue-700 border-blue-200">
           ⚙️ Em Andamento
         </Badge>
       );
     if (value === "CONCLUIDO")
       return (
-        <Badge className="bg-green-500/10 text-green-700 border-green-200">
+        <Badge className="bg-green-50 text-green-700 border-green-200">
           ✅ Concluído
         </Badge>
       );
     if (value === "CANCELADO")
       return (
-        <Badge className="bg-red-500/10 text-red-700 border-red-200">
+        <Badge className="bg-red-50 text-red-700 border-red-200">
           ❌ Cancelado
         </Badge>
       );
@@ -363,7 +362,7 @@ export function AuditPage() {
       return value;
     }
 
-    // UUIDs (mostrar apenas os primeiros 8 caracteres)
+    // UUIDs
     if (
       typeof value === "string" &&
       value.match(
@@ -394,13 +393,23 @@ export function AuditPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="min-h-screen bg-[#F5F6FA] p-6 space-y-6 font-sans">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Auditoria do Sistema
-        </h1>
-        <Button variant="outline" onClick={fetchLogs} disabled={loading}>
+        <div>
+          <h1 className="text-2xl font-extrabold text-[#353A40]">
+            Auditoria do Sistema
+          </h1>
+          <p className="text-sm text-[#7A7E83] mt-1">
+            Histórico completo de todas as ações realizadas no sistema
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={fetchLogs}
+          disabled={loading}
+          className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+        >
           <RefreshCw
             className={cn("w-4 h-4 mr-2", loading && "animate-spin")}
           />
@@ -409,11 +418,11 @@ export function AuditPage() {
       </div>
 
       {/* Filtros */}
-      <Card>
+      <Card className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm">
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">
+              <label className="text-xs font-semibold uppercase tracking-wider text-[#7A7E83] mb-1 block">
                 Entidade
               </label>
               <Select
@@ -425,7 +434,7 @@ export function AuditPage() {
                   })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="bg-white border-[#CBD5E1]">
                   <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
@@ -439,7 +448,7 @@ export function AuditPage() {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">
+              <label className="text-xs font-semibold uppercase tracking-wider text-[#7A7E83] mb-1 block">
                 Ação
               </label>
               <Select
@@ -451,7 +460,7 @@ export function AuditPage() {
                   })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="bg-white border-[#CBD5E1]">
                   <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
@@ -465,7 +474,7 @@ export function AuditPage() {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">
+              <label className="text-xs font-semibold uppercase tracking-wider text-[#7A7E83] mb-1 block">
                 Data Inicial
               </label>
               <Input
@@ -477,11 +486,12 @@ export function AuditPage() {
                     startDate: e.target.value || undefined,
                   })
                 }
+                className="bg-white border-[#CBD5E1] focus:ring-[#2F80ED]"
               />
             </div>
 
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">
+              <label className="text-xs font-semibold uppercase tracking-wider text-[#7A7E83] mb-1 block">
                 Data Final
               </label>
               <Input
@@ -493,15 +503,23 @@ export function AuditPage() {
                     endDate: e.target.value || undefined,
                   })
                 }
+                className="bg-white border-[#CBD5E1] focus:ring-[#2F80ED]"
               />
             </div>
 
             <div className="flex items-end gap-2">
-              <Button onClick={applyFilters} className="flex-1">
+              <Button
+                onClick={applyFilters}
+                className="flex-1 bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
+              >
                 <Filter className="w-4 h-4 mr-2" />
                 Filtrar
               </Button>
-              <Button variant="outline" onClick={clearFilters}>
+              <Button
+                variant="outline"
+                onClick={clearFilters}
+                className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+              >
                 <X className="w-4 h-4" />
               </Button>
             </div>
@@ -510,16 +528,26 @@ export function AuditPage() {
       </Card>
 
       {/* Tabela de Logs */}
-      <Card>
+      <Card className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-[180px]">Data/Hora</TableHead>
-                <TableHead className="w-[200px]">Usuário</TableHead>
-                <TableHead className="w-[120px]">Ação</TableHead>
-                <TableHead className="w-[120px]">Entidade</TableHead>
-                <TableHead>Detalhes</TableHead>
+              <TableRow className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                <TableHead className="w-[180px] text-[#353A40] font-bold">
+                  Data/Hora
+                </TableHead>
+                <TableHead className="w-[200px] text-[#353A40] font-bold">
+                  Usuário
+                </TableHead>
+                <TableHead className="w-[120px] text-[#353A40] font-bold">
+                  Ação
+                </TableHead>
+                <TableHead className="w-[120px] text-[#353A40] font-bold">
+                  Entidade
+                </TableHead>
+                <TableHead className="text-[#353A40] font-bold">
+                  Detalhes
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -527,8 +555,8 @@ export function AuditPage() {
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-20">
                     <div className="flex flex-col items-center gap-2">
-                      <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                      <p className="text-sm text-gray-500">Carregando...</p>
+                      <Loader2 className="w-8 h-8 animate-spin text-[#2F80ED]" />
+                      <p className="text-sm text-[#7A7E83]">Carregando...</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -536,14 +564,14 @@ export function AuditPage() {
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-20">
                     <div className="flex flex-col items-center gap-2">
-                      <Search className="w-8 h-8 text-gray-400" />
-                      <p className="text-sm text-gray-500">
+                      <Search className="w-8 h-8 text-[#7A7E83]" />
+                      <p className="text-sm text-[#7A7E83]">
                         Nenhum registro encontrado
                       </p>
                       <Button
                         variant="link"
                         onClick={clearFilters}
-                        className="text-sm"
+                        className="text-sm text-[#2F80ED]"
                       >
                         Limpar filtros
                       </Button>
@@ -554,25 +582,25 @@ export function AuditPage() {
                 logs.map((log) => (
                   <TableRow
                     key={log.id}
-                    className="cursor-pointer hover:bg-gray-50 group"
+                    className="cursor-pointer hover:bg-[#F5F6FA] transition-colors border-b border-[#E2E8F0] group"
                     onClick={() => {
                       setSelectedLog(log);
                       setShowDetails(true);
                     }}
                   >
-                    <TableCell className="whitespace-nowrap font-mono text-xs">
+                    <TableCell className="whitespace-nowrap font-mono text-xs text-[#7A7E83]">
                       {formatDate(log.createdAt)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                          <User className="w-4 h-4 text-gray-500" />
+                        <div className="w-8 h-8 bg-[#F5F6FA] rounded-full flex items-center justify-center">
+                          <User className="w-4 h-4 text-[#7A7E83]" />
                         </div>
                         <div>
-                          <div className="font-medium text-sm">
+                          <div className="font-medium text-sm text-[#353A40]">
                             {log.user.name}
                           </div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-[#7A7E83]">
                             {log.user.email}
                           </div>
                         </div>
@@ -581,7 +609,7 @@ export function AuditPage() {
                     <TableCell>
                       <Badge
                         className={cn(
-                          "gap-1 whitespace-nowrap",
+                          "gap-1 whitespace-nowrap border-0",
                           getActionColor(log.action),
                         )}
                       >
@@ -592,10 +620,13 @@ export function AuditPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono text-xs">
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-xs border-[#CBD5E1] text-[#7A7E83]"
+                      >
                         {log.entity}
                       </Badge>
-                      <div className="text-xs text-gray-400 mt-1 font-mono">
+                      <div className="text-xs text-[#7A7E83] mt-1 font-mono">
                         {log.entityId.substring(0, 8)}...
                       </div>
                     </TableCell>
@@ -603,8 +634,8 @@ export function AuditPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex-1">{renderLogDetails(log)}</div>
                         <div className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                            <span className="w-1 h-1 bg-blue-600 rounded-full animate-pulse"></span>
+                          <div className="flex items-center gap-1 text-xs text-[#2F80ED] bg-[#2F80ED]/10 px-2 py-1 rounded-full">
+                            <span className="w-1 h-1 bg-[#2F80ED] rounded-full animate-pulse"></span>
                             <span className="text-[10px] font-medium">VER</span>
                           </div>
                         </div>
@@ -621,7 +652,7 @@ export function AuditPage() {
       {/* Paginação */}
       {pagination.pages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-[#7A7E83]">
             Mostrando {(pagination.page - 1) * pagination.limit + 1} a{" "}
             {Math.min(pagination.page * pagination.limit, pagination.total)} de{" "}
             {pagination.total} registros
@@ -634,6 +665,7 @@ export function AuditPage() {
                 setPagination({ ...pagination, page: pagination.page - 1 })
               }
               disabled={pagination.page === 1}
+              className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
             >
               Anterior
             </Button>
@@ -644,6 +676,7 @@ export function AuditPage() {
                 setPagination({ ...pagination, page: pagination.page + 1 })
               }
               disabled={pagination.page === pagination.pages}
+              className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
             >
               Próxima
             </Button>
@@ -656,14 +689,14 @@ export function AuditPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
             {/* Header */}
-            <div className="sticky top-0 bg-gradient-to-r from-gray-50 to-white border-b px-6 py-4">
+            <div className="sticky top-0 bg-white border-b border-[#E2E8F0] px-6 py-4">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <div
                     className={cn(
                       "p-2 rounded-lg",
                       selectedLog.action === "CREATE" && "bg-emerald-100",
-                      selectedLog.action === "UPDATE" && "bg-yellow-100",
+                      selectedLog.action === "UPDATE" && "bg-amber-100",
                       selectedLog.action === "DELETE" && "bg-red-100",
                       !["CREATE", "UPDATE", "DELETE"].includes(
                         selectedLog.action,
@@ -674,7 +707,7 @@ export function AuditPage() {
                       <PlusCircle className="w-5 h-5 text-emerald-600" />
                     )}
                     {selectedLog.action === "UPDATE" && (
-                      <Pencil className="w-5 h-5 text-yellow-600" />
+                      <Pencil className="w-5 h-5 text-amber-600" />
                     )}
                     {selectedLog.action === "DELETE" && (
                       <Trash2 className="w-5 h-5 text-red-600" />
@@ -687,10 +720,10 @@ export function AuditPage() {
                     ) && <AlertCircle className="w-5 h-5 text-gray-600" />}
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">
+                    <h2 className="text-xl font-bold text-[#353A40]">
                       Detalhes da Ação
                     </h2>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-[#7A7E83]">
                       Informações completas da operação
                     </p>
                   </div>
@@ -699,7 +732,7 @@ export function AuditPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowDetails(false)}
-                  className="hover:bg-gray-100 rounded-full w-8 h-8 p-0"
+                  className="hover:bg-[#F5F6FA] rounded-full w-8 h-8 p-0 text-[#7A7E83]"
                 >
                   <X className="w-4 h-4" />
                 </Button>
@@ -709,10 +742,10 @@ export function AuditPage() {
             <div className="p-6 space-y-6">
               {/* Informações básicas em cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-start gap-3 p-3 bg-[#F5F6FA] rounded-lg">
                   <div className="p-2 bg-white rounded-lg shadow-sm">
                     <svg
-                      className="w-5 h-5 text-gray-500"
+                      className="w-5 h-5 text-[#7A7E83]"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -726,36 +759,36 @@ export function AuditPage() {
                     </svg>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide">
+                    <p className="text-xs text-[#7A7E83] uppercase tracking-wide">
                       Data/Hora
                     </p>
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-[#353A40]">
                       {formatDate(selectedLog.createdAt)}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-start gap-3 p-3 bg-[#F5F6FA] rounded-lg">
                   <div className="p-2 bg-white rounded-lg shadow-sm">
-                    <User className="w-5 h-5 text-gray-500" />
+                    <User className="w-5 h-5 text-[#7A7E83]" />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide">
+                    <p className="text-xs text-[#7A7E83] uppercase tracking-wide">
                       Usuário
                     </p>
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-[#353A40]">
                       {selectedLog.user.name}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-[#7A7E83]">
                       {selectedLog.user.email}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-start gap-3 p-3 bg-[#F5F6FA] rounded-lg">
                   <div className="p-2 bg-white rounded-lg shadow-sm">
                     <svg
-                      className="w-5 h-5 text-gray-500"
+                      className="w-5 h-5 text-[#7A7E83]"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -769,11 +802,14 @@ export function AuditPage() {
                     </svg>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide">
+                    <p className="text-xs text-[#7A7E83] uppercase tracking-wide">
                       Ação
                     </p>
                     <Badge
-                      className={cn("mt-1", getActionColor(selectedLog.action))}
+                      className={cn(
+                        "mt-1 border-0",
+                        getActionColor(selectedLog.action),
+                      )}
                     >
                       {getActionIcon(selectedLog.action)}
                       <span className="ml-1">
@@ -783,10 +819,10 @@ export function AuditPage() {
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-start gap-3 p-3 bg-[#F5F6FA] rounded-lg">
                   <div className="p-2 bg-white rounded-lg shadow-sm">
                     <svg
-                      className="w-5 h-5 text-gray-500"
+                      className="w-5 h-5 text-[#7A7E83]"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -800,13 +836,13 @@ export function AuditPage() {
                     </svg>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide">
+                    <p className="text-xs text-[#7A7E83] uppercase tracking-wide">
                       Entidade
                     </p>
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-[#353A40]">
                       {selectedLog.entity}
                     </p>
-                    <p className="text-xs font-mono text-gray-400 mt-1">
+                    <p className="text-xs font-mono text-[#7A7E83] mt-1">
                       ID: {selectedLog.entityId}
                     </p>
                   </div>
@@ -814,9 +850,9 @@ export function AuditPage() {
               </div>
 
               {/* Separador */}
-              <div className="border-t border-gray-200 my-4"></div>
+              <div className="border-t border-[#E2E8F0] my-4"></div>
 
-              {/* Dados Antigos - Formatado (sem JSON) */}
+              {/* Dados Antigos - Formatado */}
               {selectedLog.oldData &&
                 Object.keys(selectedLog.oldData).length > 0 && (
                   <div className="space-y-3">
@@ -827,7 +863,7 @@ export function AuditPage() {
                       <h3 className="text-sm font-semibold text-red-700">
                         Dados Anteriores
                       </h3>
-                      <span className="text-xs text-gray-400 ml-auto">
+                      <span className="text-xs text-[#7A7E83] ml-auto">
                         Antes da alteração
                       </span>
                     </div>
@@ -865,7 +901,7 @@ export function AuditPage() {
                   </div>
                 )}
 
-              {/* Dados Novos - Formatado (sem JSON) - Principal */}
+              {/* Dados Novos - Formatado */}
               {selectedLog.newData &&
                 Object.keys(selectedLog.newData).length > 0 && (
                   <div className="space-y-4">
@@ -876,14 +912,12 @@ export function AuditPage() {
                       <h3 className="text-sm font-semibold text-green-700">
                         Dados do Registro
                       </h3>
-                      <span className="text-xs text-gray-400 ml-auto">
+                      <span className="text-xs text-[#7A7E83] ml-auto">
                         Informações salvas
                       </span>
                     </div>
 
-                    {/* Cards principais em destaque */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Título em destaque */}
                       {(selectedLog.newData.title ||
                         selectedLog.newData.name) && (
                         <div className="col-span-full bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
@@ -902,56 +936,50 @@ export function AuditPage() {
                         </div>
                       )}
 
-                      {/* Status */}
                       {selectedLog.newData.status && (
-                        <div className="bg-white rounded-lg p-3 border border-gray-200">
-                          <p className="text-xs text-gray-500 mb-1">Status</p>
+                        <div className="bg-white rounded-lg p-3 border border-[#E2E8F0]">
+                          <p className="text-xs text-[#7A7E83] mb-1">Status</p>
                           {formatValue(selectedLog.newData.status)}
                         </div>
                       )}
 
-                      {/* Prioridade */}
                       {selectedLog.newData.priority && (
-                        <div className="bg-white rounded-lg p-3 border border-gray-200">
-                          <p className="text-xs text-gray-500 mb-1">
+                        <div className="bg-white rounded-lg p-3 border border-[#E2E8F0]">
+                          <p className="text-xs text-[#7A7E83] mb-1">
                             Prioridade
                           </p>
-                          <p className="font-medium">
+                          <p className="font-medium text-[#353A40]">
                             {formatValue(selectedLog.newData.priority)}
                           </p>
                         </div>
                       )}
 
-                      {/* Quantidade */}
                       {selectedLog.newData.quantity && (
-                        <div className="bg-white rounded-lg p-3 border border-gray-200">
-                          <p className="text-xs text-gray-500 mb-1">
+                        <div className="bg-white rounded-lg p-3 border border-[#E2E8F0]">
+                          <p className="text-xs text-[#7A7E83] mb-1">
                             Quantidade
                           </p>
-                          <p className="text-2xl font-bold text-gray-900">
+                          <p className="text-2xl font-bold text-[#353A40]">
                             {selectedLog.newData.quantity}
                           </p>
                         </div>
                       )}
 
-                      {/* Data de Vencimento */}
                       {selectedLog.newData.dueDate && (
-                        <div className="bg-white rounded-lg p-3 border border-gray-200">
-                          <p className="text-xs text-gray-500 mb-1">
+                        <div className="bg-white rounded-lg p-3 border border-[#E2E8F0]">
+                          <p className="text-xs text-[#7A7E83] mb-1">
                             Data de Vencimento
                           </p>
-                          <p className="text-gray-900">
+                          <p className="text-[#353A40]">
                             {formatValue(selectedLog.newData.dueDate)}
                           </p>
                         </div>
                       )}
                     </div>
 
-                    {/* Outros campos menos importantes */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
                       {Object.entries(selectedLog.newData).map(
                         ([key, value]) => {
-                          // Pular campos já exibidos
                           if (
                             [
                               "title",
@@ -980,12 +1008,12 @@ export function AuditPage() {
                           return (
                             <div
                               key={key}
-                              className="flex justify-between p-2 bg-gray-50 rounded-lg"
+                              className="flex justify-between p-2 bg-[#F5F6FA] rounded-lg"
                             >
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-[#7A7E83]">
                                 {formatFieldName(key)}
                               </span>
-                              <span className="text-xs font-medium text-gray-700">
+                              <span className="text-xs font-medium text-[#353A40]">
                                 {formatValue(value)}
                               </span>
                             </div>
@@ -1051,13 +1079,13 @@ export function AuditPage() {
                 (!selectedLog.metadata ||
                   Object.keys(selectedLog.metadata).length === 0) && (
                   <div className="text-center py-8">
-                    <div className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 rounded-full mb-3">
-                      <AlertCircle className="w-6 h-6 text-gray-400" />
+                    <div className="inline-flex items-center justify-center w-12 h-12 bg-[#F5F6FA] rounded-full mb-3">
+                      <AlertCircle className="w-6 h-6 text-[#7A7E83]" />
                     </div>
-                    <p className="text-gray-500 text-sm">
+                    <p className="text-[#7A7E83] text-sm">
                       Nenhum dado adicional disponível para esta ação
                     </p>
-                    <p className="text-gray-400 text-xs mt-1">
+                    <p className="text-[#7A7E83] text-xs mt-1">
                       Esta é uma ação simples sem dados estruturados
                     </p>
                   </div>
@@ -1065,8 +1093,12 @@ export function AuditPage() {
             </div>
 
             {/* Footer */}
-            <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex justify-end">
-              <Button onClick={() => setShowDetails(false)} variant="outline">
+            <div className="sticky bottom-0 bg-[#F8FAFC] border-t border-[#E2E8F0] px-6 py-4 flex justify-end">
+              <Button
+                onClick={() => setShowDetails(false)}
+                variant="outline"
+                className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+              >
                 Fechar
               </Button>
             </div>

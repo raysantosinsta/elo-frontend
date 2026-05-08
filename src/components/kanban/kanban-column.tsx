@@ -41,7 +41,7 @@ export function KanbanColumn({
   id,
   title,
   count,
-  color = "#2C3E50",
+  color = "#2F80ED",
   onAddClick,
   onAddItem,
   onEditClick,
@@ -77,7 +77,7 @@ export function KanbanColumn({
 
   return (
     <div
-      className={`w-[280px] flex-shrink-0 flex flex-col h-full rounded-lg bg-gray-100/50 border border-gray-200 transition-colors ${className}`}
+      className={`w-[280px] flex-shrink-0 flex flex-col h-full rounded-lg bg-[#F5F6FA] border border-[#E2E8F0] transition-colors ${className}`}
       style={{ height: "100%" }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
@@ -92,7 +92,7 @@ export function KanbanColumn({
             {title}
             <Badge
               variant="secondary"
-              className="bg-white/20 text-white border-0 hover:bg-white/30 text-[9px] h-4 px-1"
+              className="bg-white/20 text-white border-0 hover:bg-white/30 text-[10px] h-4 px-1.5 font-medium"
             >
               {count}
             </Badge>
@@ -124,7 +124,7 @@ export function KanbanColumn({
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10"
+              className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10 rounded-md"
               onClick={handleAdd}
             >
               <Plus className="w-3 h-3" />
@@ -137,21 +137,27 @@ export function KanbanColumn({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10"
+                  className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10 rounded-md"
                 >
                   <MoreVertical className="w-3 h-3" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent
+                align="end"
+                className="bg-white border border-[#E2E8F0] shadow-lg rounded-xl p-1 min-w-[140px]"
+              >
                 {onEditClick && (
-                  <DropdownMenuItem onClick={onEditClick}>
-                    <Edit className="w-3.5 h-3.5 mr-2" /> Editar
+                  <DropdownMenuItem
+                    onClick={onEditClick}
+                    className="text-[#353A40] hover:bg-[#F5F6FA] hover:text-[#353A40] cursor-pointer rounded-md text-xs py-1.5"
+                  >
+                    <Edit className="w-3.5 h-3.5 mr-2 text-[#2F80ED]" /> Editar
                   </DropdownMenuItem>
                 )}
                 {onDeleteClick && (
                   <DropdownMenuItem
-                    className="text-red-600"
                     onClick={onDeleteClick}
+                    className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer rounded-md text-xs py-1.5"
                   >
                     <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir
                   </DropdownMenuItem>
@@ -165,7 +171,7 @@ export function KanbanColumn({
       <div className="p-2 overflow-y-auto flex-1 space-y-2 custom-scrollbar min-h-[100px]">
         {children}
         {React.Children.count(children) === 0 && (
-          <div className="h-16 border-2 border-dashed border-gray-300 rounded flex items-center justify-center text-gray-400 text-xs">
+          <div className="h-16 border-2 border-dashed border-[#CBD5E1] rounded-lg flex items-center justify-center text-[#7A7E83] text-xs bg-white/50">
             Arraste itens para cá
           </div>
         )}

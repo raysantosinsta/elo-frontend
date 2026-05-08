@@ -19,6 +19,7 @@ import {
   Loader2,
   X,
   AlertTriangle,
+  Filter,
 } from "lucide-react";
 
 // --- Infraestrutura ---
@@ -627,49 +628,50 @@ export default function ProductKanban() {
 
       <KanbanFilter>
         <div className="grid gap-1 min-w-[140px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
+          <label className="text-[10px] uppercase font-bold text-[#7A7E83] tracking-wider">
             Filtrar Data Por
           </label>
           <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
+            className="flex h-8 w-full rounded-md border border-[#CBD5E1] bg-white px-3 py-1 text-xs text-[#353A40] focus:outline-none focus:ring-1 focus:ring-[#2F80ED] focus:border-[#2F80ED] cursor-pointer"
             value={filterDateType}
             onChange={(e) => setFilterDateType(e.target.value)}
           >
             <option value="created">Data de Criação</option>
-            <option value="scheduled">Proximo a atrasar</option>
+            <option value="scheduled">Próximo a atrasar</option>
             <option value="due">Prazo Final</option>
           </select>
         </div>
 
         <div className="grid gap-1">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
+          <label className="text-[10px] uppercase font-bold text-[#7A7E83] tracking-wider">
             De
           </label>
           <Input
             type="date"
-            className="h-8 text-xs w-32"
+            className="h-8 text-xs w-32 bg-white border-[#CBD5E1] text-[#353A40] focus:ring-[#2F80ED] focus:border-[#2F80ED]"
             value={filterStartDate}
             onChange={(e) => setFilterStartDate(e.target.value)}
           />
         </div>
+
         <div className="grid gap-1">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
+          <label className="text-[10px] uppercase font-bold text-[#7A7E83] tracking-wider">
             Até
           </label>
           <Input
             type="date"
-            className="h-8 text-xs w-32"
+            className="h-8 text-xs w-32 bg-white border-[#CBD5E1] text-[#353A40] focus:ring-[#2F80ED] focus:border-[#2F80ED]"
             value={filterEndDate}
             onChange={(e) => setFilterEndDate(e.target.value)}
           />
         </div>
 
         <div className="grid gap-1 min-w-[150px]">
-          <label className="text-[10px] uppercase font-bold text-slate-400">
+          <label className="text-[10px] uppercase font-bold text-[#7A7E83] tracking-wider">
             Responsável
           </label>
           <select
-            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
+            className="flex h-8 w-full rounded-md border border-[#CBD5E1] bg-white px-3 py-1 text-xs text-[#353A40] focus:outline-none focus:ring-1 focus:ring-[#2F80ED] focus:border-[#2F80ED] cursor-pointer"
             value={filterAssignedTo}
             onChange={(e) => setFilterAssignedTo(e.target.value)}
           >
@@ -685,11 +687,17 @@ export default function ProductKanban() {
         <div className="flex items-end mt-5">
           <Button
             size="sm"
-            variant={filterOverdue ? "destructive" : "outline"}
-            className={`h-8 text-xs ${filterOverdue ? "bg-red-100 text-red-600 border-red-200 hover:bg-red-200" : ""}`}
+            variant={filterOverdue ? "default" : "outline"}
+            className={`h-8 text-xs ${
+              filterOverdue
+                ? "bg-red-500 hover:bg-red-600 text-white border-none"
+                : "border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+            }`}
             onClick={toggleOverdueFilter}
           >
-            <AlertTriangle className="w-3 h-3 mr-2" />
+            <AlertTriangle
+              className={`w-3 h-3 mr-2 ${filterOverdue ? "text-white" : "text-red-500"}`}
+            />
             Atrasadas
           </Button>
         </div>
@@ -697,8 +705,8 @@ export default function ProductKanban() {
         <div className="flex items-center gap-2 pt-4">
           <Button
             size="sm"
-            variant="outline"
-            className="h-8 text-xs min-w-[100px]"
+            variant="default"
+            className="h-8 text-xs min-w-[100px] bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
             onClick={handleFilterClick}
             disabled={isFiltering}
           >
@@ -708,7 +716,7 @@ export default function ProductKanban() {
               </>
             ) : (
               <>
-                <FilterIcon className="w-3 h-3 mr-2" /> Filtrar
+                <Filter className="w-3 h-3 mr-2" /> Filtrar
               </>
             )}
           </Button>
@@ -716,7 +724,7 @@ export default function ProductKanban() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+            className="h-8 w-8 p-0 text-[#7A7E83] hover:text-red-500 hover:bg-red-50"
             onClick={handleClearFilters}
             title="Limpar Filtros"
             disabled={isFiltering}

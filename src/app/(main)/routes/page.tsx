@@ -101,10 +101,10 @@ interface Route {
   totalDurationSeconds?: number;
 }
 
-// ─── Paleta alinhada ──────────────────────────────────────────────────────────
+// ─── Paleta ELO PRODUTIVO ──────────────────────────────────────────────────────────
 const statusColors: Record<string, string> = {
   SCHEDULED: "bg-blue-50 text-blue-700 border border-blue-200",
-  IN_PROGRESS: "bg-[#D35400]/10 text-[#D35400] border border-[#D35400]/20",
+  IN_PROGRESS: "bg-[#2F80ED]/10 text-[#2F80ED] border border-[#2F80ED]/20",
   FINISHED: "bg-green-50 text-green-700 border border-green-200",
   CANCELED: "bg-gray-100 text-gray-500 border border-gray-200",
 };
@@ -163,7 +163,7 @@ const Autocomplete = ({
   return (
     <div className="space-y-2">
       {label && (
-        <label className="text-xs font-medium text-[#95A5A6] flex items-center gap-1">
+        <label className="text-xs font-medium text-[#7A7E83] flex items-center gap-1">
           {icon}
           {label}
         </label>
@@ -174,27 +174,30 @@ const Autocomplete = ({
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="w-full justify-between font-normal transition-all duration-200 hover:border-[#D35400]/50"
+            className="w-full justify-between font-normal transition-all duration-200 hover:border-[#2F80ED]/50 bg-white border-[#CBD5E1]"
           >
             <div className="flex items-center gap-2 truncate">
-              {icon && <span className="text-[#95A5A6]">{icon}</span>}
-              <span className="truncate">{displayValue}</span>
+              {icon && <span className="text-[#7A7E83]">{icon}</span>}
+              <span className="truncate text-[#353A40]">{displayValue}</span>
             </div>
-            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50 text-[#7A7E83]" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[300px] p-0" align="start">
-          <div className="flex items-center border-b px-3">
+        <PopoverContent
+          className="w-[300px] p-0 bg-white border border-[#E2E8F0] rounded-xl"
+          align="start"
+        >
+          <div className="flex items-center border-b border-[#E2E8F0] px-3">
             <input
               placeholder="Buscar..."
-              className="flex h-9 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-[#95A5A6]"
+              className="flex h-9 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-[#7A7E83] text-[#353A40]"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
           <div className="max-h-[300px] overflow-y-auto p-1">
             {filteredOptions.length === 0 ? (
-              <div className="py-3 text-center text-sm text-[#95A5A6]">
+              <div className="py-3 text-center text-sm text-[#7A7E83]">
                 {emptyMessage}
               </div>
             ) : (
@@ -202,8 +205,8 @@ const Autocomplete = ({
                 <div
                   key={option.value}
                   className={cn(
-                    "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-gray-100 cursor-pointer",
-                    value === option.value && "bg-gray-50",
+                    "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-[#F5F6FA] cursor-pointer text-[#353A40]",
+                    value === option.value && "bg-[#F5F6FA]",
                   )}
                   onClick={() => {
                     onChange(option.value === value ? "all" : option.value);
@@ -213,7 +216,7 @@ const Autocomplete = ({
                 >
                   <CheckCircle2
                     className={cn(
-                      "mr-2 h-4 w-4 text-[#D35400]",
+                      "mr-2 h-4 w-4 text-[#2F80ED]",
                       value === option.value ? "opacity-100" : "opacity-0",
                     )}
                   />
@@ -293,7 +296,7 @@ const CustomToast = ({
       ) : (
         <AlertTriangleIcon className="h-5 w-5 text-red-500" />
       )}
-      <span className="text-sm text-gray-700">{message}</span>
+      <span className="text-sm text-[#353A40]">{message}</span>
     </div>
   );
 };
@@ -360,7 +363,6 @@ export default function RoutesPage() {
     }, 0);
   }, []);
 
-  // 🔥 FUNÇÃO CORRIGIDA PARA FORMATAR MINUTOS (SEM CONVERSÃO ERRADA)
   const formatMinutes = useCallback((minutes: number): string => {
     if (!minutes || minutes === 0) return "-";
 
@@ -377,7 +379,6 @@ export default function RoutesPage() {
     return `${totalMinutes}min`;
   }, []);
 
-  // 🔥 FUNÇÃO CORRIGIDA - SEM LOGS
   const parseDurationToMinutes = useCallback((durationStr: string): number => {
     if (!durationStr || durationStr === "-") return 0;
 
@@ -390,7 +391,6 @@ export default function RoutesPage() {
     return totalMinutes;
   }, []);
 
-  // 🔥 FUNÇÃO CORRIGIDA PARA CALCULAR DURAÇÃO TOTAL (TRAJETO + INTERVALTIME)
   const calculateTotalDuration = useCallback(
     (route: any): string => {
       const totalIntervalTime = calculateTotalIntervalTime(route);
@@ -428,22 +428,6 @@ export default function RoutesPage() {
     appliedUserAssignedFilter,
   ]);
 
-  // // No componente RoutesPage, adicione este useEffect
-  // useEffect(() => {
-  //   if (routes && routes.length > 0) {
-  //     routes.forEach((route) => {
-  //       if (route.tasks && route.tasks.length > 0) {
-  //         console.log(`=== ROTA: ${route.title} ===`);
-  //         route.tasks.forEach((task: { title: any; intervalTime: any }) => {
-  //           console.log(`  Task: ${task.title}`);
-  //           console.log(`  intervalTime:`, task.intervalTime);
-  //           console.log(`  Tipo:`, typeof task.intervalTime);
-  //         });
-  //       }
-  //     });
-  //   }
-  // }, [routes]);
-
   // Função para obter data atual às 00:00:00
   const getTodayDate = useCallback(() => {
     const today = new Date();
@@ -463,25 +447,12 @@ export default function RoutesPage() {
     const today = getTodayDate();
     const sevenDaysLater = getDatePlus7Days();
 
-    // Atualiza os valores temporários
     setTempStartDate(today);
     setTempEndDate(sevenDaysLater);
-
-    // Atualiza os valores aplicados
     setAppliedStartDate(today);
     setAppliedEndDate(sevenDaysLater);
-
-    // Mantém os outros filtros como estão (não altera status e responsável)
-    // Se quiser resetar status e responsável para "all", descomente as linhas abaixo:
-    // setTempStatusFilter("all");
-    // setAppliedStatusFilter("all");
-    // setTempUserAssignedFilter("all");
-    // setAppliedUserAssignedFilter("all");
-
-    // Mostra o painel de filtros
     setShowFilters(true);
 
-    // Aplica os filtros
     setIsFiltering(true);
     await refetch();
     setIsFiltering(false);
@@ -497,7 +468,6 @@ export default function RoutesPage() {
     );
   }, [getTodayDate, getDatePlus7Days, refetch]);
 
-  // Função original para toggle do painel de filtros (sem aplicar datas automáticas)
   const handleToggleFilters = useCallback(() => {
     setShowFilters(!showFilters);
   }, [showFilters]);
@@ -545,7 +515,6 @@ export default function RoutesPage() {
 
     setIsFiltering(true);
 
-    // Atualiza os valores aplicados
     setAppliedStatusFilter(tempStatusFilter);
     setAppliedStartDate(tempStartDate);
     setAppliedEndDate(tempEndDate);
@@ -565,14 +534,9 @@ export default function RoutesPage() {
       );
     } finally {
       setIsFiltering(false);
-      // ❌ REMOVA ESTA LINHA - não fecha o card automaticamente
-      // setTimeout(() => {
-      //   setShowFilters(false);
-      // }, 500);
     }
   };
 
-  // Função para fechar manualmente
   const handleCloseFilters = useCallback(() => {
     if (!isFiltering) {
       setShowFilters(false);
@@ -590,7 +554,6 @@ export default function RoutesPage() {
       let matchesStatus = true;
 
       if (appliedStatusFilter === "OVERDUE") {
-        // Filtro especial para rotas atrasadas
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const routeDate = route.routeDate ? new Date(route.routeDate) : null;
@@ -661,11 +624,6 @@ export default function RoutesPage() {
     }
   }, [deleteId, deleteRoute, refetch]);
 
-  // routes/page.tsx - Substitua a definição das colunas por esta versão
-
-  // 🔥 CORREÇÃO: Usar useRef para evitar recriação infinita das colunas
-  const columnsRef = useRef<Column<Route>[] | null>(null);
-
   const getColumns = useCallback(
     (): Column<Route>[] => [
       {
@@ -674,11 +632,11 @@ export default function RoutesPage() {
         cell: (route) => (
           <Link
             href={`/routes/${route.id}`}
-            className="relative group/link hover:text-[#D35400] transition-colors duration-200 font-semibold"
+            className="relative group/link hover:text-[#2F80ED] transition-colors duration-200 font-semibold text-[#353A40]"
             prefetch={true}
           >
             {route.title}
-            <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#D35400] group-hover/link:w-full transition-all duration-300" />
+            <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#2F80ED] group-hover/link:w-full transition-all duration-300" />
           </Link>
         ),
       },
@@ -713,7 +671,7 @@ export default function RoutesPage() {
       {
         header: "Data agendada",
         cell: (route) => (
-          <span className="text-[#95A5A6]">
+          <span className="text-[#7A7E83]">
             {route.routeDate
               ? format(new Date(route.routeDate), "dd/MM/yyyy", {
                   locale: ptBR,
@@ -726,7 +684,7 @@ export default function RoutesPage() {
         header: "Paradas",
         className: "text-center",
         cell: (route) => (
-          <span className="font-medium text-[#2C3E50] text-center block">
+          <span className="font-medium text-[#353A40] text-center block">
             {route.stops?.length || 0}
           </span>
         ),
@@ -734,7 +692,7 @@ export default function RoutesPage() {
       {
         header: "Distância",
         cell: (route) => (
-          <span className="text-[#2C3E50]">
+          <span className="text-[#353A40]">
             {route.formattedDistance || "-"}
           </span>
         ),
@@ -742,7 +700,7 @@ export default function RoutesPage() {
       {
         header: "Duração",
         cell: (route) => (
-          <span className="text-[#2C3E50] font-medium">
+          <span className="text-[#353A40] font-medium">
             {route.formattedDuration || "-"}
           </span>
         ),
@@ -755,14 +713,11 @@ export default function RoutesPage() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="text-[#2C3E50] font-medium cursor-help">
+                  <span className="text-[#353A40] font-medium cursor-help">
                     {formatMinutes(totalIntervalTime)}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent
-                  side="left"
-                  className="bg-gray-800 text-white border-0"
-                >
+                <TooltipContent className="bg-[#353A40] text-white border-0">
                   <p className="text-sm">
                     Soma dos intervalos de todas as tarefas da rota
                   </p>
@@ -780,7 +735,7 @@ export default function RoutesPage() {
           if (stopsCount <= 1) {
             return (
               <div className="flex items-center gap-1">
-                <span className="text-[#95A5A6] text-sm">-</span>
+                <span className="text-[#7A7E83] text-sm">-</span>
               </div>
             );
           }
@@ -794,15 +749,12 @@ export default function RoutesPage() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-1 cursor-help">
-                    <span className="text-[#2C3E50] font-semibold">
+                    <span className="text-[#353A40] font-semibold">
                       {totalDuration}
                     </span>
                   </div>
                 </TooltipTrigger>
-                <TooltipContent
-                  side="left"
-                  className="bg-gray-800 text-white border-0"
-                >
+                <TooltipContent className="bg-[#353A40] text-white border-0">
                   <div className="space-y-1 text-sm p-1">
                     <p>🚗 Duração da rota: {routeDuration}</p>
                     <p>
@@ -823,7 +775,7 @@ export default function RoutesPage() {
         header: "Responsavel",
         cell: (route) => (
           <div className="flex items-center gap-1">
-            <span className="text-[#2C3E50]">
+            <span className="text-[#353A40]">
               {route.userAssigned?.name || "Não atribuído"}
             </span>
           </div>
@@ -837,25 +789,25 @@ export default function RoutesPage() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="truncate text-[#95A5A6] cursor-help max-w-[200px]">
+                  <div className="truncate text-[#7A7E83] cursor-help max-w-[200px]">
                     {route.description.length > 50
                       ? `${route.description.substring(0, 50)}...`
                       : route.description}
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>
+                <TooltipContent className="bg-[#353A40] text-white">
                   <p className="max-w-xs">{route.description}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           ) : (
-            <span className="text-[#95A5A6] text-sm">-</span>
+            <span className="text-[#7A7E83] text-sm">-</span>
           ),
       },
       {
         header: "Criado em",
         cell: (route) => (
-          <span className="text-[#95A5A6] whitespace-nowrap">
+          <span className="text-[#7A7E83] whitespace-nowrap">
             {route.createdAt
               ? format(new Date(route.createdAt), "dd/MM/yyyy HH:mm", {
                   locale: ptBR,
@@ -870,29 +822,37 @@ export default function RoutesPage() {
         cell: (route) => (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button
+                variant="ghost"
+                className="h-8 w-8 p-0 text-[#7A7E83] hover:text-[#2F80ED]"
+              >
                 <MoreHorizontalIcon className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel className="text-[#95A5A6] text-xs">
+            <DropdownMenuContent
+              align="end"
+              className="w-48 bg-white border border-[#E2E8F0] rounded-xl shadow-lg"
+            >
+              <DropdownMenuLabel className="text-[#7A7E83] text-xs">
                 Ações
               </DropdownMenuLabel>
               <DropdownMenuItem
                 onClick={() => router.push(`/routes/${route.id}`)}
+                className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
               >
-                <EyeIcon className="mr-2 h-4 w-4 text-[#95A5A6]" />
+                <EyeIcon className="mr-2 h-4 w-4 text-[#2F80ED]" />
                 Detalhes
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => router.push(`/routes/${route.id}/edit`)}
+                className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
               >
-                <PencilIcon className="mr-2 h-4 w-4 text-[#95A5A6]" />
+                <PencilIcon className="mr-2 h-4 w-4 text-[#2F80ED]" />
                 Editar
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="bg-[#E2E8F0]" />
               <DropdownMenuItem
-                className="text-red-600 focus:text-red-600"
+                className="text-red-600 focus:text-red-600 cursor-pointer hover:bg-red-50"
                 onClick={() => setDeleteId(route.id)}
               >
                 <Trash2Icon className="mr-2 h-4 w-4" />
@@ -906,16 +866,15 @@ export default function RoutesPage() {
     [router, calculateTotalIntervalTime, calculateTotalDuration, formatMinutes],
   );
 
-  // 🔥 Usar useMemo com a função getColumns
   const columns = useMemo(() => getColumns(), [getColumns]);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-8">
+      <div className="min-h-screen bg-[#F5F6FA] p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
           <div className="animate-pulse space-y-4">
-            <div className="h-10 w-32 bg-gray-200 rounded" />
-            <div className="h-64 bg-gray-200 rounded" />
+            <div className="h-10 w-32 bg-[#E2E8F0] rounded" />
+            <div className="h-64 bg-[#E2E8F0] rounded" />
           </div>
         </div>
       </div>
@@ -923,9 +882,9 @@ export default function RoutesPage() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8 font-sans">
+    <div className="min-h-screen w-full bg-[#F5F6FA] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header - sem searchValue */}
+        {/* Header */}
         <PageHeader title="Rotas" description="Gerencie as rotas do sistema.">
           <div className="flex gap-2">
             <TooltipProvider>
@@ -935,21 +894,23 @@ export default function RoutesPage() {
                     variant="outline"
                     onClick={handleFilterButtonClick}
                     className={cn(
-                      "rounded-full h-10 px-4 gap-2 transition-all duration-200",
+                      "rounded-full h-10 px-4 gap-2 transition-all duration-200 border-[#CBD5E1] bg-white",
                       showFilters &&
-                        "bg-[#D35400] text-white hover:bg-[#D35400]/90",
+                        "bg-[#2F80ED] text-white hover:bg-[#1E5CB8] border-none",
                     )}
                   >
                     <FilterIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline">Filtrar</span>
+                    <span className="hidden sm:inline text-[#353A40]">
+                      Filtrar
+                    </span>
                     {activeFiltersCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-[#D35400] text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                      <span className="absolute -top-1 -right-1 bg-[#2F80ED] text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
                         {activeFiltersCount}
                       </span>
                     )}
                   </RippleButton>
                 </TooltipTrigger>
-                <TooltipContent>
+                <TooltipContent className="bg-[#353A40] text-white">
                   <p>Aplicar filtro para rotas</p>
                 </TooltipContent>
               </Tooltip>
@@ -959,13 +920,13 @@ export default function RoutesPage() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/routes/create" prefetch={true}>
-                    <RippleButton className="bg-[#D35400] hover:bg-[#D35400]/90 text-white shadow-md transition-all duration-200 rounded-full h-10 px-4 gap-2">
+                    <RippleButton className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white shadow-sm transition-all duration-200 rounded-full h-10 px-4 gap-2">
                       <PlusIcon className="h-5 w-5" />
                       <span className="hidden sm:inline">Criar</span>
                     </RippleButton>
                   </Link>
                 </TooltipTrigger>
-                <TooltipContent>
+                <TooltipContent className="bg-[#353A40] text-white">
                   <p>Criar nova rota</p>
                 </TooltipContent>
               </Tooltip>
@@ -973,7 +934,7 @@ export default function RoutesPage() {
           </div>
         </PageHeader>
 
-        {/* Painel de Filtros - Card único com todos os filtros */}
+        {/* Painel de Filtros */}
         <AnimatePresence>
           {showFilters && (
             <motion.div
@@ -982,9 +943,8 @@ export default function RoutesPage() {
               exit={{ opacity: 0, height: 0, y: -20 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
             >
-              <Card className="border-0 shadow-md rounded-xl overflow-hidden">
+              <Card className="border border-[#E2E8F0] shadow-sm rounded-xl overflow-hidden bg-white">
                 <CardContent className="p-4 space-y-4">
-                  {/* Linha 1: Filtro de Status */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <Autocomplete
                       options={statusOptions}
@@ -997,30 +957,29 @@ export default function RoutesPage() {
                     />
                   </div>
 
-                  {/* Linha 2: Filtro de Data - Rotas Agendadas */}
                   <div className="space-y-3">
-                    <label className="text-sm font-medium text-[#2C3E50] flex items-center gap-2">
-                      <CalendarIcon className="h-3 w-3 text-[#979492]" />
+                    <label className="text-sm font-medium text-[#353A40] flex items-center gap-2">
+                      <CalendarIcon className="h-3 w-3 text-[#7A7E83]" />
                       Rotas agendadas
                     </label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <label className="text-xs font-medium text-[#95A5A6]">
+                        <label className="text-xs font-medium text-[#7A7E83]">
                           Data inicial
                         </label>
                         <Popover>
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
-                              className="w-full justify-start text-left font-normal"
+                              className="w-full justify-start text-left font-normal bg-white border-[#CBD5E1] text-[#353A40]"
                             >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              <CalendarIcon className="mr-2 h-4 w-4 text-[#7A7E83]" />
                               {tempStartDate
                                 ? format(tempStartDate, "dd/MM/yyyy")
                                 : "Selecionar data inicial"}
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
+                          <PopoverContent className="w-auto p-0 bg-white border border-[#E2E8F0] rounded-xl">
                             <Calendar
                               mode="single"
                               selected={tempStartDate}
@@ -1032,22 +991,22 @@ export default function RoutesPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-xs font-medium text-[#95A5A6]">
+                        <label className="text-xs font-medium text-[#7A7E83]">
                           Data final
                         </label>
                         <Popover>
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
-                              className="w-full justify-start text-left font-normal"
+                              className="w-full justify-start text-left font-normal bg-white border-[#CBD5E1] text-[#353A40]"
                             >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              <CalendarIcon className="mr-2 h-4 w-4 text-[#7A7E83]" />
                               {tempEndDate
                                 ? format(tempEndDate, "dd/MM/yyyy")
                                 : "Selecionar data final"}
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
+                          <PopoverContent className="w-auto p-0 bg-white border border-[#E2E8F0] rounded-xl">
                             <Calendar
                               mode="single"
                               selected={tempEndDate}
@@ -1063,7 +1022,6 @@ export default function RoutesPage() {
                     </div>
                   </div>
 
-                  {/* Linha 3: Filtro de Responsável */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <Autocomplete
                       options={driverOptions}
@@ -1076,13 +1034,13 @@ export default function RoutesPage() {
                     />
                   </div>
 
-                  {/* Botões de ação dos filtros */}
-                  <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+                  <div className="flex justify-end gap-2 pt-4 border-t border-[#E2E8F0]">
                     {hasActiveFilters && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={handleClearFilters}
+                        className="text-[#7A7E83] hover:text-[#2F80ED] hover:bg-[#F5F6FA]"
                       >
                         <X className="h-4 w-4 mr-1" />
                         Limpar filtros
@@ -1092,6 +1050,7 @@ export default function RoutesPage() {
                       size="sm"
                       onClick={handleApplyFilters}
                       disabled={isFiltering}
+                      className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
                     >
                       {isFiltering ? (
                         <>
@@ -1111,7 +1070,7 @@ export default function RoutesPage() {
 
         {/* Resultados encontrados */}
         {filteredRoutes.length > 0 && (
-          <div className="text-right text-xs text-[#95A5A6]">
+          <div className="text-right text-xs text-[#7A7E83]">
             {filteredRoutes.length} resultado
             {filteredRoutes.length !== 1 ? "s" : ""} encontrado
             {filteredRoutes.length !== 1 ? "s" : ""}
@@ -1139,24 +1098,27 @@ export default function RoutesPage() {
           open={!!deleteId}
           onOpenChange={() => !isDeleting && setDeleteId(null)}
         >
-          <AlertDialogContent className="bg-white border border-gray-200">
+          <AlertDialogContent className="bg-white border border-[#E2E8F0] rounded-xl">
             <AlertDialogHeader>
-              <AlertDialogTitle className="text-[#2C3E50]">
+              <AlertDialogTitle className="text-[#353A40]">
                 Excluir Rota
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-[#95A5A6]">
+              <AlertDialogDescription className="text-[#7A7E83]">
                 Esta ação removerá todos os dados da rota do sistema. Esta ação
                 não pode ser desfeita.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeleting}>
+              <AlertDialogCancel
+                disabled={isDeleting}
+                className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+              >
                 Cancelar
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700 text-white"
+                className="bg-red-500 hover:bg-red-600 text-white"
               >
                 {isDeleting ? (
                   <>

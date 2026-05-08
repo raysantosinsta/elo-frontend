@@ -62,7 +62,7 @@ interface GenericTableProps<T> {
   enableAnimations?: boolean;
 }
 
-// Componente interno da tabela (movido para fora)
+// Componente interno da tabela
 function TableContent<T extends { id: string | number }>({
   columns,
   data,
@@ -95,17 +95,17 @@ function TableContent<T extends { id: string | number }>({
   };
 
   return (
-    <div className="rounded-md border border-[#95A5A6]/20 flex-1 overflow-x-auto">
+    <div className="rounded-md border border-[#E2E8F0] flex-1 overflow-x-auto">
       <Table>
-        <TableHeader className="bg-[#F5F0E6]/50 sticky top-0 z-10">
-          <TableRow>
+        <TableHeader className="bg-[#F8FAFC] sticky top-0 z-10">
+          <TableRow className="border-b border-[#E2E8F0]">
             {columns.map((col, index) => (
               <TableHead
                 key={index}
                 className={cn(
-                  "text-[#2D3436] font-semibold",
+                  "text-[#353A40] font-semibold",
                   col.sortable &&
-                    "cursor-pointer hover:text-[#D35400] transition-colors",
+                    "cursor-pointer hover:text-[#2F80ED] transition-colors",
                   col.className,
                 )}
                 onClick={() => handleSort(col)}
@@ -123,9 +123,9 @@ function TableContent<T extends { id: string | number }>({
                         transition={{ duration: 0.2 }}
                       >
                         {sortConfig.direction === "asc" ? (
-                          <ChevronUp className="h-3 w-3" />
+                          <ChevronUp className="h-3 w-3 text-[#2F80ED]" />
                         ) : (
-                          <ChevronDown className="h-3 w-3" />
+                          <ChevronDown className="h-3 w-3 text-[#2F80ED]" />
                         )}
                       </motion.span>
                     )}
@@ -137,10 +137,10 @@ function TableContent<T extends { id: string | number }>({
         <TableBody>
           {isLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
-              <TableRow key={i}>
+              <TableRow key={i} className="border-b border-[#E2E8F0]">
                 <TableCell colSpan={columns.length} className="h-12">
                   <div className="relative overflow-hidden">
-                    <div className="h-4 bg-gray-100 rounded w-full" />
+                    <div className="h-4 bg-[#E2E8F0] rounded w-full" />
                     {enableAnimations && (
                       <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/50 to-transparent" />
                     )}
@@ -149,10 +149,10 @@ function TableContent<T extends { id: string | number }>({
               </TableRow>
             ))
           ) : data.length === 0 ? (
-            <TableRow>
+            <TableRow className="border-b border-[#E2E8F0]">
               <TableCell
                 colSpan={columns.length}
-                className="text-center py-8 text-[#95A5A6]"
+                className="text-center py-8 text-[#7A7E83]"
               >
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9 }}
@@ -182,9 +182,9 @@ function TableContent<T extends { id: string | number }>({
                     key={item.id}
                     {...rowProps}
                     className={cn(
-                      "group transition-all duration-200",
-                      "hover:bg-[#F5F0E6]/30",
-                      isHoveredRow === item.id && "bg-[#F5F0E6]/50",
+                      "group transition-all duration-200 border-b border-[#E2E8F0]",
+                      "hover:bg-[#F5F6FA]",
+                      isHoveredRow === item.id && "bg-[#F5F6FA]",
                     )}
                     onMouseEnter={() => setIsHoveredRow(item.id)}
                     onMouseLeave={() => setIsHoveredRow(null)}
@@ -234,14 +234,14 @@ export function GenericTable<T extends { id: string | number }>({
       <motion.span
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="text-sm text-[#95A5A6]"
+        className="text-sm text-[#7A7E83]"
       >
         Mostrando{" "}
-        <span className="font-medium text-[#2D3436]">
+        <span className="font-medium text-[#353A40]">
           {start}-{end}
         </span>{" "}
         de{" "}
-        <span className="font-medium text-[#2D3436]">
+        <span className="font-medium text-[#353A40]">
           {pagination.totalItems}
         </span>
       </motion.span>
@@ -249,11 +249,13 @@ export function GenericTable<T extends { id: string | number }>({
   };
 
   return (
-    <Card className="border-[#95A5A6]/20 shadow-sm bg-white flex flex-col h-full generic-table-container">
+    <Card className="border border-[#E2E8F0] shadow-sm bg-white rounded-xl flex flex-col h-full generic-table-container">
       <CardHeader className="pb-2">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <CardTitle className="text-xl text-[#2D3436]">{title}</CardTitle>
+            <CardTitle className="text-xl font-extrabold text-[#353A40]">
+              {title}
+            </CardTitle>
             {headerActions}
           </div>
 
@@ -263,10 +265,10 @@ export function GenericTable<T extends { id: string | number }>({
               animate={{ opacity: 1, x: 0 }}
               className="relative w-full max-w-sm"
             >
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[#95A5A6]" />
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[#7A7E83]" />
               <Input
                 placeholder="Buscar..."
-                className="pl-9 bg-[#F5F0E6]/30 border-[#95A5A6]/30 focus-visible:ring-[#2C3E50] transition-all duration-200 focus:scale-[1.02]"
+                className="pl-9 bg-white border-[#CBD5E1] focus:ring-[#2F80ED] focus:border-[#2F80ED] transition-all duration-200 focus:scale-[1.02]"
                 value={searchTerm}
                 onChange={(e) => onSearchChange(e.target.value)}
               />
@@ -317,7 +319,7 @@ export function GenericTable<T extends { id: string | number }>({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center justify-between py-4 border-t border-[#95A5A6]/20 mt-4"
+            className="flex items-center justify-between py-4 border-t border-[#E2E8F0] mt-4"
           >
             <div className="flex-1">{renderPaginationInfo()}</div>
 
@@ -328,14 +330,16 @@ export function GenericTable<T extends { id: string | number }>({
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-8 w-8 border-[#95A5A6]/30 text-[#2D3436] transition-all duration-200 hover:scale-105 active:scale-95"
+                      className="h-8 w-8 border-[#CBD5E1] text-[#353A40] transition-all duration-200 hover:scale-105 active:scale-95 hover:bg-[#F5F6FA]"
                       onClick={() => pagination.onPageChange(1)}
                       disabled={pagination.currentPage === 1 || isLoading}
                     >
                       <ChevronsLeft className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Primeira página</TooltipContent>
+                  <TooltipContent className="bg-[#353A40] text-white">
+                    Primeira página
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
 
@@ -345,7 +349,7 @@ export function GenericTable<T extends { id: string | number }>({
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-8 w-8 border-[#95A5A6]/30 text-[#2D3436] transition-all duration-200 hover:scale-105 active:scale-95"
+                      className="h-8 w-8 border-[#CBD5E1] text-[#353A40] transition-all duration-200 hover:scale-105 active:scale-95 hover:bg-[#F5F6FA]"
                       onClick={() =>
                         pagination.onPageChange(pagination.currentPage - 1)
                       }
@@ -354,7 +358,9 @@ export function GenericTable<T extends { id: string | number }>({
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Página anterior</TooltipContent>
+                  <TooltipContent className="bg-[#353A40] text-white">
+                    Página anterior
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
 
@@ -362,7 +368,7 @@ export function GenericTable<T extends { id: string | number }>({
                 key={pagination.currentPage}
                 initial={{ scale: 0.8 }}
                 animate={{ scale: 1 }}
-                className="text-sm font-medium text-[#2D3436] min-w-[3rem] text-center"
+                className="text-sm font-medium text-[#353A40] min-w-[3rem] text-center"
               >
                 {pagination.currentPage} / {pagination.totalPages}
               </motion.span>
@@ -373,7 +379,7 @@ export function GenericTable<T extends { id: string | number }>({
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-8 w-8 border-[#95A5A6]/30 text-[#2D3436] transition-all duration-200 hover:scale-105 active:scale-95"
+                      className="h-8 w-8 border-[#CBD5E1] text-[#353A40] transition-all duration-200 hover:scale-105 active:scale-95 hover:bg-[#F5F6FA]"
                       onClick={() =>
                         pagination.onPageChange(pagination.currentPage + 1)
                       }
@@ -385,7 +391,9 @@ export function GenericTable<T extends { id: string | number }>({
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Próxima página</TooltipContent>
+                  <TooltipContent className="bg-[#353A40] text-white">
+                    Próxima página
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
 
@@ -395,7 +403,7 @@ export function GenericTable<T extends { id: string | number }>({
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-8 w-8 border-[#95A5A6]/30 text-[#2D3436] transition-all duration-200 hover:scale-105 active:scale-95"
+                      className="h-8 w-8 border-[#CBD5E1] text-[#353A40] transition-all duration-200 hover:scale-105 active:scale-95 hover:bg-[#F5F6FA]"
                       onClick={() =>
                         pagination.onPageChange(pagination.totalPages)
                       }
@@ -407,7 +415,9 @@ export function GenericTable<T extends { id: string | number }>({
                       <ChevronsRight className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Última página</TooltipContent>
+                  <TooltipContent className="bg-[#353A40] text-white">
+                    Última página
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </div>

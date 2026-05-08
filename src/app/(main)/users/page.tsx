@@ -64,7 +64,6 @@ enum UserRole {
   EMPLOYER = "EMPLOYER",
 }
 
-// 🔥 INTERFACE ATUALIZADA COM companyRole
 interface User {
   id: string;
   name: string;
@@ -76,7 +75,7 @@ interface User {
   document?: string;
   companyId: string;
   company?: { name: string };
-  companyRole?: { id: string; name: string; level: number }; // 🔥 ADICIONADO
+  companyRole?: { id: string; name: string; level: number };
   createdAt: string;
 }
 
@@ -106,7 +105,8 @@ const formatCPF = (v: string | undefined) => {
     .replace(/(-\d{2})\d+?$/, "$1");
 };
 
-const cleanMask = (value: string | undefined) => value ? value.replace(/\D/g, "") : "";
+const cleanMask = (value: string | undefined) =>
+  value ? value.replace(/\D/g, "") : "";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -119,11 +119,13 @@ export default function UserManagementPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [companiesList, setCompaniesList] = useState<CompanyOption[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Estados de Filtro e Paginação
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [filterCompanyId, setFilterCompanyId] = useState<string | undefined>(undefined);
+  const [filterCompanyId, setFilterCompanyId] = useState<string | undefined>(
+    undefined,
+  );
 
   // Estados de UI
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -141,14 +143,19 @@ export default function UserManagementPage() {
   // --- 1. Carregar lista de empresas ---
   useEffect(() => {
     if (isMaster) {
-      api.get('/companies?limit=100&page=1').then((response) => {
-        const data = response.data.data || [];
-        const sortedData = data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-        setCompaniesList(sortedData);
-      }).catch(err => {
-        console.error("Erro ao carregar empresas", err);
-        toast.error("Erro ao carregar lista de empresas.");
-      });
+      api
+        .get("/companies?limit=100&page=1")
+        .then((response) => {
+          const data = response.data.data || [];
+          const sortedData = data.sort((a: any, b: any) =>
+            a.name.localeCompare(b.name),
+          );
+          setCompaniesList(sortedData);
+        })
+        .catch((err) => {
+          console.error("Erro ao carregar empresas", err);
+          toast.error("Erro ao carregar lista de empresas.");
+        });
     }
   }, [isMaster]);
 
@@ -165,7 +172,9 @@ export default function UserManagementPage() {
         params.append("companyId", filterCompanyId);
       }
 
-      const response = await api.get<{ data: User[]; total: number } | User[]>(`/users?${params.toString()}`);
+      const response = await api.get<{ data: User[]; total: number } | User[]>(
+        `/users?${params.toString()}`,
+      );
 
       let data: User[] = [];
       if (Array.isArray(response.data)) {
@@ -173,11 +182,6 @@ export default function UserManagementPage() {
       } else if (response.data && Array.isArray(response.data.data)) {
         data = response.data.data;
       }
-
-      console.log("📦 Usuários carregados:", data.map(u => ({
-        name: u.name,
-        companyRole: u.companyRole
-      })));
 
       setUsers(data);
     } catch (error: any) {
@@ -198,7 +202,11 @@ export default function UserManagementPage() {
 
   const filteredUsers = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    return users.filter(u => u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term));
+    return users.filter(
+      (u) =>
+        u.name.toLowerCase().includes(term) ||
+        u.email.toLowerCase().includes(term),
+    );
   }, [users, searchTerm]);
 
   const paginatedUsers = useMemo(() => {
@@ -211,8 +219,9 @@ export default function UserManagementPage() {
 
   // --- Handlers de Modal ---
   const handleOpenCreate = () => {
-    const initialData = (isMaster && filterCompanyId) ? { companyId: filterCompanyId } : null;
-    setEditingUser(initialData as any); 
+    const initialData =
+      isMaster && filterCompanyId ? { companyId: filterCompanyId } : null;
+    setEditingUser(initialData as any);
     setIsModalOpen(true);
   };
 
@@ -250,14 +259,14 @@ export default function UserManagementPage() {
       } else {
         const { data: newUser } = await api.post<User>("/users", payload);
         toast.success("Usuário criado!");
-        
+
         const shouldShow =
-          (!isMaster) ||
+          !isMaster ||
           (isMaster && !filterCompanyId) ||
           (isMaster && filterCompanyId === newUser.companyId);
 
         if (shouldShow) {
-          setUsers(prev => [newUser, ...prev]);
+          setUsers((prev) => [newUser, ...prev]);
         }
       }
       handleCloseModal();
@@ -271,12 +280,20 @@ export default function UserManagementPage() {
   // --- Outras Ações ---
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, status: newStatus as any } : u));
+    setUsers((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, status: newStatus as any } : u)),
+    );
     try {
       await api.patch(`/users/${id}/status/${newStatus}`);
-      toast.success(`Status alterado para ${newStatus}`);
+      toast.success(
+        `Status alterado para ${newStatus === "ACTIVE" ? "Ativo" : "Inativo"}`,
+      );
     } catch {
-      setUsers(prev => prev.map(u => u.id === id ? { ...u, status: currentStatus as any } : u));
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === id ? { ...u, status: currentStatus as any } : u,
+        ),
+      );
       toast.error("Erro ao alterar status");
     }
   };
@@ -286,7 +303,7 @@ export default function UserManagementPage() {
     setIsDeleting(true);
     try {
       await api.delete(`/users/${deleteId}`);
-      setUsers(prev => prev.filter(u => u.id !== deleteId));
+      setUsers((prev) => prev.filter((u) => u.id !== deleteId));
       toast.success("Usuário excluído.");
       setIsDeleteOpen(false);
     } catch {
@@ -295,7 +312,7 @@ export default function UserManagementPage() {
     }
   };
 
-  // 🔥 COLUNAS ATUALIZADAS COM CARGO NA EMPRESA
+  // 🔥 COLUNAS ATUALIZADAS COM CORES ELO PRODUTIVO
   const columns: Column<User>[] = useMemo(() => {
     const cols: Column<User>[] = [
       {
@@ -303,12 +320,12 @@ export default function UserManagementPage() {
         className: "w-[280px]",
         cell: (user) => (
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold border border-orange-200">
+            <div className="h-9 w-9 rounded-full bg-[#2F80ED]/10 text-[#2F80ED] flex items-center justify-center font-bold border border-[#2F80ED]/20">
               {user.name.charAt(0).toUpperCase()}
             </div>
             <div className="flex flex-col">
-              <span className="font-medium text-slate-800">{user.name}</span>
-              <span className="text-xs text-slate-500 flex items-center gap-1">
+              <span className="font-semibold text-[#353A40]">{user.name}</span>
+              <span className="text-xs text-[#7A7E83] flex items-center gap-1">
                 <Mail className="h-3 w-3" /> {user.email}
               </span>
             </div>
@@ -319,44 +336,41 @@ export default function UserManagementPage() {
         header: "Permissão",
         cell: (user) => (
           <div className="flex flex-col gap-1">
-            <Badge variant="outline" className="w-fit text-[10px] uppercase">
+            <Badge
+              variant="outline"
+              className="w-fit text-[10px] uppercase border-[#CBD5E1] text-[#7A7E83]"
+            >
               {user.role}
             </Badge>
-            {/* {user.professionalRole && (
-              <span className="text-xs text-slate-600 flex items-center gap-1">
-                <Briefcase className="h-3 w-3" /> {user.professionalRole}
-              </span>
-            )} */}
           </div>
-        )
+        ),
       },
-      // 🔥 NOVA COLUNA: Cargo na Empresa
       {
         header: "Cargo na Empresa",
         cell: (user) => (
           <div className="flex items-center gap-1">
             {user.companyRole ? (
-              <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">
+              <Badge className="bg-[#2F80ED]/10 text-[#2F80ED] hover:bg-[#2F80ED]/20 border-[#2F80ED]/20">
                 <Briefcase className="h-3 w-3 mr-1" />
                 {user.companyRole.name}
               </Badge>
             ) : (
-              <span className="text-xs text-slate-400">Não definido</span>
+              <span className="text-xs text-[#7A7E83]">Não definido</span>
             )}
           </div>
-        )
-      }
+        ),
+      },
     ];
 
     if (isMaster) {
       cols.push({
         header: "Empresa",
         cell: (user) => (
-          <div className="flex items-center gap-1 text-sm text-slate-600">
-            <Building2 className="h-3 w-3 text-slate-400" />
+          <div className="flex items-center gap-1 text-sm text-[#7A7E83]">
+            <Building2 className="h-3 w-3 text-[#7A7E83]" />
             {user.company?.name || "N/A"}
           </div>
-        )
+        ),
       });
     }
 
@@ -364,20 +378,33 @@ export default function UserManagementPage() {
       {
         header: "Contato",
         cell: (user) => (
-          <div className="flex flex-col text-sm text-slate-600">
-            <span className="flex items-center gap-1"><Phone className="h-3 w-3" /> {formatPhone(user.contact)}</span>
-            {user.document && <span className="text-xs text-slate-400 pl-4">{formatCPF(user.document)}</span>}
+          <div className="flex flex-col text-sm text-[#353A40]">
+            <span className="flex items-center gap-1">
+              <Phone className="h-3 w-3 text-[#7A7E83]" />{" "}
+              {formatPhone(user.contact)}
+            </span>
+            {user.document && (
+              <span className="text-xs text-[#7A7E83] pl-4">
+                {formatCPF(user.document)}
+              </span>
+            )}
           </div>
-        )
+        ),
       },
       {
         header: "Status",
         cell: (user) => (
-          <Badge className={user.status === "ACTIVE" ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-red-100 text-red-700 hover:bg-red-100"}>
+          <Badge
+            className={
+              user.status === "ACTIVE"
+                ? "bg-green-50 text-green-700 hover:bg-green-50 border-green-200"
+                : "bg-red-50 text-red-700 hover:bg-red-50 border-red-200"
+            }
+          >
             {user.status === "ACTIVE" ? "Ativo" : "Inativo"}
           </Badge>
-        )
-      }
+        ),
+      },
     );
 
     if (canManage) {
@@ -387,60 +414,90 @@ export default function UserManagementPage() {
         cell: (user) => (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+              <Button
+                variant="ghost"
+                className="h-8 w-8 p-0 text-[#7A7E83] hover:text-[#2F80ED]"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Ações</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => handleOpenEdit(user)}>
-                <Edit className="mr-2 h-4 w-4" /> Editar
+            <DropdownMenuContent
+              align="end"
+              className="bg-white border border-[#E2E8F0] rounded-xl shadow-lg"
+            >
+              <DropdownMenuLabel className="text-[#353A40]">
+                Ações
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => handleOpenEdit(user)}
+                className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
+              >
+                <Edit className="mr-2 h-4 w-4 text-[#2F80ED]" /> Editar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleToggleStatus(user.id, user.status)}>
-                <Power className="mr-2 h-4 w-4" /> {user.status === "ACTIVE" ? "Desativar" : "Ativar"}
+              <DropdownMenuItem
+                onClick={() => handleToggleStatus(user.id, user.status)}
+                className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
+              >
+                <Power className="mr-2 h-4 w-4 text-[#2F80ED]" />{" "}
+                {user.status === "ACTIVE" ? "Desativar" : "Ativar"}
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600" onClick={() => { setDeleteId(user.id); setIsDeleteOpen(true); }}>
+              <DropdownMenuSeparator className="bg-[#E2E8F0]" />
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600 cursor-pointer hover:bg-red-50"
+                onClick={() => {
+                  setDeleteId(user.id);
+                  setIsDeleteOpen(true);
+                }}
+              >
                 <Trash2 className="mr-2 h-4 w-4" /> Excluir
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        )
+        ),
       });
     }
 
     return cols;
   }, [isMaster, canManage]);
 
-  if (authLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-orange-500" /></div>;
+  if (authLoading)
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F5F6FA]">
+        <Loader2 className="animate-spin text-[#2F80ED] h-8 w-8" />
+      </div>
+    );
 
   return (
-    <div className="min-h-screen w-full bg-[#F5F0E6] p-4 md:p-8">
+    <div className="min-h-screen w-full bg-[#F5F6FA] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-
-        <PageHeader 
-          title="Usuários" 
+        <PageHeader
+          title="Usuários"
           description="Gerencie o acesso ao sistema."
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
           searchPlaceholder="Buscar por nome ou e-mail..."
         >
           {isMaster && (
-            <CompanyFilter value={filterCompanyId} onChange={setFilterCompanyId} />
+            <CompanyFilter
+              value={filterCompanyId}
+              onChange={setFilterCompanyId}
+            />
           )}
 
           {canManage && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
-                    onClick={handleOpenCreate} 
-                    size="icon" 
-                    className="bg-[#D35400] hover:bg-[#D35400]/90 text-white shadow-md transition-transform hover:scale-105 rounded-full h-10 w-10"
+                  <Button
+                    onClick={handleOpenCreate}
+                    size="icon"
+                    className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white shadow-sm transition-transform hover:scale-105 rounded-full h-10 w-10"
                   >
                     <Plus className="h-5 w-5" />
                     <span className="sr-only">Adicionar novo usuário</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
+                <TooltipContent className="bg-[#353A40] text-white">
                   <p>Adicionar novo usuário</p>
                 </TooltipContent>
               </Tooltip>
@@ -453,18 +510,18 @@ export default function UserManagementPage() {
           data={paginatedUsers}
           columns={columns}
           isLoading={loading}
-          onSearchChange={undefined} 
+          onSearchChange={undefined}
           emptyMessage="Nenhum usuário encontrado."
           pagination={{
             currentPage: currentPage,
             totalPages: totalPages,
             onPageChange: (page) => setCurrentPage(page),
             totalItems: filteredUsers.length,
-            itemsPerPage: ITEMS_PER_PAGE
+            itemsPerPage: ITEMS_PER_PAGE,
           }}
         />
 
-        <UserFormModal 
+        <UserFormModal
           isOpen={isModalOpen}
           onClose={handleCloseModal}
           initialData={editingUser as any}
@@ -475,20 +532,36 @@ export default function UserManagementPage() {
         />
 
         <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-          <AlertDialogContent>
+          <AlertDialogContent className="bg-white border border-[#E2E8F0] rounded-xl">
             <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-red-600"><AlertTriangle className="h-5 w-5" /> Atenção</AlertDialogTitle>
-              <AlertDialogDescription>Tem certeza que deseja excluir este usuário? Esta ação é irreversível.</AlertDialogDescription>
+              <AlertDialogTitle className="flex items-center gap-2 text-[#353A40]">
+                <AlertTriangle className="h-5 w-5 text-red-500" /> Atenção
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-[#7A7E83]">
+                Tem certeza que deseja excluir este usuário? Esta ação é
+                irreversível.
+              </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={(e) => { e.preventDefault(); handleDelete(); }} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white">
+              <AlertDialogCancel
+                disabled={isDeleting}
+                className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+              >
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleDelete();
+                }}
+                disabled={isDeleting}
+                className="bg-red-500 hover:bg-red-600 text-white"
+              >
                 {isDeleting ? "Excluindo..." : "Sim, Excluir"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
       </div>
     </div>
   );
