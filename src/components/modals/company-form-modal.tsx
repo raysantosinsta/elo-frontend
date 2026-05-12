@@ -455,14 +455,16 @@ export function CompanyFormModal({
                 )}
 
                 {/* ABA 2: ENDEREÇO */}
+                {/* ABA 2: ENDEREÇO */}
                 {activeTab === "address" && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div className="space-y-6">
+                    {/* Primeira linha: CEP + Logradouro + Número */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
                       <FormField
                         control={form.control}
                         name="cep"
                         render={({ field }) => (
-                          <FormItem className="md:col-span-3">
+                          <FormItem className="sm:col-span-3">
                             <FormLabel>CEP</FormLabel>
                             <FormControl>
                               <div className="relative">
@@ -472,6 +474,7 @@ export function CompanyFormModal({
                                   onChange={(e) =>
                                     field.onChange(formatCEP(e.target.value))
                                   }
+                                  placeholder="00000-000"
                                 />
                                 {isCepLoading && (
                                   <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-gray-400" />
@@ -486,10 +489,13 @@ export function CompanyFormModal({
                         control={form.control}
                         name="endereco"
                         render={({ field }) => (
-                          <FormItem className="md:col-span-7">
+                          <FormItem className="sm:col-span-7">
                             <FormLabel>Logradouro</FormLabel>
                             <FormControl>
-                              <Input {...field} />
+                              <Input
+                                {...field}
+                                placeholder="Rua, Avenida, etc"
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -499,25 +505,27 @@ export function CompanyFormModal({
                         control={form.control}
                         name="numero"
                         render={({ field }) => (
-                          <FormItem className="md:col-span-2">
+                          <FormItem className="sm:col-span-2">
                             <FormLabel>Número</FormLabel>
                             <FormControl>
-                              <Input {...field} />
+                              <Input {...field} placeholder="123" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+
+                    {/* Segunda linha: Complemento + Bairro + Cidade + UF */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
                       <FormField
                         control={form.control}
                         name="complemento"
                         render={({ field }) => (
-                          <FormItem className="md:col-span-4">
+                          <FormItem className="sm:col-span-3">
                             <FormLabel>Complemento</FormLabel>
                             <FormControl>
-                              <Input {...field} />
+                              <Input {...field} placeholder="Apto, Sala, etc" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -527,10 +535,10 @@ export function CompanyFormModal({
                         control={form.control}
                         name="bairro"
                         render={({ field }) => (
-                          <FormItem className="md:col-span-4">
+                          <FormItem className="sm:col-span-3">
                             <FormLabel>Bairro</FormLabel>
                             <FormControl>
-                              <Input {...field} />
+                              <Input {...field} placeholder="Centro" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -540,10 +548,10 @@ export function CompanyFormModal({
                         control={form.control}
                         name="cidade"
                         render={({ field }) => (
-                          <FormItem className="md:col-span-3">
+                          <FormItem className="sm:col-span-4">
                             <FormLabel>Cidade</FormLabel>
                             <FormControl>
-                              <Input {...field} />
+                              <Input {...field} placeholder="São Paulo" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -553,13 +561,14 @@ export function CompanyFormModal({
                         control={form.control}
                         name="estado"
                         render={({ field }) => (
-                          <FormItem className="md:col-span-1">
+                          <FormItem className="sm:col-span-2">
                             <FormLabel>UF</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
                                 maxLength={2}
                                 className="uppercase"
+                                placeholder="SP"
                               />
                             </FormControl>
                             <FormMessage />

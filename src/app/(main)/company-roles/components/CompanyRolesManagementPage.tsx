@@ -244,6 +244,9 @@ export default function CompanyRolesManagementPage() {
           `/company-roles/${editingRole.id}`,
           updateData,
         );
+
+        await fetchRoles(); // Rebusca os dados
+
         setRoles((prev) =>
           prev.map((r) => (r.id === editingRole.id ? response.data : r)),
         );
@@ -253,6 +256,10 @@ export default function CompanyRolesManagementPage() {
           "/company-roles",
           formData,
         );
+
+        // 🔥 Forçar refresh da lista
+        await fetchRoles();
+
         setRoles((prev) => [response.data, ...prev]);
         toast.success("Cargo criado com sucesso!");
       }

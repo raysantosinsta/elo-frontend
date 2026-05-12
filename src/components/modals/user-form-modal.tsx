@@ -14,6 +14,11 @@ import {
   Building2,
   Briefcase,
   AlertCircle,
+  User as UserIcon,
+  Phone,
+  Mail,
+  FileText,
+  Shield,
 } from "lucide-react";
 
 import {
@@ -45,6 +50,7 @@ import { Separator } from "@/components/ui/separator";
 import { api } from "@/services/api";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { Badge } from "@/components/ui/badge";
 
 // --- Tipos e Enums ---
 export enum UserRole {
@@ -54,7 +60,7 @@ export enum UserRole {
 }
 
 interface CompanyRole {
-  id: string; // ← ESTA PROPRIEDADE DEVE EXISTIR
+  id: string;
   name: string;
   description?: string;
   level: number;
@@ -92,46 +98,43 @@ interface UserFormModalProps {
   currentUserRole?: string;
 }
 
-// --- Helpers e Schema ---
+// --- Helpers ---
 const cleanMask = (value: string | undefined) =>
   value ? value.replace(/\D/g, "") : "";
 
-const baseUserSchema = z.object({
-  name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
-  email: z.string().email("E-mail inválido"),
-  contact: z
-    .string()
-    .refine((val) => cleanMask(val).length >= 10, "Telefone inválido"),
-  document: z.string().optional(),
-  // professionalRole: z.string().optional(),
-  companyRoleId: z.string().optional(),
-  companyId: z.string().optional(),
-  password: z.string().optional(),
-  confirmPassword: z.string().optional(),
-});
+/**
+ * 🔥 FUNÇÃO CORRIGIDA: Remove o prefixo 55 do número vindo do backend
+ */
+const removeCountryCode = (phone: string | undefined): string => {
+  if (!phone) return "";
+  // Remove tudo que não é dígito
+  let numbersOnly = phone.replace(/\D/g, "");
+  // Se começar com 55, remove
+  if (numbersOnly.startsWith("55")) {
+    numbersOnly = numbersOnly.substring(2);
+  }
+  return numbersOnly;
+};
 
-const userSchema = baseUserSchema.superRefine(
-  ({ password, confirmPassword }, ctx) => {
-    if (password && password !== confirmPassword) {
-      ctx.addIssue({
-        code: "custom",
-        message: "As senhas não coincidem",
-        path: ["confirmPassword"],
-      });
-    }
-  },
-);
-
-type UserFormValues = z.infer<typeof userSchema>;
-
+/**
+ * 🔥 FUNÇÃO CORRIGIDA: Formata o telefone para exibição (sem 55)
+ */
 const formatPhone = (v: string | undefined) => {
   if (!v) return "";
-  let r = v.replace(/\D/g, "");
-  if (r.length > 11) r = r.substring(0, 11);
-  if (r.length > 10) return r.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-  if (r.length > 5) return r.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
-  if (r.length > 2) return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
-  return r.replace(/^(\d*)/, "($1");
+  // Primeiro remove o código do país se existir
+  let cleanNumber = removeCountryCode(v);
+  // Agora formata normalmente
+  if (cleanNumber.length > 11) cleanNumber = cleanNumber.substring(0, 11);
+  if (cleanNumber.length > 10) {
+    return cleanNumber.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+  }
+  if (cleanNumber.length > 5) {
+    return cleanNumber.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+  }
+  if (cleanNumber.length > 2) {
+    return cleanNumber.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
+  }
+  return cleanNumber.replace(/^(\d*)/, "($1");
 };
 
 const formatCPF = (v: string | undefined) => {
@@ -144,6 +147,56 @@ const formatCPF = (v: string | undefined) => {
     .replace(/(-\d{2})\d+?$/, "$1");
 };
 
+// --- Schema com validação condicional ---
+const baseUserSchema = z.object({
+  name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+  email: z.string().email("E-mail inválido"),
+  contact: z
+    .string()
+    .refine(
+      (val) => cleanMask(val).length >= 10,
+      "Telefone inválido (mínimo 10 dígitos)",
+    ),
+  document: z.string().optional(),
+  companyRoleId: z.string().optional(),
+  companyId: z.string().optional(),
+  password: z.string().optional(),
+  confirmPassword: z.string().optional(),
+});
+
+const createUserSchema = (isEditing: boolean, isADM: boolean) => {
+  return baseUserSchema.superRefine((data, ctx) => {
+    // 🔥 REGRA: APENAS ADMIN (logado) precisa de cargo profissional
+    if (!isEditing && isADM && !data.companyRoleId) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Cargo profissional é obrigatório para criar usuários",
+        path: ["companyRoleId"],
+      });
+    }
+
+    // Validação de senha para novos usuários
+    if (!isEditing && (!data.password || data.password.length < 6)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Senha obrigatória (mínimo 6 caracteres)",
+        path: ["password"],
+      });
+    }
+
+    // Confirmação de senha
+    if (data.password && data.password !== data.confirmPassword) {
+      ctx.addIssue({
+        code: "custom",
+        message: "As senhas não coincidem",
+        path: ["confirmPassword"],
+      });
+    }
+  });
+};
+
+type UserFormValues = z.infer<typeof baseUserSchema>;
+
 export function UserFormModal({
   isOpen,
   onClose,
@@ -155,10 +208,14 @@ export function UserFormModal({
 }: UserFormModalProps) {
   const isEditing = !!initialData;
   const isMaster = currentUserRole === "MASTER";
+  const isADM = currentUserRole === "ADMIN";
   const { user } = useAuth();
 
   const [companyRoles, setCompanyRoles] = useState<CompanyRole[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
+  const [selectedCompanyName, setSelectedCompanyName] = useState("");
+
+  const userSchema = createUserSchema(isEditing, isADM);
 
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userSchema),
@@ -167,7 +224,6 @@ export function UserFormModal({
       email: "",
       contact: "",
       document: "",
-      // professionalRole: "",
       companyRoleId: "",
       password: "",
       confirmPassword: "",
@@ -175,23 +231,32 @@ export function UserFormModal({
     },
   });
 
-  // Buscar cargos da empresa
+  // Buscar cargos da empresa (apenas para ADMIN)
   useEffect(() => {
     const fetchCompanyRoles = async () => {
+      if (!isADM) {
+        setCompanyRoles([]);
+        return;
+      }
+
       let targetCompanyId = "";
 
       if (isMaster) {
         targetCompanyId = form.getValues("companyId") || "";
         if (!targetCompanyId) {
           setCompanyRoles([]);
+          setSelectedCompanyName("");
           return;
         }
+        const selectedCompany = companies.find((c) => c.id === targetCompanyId);
+        setSelectedCompanyName(selectedCompany?.name || "");
       } else {
         targetCompanyId = user?.companyId || "";
         if (!targetCompanyId) {
           setCompanyRoles([]);
           return;
         }
+        setSelectedCompanyName(user?.company?.name || "Minha Empresa");
       }
 
       setLoadingRoles(true);
@@ -201,9 +266,12 @@ export function UserFormModal({
         );
 
         const roles = response.data.data || [];
-        setCompanyRoles(roles);
+        const filteredRoles = roles.filter(
+          (role) => role.companyId === targetCompanyId,
+        );
+        setCompanyRoles(filteredRoles);
 
-        if (roles.length === 0 && !isEditing) {
+        if (filteredRoles.length === 0 && !isEditing && isADM) {
           toast.info(
             "Nenhum cargo cadastrado para sua empresa. Crie cargos primeiro.",
             {
@@ -224,21 +292,32 @@ export function UserFormModal({
       }
     };
 
-    if (isOpen) {
+    if (isOpen && isADM) {
       fetchCompanyRoles();
     }
-  }, [isOpen, isMaster, user?.companyId, form, isEditing]);
+  }, [isOpen, isADM, isMaster, user?.companyId, form, companies, isEditing]);
 
-  // Atualiza o formulário ao abrir
+  // 🔥 Atualiza o formulário ao abrir - CORRIGIDO para remover o 55 do telefone
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
+        console.log(
+          "📞 [EDIT] Telefone original do backend:",
+          initialData.contact,
+        );
+
+        // 🔥 Remove o 55 do telefone antes de formatar
+        const phoneWithoutCountryCode = removeCountryCode(initialData.contact);
+        const formattedPhone = formatPhone(phoneWithoutCountryCode);
+
+        console.log("📞 [EDIT] Telefone sem 55:", phoneWithoutCountryCode);
+        console.log("📞 [EDIT] Telefone formatado:", formattedPhone);
+
         form.reset({
           name: initialData.name,
           email: initialData.email,
-          contact: formatPhone(initialData.contact),
+          contact: formattedPhone,
           document: formatCPF(initialData.document || ""),
-          // professionalRole: initialData.professionalRole || "",
           companyRoleId: initialData.companyRoleId || "",
           password: "",
           confirmPassword: "",
@@ -250,7 +329,6 @@ export function UserFormModal({
           email: "",
           contact: "",
           document: "",
-          // professionalRole: "",
           companyRoleId: "",
           password: "",
           confirmPassword: "",
@@ -260,91 +338,87 @@ export function UserFormModal({
     }
   }, [isOpen, initialData, form]);
 
-  // UserFormModal.tsx
-
   const handleSubmit = async (values: UserFormValues) => {
-    console.log("🔍 [MODAL] Valores antes de enviar:", {
-      companyRoleId: values.companyRoleId,
-      // professionalRole: values.professionalRole,
-    });
+    console.log("🔍 [MODAL] Valores antes de enviar:", values);
 
-    if (!isEditing && (!values.password || values.password.length < 6)) {
-      form.setError("password", {
-        message: "Senha obrigatória (mín. 6 dígitos)",
+    if (!isEditing && isADM && !values.companyRoleId) {
+      toast.error("Selecione um cargo profissional para o usuário");
+      form.setError("companyRoleId", {
+        message: "Cargo profissional é obrigatório",
       });
       return;
     }
 
-    if (!isEditing && isMaster && !values.companyId) {
-      form.setError("companyId", { message: "Selecione a empresa." });
+    if (!isEditing && (!values.password || values.password.length < 6)) {
+      toast.error("Informe uma senha com pelo menos 6 caracteres");
       return;
     }
 
-    // 🔥 BUSCAR O NOME DO CARGO PELO ID
+    if (!isEditing && isMaster && !values.companyId) {
+      form.setError("companyId", { message: "Selecione a empresa" });
+      return;
+    }
+
     let professionalRoleName = "";
 
-    if (values.companyRoleId) {
+    if (isADM && values.companyRoleId) {
       const selectedRole = companyRoles.find(
         (role) => role.id === values.companyRoleId,
       );
       if (selectedRole) {
         professionalRoleName = selectedRole.name;
-        console.log(
-          `🔍 Cargo encontrado: ${selectedRole.name} (ID: ${selectedRole.id})`,
-        );
+        console.log(`🔍 Cargo encontrado: ${selectedRole.name}`);
       }
     }
 
     const { confirmPassword, ...dataToSend } = values;
 
-    // 🔥 ENVIA O NOME DO CARGO em vez do ID
+    // 🔥 Montar payload final
     const payload = {
       ...dataToSend,
-      professionalRole: professionalRoleName, // 🔥 Envia o NOME (ex: "Modelagem")
+      professionalRole: professionalRoleName,
+      // 🔥 IMPORTANTE: Envia apenas os números (sem formatação e SEM o 55)
+      // O backend adicionará o 55 automaticamente
+      contact: cleanMask(values.contact),
+      document: values.document ? cleanMask(values.document) : undefined,
     };
 
-    console.log("🔍 [MODAL] Payload final:", payload);
-
+    console.log("🔍 [MODAL] Payload final (contact sem 55):", payload.contact);
     await onSubmit(payload);
   };
 
   const handleCompanyChange = (companyId: string) => {
     form.setValue("companyId", companyId);
     form.setValue("companyRoleId", "");
-    setTimeout(() => {
-      const fetchNewCompanyRoles = async () => {
-        setLoadingRoles(true);
-        try {
-          const response = await api.get<{ data: CompanyRole[] }>(
-            `/company-roles?limit=100&includeInactive=false`,
-          );
-          const roles = response.data.data || [];
-          setCompanyRoles(roles);
-        } catch (error) {
-          console.error("Erro ao buscar cargos:", error);
-          setCompanyRoles([]);
-        } finally {
-          setLoadingRoles(false);
-        }
-      };
-      fetchNewCompanyRoles();
-    }, 100);
-  };
 
-  const getSelectedRoleName = () => {
-    const roleId = form.watch("companyRoleId");
-    const role = companyRoles.find((r) => r.id === roleId);
-    return role?.name || "";
-  };
+    const selectedCompany = companies.find((c) => c.id === companyId);
+    setSelectedCompanyName(selectedCompany?.name || "");
 
-  const shouldShowRolesSelect = () => {
-    if (isMaster) {
-      return !!form.watch("companyId");
+    if (isADM) {
+      setTimeout(() => {
+        const fetchNewCompanyRoles = async () => {
+          setLoadingRoles(true);
+          try {
+            const response = await api.get<{ data: CompanyRole[] }>(
+              `/company-roles?limit=100&includeInactive=false`,
+            );
+            const roles = response.data.data || [];
+            const filteredRoles = roles.filter(
+              (role) => role.companyId === companyId,
+            );
+            setCompanyRoles(filteredRoles);
+          } catch (error) {
+            console.error("Erro ao buscar cargos:", error);
+            setCompanyRoles([]);
+          } finally {
+            setLoadingRoles(false);
+          }
+        };
+        fetchNewCompanyRoles();
+      }, 100);
     }
-    return true;
   };
 
-  // 🔥 Função para obter o nome do cargo pelo ID (para mostrar no SelectValue)
   const getRoleNameById = (roleId: string) => {
     const role = companyRoles.find((r) => r.id === roleId);
     return role?.name || "";
@@ -353,21 +427,31 @@ export function UserFormModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl h-[90vh] flex flex-col p-0 bg-white">
-        <DialogHeader className="px-6 py-4 border-b bg-slate-50">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-orange-100 rounded text-orange-600">
+        <DialogHeader className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-orange-100 rounded-lg text-orange-600">
               {isEditing ? <Edit size={20} /> : <Plus size={20} />}
             </div>
             <div>
-              <DialogTitle>
+              <DialogTitle className="text-xl font-bold text-slate-800">
                 {isEditing ? "Editar Usuário" : "Novo Usuário"}
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-slate-500">
                 {isEditing
-                  ? "Atualize os dados abaixo."
-                  : "Preencha para criar um novo acesso."}
+                  ? "Atualize os dados do usuário"
+                  : isMaster
+                    ? "Preencha os dados para criar um novo administrador"
+                    : "Preencha os dados para criar um novo colaborador"}
               </DialogDescription>
             </div>
+            {isADM && !isEditing && (
+              <Badge
+                variant="outline"
+                className="ml-auto bg-orange-50 text-orange-700 border-orange-200"
+              >
+                Cargo obrigatório
+              </Badge>
+            )}
           </div>
         </DialogHeader>
 
@@ -379,10 +463,10 @@ export function UserFormModal({
                 className="space-y-6"
                 autoComplete="off"
               >
-                {/* Seleção de Empresa (Apenas para Master) */}
+                {/* Seleção de Empresa (Apenas para MASTER) */}
                 {isMaster && (
-                  <div className="space-y-4 p-4 bg-orange-50 border border-orange-100 rounded-md">
-                    <h3 className="text-sm font-bold text-orange-800 uppercase flex items-center gap-2">
+                  <div className="space-y-4 p-4 bg-orange-50 border border-orange-100 rounded-lg">
+                    <h3 className="text-sm font-semibold text-orange-800 uppercase flex items-center gap-2">
                       <Building2 className="h-4 w-4" /> Vínculo Empresarial
                     </h3>
                     <FormField
@@ -390,14 +474,15 @@ export function UserFormModal({
                       name="companyId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Empresa</FormLabel>
+                          <FormLabel className="text-orange-800">
+                            Empresa *
+                          </FormLabel>
                           <Select
                             onValueChange={handleCompanyChange}
-                            defaultValue={field.value}
                             value={field.value}
                           >
                             <FormControl>
-                              <SelectTrigger className="bg-white">
+                              <SelectTrigger className="bg-white border-orange-200 focus:border-orange-500">
                                 <SelectValue placeholder="Selecione a empresa" />
                               </SelectTrigger>
                             </FormControl>
@@ -418,8 +503,8 @@ export function UserFormModal({
 
                 {/* Dados Pessoais */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
-                    <span className="w-1 h-4 bg-orange-500 rounded-full" />{" "}
+                  <h3 className="text-sm font-semibold text-slate-700 uppercase flex items-center gap-2">
+                    <UserIcon className="h-4 w-4 text-orange-500" />
                     Dados Pessoais
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -428,9 +513,13 @@ export function UserFormModal({
                       name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nome Completo</FormLabel>
+                          <FormLabel>Nome Completo *</FormLabel>
                           <FormControl>
-                            <Input placeholder="Ex: Ana Silva" {...field} />
+                            <Input
+                              placeholder="Ex: Ana Silva"
+                              {...field}
+                              className="focus:border-orange-500"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -450,6 +539,7 @@ export function UserFormModal({
                               onChange={(e) =>
                                 field.onChange(formatCPF(e.target.value))
                               }
+                              className="focus:border-orange-500"
                             />
                           </FormControl>
                           <FormMessage />
@@ -461,25 +551,25 @@ export function UserFormModal({
 
                 <Separator />
 
-                {/* Acesso e Cargo Profissional */}
+                {/* Contato */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
-                    <span className="w-1 h-4 bg-orange-500 rounded-full" />{" "}
-                    Acesso & Função
+                  <h3 className="text-sm font-semibold text-slate-700 uppercase flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-orange-500" />
+                    Contato
                   </h3>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>E-mail</FormLabel>
+                          <FormLabel>E-mail *</FormLabel>
                           <FormControl>
                             <Input
+                              type="email"
                               placeholder="email@empresa.com"
                               {...field}
-                              autoComplete="off"
+                              className="focus:border-orange-500"
                             />
                           </FormControl>
                           <FormMessage />
@@ -491,15 +581,21 @@ export function UserFormModal({
                       name="contact"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Telefone</FormLabel>
+                          <FormLabel>Telefone *</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="(00) 00000-0000"
                               {...field}
                               maxLength={15}
-                              onChange={(e) =>
-                                field.onChange(formatPhone(e.target.value))
-                              }
+                              onChange={(e) => {
+                                // 🔥 Remove o 55 se o usuário tentar digitar
+                                let value = e.target.value;
+                                if (value.startsWith("55")) {
+                                  value = value.substring(2);
+                                }
+                                field.onChange(formatPhone(value));
+                              }}
+                              className="focus:border-orange-500"
                             />
                           </FormControl>
                           <FormMessage />
@@ -507,134 +603,128 @@ export function UserFormModal({
                       )}
                     />
                   </div>
+                </div>
 
-                  {/* SELEÇÃO DINÂMICA DE CARGOS DA EMPRESA */}
-                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-md">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Briefcase className="w-4 h-4 text-slate-500" />
-                      <span className="text-sm font-semibold text-slate-700">
-                        {isMaster
-                          ? "Cargo na Empresa"
-                          : "Cargo na Minha Empresa"}
-                      </span>
-                    </div>
+                <Separator />
 
-                    <div className="grid grid-cols-1 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="companyRoleId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs">
-                              Selecione o Cargo
-                            </FormLabel>
+                {/* SEÇÃO DE CARGO PROFISSIONAL - APENAS PARA ADMIN */}
+                {isADM && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-700 uppercase flex items-center gap-2">
+                      <Briefcase className="h-4 w-4 text-orange-500" />
+                      Cargo Profissional{" "}
+                      <span className="text-red-500 text-base">*</span>
+                    </h3>
 
-                            {loadingRoles ? (
-                              <div className="flex items-center gap-2 p-2 border rounded-md bg-white">
-                                <Loader2 className="h-4 w-4 animate-spin text-[#D35400]" />
-                                <span className="text-sm text-gray-500">
-                                  Carregando cargos...
-                                </span>
-                              </div>
-                            ) : (
-                              <>
-                                {shouldShowRolesSelect() ? (
-                                  <Select
-                                    onValueChange={field.onChange}
-                                    value={field.value || undefined}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger className="bg-white">
-                                        {/* 🔥 Mostra apenas o nome do cargo selecionado */}
-                                        <SelectValue placeholder="Selecione um cargo">
-                                          {field.value
-                                            ? getRoleNameById(field.value)
-                                            : null}
-                                        </SelectValue>
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      {companyRoles.map((role) => (
-                                        <SelectItem
-                                          key={role.id}
-                                          value={role.id}
-                                        >
-                                          {/* 🔥 Na lista dropdown, mostra nome + descrição + nível para facilitar escolha */}
-                                          <div className="flex flex-col">
-                                            <span className="font-medium">
-                                              {role.name}
+                    <div className="p-4 bg-slate-50 border border-slate-100 rounded-lg">
+                      {loadingRoles ? (
+                        <div className="flex items-center justify-center gap-2 p-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-orange-600" />
+                          <span className="text-sm text-gray-500">
+                            Carregando cargos...
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <FormField
+                            control={form.control}
+                            name="companyRoleId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-slate-700">
+                                  Selecione o cargo *
+                                </FormLabel>
+                                <Select
+                                  onValueChange={field.onChange}
+                                  value={field.value || undefined}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger
+                                      className={`bg-white ${
+                                        !isEditing && !field.value
+                                          ? "border-red-300 focus:border-red-500"
+                                          : "focus:border-orange-500"
+                                      }`}
+                                    >
+                                      <SelectValue placeholder="Selecione um cargo">
+                                        {field.value
+                                          ? getRoleNameById(field.value)
+                                          : null}
+                                      </SelectValue>
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {companyRoles.map((role) => (
+                                      <SelectItem key={role.id} value={role.id}>
+                                        <div className="flex flex-col py-1">
+                                          <span className="font-medium text-slate-700">
+                                            {role.name}
+                                          </span>
+                                          {role.description && (
+                                            <span className="text-xs text-gray-500">
+                                              {role.description}
                                             </span>
-                                            {role.description && (
-                                              <span className="text-xs text-gray-500">
-                                                {role.description}
-                                              </span>
-                                            )}
-                                            <span className="text-xs text-gray-400">
-                                              Nível: {role.level}
-                                            </span>
-                                          </div>
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : (
-                                  <div className="p-2 border rounded-md bg-gray-50 text-gray-500 text-sm">
-                                    {isMaster
-                                      ? "Selecione uma empresa primeiro"
-                                      : "Carregando..."}
-                                  </div>
-                                )}
-
-                                {/* Aviso quando não há cargos */}
-                                {shouldShowRolesSelect() &&
-                                  companyRoles.length === 0 &&
-                                  !loadingRoles && (
-                                    <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
-                                      <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5" />
-                                      <div className="text-sm text-amber-700">
-                                        <p>
-                                          Nenhum cargo cadastrado para esta
-                                          empresa.
-                                        </p>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            window.open(
-                                              "/company-roles",
-                                              "_blank",
-                                            )
-                                          }
-                                          className="text-[#D35400] underline font-medium mt-1 hover:text-[#D35400]/80"
-                                        >
-                                          Clique aqui para criar cargos →
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                              </>
+                                          )}
+                                          <span className="text-xs text-gray-400">
+                                            Nível: {role.level}
+                                          </span>
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
                             )}
+                          />
 
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                          {companyRoles.length === 0 && !loadingRoles && (
+                            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
+                              <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                              <div className="text-sm text-amber-700">
+                                <p className="font-medium mb-1">
+                                  Nenhum cargo cadastrado para{" "}
+                                  {selectedCompanyName || "esta empresa"}
+                                </p>
+                                <p className="text-xs">
+                                  Cadastre cargos profissionais antes de criar
+                                  usuários.
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    window.open("/company-roles", "_blank")
+                                  }
+                                  className="text-orange-600 underline font-medium mt-2 hover:text-orange-700 transition-colors"
+                                >
+                                  Clique aqui para criar cargos →
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
-                      {/* {form.watch("professionalRole") &&
-                        getSelectedRoleName() && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Cargo profissional: {form.watch("professionalRole")}
-                          </div>
-                        )} */}
+                          {!isEditing && (
+                            <div className="mt-3 p-2 bg-green-50 border border-green-100 rounded-md">
+                              <p className="text-xs text-green-700 flex items-center gap-1">
+                                <Shield className="h-3 w-3" />
+                                Usuários criados por você terão permissão de{" "}
+                                <strong>COLABORADOR</strong> com o cargo
+                                selecionado.
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
-                </div>
+                )}
 
                 <Separator />
 
                 {/* Segurança */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
-                    <span className="w-1 h-4 bg-orange-500 rounded-full" />{" "}
+                  <h3 className="text-sm font-semibold text-slate-700 uppercase flex items-center gap-2">
+                    <Key className="h-4 w-4 text-orange-500" />
                     Segurança
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -645,8 +735,8 @@ export function UserFormModal({
                         <FormItem>
                           <FormLabel>
                             {isEditing
-                              ? "Nova Senha (Opcional)"
-                              : "Senha Inicial"}
+                              ? "Nova Senha (opcional)"
+                              : "Senha Inicial *"}
                           </FormLabel>
                           <div className="relative">
                             <Key className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -654,13 +744,18 @@ export function UserFormModal({
                               <Input
                                 type="password"
                                 placeholder="Mínimo 6 caracteres"
-                                className="pl-9"
+                                className="pl-9 focus:border-orange-500"
                                 {...field}
                                 autoComplete="new-password"
                               />
                             </FormControl>
                           </div>
                           <FormMessage />
+                          {isEditing && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Deixe em branco para manter a senha atual
+                            </p>
+                          )}
                         </FormItem>
                       )}
                     />
@@ -669,14 +764,18 @@ export function UserFormModal({
                       name="confirmPassword"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Confirmar Senha</FormLabel>
+                          <FormLabel>
+                            {isEditing
+                              ? "Confirmar Nova Senha"
+                              : "Confirmar Senha"}
+                          </FormLabel>
                           <div className="relative">
                             <Key className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                             <FormControl>
                               <Input
                                 type="password"
                                 placeholder="Repita a senha"
-                                className="pl-9"
+                                className="pl-9 focus:border-orange-500"
                                 {...field}
                                 autoComplete="new-password"
                               />
@@ -693,21 +792,32 @@ export function UserFormModal({
           </ScrollArea>
         </div>
 
-        <div className="px-6 py-4 border-t bg-slate-50 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
+        {/* Footer com botões */}
+        <div className="px-6 py-4 border-t bg-slate-50 flex justify-end gap-3">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={isLoading}
+            className="hover:bg-slate-100"
+          >
             Cancelar
           </Button>
           <Button
             onClick={() => form.handleSubmit(handleSubmit)()}
             disabled={isLoading}
-            className="bg-[#D35400] hover:bg-[#D35400]/90 text-white min-w-[120px]"
+            className="bg-orange-600 hover:bg-orange-700 text-white shadow-sm transition-all duration-200 min-w-[120px]"
           >
             {isLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {isEditing ? "Salvando..." : "Criando..."}
+              </>
             ) : (
-              <CheckCircle2 className="mr-2 h-4 w-4" />
+              <>
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+                {isEditing ? "Salvar Alterações" : "Criar Usuário"}
+              </>
             )}
-            {isEditing ? "Salvar" : "Criar"}
           </Button>
         </div>
       </DialogContent>
