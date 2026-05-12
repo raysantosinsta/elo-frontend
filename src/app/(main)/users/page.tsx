@@ -87,12 +87,44 @@ interface CompanyOption {
 // Helpers
 const formatPhone = (v: string | undefined) => {
   if (!v) return "";
+
+  // Remove tudo que não é dígito
   let r = v.replace(/\D/g, "");
-  if (r.length > 11) r = r.substring(0, 11);
-  if (r.length > 10) return r.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-  if (r.length > 5) return r.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
-  if (r.length > 2) return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
-  return r.replace(/^(\d*)/, "($1");
+
+  // 🔥 Garantir que tenha o código 55
+  if (!r.startsWith("55")) {
+    r = `55${r}`;
+  }
+
+  // 🔥 CORREÇÃO: Telefone brasileiro tem até 13 dígitos (55 + 11 = 13)
+  // 55 (2) + DDD (2) + 9 (1) + número (8) = 13 dígitos
+  if (r.length > 13) r = r.substring(0, 13);
+
+  // Log para debug
+  console.log("📱 Formatando telefone:", {
+    original: v,
+    cleaned: r,
+    length: r.length,
+  });
+
+  // Formatar para exibição: +55 (DD) XXXXX-XXXX
+  if (r.length === 13) {
+    // +55 (DD) 9XXXX-XXXX (celular com 9 dígitos)
+    return r.replace(/^(\d{2})(\d{2})(\d{5})(\d{4})/, "+$1 ($2) $3-$4");
+  } else if (r.length === 12) {
+    // +55 (DD) XXXX-XXXX (telefone fixo com 8 dígitos)
+    return r.replace(/^(\d{2})(\d{2})(\d{4})(\d{4})/, "+$1 ($2) $3-$4");
+  } else if (r.length >= 11) {
+    // (DD) 9XXXX-XXXX (celular sem código internacional)
+    return r.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+  } else if (r.length >= 10) {
+    // (DD) XXXX-XXXX (fixo sem código internacional)
+    return r.replace(/^(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
+  } else if (r.length >= 5) {
+    return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
+  }
+
+  return r;
 };
 
 const formatCPF = (v: string | undefined) => {
