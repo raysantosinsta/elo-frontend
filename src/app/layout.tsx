@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ELO PRODUTIVO",
-  description: "ELO Produtivo",
+  title: "ELOSPRO",
+  description: "ESLOSPRO - Sistema de Gerenciamento de Projetos",
   icons: {
     icon: "/icone.png",
   },
