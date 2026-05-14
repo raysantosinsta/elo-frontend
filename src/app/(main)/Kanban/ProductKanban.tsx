@@ -615,7 +615,7 @@ export default function ProductKanban() {
     <KanbanLayout>
       <KanbanHeader
         title="Fluxo de Tarefas"
-        icon={<Layout className="w-5 h-5 text-[#D35400]" />}
+        icon={<Layout className="w-5 h-5 text-[#0097d3]" />}
         onAddColumn={handleOpenNewColumn}
         rightContent={
           <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs text-gray-300">

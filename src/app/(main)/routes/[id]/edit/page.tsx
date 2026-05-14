@@ -1,3 +1,4 @@
+/* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
@@ -14,6 +15,7 @@ import {
   UserIcon,
   FileTextIcon,
   CheckCircleIcon,
+  RefreshCcw,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -25,7 +27,7 @@ import { ptBR } from "date-fns/locale";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -69,7 +71,14 @@ import { UpdateRouteDto } from "@/services/api";
 import { userService } from "@/services/userService";
 import { User } from "@/types/chat";
 
-// Constantes de Status
+// Constantes de Status (padrão dashboard)
+const statusColors: Record<string, string> = {
+  SCHEDULED: "bg-blue-100 text-blue-700 border border-blue-200",
+  IN_PROGRESS: "bg-[#2F80ED]/10 text-[#2F80ED] border border-[#2F80ED]/20",
+  FINISHED: "bg-green-100 text-green-700 border border-green-200",
+  CANCELED: "bg-gray-100 text-gray-500 border border-gray-200",
+};
+
 const statusText: Record<string, string> = {
   SCHEDULED: "Agendada",
   IN_PROGRESS: "Em Andamento",
@@ -104,73 +113,22 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-// Componente Ripple Button
-const RippleButton = ({ children, onClick, className, ...props }: any) => {
-  const [ripple, setRipple] = useState<{
-    x: number;
-    y: number;
-    active: boolean;
-  }>({ x: 0, y: 0, active: false });
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setRipple({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-      active: true,
-    });
-    setTimeout(() => setRipple((prev) => ({ ...prev, active: false })), 500);
-    onClick?.(e);
-  };
-
-  return (
-    <Button
-      ref={buttonRef}
-      onClick={handleClick}
-      className={cn("relative overflow-hidden", className)}
-      {...props}
-    >
-      {children}
-      {ripple.active && (
-        <span
-          className="absolute bg-white/30 rounded-full pointer-events-none"
-          style={{
-            width: 300,
-            height: 300,
-            left: ripple.x - 150,
-            top: ripple.y - 150,
-            opacity: 0,
-            animation: "ripple 0.5s ease-out",
-          }}
-        />
-      )}
-    </Button>
-  );
-};
-
-// Componente de Skeleton Loading
+// Componente de Skeleton Loading (padrão dashboard)
 const FormSkeleton = () => (
-  <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-8">
+  <div className="min-h-screen bg-[#F5F6FA] p-4 md:p-8">
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="animate-pulse space-y-4">
-        <div className="h-10 w-32 bg-gray-200 rounded" />
-        <div className="h-12 w-64 bg-gray-200 rounded" />
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#2F80ED]"></div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="h-32 bg-gray-200 rounded-xl" />
-        <div className="h-32 bg-gray-200 rounded-xl" />
-      </div>
-      <div className="h-96 bg-gray-200 rounded-xl" />
     </div>
   </div>
 );
 
-// Estilos padronizados
+// Estilos padronizados (dashboard)
 const inputStyle =
-  "bg-white border-gray-200 text-[#2C3E50] placeholder:text-[#95A5A6] focus-visible:ring-[#D35400] focus-visible:border-[#D35400] transition-all";
-const labelStyle = "text-[#2C3E50] font-medium";
-const cardStyle = "border-0 shadow-md rounded-xl overflow-hidden bg-white";
+  "bg-[#F5F6FA] border-[#E2E8F0] text-[#353A40] placeholder:text-[#7A7E83] focus-visible:ring-[#2F80ED] focus-visible:border-[#2F80ED] transition-all";
+const labelStyle = "text-[#353A40] font-semibold text-sm";
+const cardStyle = "bg-white shadow-lg rounded-xl border-0";
 
 export default function EditRoutePage() {
   const params = useParams();
@@ -178,7 +136,11 @@ export default function EditRoutePage() {
   const routeId = params.id as string;
 
   const { useGetRouteById, useUpdateRoute } = useRoutes();
-  const { data: route, isLoading: isLoadingRoute } = useGetRouteById(routeId);
+  const {
+    data: route,
+    isLoading: isLoadingRoute,
+    refetch,
+  } = useGetRouteById(routeId);
   const updateRoute = useUpdateRoute();
 
   const [activeTab, setActiveTab] = useState("basic");
@@ -188,6 +150,7 @@ export default function EditRoutePage() {
   const [isStopDialogOpen, setIsStopDialogOpen] = useState(false);
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
   const [isFormReady, setIsFormReady] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -249,16 +212,6 @@ export default function EditRoutePage() {
         (a, b) => (a.order ?? 0) - (b.order ?? 0),
       );
 
-      console.log("📝 Resetando formulário com dados:", {
-        title: route.title,
-        description: route.description,
-        status: route.status,
-        orderBy: route.orderBy,
-        userAssignedId: route.userAssigned?.id || null,
-        routeDate: route.routeDate,
-        stopsCount: sortedStops.length,
-      });
-
       form.reset({
         title: route.title,
         description: route.description || "",
@@ -285,9 +238,15 @@ export default function EditRoutePage() {
     }
   }, [route, isLoadingUsers, form, isFormReady]);
 
-  const onSubmit = async (data: FormValues) => {
-    console.log("📝 Enviando formulário:", data);
+  // Atualizar dados
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refetch();
+    setIsRefreshing(false);
+    toast.success("Dados atualizados", { duration: 1500 });
+  };
 
+  const onSubmit = async (data: FormValues) => {
     try {
       let userAssignedId = data.userAssignedId;
       if (
@@ -418,35 +377,65 @@ export default function EditRoutePage() {
   const isSubmitDisabled = updateRoute.isPending || fields.length === 0;
 
   return (
-    <div className="min-h-screen bg-[#F5F0E6] p-4 md:p-8">
+    <div className="min-h-screen bg-[#F5F6FA] p-4 md:p-8 font-sans">
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        {/* HEADER (padrão dashboard) */}
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <Button
-              variant="ghost"
-              className="-ml-4 h-8 text-[#95A5A6] hover:text-[#2C3E50] hover:bg-transparent"
-              onClick={() => router.back()}
-            >
-              <ArrowLeftIcon className="h-4 w-4 mr-2" />
-              Voltar
-            </Button>
-            <h1 className="text-3xl font-bold text-[#2C3E50] mt-2">
+            <div className="flex items-center gap-2 mb-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-[#7A7E83] hover:text-[#2F80ED] -ml-2"
+                onClick={() => router.back()}
+              >
+                <ArrowLeftIcon className="h-4 w-4 mr-1" />
+                Voltar
+              </Button>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-extrabold text-[#353A40]">
               Editar Rota
             </h1>
-            <p className="text-[#95A5A6] mt-1">Altere as informações da rota</p>
+            <p className="text-[#7A7E83] mt-1">Altere as informações da rota</p>
           </div>
-        </div>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  className="border-[#CBD5E1] text-[#353A40] bg-white hover:bg-gray-50 rounded-full"
+                >
+                  <RefreshCcw
+                    className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Atualizar dados</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </header>
+
+        <hr className="border-[#E2E8F0] mb-6" />
 
         {isFormReady ? (
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <Tabs
+                value={activeTab}
+                onValueChange={setActiveTab}
+                className="space-y-6"
+              >
                 <TabsList className="bg-white border border-gray-200 rounded-lg p-1 w-full sm:w-auto">
                   <TabsTrigger
                     value="basic"
                     className={cn(
-                      "rounded-md px-6 py-2 text-[#95A5A6] transition-all data-[state=active]:bg-[#D35400] data-[state=active]:text-white",
+                      "rounded-md px-6 py-2 text-[#7A7E83] transition-all data-[state=active]:bg-[#2F80ED] data-[state=active]:text-white",
                     )}
                   >
                     1. Dados Gerais
@@ -454,7 +443,7 @@ export default function EditRoutePage() {
                   <TabsTrigger
                     value="stops"
                     className={cn(
-                      "rounded-md px-6 py-2 text-[#95A5A6] transition-all data-[state=active]:bg-[#D35400] data-[state=active]:text-white",
+                      "rounded-md px-6 py-2 text-[#7A7E83] transition-all data-[state=active]:bg-[#2F80ED] data-[state=active]:text-white",
                     )}
                   >
                     2. Paradas ({fields.length})
@@ -485,30 +474,29 @@ export default function EditRoutePage() {
                         )}
                       />
 
-                      {/* Só exibe o campo descrição se tiver valor */}
-                      {(form.watch("description") || route?.description) && (
-                        <FormField
-                          control={form.control}
-                          name="description"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className={labelStyle}>
-                                Descrição
-                              </FormLabel>
-                              <FormControl>
-                                <Textarea
-                                  className={inputStyle}
-                                  placeholder="Descrição opcional da rota..."
-                                  rows={3}
-                                  {...field}
-                                  value={field.value || ""}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      )}
+                      {/* Descrição */}
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className={labelStyle}>
+                              <FileTextIcon className="h-4 w-4 inline mr-1 text-[#2F80ED]" />
+                              Descrição
+                            </FormLabel>
+                            <FormControl>
+                              <Textarea
+                                className={inputStyle}
+                                placeholder="Descrição opcional da rota..."
+                                rows={3}
+                                {...field}
+                                value={field.value || ""}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Data da Rota */}
@@ -518,7 +506,7 @@ export default function EditRoutePage() {
                           render={({ field }) => (
                             <FormItem className="flex flex-col">
                               <FormLabel className={labelStyle}>
-                                <CalendarIcon className="h-4 w-4 inline mr-1 text-[#D35400]" />
+                                <CalendarIcon className="h-4 w-4 inline mr-1 text-[#2F80ED]" />
                                 Data Agendada
                               </FormLabel>
                               <Popover>
@@ -529,10 +517,10 @@ export default function EditRoutePage() {
                                       className={cn(
                                         inputStyle,
                                         "pl-3 text-left font-normal justify-start",
-                                        !field.value && "text-[#95A5A6]",
+                                        !field.value && "text-[#7A7E83]",
                                       )}
                                     >
-                                      <CalendarIcon className="mr-2 h-4 w-4 text-[#D35400]" />
+                                      <CalendarIcon className="mr-2 h-4 w-4 text-[#2F80ED]" />
                                       {field.value
                                         ? format(field.value, "PPP", {
                                             locale: ptBR,
@@ -542,7 +530,7 @@ export default function EditRoutePage() {
                                   </FormControl>
                                 </PopoverTrigger>
                                 <PopoverContent
-                                  className="w-auto p-0 bg-white border-gray-200"
+                                  className="w-auto p-0 bg-white border-gray-200 rounded-xl"
                                   align="start"
                                 >
                                   <Calendar
@@ -577,30 +565,38 @@ export default function EditRoutePage() {
                                     <SelectValue placeholder="Selecione um status" />
                                   </SelectTrigger>
                                 </FormControl>
-                                <SelectContent className="bg-white border-gray-200">
+                                <SelectContent className="bg-white border-gray-200 rounded-xl">
                                   <SelectItem
                                     value="SCHEDULED"
-                                    className="text-[#2C3E50]"
+                                    className="text-[#353A40]"
                                   >
-                                    Agendada
+                                    <Badge className={statusColors.SCHEDULED}>
+                                      Agendada
+                                    </Badge>
                                   </SelectItem>
                                   <SelectItem
                                     value="IN_PROGRESS"
-                                    className="text-[#2C3E50]"
+                                    className="text-[#353A40]"
                                   >
-                                    Em Andamento
+                                    <Badge className={statusColors.IN_PROGRESS}>
+                                      Em Andamento
+                                    </Badge>
                                   </SelectItem>
                                   <SelectItem
                                     value="FINISHED"
-                                    className="text-[#2C3E50]"
+                                    className="text-[#353A40]"
                                   >
-                                    Finalizada
+                                    <Badge className={statusColors.FINISHED}>
+                                      Finalizada
+                                    </Badge>
                                   </SelectItem>
                                   <SelectItem
                                     value="CANCELED"
-                                    className="text-[#2C3E50]"
+                                    className="text-[#353A40]"
                                   >
-                                    Cancelada
+                                    <Badge className={statusColors.CANCELED}>
+                                      Cancelada
+                                    </Badge>
                                   </SelectItem>
                                 </SelectContent>
                               </Select>
@@ -623,7 +619,7 @@ export default function EditRoutePage() {
                                   "flex items-center gap-2",
                                 )}
                               >
-                                <UserIcon className="h-4 w-4 text-[#D35400]" />
+                                <UserIcon className="h-4 w-4 text-[#2F80ED]" />
                                 Responsável
                               </FormLabel>
                               <Select
@@ -635,10 +631,10 @@ export default function EditRoutePage() {
                                     <SelectValue placeholder="Selecione um responsável" />
                                   </SelectTrigger>
                                 </FormControl>
-                                <SelectContent className="bg-white border-gray-200">
+                                <SelectContent className="bg-white border-gray-200 rounded-xl">
                                   <SelectItem
                                     value="none"
-                                    className="text-[#2C3E50]"
+                                    className="text-[#353A40]"
                                   >
                                     Não atribuído
                                   </SelectItem>
@@ -646,7 +642,7 @@ export default function EditRoutePage() {
                                     <SelectItem
                                       key={u.id}
                                       value={u.id}
-                                      className="text-[#2C3E50]"
+                                      className="text-[#353A40]"
                                     >
                                       {u.name}
                                     </SelectItem>
@@ -665,7 +661,7 @@ export default function EditRoutePage() {
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className={labelStyle}>
-                                Rota Por
+                                Otimizar Rota Por
                               </FormLabel>
                               <Select
                                 onValueChange={field.onChange}
@@ -676,24 +672,25 @@ export default function EditRoutePage() {
                                     <SelectValue placeholder="Selecione o tipo de rota" />
                                   </SelectTrigger>
                                 </FormControl>
-                                <SelectContent className="bg-white border-gray-200">
+                                <SelectContent className="bg-white border-gray-200 rounded-xl">
                                   <SelectItem
                                     value="DISTANCE"
-                                    className="text-[#2C3E50]"
+                                    className="text-[#353A40]"
                                   >
                                     Proximidade
                                   </SelectItem>
                                   <SelectItem
                                     value="PRIORITY"
-                                    className="text-[#2C3E50]"
+                                    className="text-[#353A40]"
                                   >
                                     Prioridade
                                   </SelectItem>
                                 </SelectContent>
                               </Select>
                               {isPriorityMode && (
-                                <p className="text-xs text-[#95A5A6] mt-1">
-                                  ✓ Você pode arrastar as paradas para reordenar
+                                <p className="text-xs text-[#7A7E83] mt-1">
+                                  💡 Você pode arrastar as paradas para
+                                  reordenar
                                 </p>
                               )}
                               <FormMessage />
@@ -708,20 +705,22 @@ export default function EditRoutePage() {
                 {/* ABA PARADAS */}
                 <TabsContent value="stops" className="space-y-6 mt-6">
                   <Card className={cardStyle}>
+                    <CardHeader className="border-b pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg text-[#353A40]">
+                        <MapPinIcon className="h-5 w-5 text-[#2F80ED]" />
+                        Lista de Paradas
+                        <span className="text-sm font-normal text-[#7A7E83] ml-auto">
+                          {fields.length}{" "}
+                          {fields.length === 1 ? "parada" : "paradas"}
+                        </span>
+                      </CardTitle>
+                    </CardHeader>
                     <CardContent className="p-6">
-                      <div className="flex justify-between items-center mb-6">
-                        <div>
-                          <h3 className="font-bold text-lg text-[#2C3E50]">
-                            Lista de Paradas
-                          </h3>
-                          <p className="text-sm text-[#95A5A6] mt-1">
-                            Gerencie as paradas da rota
-                          </p>
-                        </div>
+                      <div className="flex justify-end mb-4">
                         <Button
                           type="button"
                           onClick={handleAddStop}
-                          className="bg-[#D35400] hover:bg-[#D35400]/90 text-white rounded-full"
+                          className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white rounded-full"
                         >
                           <PlusIcon className="mr-2 h-4 w-4" />
                           Adicionar Parada
@@ -730,11 +729,11 @@ export default function EditRoutePage() {
 
                       {fields.length === 0 ? (
                         <div className="text-center py-12">
-                          <MapPinIcon className="mx-auto h-12 w-12 text-[#95A5A6] mb-4" />
-                          <p className="text-[#95A5A6]">
+                          <MapPinIcon className="mx-auto h-12 w-12 text-[#CBD5E1] mb-4" />
+                          <p className="text-[#7A7E83]">
                             Nenhuma parada adicionada.
                           </p>
-                          <p className="text-sm text-[#95A5A6] mt-1">
+                          <p className="text-sm text-[#7A7E83] mt-1">
                             Clique em &ldquo;Adicionar Parada&rdquo; para
                             começar.
                           </p>
@@ -742,34 +741,35 @@ export default function EditRoutePage() {
                       ) : (
                         <div className="space-y-3">
                           {fields.map((field, index) => (
-                            <Card
+                            <div
                               key={field.id}
                               className={cn(
-                                "border transition-all duration-200 hover:shadow-md",
+                                "bg-white border border-[#E2E8F0] rounded-lg transition-all duration-200 hover:shadow-md",
                                 isPriorityMode &&
-                                  "cursor-move hover:border-[#D35400]/30",
+                                  "cursor-move hover:border-[#2F80ED]/30",
                               )}
                               draggable={isPriorityMode}
                               onDragStart={() => handleDragStart(index)}
                               onDragOver={(e) => handleDragOver(e, index)}
                               onDragEnd={handleDragEnd}
                             >
-                              <CardContent className="p-4">
+                              <div className="p-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                   <div className="flex items-center gap-3">
                                     {isPriorityMode && (
                                       <div className="cursor-grab active:cursor-grabbing">
-                                        <GripVerticalIcon className="h-5 w-5 text-[#95A5A6]" />
+                                        <GripVerticalIcon className="h-5 w-5 text-[#7A7E83]" />
                                       </div>
                                     )}
-                                    <span className="w-8 h-8 rounded-full bg-[#D35400]/10 text-[#D35400] flex items-center justify-center text-xs font-bold">
+                                    <span className="w-8 h-8 rounded-full bg-[#2F80ED]/10 text-[#2F80ED] flex items-center justify-center text-xs font-bold">
                                       {index + 1}
                                     </span>
                                     <div>
-                                      <p className="font-semibold text-[#2C3E50]">
+                                      <p className="font-semibold text-[#353A40]">
                                         {field.name || `Parada ${index + 1}`}
                                       </p>
-                                      <p className="text-sm text-[#95A5A6]">
+                                      <p className="text-sm text-[#7A7E83] flex items-center gap-1">
+                                        <MapPinIcon className="h-3 w-3" />
                                         {field.address}, {field.city}/
                                         {field.state}
                                       </p>
@@ -784,7 +784,7 @@ export default function EditRoutePage() {
                                           size="sm"
                                           onClick={() => handleMoveUp(index)}
                                           disabled={index === 0}
-                                          className="rounded-full h-8 w-8 p-0"
+                                          className="rounded-full h-8 w-8 p-0 border-[#CBD5E1]"
                                         >
                                           ↑
                                         </Button>
@@ -794,7 +794,7 @@ export default function EditRoutePage() {
                                           size="sm"
                                           onClick={() => handleMoveDown(index)}
                                           disabled={index === fields.length - 1}
-                                          className="rounded-full h-8 w-8 p-0"
+                                          className="rounded-full h-8 w-8 p-0 border-[#CBD5E1]"
                                         >
                                           ↓
                                         </Button>
@@ -805,7 +805,7 @@ export default function EditRoutePage() {
                                       variant="outline"
                                       size="sm"
                                       onClick={() => handleEditStop(index)}
-                                      className="rounded-full h-8 px-3"
+                                      className="rounded-full border-[#CBD5E1]"
                                     >
                                       <EditIcon className="h-3 w-3 mr-1" />
                                       Editar
@@ -822,23 +822,23 @@ export default function EditRoutePage() {
                                   </div>
                                 </div>
                                 {field.notes && (
-                                  <div className="mt-3 ml-11 pl-4 border-l-2 border-[#D35400]/20">
-                                    <p className="text-sm text-[#95A5A6]">
-                                      <span className="font-medium text-[#2C3E50]">
+                                  <div className="mt-3 ml-11 pl-4 border-l-2 border-[#2F80ED]/20">
+                                    <p className="text-sm text-[#7A7E83]">
+                                      <span className="font-medium text-[#353A40]">
                                         Observações:
                                       </span>{" "}
                                       {field.notes}
                                     </p>
                                   </div>
                                 )}
-                              </CardContent>
-                            </Card>
+                              </div>
+                            </div>
                           ))}
                         </div>
                       )}
 
                       {isPriorityMode && fields.length > 1 && (
-                        <div className="mt-4 p-3 bg-[#F5F0E6] rounded-lg text-sm text-[#95A5A6]">
+                        <div className="mt-4 p-3 bg-[#F5F6FA] rounded-lg text-sm text-[#7A7E83]">
                           💡 Dica: Você pode arrastar e soltar as paradas para
                           reordenar, ou usar os botões ↑ ↓ para mover.
                         </div>
@@ -854,14 +854,14 @@ export default function EditRoutePage() {
                   type="button"
                   variant="outline"
                   onClick={() => router.back()}
-                  className="rounded-full border-gray-200 hover:border-[#D35400]/50"
+                  className="rounded-full border-[#CBD5E1] hover:border-[#2F80ED]/50"
                 >
                   Cancelar
                 </Button>
                 <Button
                   type="submit"
                   disabled={isSubmitDisabled}
-                  className="bg-[#D35400] hover:bg-[#D35400]/90 text-white rounded-full px-6"
+                  className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white rounded-full px-6"
                 >
                   {updateRoute.isPending ? (
                     <>
@@ -877,7 +877,7 @@ export default function EditRoutePage() {
           </Form>
         ) : (
           <div className="flex justify-center items-center py-12">
-            <Loader2 className="animate-spin h-8 w-8 text-[#D35400]" />
+            <Loader2 className="animate-spin h-8 w-8 text-[#2F80ED]" />
           </div>
         )}
       </div>
@@ -886,7 +886,7 @@ export default function EditRoutePage() {
       <Dialog open={isStopDialogOpen} onOpenChange={setIsStopDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white border border-gray-200 rounded-xl">
           <DialogHeader>
-            <DialogTitle className="text-[#2C3E50] text-xl">
+            <DialogTitle className="text-[#353A40] text-xl">
               {editingStopIndex !== null ? "Editar Parada" : "Nova Parada"}
             </DialogTitle>
           </DialogHeader>
@@ -1104,7 +1104,7 @@ export default function EditRoutePage() {
                       ? handleSaveStop
                       : handleSaveNewStop
                   }
-                  className="bg-[#D35400] hover:bg-[#D35400]/90 text-white rounded-full"
+                  className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white rounded-full"
                 >
                   {editingStopIndex !== null
                     ? "Salvar Alterações"
@@ -1115,19 +1115,6 @@ export default function EditRoutePage() {
           </Form>
         </DialogContent>
       </Dialog>
-
-      <style jsx global>{`
-        @keyframes ripple {
-          0% {
-            transform: scale(0);
-            opacity: 0.5;
-          }
-          100% {
-            transform: scale(4);
-            opacity: 0;
-          }
-        }
-      `}</style>
     </div>
   );
 }
