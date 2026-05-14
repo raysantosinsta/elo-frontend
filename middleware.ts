@@ -37,7 +37,7 @@ export async function middleware(request: NextRequest) {
   if ((pathname === '/login' || pathname === '/register') && token) {
      const isValid = await isTokenValid(token);
      if (isValid) {
-       return NextResponse.redirect(new URL('/Kanban', request.url));
+       return NextResponse.redirect(new URL('/dashboard-user', request.url));
      }
   }
 

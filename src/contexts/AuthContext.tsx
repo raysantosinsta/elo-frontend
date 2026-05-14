@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
       
       setUser(normalizedUser);
-      router.push("/");
+      router.push("/dashboard-user");
     } catch (error) {
       throw error;
     }
