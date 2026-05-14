@@ -14,13 +14,11 @@ import {
 } from "@/components/ui/tooltip";
 import { api } from "@/services/api";
 import {
-  AlertTriangle,
   ArrowRight,
-  Calendar,
   Clock,
   RefreshCcw,
   Search,
-  User,
+  User
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";

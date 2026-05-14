@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   title: "ELO PRODUTIVO",
   description: "ELO Produtivo",
   icons: {
-    icon: "/favicon.ico",
+    icon: "/icone.png",
   },
 };
 

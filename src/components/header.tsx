@@ -1,11 +1,12 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
-import { LogOut, UserIcon, ChevronDown, Menu } from "lucide-react";
 import { useSidebar } from "@/hooks/SidebarContext";
+import { ChevronDown, LogOut, Menu, UserIcon } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 
 export function Header() {
   const { user, logout, isAuthenticated } = useAuth();
@@ -53,14 +54,17 @@ export function Header() {
         </button>
 
         {/* Logo Area */}
-        <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="h-9 w-9 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 transition-all group-hover:bg-white/20">
-            <div className="w-5 h-5 bg-[#2F80ED] rounded-full shadow-inner" />
+        <div className="flex items-center group cursor-pointer">
+          <div className="h-15 w-40 rounded-xl overflow-hidden bg-white/10 backdrop-blur-sm border border-white/10 transition-all group-hover:bg-white/20 flex items-center justify-center">
+            <Image
+              src="/logo-elospro.png"
+              alt="ELO PRODUTIVO"
+              width={120}
+              height={90}
+              className="object-cover rounded-xl transition-transform duration-300 group-hover:scale-110"
+              priority
+            />
           </div>
-          {/* No mobile, oculta o texto se a tela for muito pequena */}
-          <span className="font-bold text-lg tracking-wider text-white group-hover:text-white/80 transition-colors hidden sm:block">
-            ELO PRODUTIVO
-          </span>
         </div>
       </div>
 
