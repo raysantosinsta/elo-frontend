@@ -946,7 +946,7 @@ export default function RoutesPage() {
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
               >
                 <Card className="border border-[#E2E8F0] shadow-sm rounded-xl overflow-hidden bg-white">
-                  <CardContent className="p-0 space-y-4">
+                  <CardContent className=" space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <Autocomplete
                         options={statusOptions}
