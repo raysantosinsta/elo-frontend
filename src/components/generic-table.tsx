@@ -60,6 +60,7 @@ interface GenericTableProps<T> {
   onSort?: (key: keyof T, direction: "asc" | "desc") => void;
   sortConfig?: { key: keyof T; direction: "asc" | "desc" } | null;
   enableAnimations?: boolean;
+  className?: string;
 }
 
 // Componente interno da tabela
@@ -218,6 +219,7 @@ export function GenericTable<T extends { id: string | number }>({
   onSort,
   sortConfig = null,
   enableAnimations = true,
+  className,
 }: GenericTableProps<T>) {
   const [isHoveredRow, setIsHoveredRow] = useState<string | number | null>(
     null,
@@ -232,24 +234,27 @@ export function GenericTable<T extends { id: string | number }>({
     );
     return (
       <motion.span
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="text-sm text-[#7A7E83]"
-      >
-        Mostrando{" "}
-        <span className="font-medium text-[#353A40]">
-          {start}-{end}
-        </span>{" "}
-        de{" "}
-        <span className="font-medium text-[#353A40]">
-          {pagination.totalItems}
-        </span>
-      </motion.span>
+  initial={{ opacity: 0 }}
+  animate={{ opacity: 1 }}
+  className="text-sm text-[#7A7E83] ml-2 md:ml-4"
+>
+  Mostrando{" "}
+  <span className="font-medium text-[#353A40]">
+    {start}-{end}
+  </span>{" "}
+  de{" "}
+  <span className="font-medium text-[#353A40]">
+    {pagination.totalItems}
+  </span>
+</motion.span>
     );
   };
 
   return (
-    <Card className="border border-[#E2E8F0] shadow-sm bg-white rounded-xl flex flex-col h-full generic-table-container">
+    <Card className={cn(
+  "border-x-0 border-t border-b border-[#E2E8F0] shadow-none bg-white flex flex-col h-full", // Remove bordas laterais e sombra
+  className
+)}>
       <CardHeader className="pb-2">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -277,7 +282,7 @@ export function GenericTable<T extends { id: string | number }>({
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col">
+      <CardContent className="flex-1 flex flex-col p-0 m-0">
         {enableAnimations ? (
           <AnimatePresence mode="wait">
             <motion.div

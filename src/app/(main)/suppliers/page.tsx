@@ -360,45 +360,51 @@ export default function SuppliersPage() {
       className="min-h-screen flex flex-col font-sans"
       style={{ backgroundColor: THEME.colors.background }}
     >
-      {/* HEADER */}
-      <header className="px-6 py-4 shadow-sm sticky top-0 z-40 bg-white border-b border-[#E2E8F0]">
-        <div className="max-w-[1920px] mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3 text-[#353A40]">
-            <div className="p-2 bg-[#F5F6FA] rounded-lg">
-              <Truck className="w-6 h-6 text-[#2F80ED]" />
+      {/* HEADER MOBILE-FIRST */}
+      <header className="sticky top-0 z-40 bg-white border-b border-[#E2E8F0] shadow-sm">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 mx-auto">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+            <div className="flex items-center gap-3 text-[#353A40]">
+              <div className="p-2 bg-[#F5F6FA] rounded-lg shrink-0">
+                <Truck className="w-5 h-5 sm:w-6 sm:h-6 text-[#2F80ED]" />
+              </div>
+              <div>
+                <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-[#353A40]">
+                  Fornecedores
+                </h1>
+                <p className="text-xs text-[#7A7E83] hidden sm:block">
+                  Gerencie seus parceiros de negócio
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-extrabold tracking-tight text-[#353A40]">
-                Fornecedores
-              </h1>
-              <p className="text-xs text-[#7A7E83]">
-                Gerencie seus parceiros de negócio
-              </p>
-            </div>
+            <Button
+              onClick={() => handleOpenModal()}
+              className="w-full sm:w-auto font-semibold shadow-sm transition-all bg-[#2F80ED] hover:bg-[#1E5CB8] text-white active:scale-95"
+              size="default"
+            >
+              <Plus className="w-4 h-4 mr-2" /> Novo Fornecedor
+            </Button>
           </div>
-          <Button
-            onClick={() => handleOpenModal()}
-            className="font-semibold shadow-sm transition-all bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
-          >
-            <Plus className="w-4 h-4 mr-2" /> Novo Fornecedor
-          </Button>
+          <p className="text-xs text-[#7A7E83] mt-2 sm:hidden">
+            Gerencie seus parceiros de negócio
+          </p>
         </div>
       </header>
 
-      {/* CONTEÚDO */}
-      <main className="flex-1 p-6 max-w-[1920px] mx-auto w-full space-y-6">
-        {/* BARRA DE FERRAMENTAS */}
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-[#E2E8F0]">
-          <div className="relative w-full md:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7A7E83] w-4 h-4" />
+      {/* CONTEÚDO PRINCIPAL */}
+      <main className="flex-1 px-4 sm:px-6 py-4 sm:py-6 mx-auto w-full max-w-[1920px] space-y-4 sm:space-y-6">
+        {/* BARRA DE FERRAMENTAS RESPONSIVA */}
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between items-stretch sm:items-center bg-white p-4 rounded-xl shadow-sm border border-[#E2E8F0]">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7A7E83] w-4 h-4 pointer-events-none" />
             <Input
               placeholder="Buscar por nome, documento ou email..."
-              className="pl-10 border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+              className="pl-10 border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="text-sm text-[#7A7E83] font-medium">
+          <div className="text-sm text-[#7A7E83] font-medium text-center sm:text-right shrink-0">
             Total:{" "}
             <span className="text-[#353A40] font-semibold">
               {filteredSuppliers.length}
@@ -407,25 +413,26 @@ export default function SuppliersPage() {
           </div>
         </div>
 
-        {/* LISTAGEM */}
+        {/* LISTAGEM EM GRID RESPONSIVO */}
         {loading ? (
           <div className="flex flex-col items-center justify-center h-64 text-[#7A7E83]">
             <Loader2 className="w-10 h-10 animate-spin mb-2 text-[#2F80ED]" />
             <p>Carregando fornecedores...</p>
           </div>
         ) : filteredSuppliers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-[#7A7E83] bg-white/50 rounded-xl border-2 border-dashed border-[#E2E8F0]">
+          <div className="flex flex-col items-center justify-center h-64 text-[#7A7E83] bg-white/50 rounded-xl border-2 border-dashed border-[#E2E8F0] p-8 text-center">
             <Building2 className="w-12 h-12 mb-2 opacity-50" />
-            <p>Nenhum fornecedor encontrado.</p>
+            <p className="text-sm sm:text-base">Nenhum fornecedor encontrado.</p>
+            <p className="text-xs mt-1">Clique em &quot;Novo Fornecedor&quot; para começar.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filteredSuppliers.map((supplier) => {
               const CategoryIcon = categoryConfig[supplier.category].icon;
               return (
                 <Card
                   key={supplier.id}
-                  className="group hover:shadow-md transition-all duration-300 border-l-4 rounded-xl bg-white border border-[#E2E8F0]"
+                  className="group hover:shadow-lg transition-all duration-300 border-l-4 rounded-xl bg-white border border-[#E2E8F0] hover:-translate-y-1 active:scale-[0.99]"
                   style={{
                     borderLeftColor:
                       supplier.status === "ACTIVE"
@@ -433,22 +440,24 @@ export default function SuppliersPage() {
                         : "#7A7E83",
                   }}
                 >
-                  <CardHeader className="pb-3 relative">
-                    <div className="flex justify-between items-start">
-                      <div className="space-y-1">
+                  <CardHeader className="pb-2 sm:pb-3 relative">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="space-y-1.5 min-w-0 flex-1">
                         <CardTitle
-                          className="text-lg font-bold text-[#353A40] line-clamp-1"
+                          className="text-base sm:text-lg font-bold text-[#353A40] line-clamp-2 break-words"
                           title={supplier.name}
                         >
                           {supplier.name}
                         </CardTitle>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Badge
                             variant="secondary"
-                            className={`text-[10px] px-2 py-0.5 ${categoryConfig[supplier.category].color}`}
+                            className={`text-[10px] sm:text-xs px-2 py-0.5 ${categoryConfig[supplier.category].color}`}
                           >
-                            <CategoryIcon className="w-3 h-3 mr-1" />
-                            {categoryConfig[supplier.category].label}
+                            <CategoryIcon className="w-3 h-3 mr-1 shrink-0" />
+                            <span className="truncate">
+                              {categoryConfig[supplier.category].label}
+                            </span>
                           </Badge>
                           {supplier.status === "INACTIVE" && (
                             <Badge
@@ -465,24 +474,24 @@ export default function SuppliersPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 -mr-2 text-[#7A7E83] hover:text-[#2F80ED]"
+                            className="h-8 w-8 shrink-0 -mr-2 text-[#7A7E83] hover:text-[#2F80ED] active:bg-[#F5F6FA]"
                           >
                             <MoreVertical className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
-                          className="bg-white border border-[#E2E8F0] rounded-xl shadow-lg"
+                          className="bg-white border border-[#E2E8F0] rounded-xl shadow-lg min-w-[140px]"
                         >
                           <DropdownMenuItem
                             onClick={() => handleOpenModal(supplier)}
-                            className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
+                            className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA] py-2.5"
                           >
                             <Edit2 className="w-4 h-4 mr-2 text-[#2F80ED]" />{" "}
                             Editar
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            className="text-red-600 focus:text-red-600 cursor-pointer hover:bg-red-50"
+                            className="text-red-600 focus:text-red-600 cursor-pointer hover:bg-red-50 py-2.5"
                             onClick={() => {
                               setSupplierToDelete(supplier);
                               setIsDeleteModalOpen(true);
@@ -494,40 +503,36 @@ export default function SuppliersPage() {
                       </DropdownMenu>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-[#353A40]">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-[#F5F6FA] rounded-full">
+                  <CardContent className="space-y-2.5 sm:space-y-3 text-sm text-[#353A40] pt-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 bg-[#F5F6FA] rounded-full shrink-0">
                         <Building2 className="w-3 h-3 text-[#7A7E83]" />
                       </div>
-                      <span
-                        className="truncate"
-                        title={supplier.document || "N/A"}
-                      >
-                        {formatDocument(supplier.document || "") ||
-                          "Sem documento"}
+                      <span className="truncate text-xs sm:text-sm" title={supplier.document || "N/A"}>
+                        {formatDocument(supplier.document || "") || "Sem documento"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-[#F5F6FA] rounded-full">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 bg-[#F5F6FA] rounded-full shrink-0">
                         <Phone className="w-3 h-3 text-[#7A7E83]" />
                       </div>
-                      <span className="truncate">
+                      <span className="truncate text-xs sm:text-sm">
                         {formatPhone(supplier.phone || "") || "Sem telefone"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-[#F5F6FA] rounded-full">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 bg-[#F5F6FA] rounded-full shrink-0">
                         <Mail className="w-3 h-3 text-[#7A7E83]" />
                       </div>
-                      <span className="truncate" title={supplier.email || ""}>
+                      <span className="truncate text-xs sm:text-sm" title={supplier.email || ""}>
                         {supplier.email || "Sem e-mail"}
                       </span>
                     </div>
                     <div className="flex items-start gap-2 pt-2 border-t border-[#E2E8F0] mt-2">
-                      <div className="p-1.5 bg-[#F5F6FA] rounded-full mt-0.5">
+                      <div className="p-1.5 bg-[#F5F6FA] rounded-full shrink-0 mt-0.5">
                         <MapPin className="w-3 h-3 text-[#7A7E83]" />
                       </div>
-                      <span className="text-xs leading-tight line-clamp-2 text-[#7A7E83]">
+                      <span className="text-xs leading-relaxed line-clamp-2 text-[#7A7E83] break-words">
                         {supplier.address
                           ? `${supplier.address}, ${supplier.numero || "S/N"}${supplier.bairro ? ` - ${supplier.bairro}` : ""} - ${supplier.city || ""}/${supplier.state || ""}`
                           : "Endereço não cadastrado"}
@@ -541,29 +546,28 @@ export default function SuppliersPage() {
         )}
       </main>
 
-      {/* --- MODAL DE CRIAÇÃO/EDIÇÃO --- */}
+      {/* --- MODAL DE CRIAÇÃO/EDIÇÃO RESPONSIVO COM Acessibilidade Corrigida --- */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white border border-[#E2E8F0] rounded-xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl text-[#353A40] flex items-center gap-2">
+        <DialogContent className="max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white border border-[#E2E8F0] rounded-xl p-4 sm:p-6">
+          <DialogHeader className="space-y-1.5 sm:space-y-2">
+            <DialogTitle className="text-lg sm:text-xl text-[#353A40] flex items-center gap-2">
               {editingSupplier ? (
-                <Edit2 className="w-5 h-5 text-[#2F80ED]" />
+                <Edit2 className="w-4 h-4 sm:w-5 sm:h-5 text-[#2F80ED]" />
               ) : (
-                <Plus className="w-5 h-5 text-[#2F80ED]" />
+                <Plus className="w-4 h-4 sm:w-5 sm:h-5 text-[#2F80ED]" />
               )}
               {editingSupplier ? "Editar Fornecedor" : "Novo Fornecedor"}
             </DialogTitle>
-            <DialogDescription className="text-[#7A7E83]">
-              Preencha os dados completos do parceiro. Endereço correto facilita
-              a logística.
+            <DialogDescription className="text-xs sm:text-sm text-[#7A7E83]">
+              Preencha os dados completos do parceiro. Endereço correto facilita a logística.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-6 py-4">
+          <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6 py-3 sm:py-4">
             {/* Dados Principais */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2 col-span-2">
-                <Label htmlFor="name" className="text-[#353A40] font-medium">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2 col-span-1 sm:col-span-2">
+                <Label htmlFor="name" className="text-[#353A40] font-medium text-sm">
                   Nome / Razão Social *
                 </Label>
                 <Input
@@ -573,14 +577,11 @@ export default function SuppliersPage() {
                     setFormData({ ...formData, name: e.target.value })
                   }
                   placeholder="Ex: Têxtil São Jorge Ltda"
-                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                 />
               </div>
               <div className="space-y-2">
-                <Label
-                  htmlFor="document"
-                  className="text-[#353A40] font-medium"
-                >
+                <Label htmlFor="document" className="text-[#353A40] font-medium text-sm">
                   CPF / CNPJ
                 </Label>
                 <Input
@@ -590,14 +591,11 @@ export default function SuppliersPage() {
                     setFormData({ ...formData, document: e.target.value })
                   }
                   placeholder="Apenas números"
-                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                 />
               </div>
               <div className="space-y-2">
-                <Label
-                  htmlFor="category"
-                  className="text-[#353A40] font-medium"
-                >
+                <Label htmlFor="category" className="text-[#353A40] font-medium text-sm">
                   Categoria
                 </Label>
                 <select
@@ -623,7 +621,7 @@ export default function SuppliersPage() {
                 </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-[#353A40] font-medium">
+                <Label htmlFor="email" className="text-[#353A40] font-medium text-sm">
                   E-mail
                 </Label>
                 <Input
@@ -634,11 +632,11 @@ export default function SuppliersPage() {
                     setFormData({ ...formData, email: e.target.value })
                   }
                   placeholder="contato@fornecedor.com"
-                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone" className="text-[#353A40] font-medium">
+                <Label htmlFor="phone" className="text-[#353A40] font-medium text-sm">
                   Telefone / WhatsApp
                 </Label>
                 <Input
@@ -648,17 +646,16 @@ export default function SuppliersPage() {
                     setFormData({ ...formData, phone: e.target.value })
                   }
                   placeholder="(00) 00000-0000"
-                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                  className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                 />
               </div>
             </div>
 
-            {/* Endereço */}
-            <div className="border-t border-[#E2E8F0] pt-4 bg-[#F5F6FA] p-4 rounded-lg">
-              <div className="flex justify-between items-center mb-4">
+            {/* Endereço com layout responsivo */}
+            <div className="border-t border-[#E2E8F0] pt-4 bg-[#F5F6FA] p-3 sm:p-4 rounded-lg">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                 <h3 className="text-sm font-semibold text-[#353A40] flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-[#2F80ED]" /> Endereço e
-                  Logística
+                  <MapPin className="w-4 h-4 text-[#2F80ED]" /> Endereço e Logística
                 </h3>
                 <Button
                   type="button"
@@ -666,7 +663,7 @@ export default function SuppliersPage() {
                   variant="outline"
                   onClick={handleGeocode}
                   disabled={isGeocoding}
-                  className="text-xs h-8 border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+                  className="text-xs h-8 border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA] w-full sm:w-auto"
                 >
                   {isGeocoding ? (
                     <Loader2 className="w-3 h-3 animate-spin mr-1 text-[#2F80ED]" />
@@ -677,12 +674,9 @@ export default function SuppliersPage() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="zipCode"
-                    className="text-[#353A40] font-medium"
-                  >
+                  <Label htmlFor="zipCode" className="text-[#353A40] font-medium text-sm">
                     CEP
                   </Label>
                   <div className="relative">
@@ -695,18 +689,15 @@ export default function SuppliersPage() {
                       onBlur={handleCepSearch}
                       maxLength={9}
                       placeholder="00000-000"
-                      className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                      className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                     />
                     {isSearchingCep && (
                       <Loader2 className="absolute right-3 top-2.5 w-4 h-4 animate-spin text-[#2F80ED]" />
                     )}
                   </div>
                 </div>
-                <div className="space-y-2 md:col-span-3">
-                  <Label
-                    htmlFor="address"
-                    className="text-[#353A40] font-medium"
-                  >
+                <div className="space-y-2 sm:col-span-2 lg:col-span-3">
+                  <Label htmlFor="address" className="text-[#353A40] font-medium text-sm">
                     Rua / Logradouro
                   </Label>
                   <Input
@@ -715,14 +706,11 @@ export default function SuppliersPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, address: e.target.value })
                     }
-                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="numero"
-                    className="text-[#353A40] font-medium"
-                  >
+                  <Label htmlFor="numero" className="text-[#353A40] font-medium text-sm">
                     Número
                   </Label>
                   <Input
@@ -732,14 +720,11 @@ export default function SuppliersPage() {
                       setFormData({ ...formData, numero: e.target.value })
                     }
                     placeholder="123"
-                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="bairro"
-                    className="text-[#353A40] font-medium"
-                  >
+                  <Label htmlFor="bairro" className="text-[#353A40] font-medium text-sm">
                     Bairro
                   </Label>
                   <Input
@@ -748,14 +733,11 @@ export default function SuppliersPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, bairro: e.target.value })
                     }
-                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label
-                    htmlFor="complement"
-                    className="text-[#353A40] font-medium"
-                  >
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="complement" className="text-[#353A40] font-medium text-sm">
                     Complemento
                   </Label>
                   <Input
@@ -765,11 +747,11 @@ export default function SuppliersPage() {
                       setFormData({ ...formData, complement: e.target.value })
                     }
                     placeholder="Galpão 3, Sala 10..."
-                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="city" className="text-[#353A40] font-medium">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="city" className="text-[#353A40] font-medium text-sm">
                     Cidade
                   </Label>
                   <Input
@@ -778,11 +760,11 @@ export default function SuppliersPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, city: e.target.value })
                     }
-                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="state" className="text-[#353A40] font-medium">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="state" className="text-[#353A40] font-medium text-sm">
                     Estado (UF)
                   </Label>
                   <Input
@@ -796,44 +778,44 @@ export default function SuppliersPage() {
                     }
                     maxLength={2}
                     placeholder="CE"
-                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED]"
+                    className="border-[#CBD5E1] focus:border-[#2F80ED] focus:ring-[#2F80ED] h-10 text-sm"
                   />
                 </div>
 
-                <div className="space-y-2 md:col-span-2">
+                <div className="space-y-2 sm:col-span-2">
                   <Label className="text-xs text-[#7A7E83]">Latitude</Label>
                   <Input
                     value={formData.latitude}
                     readOnly
-                    className="bg-[#F5F6FA] text-xs font-mono text-[#7A7E83] border-[#CBD5E1]"
+                    className="bg-[#F5F6FA] text-xs font-mono text-[#7A7E83] border-[#CBD5E1] h-10"
                     placeholder="Clique em Buscar Coordenadas"
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
+                <div className="space-y-2 sm:col-span-2">
                   <Label className="text-xs text-[#7A7E83]">Longitude</Label>
                   <Input
                     value={formData.longitude}
                     readOnly
-                    className="bg-[#F5F6FA] text-xs font-mono text-[#7A7E83] border-[#CBD5E1]"
+                    className="bg-[#F5F6FA] text-xs font-mono text-[#7A7E83] border-[#CBD5E1] h-10"
                     placeholder="Clique em Buscar Coordenadas"
                   />
                 </div>
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-3">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setIsModalOpen(false)}
-                className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+                className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA] w-full sm:w-auto"
               >
                 Cancelar
               </Button>
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
+                className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white w-full sm:w-auto active:scale-95"
               >
                 {isSubmitting ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -845,27 +827,27 @@ export default function SuppliersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* --- MODAL DE EXCLUSÃO --- */}
+      {/* --- MODAL DE EXCLUSÃO RESPONSIVO COM Acessibilidade Corrigida --- */}
       <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
-        <DialogContent className="bg-white border border-[#E2E8F0] rounded-xl">
-          <DialogHeader>
-            <DialogTitle className="text-red-600 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5" /> Excluir Fornecedor
+        <DialogContent className="bg-white border border-[#E2E8F0] rounded-xl max-w-[90vw] sm:max-w-md p-4 sm:p-6">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="text-red-600 flex items-center gap-2 text-base sm:text-lg">
+              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" /> Excluir Fornecedor
             </DialogTitle>
-            <DialogDescription className="text-[#7A7E83]">
+            <DialogDescription className="text-xs sm:text-sm text-[#7A7E83]">
               Tem certeza que deseja excluir{" "}
-              <strong className="text-[#353A40]">
+              <strong className="text-[#353A40] block sm:inline break-words">
                 {supplierToDelete?.name}
               </strong>
               ?<br />
               Esta ação não pode ser desfeita.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-3 mt-4">
             <Button
               variant="outline"
               onClick={() => setIsDeleteModalOpen(false)}
-              className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+              className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA] w-full sm:w-auto"
             >
               Cancelar
             </Button>
@@ -873,7 +855,7 @@ export default function SuppliersPage() {
               variant="destructive"
               onClick={handleDelete}
               disabled={isSubmitting}
-              className="bg-red-500 hover:bg-red-600 text-white"
+              className="bg-red-500 hover:bg-red-600 text-white w-full sm:w-auto active:scale-95"
             >
               {isSubmitting ? "Excluindo..." : "Sim, Excluir"}
             </Button>

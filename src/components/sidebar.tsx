@@ -8,7 +8,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSidebar } from "@/hooks/SidebarContext";
 import { useNotifications } from "@/hooks/use-app-features";
@@ -479,11 +479,17 @@ export function Sidebar({ className }: SidebarProps) {
           </Button>
         </div>
       </div>
+      
+      {/* Sheet Mobile com acessibilidade corrigida */}
       <Sheet open={isOpen} onOpenChange={close}>
-        <SheetContent
-          side="left"
+        <SheetContent 
+          side="left" 
           className="p-0 border-none w-72 bg-[#353A40] text-white"
         >
+          {/* SheetHeader com SheetTitle obrigatório para acessibilidade */}
+          <SheetHeader className="sr-only">
+            <SheetTitle>Menu de Navegação</SheetTitle>
+          </SheetHeader>
           <SidebarContent collapsed={false} onItemClick={close} />
         </SheetContent>
       </Sheet>

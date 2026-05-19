@@ -13,6 +13,7 @@ import {
   Plus,
   Power,
   Trash2,
+  RefreshCw,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -109,6 +110,7 @@ export default function CompanyManagementPage() {
   // Estados
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -125,19 +127,29 @@ export default function CompanyManagementPage() {
   const isMaster = user?.role === "MASTER";
   const isAdmin = user?.role === "ADMIN";
 
-  // --- Fetch ---
-  const fetchCompanies = useCallback(async () => {
+  // --- Fetch com anti-cache ---
+  const fetchCompanies = useCallback(async (showRefresh = false) => {
     if (!isMaster && !isAdmin) return;
-    try {
+    
+    if (showRefresh) {
+      setRefreshing(true);
+    } else {
       setLoading(true);
+    }
+    
+    try {
+      // 🔥 ADICIONAR TIMESTAMP PARA EVITAR CACHE DO NAVEGADOR
+      const timestamp = new Date().getTime();
       const response = await api.get<{ data: Company[] }>(
-        "/companies?limit=100",
+        `/companies?limit=100&_=${timestamp}`,
       );
       setCompanies(response.data.data || []);
     } catch (error: any) {
       console.error("Erro fetch:", error);
+      toast.error("Erro ao carregar empresas");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [isMaster, isAdmin]);
 
@@ -182,6 +194,7 @@ export default function CompanyManagementPage() {
     setEditingCompany(null);
   };
 
+  // 🔥 SUBMIT CORRIGIDO - FORÇA REFETCH
   const onSubmit = async (values: any) => {
     setIsFormLoading(true);
 
@@ -213,28 +226,25 @@ export default function CompanyManagementPage() {
 
     try {
       if (editingCompany) {
-        const response = await api.patch(
-          `/companies/${editingCompany.id}`,
-          payload,
-        );
+        await api.patch(`/companies/${editingCompany.id}`, payload);
 
+        // 🔥 INVALIDAR CACHES DO REACT QUERY
         await queryClient.invalidateQueries({
           queryKey: ["company-settings", editingCompany.id],
         });
 
-        window.dispatchEvent(
-          new CustomEvent("companyUpdated", {
-            detail: { companyId: editingCompany.id, updatedAt: new Date() },
-          }),
-        );
-
         toast.success("Empresa atualizada com sucesso!");
-        await fetchCompanies();
       } else {
-        const response = await api.post<Company>("/companies", payload);
+        await api.post<Company>("/companies", payload);
         toast.success("Empresa criada com sucesso!");
-        setCompanies((prev) => [response.data, ...prev]);
       }
+
+      // 🔥 FORÇAR RECARREGAMENTO DA LISTA
+      await fetchCompanies(true);
+      
+      // 🔥 INVALIDAR TODAS AS QUERIES DE EMPRESAS
+      await queryClient.invalidateQueries({ queryKey: ["companies"] });
+      await queryClient.refetchQueries({ queryKey: ["companies"] });
 
       handleCloseModal();
     } catch (error: any) {
@@ -259,10 +269,11 @@ export default function CompanyManagementPage() {
       toast.success(
         `Status alterado para ${newApiStatus === "ACTIVE" ? "Ativo" : "Inativo"}`,
       );
-      setCompanies((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, status: newApiStatus } : c)),
-      );
-    } catch (error) {}
+      // 🔥 RECARREGAR APÓS ALTERAR STATUS
+      await fetchCompanies(true);
+    } catch (error) {
+      toast.error("Erro ao alterar status");
+    }
   };
 
   const handleDelete = async () => {
@@ -270,15 +281,23 @@ export default function CompanyManagementPage() {
     setIsDeleting(true);
     try {
       await api.delete(`/companies/${deleteId}`);
-      setCompanies((prev) => prev.filter((c) => c.id !== deleteId));
       toast.success("Empresa removida com sucesso.");
+      // 🔥 RECARREGAR APÓS DELETAR
+      await fetchCompanies(true);
       setIsDeleteOpen(false);
       setDeleteId(null);
     } catch (error) {
+      toast.error("Erro ao excluir empresa");
       setIsDeleteOpen(false);
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  // 🔥 HANDLER DE REFRESH MANUAL
+  const handleManualRefresh = () => {
+    fetchCompanies(true);
+    toast.success("Atualizando lista...");
   };
 
   // --- Colunas ---
@@ -409,25 +428,47 @@ export default function CompanyManagementPage() {
           onSearchChange={setSearchTerm}
           searchPlaceholder="Buscar empresa ou CNPJ..."
         >
-          {isMaster && (
+          <div className="flex items-center gap-2">
+            {/* 🔥 BOTÃO DE REFRESH MANUAL */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    onClick={handleOpenCreate}
+                    onClick={handleManualRefresh}
+                    variant="outline"
                     size="icon"
-                    className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white shadow-sm transition-transform hover:scale-105 rounded-full h-10 w-10"
+                    disabled={refreshing}
+                    className="border-[#CBD5E1] text-[#7A7E83] hover:text-[#2F80ED]"
                   >
-                    <Plus className="h-5 w-5" />
-                    <span className="sr-only">Criar nova empresa</span>
+                    <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent className="bg-[#353A40] text-white">
-                  <p>Criar nova empresa</p>
+                  <p>Atualizar lista</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          )}
+
+            {isMaster && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleOpenCreate}
+                      size="icon"
+                      className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white shadow-sm transition-transform hover:scale-105 rounded-full h-10 w-10"
+                    >
+                      <Plus className="h-5 w-5" />
+                      <span className="sr-only">Criar nova empresa</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-[#353A40] text-white">
+                    <p>Criar nova empresa</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
         </PageHeader>
 
         {/* Tabela */}

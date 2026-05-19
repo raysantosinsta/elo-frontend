@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // hooks/useRoutes.ts
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  QueryClient,
+} from "@tanstack/react-query";
 import {
   AvailableTask,
   CreateRouteDto,
@@ -14,23 +19,70 @@ import {
   UpdateRouteDto,
 } from "../services/api";
 
+// =============================================
+// 🚀 HELPER: delay entre requisições
+// =============================================
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// =============================================
+// 🚀 HELPER: buscar tasks com rate limiting
+// =============================================
+const createTaskFetcher = () => {
+  const pendingRequests = new Map<string, Promise<TaskInfo[]>>();
+  const lastRequestTime = new Map<string, number>();
+  const MIN_DELAY_MS = 500; // Delay mínimo entre requisições para a mesma rota
+
+  return async (
+    routeId: string,
+    queryClient: QueryClient,
+  ): Promise<TaskInfo[]> => {
+    const cacheKey: string[] = ["tasks-by-route", routeId];
+
+    // Verifica cache primeiro
+    const cached = queryClient.getQueryData<TaskInfo[]>(cacheKey);
+    if (cached) return cached;
+
+    // Verifica se já existe uma requisição em andamento
+    if (pendingRequests.has(routeId)) {
+      const pending = pendingRequests.get(routeId);
+      if (pending) return pending;
+    }
+
+    // Rate limiting: garantir delay entre requisições
+    const now = Date.now();
+    const lastRequest = lastRequestTime.get(routeId) || 0;
+    const timeSinceLastRequest = now - lastRequest;
+
+    if (timeSinceLastRequest < MIN_DELAY_MS) {
+      await delay(MIN_DELAY_MS - timeSinceLastRequest);
+    }
+
+    // Criar nova requisição
+    const request = (async () => {
+      try {
+        const { data } = await routesApi.getRouteTasks(routeId);
+        lastRequestTime.set(routeId, Date.now());
+        queryClient.setQueryData(cacheKey, data);
+        return data as TaskInfo[];
+      } finally {
+        pendingRequests.delete(routeId);
+      }
+    })();
+
+    pendingRequests.set(routeId, request);
+    return request;
+  };
+};
+
 export const useRoutes = () => {
   const queryClient = useQueryClient();
+  const fetchTasksWithRateLimit = createTaskFetcher();
 
   // =============================================
   // 🚀 HELPER: buscar tasks com cache (ANTI-FLOOD)
   // =============================================
   const getTasksWithCache = async (routeId: string) => {
-    const cacheKey = ["tasks-by-route", routeId];
-
-    const cached = queryClient.getQueryData<TaskInfo[]>(cacheKey);
-    if (cached) return cached;
-
-    const { data } = await routesApi.getRouteTasks(routeId);
-
-    queryClient.setQueryData(cacheKey, data);
-
-    return data as TaskInfo[];
+    return fetchTasksWithRateLimit(routeId, queryClient);
   };
 
   const useMarkStopVisited = () =>
@@ -46,23 +98,18 @@ export const useRoutes = () => {
       }) => routesApi.markStopVisited(routeId, stopId, notes),
 
       onSuccess: (_, variables) => {
-        // 🔥 Atualiza apenas o necessário (evita flood)
+        // Atualiza apenas o necessário
         queryClient.invalidateQueries({
           queryKey: ["routes", variables.routeId],
         });
-
         queryClient.invalidateQueries({
           queryKey: ["tasks-by-route", variables.routeId],
         });
-
-        // ⚠️ NÃO invalidar tudo
-        // ❌ queryClient.invalidateQueries(["routes"])  ← EVITE
-        // ❌ queryClient.invalidateQueries(["routes-summary"]) ← só se precisar mesmo
       },
     });
 
   // =============================================
-  // 🚀 GET ALL ROUTES (OTIMIZADO)
+  // 🚀 GET ALL ROUTES (OTIMIZADO - SEM FLOOD)
   // =============================================
   const useGetAllRoutes = (params?: {
     status?: string;
@@ -73,71 +120,72 @@ export const useRoutes = () => {
       queryKey: ["routes", params],
       queryFn: async () => {
         const { data } = await routesApi.getAll(params);
-
         const routes = data as Route[];
 
-        // 🔥 LIMITAR CONCORRÊNCIA (ANTI-THROTTLE)
-        const CONCURRENCY_LIMIT = 5;
-
-        const results: Route[] = [];
-
-        for (let i = 0; i < routes.length; i += CONCURRENCY_LIMIT) {
-          const chunk = routes.slice(i, i + CONCURRENCY_LIMIT);
-
-          const chunkResults = await Promise.all(
-            chunk.map(async (route) => {
-              try {
-                const tasks = await getTasksWithCache(route.id);
-
-                return {
-                  ...route,
-                  tasks,
-                };
-              } catch (error) {
-                console.error(
-                  `Erro ao buscar tasks da rota ${route.id}`,
-                  error,
-                );
-                return {
-                  ...route,
-                  tasks: [],
-                };
-              }
-            }),
-          );
-
-          results.push(...chunkResults);
-        }
-
-        return results;
+        // 🔥 NÃO buscar tasks automaticamente - deixar para quando necessário
+        // Retornar rotas sem tasks para evitar flood
+        return routes.map((route) => ({
+          ...route,
+          tasks: [], // Tasks vazias inicialmente
+        }));
       },
-      // 🔥 ALTERAR ESTAS CONFIGURAÇÕES
-      staleTime: 1000 * 10, // Mudar para 10 segundos (ou 0 para sempre buscar)
+      staleTime: 1000 * 30, // 30 segundos
+      gcTime: 1000 * 60 * 5, // 5 minutos
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: true, // 🔥 Mudar para true
-      // 🔥 Adicionar esta configuração
-      gcTime: 1000 * 60 * 5, // Manter no cache por 5 minutos (antigo cacheTime)
+      refetchOnMount: true,
+      retry: 1, // Tentar apenas 1 vez em caso de erro
+      retryDelay: 1000, // Esperar 1 segundo antes de tentar novamente
     });
 
   // =============================================
-  // GET ROUTE BY ID
+  // GET ROUTE BY ID (COM TASKS SOB DEMANDA)
   // =============================================
   const useGetRouteById = (id: string) =>
     useQuery({
       queryKey: ["routes", id],
       queryFn: async () => {
         const { data } = await routesApi.getById(id);
+        const route = data as Route;
 
-        const tasks = await getTasksWithCache(id);
-
-        return {
-          ...(data as Route),
-          tasks,
-        };
+        // Buscar tasks apenas para a rota específica
+        try {
+          const tasks = await getTasksWithCache(id);
+          return {
+            ...route,
+            tasks,
+          };
+        } catch (error) {
+          console.error(`Erro ao buscar tasks da rota ${id}`, error);
+          return {
+            ...route,
+            tasks: [],
+          };
+        }
       },
       enabled: !!id,
-      staleTime: 1000 * 60 * 5,
+      staleTime: 1000 * 30, // 30 segundos
+      gcTime: 1000 * 60 * 5,
+      retry: 1,
+    });
+
+  // =============================================
+  // GET TASKS BY ROUTE (CARREGAMENTO SOB DEMANDA)
+  // =============================================
+  const useGetTasksByRoute = (routeId: string, enabled: boolean = true) =>
+    useQuery({
+      queryKey: ["tasks-by-route", routeId],
+      queryFn: async () => {
+        // Pequeno delay para evitar múltiplas chamadas simultâneas
+        await delay(100);
+        const { data } = await routesApi.getRouteTasks(routeId);
+        return data as TaskInfo[];
+      },
+      enabled: !!routeId && enabled,
+      staleTime: 1000 * 60, // 1 minuto
+      gcTime: 1000 * 60 * 5,
+      retry: 1,
+      retryDelay: 1000,
     });
 
   // =============================================
@@ -150,7 +198,9 @@ export const useRoutes = () => {
         const { data } = await routesApi.getSummary();
         return data as RouteStats;
       },
-      staleTime: 1000 * 60 * 2,
+      staleTime: 1000 * 60 * 2, // 2 minutos
+      gcTime: 1000 * 60 * 5,
+      refetchOnWindowFocus: false,
     });
 
   const useGetAvailableTasks = (params?: any) =>
@@ -160,21 +210,9 @@ export const useRoutes = () => {
         const { data } = await routesApi.getAvailableTasks(params);
         return data as AvailableTask[];
       },
-      staleTime: 1000 * 60 * 2,
-    });
-
-  // =============================================
-  // TASKS
-  // =============================================
-  const useGetTasksByRoute = (routeId: string) =>
-    useQuery({
-      queryKey: ["tasks-by-route", routeId],
-      queryFn: async () => {
-        const { data } = await routesApi.getRouteTasks(routeId);
-        return data as TaskInfo[];
-      },
-      enabled: !!routeId,
-      staleTime: 1000 * 60 * 5,
+      staleTime: 1000 * 30, // 30 segundos
+      gcTime: 1000 * 60 * 2,
+      refetchOnWindowFocus: false,
     });
 
   const useGetAllTasks = (params?: any) =>
@@ -184,7 +222,9 @@ export const useRoutes = () => {
         const { data } = await routesApi.getAllTasks(params);
         return data;
       },
-      staleTime: 1000 * 60 * 2,
+      staleTime: 1000 * 30,
+      gcTime: 1000 * 60 * 2,
+      refetchOnWindowFocus: false,
     });
 
   const useGetTaskById = (id: string) =>
@@ -195,6 +235,8 @@ export const useRoutes = () => {
         return data as Task;
       },
       enabled: !!id,
+      staleTime: 1000 * 60,
+      gcTime: 1000 * 60 * 5,
     });
 
   const useFinalizeTask = () =>
@@ -208,14 +250,9 @@ export const useRoutes = () => {
       }) => routesApi.finalizeTask(taskId, data),
 
       onSuccess: (_, variables) => {
-        // 🔥 Atualiza apenas o essencial
+        // Invalidar apenas o necessário
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
-
-        // Se você souber a rota, melhor ainda:
-        // queryClient.invalidateQueries(["tasks-by-route", routeId])
-
-        // ⚠️ Evitar isso aqui:
-        // ❌ invalidateQueries(["routes"]) em massa
+        queryClient.invalidateQueries({ queryKey: ["tasks-by-route"] });
       },
     });
 
@@ -227,17 +264,8 @@ export const useRoutes = () => {
     useMutation({
       mutationFn: (data: CreateRouteDto) => routesApi.create(data),
       onSuccess: async () => {
-        // 🔥 Isso já é suficiente - o React Query vai atualizar automaticamente
         await queryClient.invalidateQueries({ queryKey: ["routes"] });
-
-        // Se você tem queries com parâmetros (filtros), invalida também
-        await queryClient.invalidateQueries({
-          queryKey: ["routes"],
-          exact: false,
-        });
-
-        // Se tiver summary, invalida também
-        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
+        await queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
       },
     });
 
@@ -256,6 +284,7 @@ export const useRoutes = () => {
       mutationFn: (id: string) => routesApi.delete(id),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["routes"] });
+        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
       },
     });
 

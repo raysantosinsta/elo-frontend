@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useRef, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ChatMessage } from "@/types/chat";
 import { MessageCircle, User as UserIcon } from "lucide-react";
+import { useEffect, useMemo, useRef } from "react";
 
 // --- HELPERS (Design System & Utils) ---
 
@@ -169,13 +170,15 @@ export function ChatMessages({ messages, currentUserId }: ChatMessagesProps) {
                             {message.sender?.name}
                           </span>
                           {message.sender?.professionalRole && (
-                            <Badge
-                              variant="secondary"
-                              className="h-4 rounded px-1 text-[9px] font-normal bg-[#2F80ED]/10 text-[#2F80ED] hover:bg-[#2F80ED]/20"
-                            >
-                              {message.sender.professionalRole || "Pro"}
-                            </Badge>
-                          )}
+  <Badge
+    variant="secondary"
+    className="h-4 rounded px-1 text-[9px] font-normal bg-[#2F80ED]/10 text-[#2F80ED] hover:bg-[#2F80ED]/20"
+  >
+    {typeof message.sender.professionalRole === 'object' 
+      ? (message.sender.professionalRole.name || "Pro")
+      : (message.sender.professionalRole || "Pro")}
+  </Badge>
+)}
                         </div>
                       )}
 

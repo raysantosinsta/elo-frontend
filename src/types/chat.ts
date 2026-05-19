@@ -5,6 +5,8 @@ export interface Chat {
   messages?: ChatMessage[];
 }
 
+// src/types/chat.ts
+
 export interface ChatMessage {
   id: string;
   chatId: string;
@@ -16,8 +18,7 @@ export interface ChatMessage {
     name: string;
     email: string;
     role: string;
-    // isProfessional: boolean;
-    professionalRole?: string;
+    professionalRole?: string | { id: string; name: string; description?: string };
     phone?: string;
   };
   mentionedProfessionalId?: string;

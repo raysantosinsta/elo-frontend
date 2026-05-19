@@ -882,202 +882,206 @@ export default function RoutesPage() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#F5F6FA] p-4 md:p-8 font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen w-full bg-[#F5F6FA] font-sans">
+      <div className="w-full space-y-6">
         {/* Header */}
-        <PageHeader title="Rotas" description="Gerencie as rotas do sistema.">
-          <div className="flex gap-2">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <RippleButton
-                    variant="outline"
-                    onClick={handleFilterButtonClick}
-                    className={cn(
-                      "rounded-full h-10 px-4 gap-2 transition-all duration-200 border-[#CBD5E1] bg-white",
-                      showFilters &&
-                        "bg-[#2F80ED] text-white hover:bg-[#1E5CB8] border-none",
-                    )}
-                  >
-                    <FilterIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline text-[#353A40]">
-                      Filtrar
-                    </span>
-                    {activeFiltersCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-[#2F80ED] text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                        {activeFiltersCount}
+        <div className="px-4 md:px-8">
+          <PageHeader title="Rotas" description="Gerencie as rotas do sistema.">
+            <div className="flex gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <RippleButton
+                      variant="outline"
+                      onClick={handleFilterButtonClick}
+                      className={cn(
+                        "rounded-full h-10 px-4 gap-2 transition-all duration-200 border-[#CBD5E1] bg-white",
+                        showFilters &&
+                          "bg-[#2F80ED] text-white hover:bg-[#1E5CB8] border-none",
+                      )}
+                    >
+                      <FilterIcon className="h-5 w-5" />
+                      <span className="hidden sm:inline text-[#353A40]">
+                        Filtrar
                       </span>
-                    )}
-                  </RippleButton>
-                </TooltipTrigger>
-                <TooltipContent className="bg-[#353A40] text-white">
-                  <p>Aplicar filtro para rotas</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link href="/routes/create" prefetch={true}>
-                    <RippleButton className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white shadow-sm transition-all duration-200 rounded-full h-10 px-4 gap-2">
-                      <PlusIcon className="h-5 w-5" />
-                      <span className="hidden sm:inline">Criar</span>
+                      {activeFiltersCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-[#2F80ED] text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                          {activeFiltersCount}
+                        </span>
+                      )}
                     </RippleButton>
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent className="bg-[#353A40] text-white">
-                  <p>Criar nova rota</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        </PageHeader>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-[#353A40] text-white">
+                    <p>Aplicar filtro para rotas</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
 
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link href="/routes/create" prefetch={true}>
+                      <RippleButton className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white shadow-sm transition-all duration-200 rounded-full h-10 px-4 gap-2">
+                        <PlusIcon className="h-5 w-5" />
+                        <span className="hidden sm:inline">Criar</span>
+                      </RippleButton>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-[#353A40] text-white">
+                    <p>Criar nova rota</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </PageHeader>
+        </div>
         {/* Painel de Filtros */}
-        <AnimatePresence>
-          {showFilters && (
-            <motion.div
-              initial={{ opacity: 0, height: 0, y: -20 }}
-              animate={{ opacity: 1, height: "auto", y: 0 }}
-              exit={{ opacity: 0, height: 0, y: -20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            >
-              <Card className="border border-[#E2E8F0] shadow-sm rounded-xl overflow-hidden bg-white">
-                <CardContent className="p-4 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <Autocomplete
-                      options={statusOptions}
-                      value={tempStatusFilter}
-                      onChange={setTempStatusFilter}
-                      label="Status"
-                      icon={<AlertTriangleIcon className="h-3 w-3" />}
-                      placeholder="Selecionar status..."
-                      emptyMessage="Nenhum status encontrado."
-                    />
-                  </div>
+        <div className="px-4 md:px-8">
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, y: -20 }}
+                animate={{ opacity: 1, height: "auto", y: 0 }}
+                exit={{ opacity: 0, height: 0, y: -20 }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              >
+                <Card className="border border-[#E2E8F0] shadow-sm rounded-xl overflow-hidden bg-white">
+                  <CardContent className="p-0 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <Autocomplete
+                        options={statusOptions}
+                        value={tempStatusFilter}
+                        onChange={setTempStatusFilter}
+                        label="Status"
+                        icon={<AlertTriangleIcon className="h-3 w-3" />}
+                        placeholder="Selecionar status..."
+                        emptyMessage="Nenhum status encontrado."
+                      />
+                    </div>
 
-                  <div className="space-y-3">
-                    <label className="text-sm font-medium text-[#353A40] flex items-center gap-2">
-                      <CalendarIcon className="h-3 w-3 text-[#7A7E83]" />
-                      Rotas agendadas
-                    </label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-[#7A7E83]">
-                          Data inicial
-                        </label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="w-full justify-start text-left font-normal bg-white border-[#CBD5E1] text-[#353A40]"
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4 text-[#7A7E83]" />
-                              {tempStartDate
-                                ? format(tempStartDate, "dd/MM/yyyy")
-                                : "Selecionar data inicial"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 bg-white border border-[#E2E8F0] rounded-xl">
-                            <Calendar
-                              mode="single"
-                              selected={tempStartDate}
-                              onSelect={setTempStartDate}
-                              locale={ptBR}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
+                    <div className="space-y-3">
+                      <label className="text-sm font-medium text-[#353A40] flex items-center gap-2">
+                        <CalendarIcon className="h-3 w-3 text-[#7A7E83]" />
+                        Rotas agendadas
+                      </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-[#7A7E83]">
+                            Data inicial
+                          </label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className="w-full justify-start text-left font-normal bg-white border-[#CBD5E1] text-[#353A40]"
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4 text-[#7A7E83]" />
+                                {tempStartDate
+                                  ? format(tempStartDate, "dd/MM/yyyy")
+                                  : "Selecionar data inicial"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0 bg-white border border-[#E2E8F0] rounded-xl">
+                              <Calendar
+                                mode="single"
+                                selected={tempStartDate}
+                                onSelect={setTempStartDate}
+                                locale={ptBR}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
 
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-[#7A7E83]">
-                          Data final
-                        </label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="w-full justify-start text-left font-normal bg-white border-[#CBD5E1] text-[#353A40]"
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4 text-[#7A7E83]" />
-                              {tempEndDate
-                                ? format(tempEndDate, "dd/MM/yyyy")
-                                : "Selecionar data final"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 bg-white border border-[#E2E8F0] rounded-xl">
-                            <Calendar
-                              mode="single"
-                              selected={tempEndDate}
-                              onSelect={setTempEndDate}
-                              locale={ptBR}
-                              disabled={(date) =>
-                                tempStartDate ? date < tempStartDate : false
-                              }
-                            />
-                          </PopoverContent>
-                        </Popover>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-[#7A7E83]">
+                            Data final
+                          </label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className="w-full justify-start text-left font-normal bg-white border-[#CBD5E1] text-[#353A40]"
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4 text-[#7A7E83]" />
+                                {tempEndDate
+                                  ? format(tempEndDate, "dd/MM/yyyy")
+                                  : "Selecionar data final"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0 bg-white border border-[#E2E8F0] rounded-xl">
+                              <Calendar
+                                mode="single"
+                                selected={tempEndDate}
+                                onSelect={setTempEndDate}
+                                locale={ptBR}
+                                disabled={(date) =>
+                                  tempStartDate ? date < tempStartDate : false
+                                }
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <Autocomplete
-                      options={driverOptions}
-                      value={tempUserAssignedFilter}
-                      onChange={setTempUserAssignedFilter}
-                      label="Responsavel"
-                      icon={<UsersIcon className="h-3 w-3" />}
-                      placeholder="Selecionar Responsavel..."
-                      emptyMessage="Nenhum Responsavel encontrado."
-                    />
-                  </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <Autocomplete
+                        options={driverOptions}
+                        value={tempUserAssignedFilter}
+                        onChange={setTempUserAssignedFilter}
+                        label="Responsavel"
+                        icon={<UsersIcon className="h-3 w-3" />}
+                        placeholder="Selecionar Responsavel..."
+                        emptyMessage="Nenhum Responsavel encontrado."
+                      />
+                    </div>
 
-                  <div className="flex justify-end gap-2 pt-4 border-t border-[#E2E8F0]">
-                    {hasActiveFilters && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleClearFilters}
-                        className="text-[#7A7E83] hover:text-[#2F80ED] hover:bg-[#F5F6FA]"
-                      >
-                        <X className="h-4 w-4 mr-1" />
-                        Limpar filtros
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      onClick={handleApplyFilters}
-                      disabled={isFiltering}
-                      className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
-                    >
-                      {isFiltering ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          Aplicando...
-                        </>
-                      ) : (
-                        "Aplicar filtros"
+                    <div className="flex justify-end gap-2 pt-4 border-t border-[#E2E8F0]">
+                      {hasActiveFilters && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleClearFilters}
+                          className="text-[#7A7E83] hover:text-[#2F80ED] hover:bg-[#F5F6FA]"
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Limpar filtros
+                        </Button>
                       )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
+                      <Button
+                        size="sm"
+                        onClick={handleApplyFilters}
+                        disabled={isFiltering}
+                        className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white"
+                      >
+                        {isFiltering ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            Aplicando...
+                          </>
+                        ) : (
+                          "Aplicar filtros"
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
         {/* Resultados encontrados */}
         {filteredRoutes.length > 0 && (
-          <div className="text-right text-xs text-[#7A7E83]">
-            {filteredRoutes.length} resultado
-            {filteredRoutes.length !== 1 ? "s" : ""} encontrado
-            {filteredRoutes.length !== 1 ? "s" : ""}
+          <div className="px-4 md:px-8">
+            <div className="text-right text-xs text-[#7A7E83]">
+              {filteredRoutes.length} resultado
+              {filteredRoutes.length !== 1 ? "s" : ""} encontrado
+              {filteredRoutes.length !== 1 ? "s" : ""}
+            </div>
           </div>
         )}
 
-        {/* GenericTable com paginação */}
+        {/* GenericTable - SEM padding lateral */}
         <GenericTable
           title="Listagem"
           data={paginatedRoutes}
@@ -1091,47 +1095,50 @@ export default function RoutesPage() {
             totalItems: filteredRoutes.length,
             itemsPerPage: ITEMS_PER_PAGE,
           }}
+          className="!mx-0 !w-full rounded-none" // Remove bordas arredondadas também
         />
 
         {/* Dialog de exclusão */}
-        <AlertDialog
-          open={!!deleteId}
-          onOpenChange={() => !isDeleting && setDeleteId(null)}
-        >
-          <AlertDialogContent className="bg-white border border-[#E2E8F0] rounded-xl">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-[#353A40]">
-                Excluir Rota
-              </AlertDialogTitle>
-              <AlertDialogDescription className="text-[#7A7E83]">
-                Esta ação removerá todos os dados da rota do sistema. Esta ação
-                não pode ser desfeita.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel
-                disabled={isDeleting}
-                className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
-              >
-                Cancelar
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="bg-red-500 hover:bg-red-600 text-white"
-              >
-                {isDeleting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    Excluindo...
-                  </>
-                ) : (
-                  "Confirmar Exclusão"
-                )}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <div className="px-4 md:px-8">
+          <AlertDialog
+            open={!!deleteId}
+            onOpenChange={() => !isDeleting && setDeleteId(null)}
+          >
+            <AlertDialogContent className="bg-white border border-[#E2E8F0] rounded-xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-[#353A40]">
+                  Excluir Rota
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-[#7A7E83]">
+                  Esta ação removerá todos os dados da rota do sistema. Esta
+                  ação não pode ser desfeita.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel
+                  disabled={isDeleting}
+                  className="border-[#CBD5E1] text-[#353A40] hover:bg-[#F5F6FA]"
+                >
+                  Cancelar
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="bg-red-500 hover:bg-red-600 text-white"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    "Confirmar Exclusão"
+                  )}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
     </div>
   );

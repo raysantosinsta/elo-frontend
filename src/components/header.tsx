@@ -57,7 +57,7 @@ export function Header() {
         <div className="flex items-center group cursor-pointer">
           <div className="h-15 w-40 rounded-xl overflow-hidden bg-white/10 backdrop-blur-sm border border-white/10 transition-all group-hover:bg-white/20 flex items-center justify-center">
             <Image
-              src="/logo-elospro.png"
+              src="/logo-elospro.jpeg"
               alt="ELO PRODUTIVO"
               width={120}
               height={90}

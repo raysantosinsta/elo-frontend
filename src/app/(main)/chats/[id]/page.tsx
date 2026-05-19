@@ -186,7 +186,7 @@ export default function ChatPage() {
             <span className="hidden sm:inline">Online</span>
           </div>
 
-          {/* Badge Empresa */}
+          {/* 🔥 CORREÇÃO: Acessa o nome da empresa corretamente */}
           {user?.company?.name && (
             <Badge
               variant="outline"

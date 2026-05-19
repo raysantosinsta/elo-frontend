@@ -4,7 +4,7 @@ import { Header } from "@/components/header";
 import { Sidebar } from "@/components/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import { socketService } from "@/hooks/socket";
-// REMOVA ESTA LINHA: import { WebSocketProvider } from "@/contexts/WebSocketContext";
+import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -23,7 +23,7 @@ export default function MainLayout({
     }
   }, [user, loading, router]);
 
-  // NOVO: Conecta o socket globalmente assim que o usuário existir
+  // Conecta o socket globalmente assim que o usuário existir
   useEffect(() => {
     if (user) {
       socketService.connect();
@@ -32,9 +32,6 @@ export default function MainLayout({
         socketService.joinCompanyRoom(user.companyId);
       }
     }
-    
-    // Cleanup opcional: desconectar ao fazer logout/sair do layout principal
-    // return () => socketService.disconnect(); 
   }, [user]);
 
   if (loading) {
@@ -47,7 +44,6 @@ export default function MainLayout({
 
   if (!user) return null;
 
-  // REMOVA A TAG <WebSocketProvider>
   return (
     <div className="flex h-screen w-full bg-background">
       <div className="hidden md:block h-full border-r">
@@ -55,8 +51,20 @@ export default function MainLayout({
       </div>
       <div className="flex flex-1 flex-col overflow-hidden ml-[-1px]">
         <Header />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-muted/10">
-          <div className="mx-auto max-w-7xl animate-in fade-in duration-500">
+        <main className={cn(
+          "flex-1 overflow-y-auto bg-muted/10",
+          // Mobile (até 768px): sem padding
+          "p-0",
+          // Tablet e desktop: com padding
+          "md:p-4 lg:p-6"
+        )}>
+          <div className={cn(
+            "animate-in fade-in duration-500 w-full",
+            // Mobile: sem max-width e sem margin
+            "max-w-none mx-0",
+            // Desktop: max-width e margin centralizada
+            "md:max-w-7xl md:mx-auto"
+          )}>
             {children}
           </div>
         </main>
