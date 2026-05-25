@@ -334,7 +334,7 @@ export default function DashboardPage() {
         <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-[#353A40] mb-2">
-              ELO PRODUTIVO
+              ELOSPRO
             </h1>
             <div className="flex items-center gap-3">
               <span className="text-lg text-[#353A40]">

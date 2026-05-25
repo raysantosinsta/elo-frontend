@@ -220,6 +220,7 @@ export default function CompanyRolesManagementPage() {
   };
 
   // --- Submit Create/Update ---
+  // --- Submit Create/Update ---
   const onSubmit = async () => {
     if (!formData.name.trim()) {
       toast.error("O nome do cargo é obrigatório");
@@ -235,34 +236,39 @@ export default function CompanyRolesManagementPage() {
 
     try {
       if (editingRole) {
+        // UPDATE - Atualiza cargo existente
         const updateData: UpdateRoleDto = {
           name: formData.name,
           description: formData.description || undefined,
           level: formData.level,
         };
+
         const response = await api.patch<CompanyRole>(
           `/company-roles/${editingRole.id}`,
           updateData,
         );
 
-        await fetchRoles(); // Rebusca os dados
-
+        // ✅ Atualiza apenas o item editado no estado local
         setRoles((prev) =>
           prev.map((r) => (r.id === editingRole.id ? response.data : r)),
         );
         toast.success("Cargo atualizado com sucesso!");
       } else {
+        // CREATE - Cria novo cargo
         const response = await api.post<CompanyRole>(
           "/company-roles",
           formData,
         );
 
-        // 🔥 Forçar refresh da lista
+        // ✅ REMOVA a linha duplicada que causava o bug:
+        // setRoles((prev) => [response.data, ...prev]);
+
+        // ✅ Apenas busca a lista atualizada do backend
         await fetchRoles();
 
-        setRoles((prev) => [response.data, ...prev]);
         toast.success("Cargo criado com sucesso!");
       }
+
       handleCloseModal();
     } catch (error: any) {
       console.error("Erro ao salvar cargo:", error);
