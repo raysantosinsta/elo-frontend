@@ -283,6 +283,9 @@ export default function WhatsAppIntegration() {
   const statusPollingRef = useRef<NodeJS.Timeout | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 🔥 Verifica se existe conexão
+  const hasConnection = instance !== null;
+
   useEffect(() => {
     fetchExistingInstance();
     return () => {
@@ -342,21 +345,17 @@ export default function WhatsAppIntegration() {
     };
   }, [instance]);
 
-  // 🔥 Timer de expiração do QR Code - AGORA DELETA A INSTÂNCIA AUTOMATICAMENTE
+  // Timer de expiração do QR Code
   useEffect(() => {
     if (qrCode && showQRModal && !qrLoading) {
-      // Limpa timer anterior se existir
       if (qrExpirationTimer) clearTimeout(qrExpirationTimer);
 
-      // Configura novo timer para 60 segundos
       const timer = setTimeout(async () => {
         console.log("⏰ QR Code expirou! Deletando instância...");
 
-        // Fecha o modal do QR Code
         setShowQRModal(false);
         setQrCode(null);
 
-        // Deleta a instância automaticamente
         const idNum = getValidInstanceId();
         if (idNum) {
           try {
@@ -371,10 +370,7 @@ export default function WhatsAppIntegration() {
           }
         }
 
-        // Mostra modal de expiração
         setShowExpirationModal(true);
-
-        // Limpa o timer
         setQrExpirationTimer(null);
       }, 60000);
 
@@ -386,7 +382,6 @@ export default function WhatsAppIntegration() {
     }
   }, [qrCode, showQRModal, qrLoading]);
 
-  // 🔥 Função auxiliar para obter o ID da instância de forma segura
   const getValidInstanceId = (): number | null => {
     const instanceId = instance?.instanceId || instance?.id;
 
@@ -406,7 +401,6 @@ export default function WhatsAppIntegration() {
     return idNum;
   };
 
-  // Buscar instância existente
   const fetchExistingInstance = async () => {
     try {
       const response = await api.get("/whatsapp/connection");
@@ -533,9 +527,7 @@ export default function WhatsAppIntegration() {
 
       console.log("Instância criada:", response.data);
 
-      toast.success(`✅ Instância "${formData.name}" criada!`);
-
-      // Não limpa o formData para manter o valor
+      toast.success(`✅ Conexão "${formData.name}" criada!`);
 
       setTimeout(async () => {
         try {
@@ -665,7 +657,6 @@ export default function WhatsAppIntegration() {
     }
   };
 
-  // Fechar modal de expiração e resetar formulário
   const handleCloseExpirationModal = () => {
     setShowExpirationModal(false);
     setFormData({ name: "" });
@@ -718,243 +709,248 @@ export default function WhatsAppIntegration() {
           </p>
         </motion.div>
 
-        <div className="grid lg:grid-cols-2 gap-8">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-          >
-            <GlassCard className="p-6 md:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-gradient-to-br from-[#2F80ED] to-[#1E5CB8] rounded-xl">
-                  <MessageCircle className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-800">
-                    Conectar WhatsApp
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    Ative as notificações do seu negócio
-                  </p>
-                </div>
-              </div>
-
-              <form onSubmit={handleCreateInstance} className="space-y-5">
-                <InputField
-                  label="Nome da Conexão"
-                  value={formData.name}
-                  onChange={(e: any) => setFormData({ name: e.target.value })}
-                  placeholder="Ex: WhatsApp Suporte, Vendas ou Financeiro"
-                  icon={Database}
-                  tooltip="Digite um nome para identificar esta conexão. Exemplo: WhatsApp Suporte, Vendas ou Financeiro."
-                />
-
-                <PremiumButton
-                  type="submit"
-                  loading={loading}
-                  className="w-full"
-                >
-                  <Bell className="w-4 h-4" />
-                  Criar Conexão
-                </PremiumButton>
-              </form>
-
-              <div className="mt-8 pt-6 border-t border-gray-100">
-                <p className="text-sm font-medium text-gray-700 mb-3">
-                  O que você vai receber:
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    {
-                      icon: Package,
-                      text: "Notifição de novos produtos",
-                      color: "text-green-600",
-                      bg: "bg-green-50",
-                    },
-                    {
-                      icon: Calendar,
-                      text: "Notifição de produtos próximo ao vencimento",
-                      color: "text-yellow-600",
-                      bg: "bg-yellow-50",
-                    },
-                    {
-                      icon: AlertTriangle,
-                      text: "notifição de Produtos atrasados",
-                      color: "text-red-600",
-                      bg: "bg-red-50",
-                    },
-                  ].map((feature, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex items-center gap-2 p-2 rounded-lg ${feature.bg}`}
-                    >
-                      <feature.icon className={`w-4 h-4 ${feature.color}`} />
-                      <span className="text-xs text-gray-700">
-                        {feature.text}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </GlassCard>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
-            <NotificationInfoCard />
-          </motion.div>
-        </div>
-
-        {/* Card da Instância */}
-        {instance && (
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
-            className="mt-8"
-          >
-            <GlassCard className="p-6 relative overflow-hidden">
-              <div className="absolute top-4 right-4 flex items-center gap-2">
-                <div
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                    instance.status === "connected"
-                      ? "bg-green-100 text-green-700 border border-green-200"
-                      : instance.status === "qrcode"
-                        ? "bg-yellow-100 text-yellow-700 border border-yellow-200 animate-pulse"
-                        : "bg-blue-100 text-blue-700 border border-blue-200"
-                  }`}
-                >
-                  {instance.status === "connected" ? (
-                    <>
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>Conectado</span>
-                    </>
-                  ) : instance.status === "qrcode" ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Aguardando leitura</span>
-                    </>
-                  ) : (
-                    <>
-                      <Clock className="w-3 h-3" />
-                      <span>Configurando</span>
-                    </>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-all duration-200 group"
-                  title="Deletar instância"
-                >
-                  <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                </button>
-              </div>
-
-              <div className="flex items-start gap-5">
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  className={`p-3 rounded-2xl ${
-                    instance.status === "connected"
-                      ? "bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/25"
-                      : instance.status === "qrcode"
-                        ? "bg-gradient-to-br from-yellow-500 to-orange-600 shadow-lg shadow-yellow-500/25"
-                        : "bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25"
-                  }`}
-                >
-                  {instance.status === "connected" ? (
-                    <CheckCircle2 className="w-8 h-8 text-white" />
-                  ) : instance.status === "qrcode" ? (
-                    <QrCode className="w-8 h-8 text-white" />
-                  ) : (
-                    <Loader2 className="w-8 h-8 text-white animate-spin" />
-                  )}
-                </motion.div>
-
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-xl font-bold text-gray-800">
-                      {instance.name}
-                    </h3>
-                    <span className="text-xs text-gray-400 font-mono">
-                      ID: {instance.instanceId || instance.id}
-                    </span>
+        {/* 🔥 SÓ MOSTRA O FORMULÁRIO DE CRIAÇÃO SE NÃO TIVER CONEXÃO */}
+        {!hasConnection && (
+          <div className="grid lg:grid-cols-2 gap-8">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+            >
+              <GlassCard className="p-6 md:p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 bg-gradient-to-br from-[#2F80ED] to-[#1E5CB8] rounded-xl">
+                    <MessageCircle className="w-5 h-5 text-white" />
                   </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-800">
+                      Conectar WhatsApp
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                      Ative as notificações do seu negócio
+                    </p>
+                  </div>
+                </div>
 
-                  <p className="text-sm text-gray-500 mb-3">
-                    {instance.status === "connected"
-                      ? "WhatsApp conectado e pronto para receber notificações"
-                      : instance.status === "qrcode"
-                        ? "Escaneie o QR Code para conectar seu WhatsApp"
-                        : "Configurando instância, aguarde..."}
+                <form onSubmit={handleCreateInstance} className="space-y-5">
+                  <InputField
+                    label="Nome da Conexão"
+                    value={formData.name}
+                    onChange={(e: any) => setFormData({ name: e.target.value })}
+                    placeholder="Ex: WhatsApp Suporte, Vendas ou Financeiro"
+                    icon={Database}
+                    tooltip="Digite um nome para identificar esta conexão. Exemplo: WhatsApp Suporte, Vendas ou Financeiro."
+                  />
+
+                  <PremiumButton
+                    type="submit"
+                    loading={loading}
+                    className="w-full"
+                  >
+                    <Bell className="w-4 h-4" />
+                    Criar Conexão
+                  </PremiumButton>
+                </form>
+
+                <div className="mt-8 pt-6 border-t border-gray-100">
+                  <p className="text-sm font-medium text-gray-700 mb-3">
+                    O que você vai receber:
                   </p>
-
-                  {instance.status !== "connected" && (
-                    <div className="w-full bg-gray-100 rounded-full h-1.5 mb-3 overflow-hidden">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full"
-                        initial={{ width: "0%" }}
-                        animate={{ width: "100%" }}
-                        transition={{ duration: 30, repeat: Infinity }}
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap gap-2">
-                    {instance.status !== "connected" && (
-                      <button
-                        onClick={handleGenerateQR}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg transition-all hover:bg-blue-100"
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      {
+                        icon: Package,
+                        text: "Notificação de novos produtos",
+                        color: "text-green-600",
+                        bg: "bg-green-50",
+                      },
+                      {
+                        icon: Calendar,
+                        text: "Notificação de produtos próximo ao vencimento",
+                        color: "text-yellow-600",
+                        bg: "bg-yellow-50",
+                      },
+                      {
+                        icon: AlertTriangle,
+                        text: "Notificação de Produtos atrasados",
+                        color: "text-red-600",
+                        bg: "bg-red-50",
+                      },
+                    ].map((feature, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-2 p-2 rounded-lg ${feature.bg}`}
                       >
-                        <QrCode className="w-3 h-3 inline mr-1" />
-                        Gerar QR Code
-                      </button>
+                        <feature.icon className={`w-4 h-4 ${feature.color}`} />
+                        <span className="text-xs text-gray-700">
+                          {feature.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </GlassCard>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            >
+              <NotificationInfoCard />
+            </motion.div>
+          </div>
+        )}
+
+        {/* 🔥 SE TIVER CONEXÃO, MOSTRA APENAS O CARD DA INSTÂNCIA (EM LARGURA TOTAL) */}
+        {hasConnection && (
+          <div className="max-w-3xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
+              className="mt-8"
+            >
+              <GlassCard className="p-6 relative overflow-hidden">
+                <div className="absolute top-4 right-4 flex items-center gap-2">
+                  <div
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                      instance.status === "connected"
+                        ? "bg-green-100 text-green-700 border border-green-200"
+                        : instance.status === "qrcode"
+                          ? "bg-yellow-100 text-yellow-700 border border-yellow-200 animate-pulse"
+                          : "bg-blue-100 text-blue-700 border border-blue-200"
+                    }`}
+                  >
+                    {instance.status === "connected" ? (
+                      <>
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Conectado</span>
+                      </>
+                    ) : instance.status === "qrcode" ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Aguardando leitura</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="w-3 h-3" />
+                        <span>Configurando</span>
+                      </>
                     )}
                   </div>
-                </div>
-              </div>
 
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-sm text-gray-600 mb-2 flex items-center gap-2">
-                  <Bell className="w-4 h-4 text-[#2F80ED]" />
-                  Notificações ativas:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    {
-                      icon: Package,
-                      text: "Produtos criados",
-                      color: "text-green-600",
-                      bg: "bg-green-50",
-                    },
-                    {
-                      icon: Calendar,
-                      text: "Vencimento próximo",
-                      color: "text-yellow-600",
-                      bg: "bg-yellow-50",
-                    },
-                    {
-                      icon: AlertTriangle,
-                      text: "Produtos atrasados",
-                      color: "text-red-600",
-                      bg: "bg-red-50",
-                    },
-                  ].map((item, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs ${item.bg}`}
-                    >
-                      <item.icon className={`w-3 h-3 ${item.color}`} />
-                      <span className="text-gray-700">{item.text}</span>
-                    </div>
-                  ))}
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-all duration-200 group"
+                    title="Deletar instância"
+                  >
+                    <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  </button>
                 </div>
-              </div>
-            </GlassCard>
-          </motion.div>
+
+                <div className="flex items-start gap-5">
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    className={`p-3 rounded-2xl ${
+                      instance.status === "connected"
+                        ? "bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/25"
+                        : instance.status === "qrcode"
+                          ? "bg-gradient-to-br from-yellow-500 to-orange-600 shadow-lg shadow-yellow-500/25"
+                          : "bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25"
+                    }`}
+                  >
+                    {instance.status === "connected" ? (
+                      <CheckCircle2 className="w-8 h-8 text-white" />
+                    ) : instance.status === "qrcode" ? (
+                      <QrCode className="w-8 h-8 text-white" />
+                    ) : (
+                      <Loader2 className="w-8 h-8 text-white animate-spin" />
+                    )}
+                  </motion.div>
+
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-xl font-bold text-gray-800">
+                        {instance.name}
+                      </h3>
+                      <span className="text-xs text-gray-400 font-mono">
+                        ID: {instance.instanceId || instance.id}
+                      </span>
+                    </div>
+
+                    <p className="text-sm text-gray-500 mb-3">
+                      {instance.status === "connected"
+                        ? "WhatsApp conectado e pronto para receber notificações"
+                        : instance.status === "qrcode"
+                          ? "Escaneie o QR Code para conectar seu WhatsApp"
+                          : "Configurando instância, aguarde..."}
+                    </p>
+
+                    {instance.status !== "connected" && (
+                      <div className="w-full bg-gray-100 rounded-full h-1.5 mb-3 overflow-hidden">
+                        <motion.div
+                          className="h-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full"
+                          initial={{ width: "0%" }}
+                          animate={{ width: "100%" }}
+                          transition={{ duration: 30, repeat: Infinity }}
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      {instance.status !== "connected" && (
+                        <button
+                          onClick={handleGenerateQR}
+                          className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg transition-all hover:bg-blue-100"
+                        >
+                          <QrCode className="w-3 h-3 inline mr-1" />
+                          Gerar QR Code
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm text-gray-600 mb-2 flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-[#2F80ED]" />
+                    Notificações ativas:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      {
+                        icon: Package,
+                        text: "Produtos criados",
+                        color: "text-green-600",
+                        bg: "bg-green-50",
+                      },
+                      {
+                        icon: Calendar,
+                        text: "Vencimento próximo",
+                        color: "text-yellow-600",
+                        bg: "bg-yellow-50",
+                      },
+                      {
+                        icon: AlertTriangle,
+                        text: "Produtos atrasados",
+                        color: "text-red-600",
+                        bg: "bg-red-50",
+                      },
+                    ].map((item, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs ${item.bg}`}
+                      >
+                        <item.icon className={`w-3 h-3 ${item.color}`} />
+                        <span className="text-gray-700">{item.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
         )}
 
         {/* Modal de confirmação de delete */}
@@ -1007,6 +1003,7 @@ export default function WhatsAppIntegration() {
             </motion.div>
           )}
         </AnimatePresence>
+
         {/* Modal de Expiração do QR Code */}
         <AnimatePresence>
           {showExpirationModal && (
@@ -1031,22 +1028,18 @@ export default function WhatsAppIntegration() {
                   </button>
 
                   <div className="text-center">
-                    {/* Ícone central */}
                     <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-orange-100 to-red-100 rounded-full flex items-center justify-center shadow-inner">
                       <AlertTriangleIcon className="w-10 h-10 text-orange-500" />
                     </div>
 
-                    {/* Título */}
                     <h3 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent mb-3">
                       QR Code Expirado!
                     </h3>
 
-                    {/* Mensagem */}
                     <p className="text-gray-600 mb-4">
                       O tempo para escanear o QR Code expirou.
                     </p>
 
-                    {/* Nome da instância em destaque */}
                     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-3 mb-6">
                       <p className="text-sm text-gray-600">
                         Instância:{" "}
@@ -1056,7 +1049,6 @@ export default function WhatsAppIntegration() {
                       </p>
                     </div>
 
-                    {/* Botão principal - chama handleCreateInstance */}
                     <PremiumButton
                       onClick={(e) => {
                         setShowExpirationModal(false);
@@ -1107,16 +1099,13 @@ export default function WhatsAppIntegration() {
                         "❌ Usuário fechou o modal do QR Code manualmente",
                       );
 
-                      // Fecha o modal
                       setShowQRModal(false);
 
-                      // Limpa o timer se existir
                       if (qrExpirationTimer) {
                         clearTimeout(qrExpirationTimer);
                         setQrExpirationTimer(null);
                       }
 
-                      // Para o polling
                       if (statusPollingRef.current) {
                         clearInterval(statusPollingRef.current);
                         statusPollingRef.current = null;
@@ -1126,7 +1115,6 @@ export default function WhatsAppIntegration() {
                         pollingRef.current = null;
                       }
 
-                      // Deleta a instância automaticamente
                       const idNum = getValidInstanceId();
                       if (idNum) {
                         try {
