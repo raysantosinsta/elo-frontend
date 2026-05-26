@@ -62,6 +62,7 @@ const menuItems = [
   },
   { title: "Chats", href: "/chats", icon: MessageSquare },
   { title: "Calendário", href: "/agenda", icon: Calendar },
+  { title: "Whatsapp", href: "/WhatsAppIntegration", icon: MessageSquare },
   {
     title: "Relatórios",
     icon: BarChart3,

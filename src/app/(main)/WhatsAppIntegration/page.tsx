@@ -2,29 +2,29 @@
 // app/WhatsAppIntegration/page.tsx
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import api from "@/services/api";
+import { AnimatePresence, motion } from "framer-motion";
 import {
+  AlertCircle,
+  AlertTriangle,
+  AlertTriangle as AlertTriangleIcon,
+  Bell,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Database,
+  Loader2,
   MessageCircle,
+  Package,
   QrCode,
   RefreshCw,
-  X,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  Database,
-  Smartphone,
-  Bell,
-  Package,
-  AlertTriangle,
-  TrendingUp,
-  Calendar,
   Send,
+  Smartphone,
   Trash2,
-  Clock,
+  X,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import api from "@/services/api";
 
 // Tipagem profissional e robusta
 interface WhatsAppInstance {
@@ -41,21 +41,13 @@ interface FormData {
   name: string;
 }
 
-interface ApiResponse {
-  id: number;
-  name: string;
-  status: string;
-  qrcode?: string;
-  [key: string]: any;
-}
-
 // Função para gerar token aleatório
 const generateRandomToken = (): string => {
   const characters =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let token = "";
   for (let i = 0; i < 32; i++) {
-    token += characters.charAt(Math.random() * characters.length);
+    token += characters.charAt(Math.floor(Math.random() * characters.length));
   }
   const timestamp = Date.now().toString(36);
   return `${timestamp}_${token}`;
@@ -86,7 +78,7 @@ const PremiumButton = ({
   className = "",
 }: {
   children: React.ReactNode;
-  onClick?: () => void;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
   loading?: boolean;
   type?: "button" | "submit";
   variant?: "primary" | "secondary" | "ghost";
@@ -123,11 +115,72 @@ const InputField = ({
   type = "text",
   icon: Icon,
   required = true,
+  tooltip,
 }: any) => (
   <div className="space-y-2">
     <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
       {Icon && <Icon className="w-4 h-4 text-[#2F80ED]" />}
-      {label}
+      <span className="relative group inline-flex items-center gap-1 cursor-help">
+        <span className="border-b border-dotted border-gray-300 hover:border-[#2F80ED]">
+          {label}
+        </span>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-gray-400 group-hover:text-[#2F80ED] transition-colors"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+
+        {/* Tooltip abaixo do label - mais largo */}
+        {tooltip && (
+          <div className="absolute left-0 top-full mt-2 hidden group-hover:block z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="relative bg-white rounded-xl shadow-2xl border border-gray-100 px-6 py-4 w-96">
+              {/* Seta apontando para cima */}
+              <div className="absolute -top-2 left-4 w-3 h-3 bg-white rotate-45 border-l border-t border-gray-100"></div>
+
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#2F80ED] to-[#1E5CB8] flex items-center justify-center shadow-md">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M12 16v-4" />
+                      <path d="M12 8h.01" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900 mb-1">
+                    {label}
+                  </p>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    {tooltip}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </span>
     </label>
     <div className="relative group">
       <input
@@ -149,7 +202,7 @@ const NotificationInfoCard = () => {
     {
       icon: Package,
       title: "Produto Criado",
-      description: "Notificação imediata quando um novo produto é cadastrado",
+      description: "Notificação imediata quando um novo produto é criado",
       bgColor: "bg-green-50",
       iconColor: "text-green-600",
     },
@@ -212,30 +265,6 @@ const NotificationInfoCard = () => {
           </motion.div>
         ))}
       </div>
-
-      <div className="mt-6 pt-4 border-t border-gray-100">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-green-600">24/7</div>
-            <div className="text-xs text-gray-500">Monitoramento</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-600">&lt; 30d</div>
-            <div className="text-xs text-gray-500">Alertas Prévios</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">Imediato</div>
-            <div className="text-xs text-gray-500">Atrasos Críticos</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 p-3 bg-gradient-to-r from-[#2F80ED]/10 to-transparent rounded-lg">
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <TrendingUp className="w-3 h-3 text-[#2F80ED]" />
-          <span>Reduza perdas com alertas preventivos de vencimento</span>
-        </div>
-      </div>
     </GlassCard>
   );
 };
@@ -247,7 +276,10 @@ export default function WhatsAppIntegration() {
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showExpirationModal, setShowExpirationModal] = useState(false);
   const [formData, setFormData] = useState<FormData>({ name: "" });
+  const [qrExpirationTimer, setQrExpirationTimer] =
+    useState<NodeJS.Timeout | null>(null);
   const statusPollingRef = useRef<NodeJS.Timeout | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -256,68 +288,116 @@ export default function WhatsAppIntegration() {
     return () => {
       if (statusPollingRef.current) clearInterval(statusPollingRef.current);
       if (pollingRef.current) clearInterval(pollingRef.current);
+      if (qrExpirationTimer) clearTimeout(qrExpirationTimer);
     };
   }, []);
 
-  // Adicione este useEffect APÓS o useEffect existente
-useEffect(() => {
-  let pollingInterval: NodeJS.Timeout;
-  
-  // Só faz polling se:
-  // 1. Tem uma instância
-  // 2. O status NÃO é 'connected'
-  // 3. O modal do QR Code está aberto OU a instância está em qrcode
-  if (instance && instance.status !== 'connected') {
-    console.log('🔄 Iniciando polling de status para instância:', instance.instanceId || instance.id);
-    
-    pollingInterval = setInterval(async () => {
-      try {
-        // Busca o status atualizado da conexão
-        const response = await api.get('/whatsapp/connection');
-        const updatedConnection = response.data?.data;
-        
-        console.log('📊 Status atual:', updatedConnection?.status);
-        
-        if (updatedConnection && updatedConnection.status !== instance.status) {
-          console.log(`✅ Status mudou: ${instance.status} -> ${updatedConnection.status}`);
-          setInstance(updatedConnection);
-          
-          if (updatedConnection.status === 'connected') {
-            toast.success('🎉 WhatsApp conectado com sucesso!');
-            setShowQRModal(false);
-            clearInterval(pollingInterval);
-          } else if (updatedConnection.status === 'qrcode' && updatedConnection.qrCode) {
-            setQrCode(updatedConnection.qrCode);
-            setQrLoading(false);
+  // Polling de status da instância
+  useEffect(() => {
+    let pollingInterval: NodeJS.Timeout;
+
+    if (instance && instance.status !== "connected") {
+      console.log(
+        "🔄 Iniciando polling de status para instância:",
+        instance.instanceId || instance.id,
+      );
+
+      pollingInterval = setInterval(async () => {
+        try {
+          const response = await api.get("/whatsapp/connection");
+          const updatedConnection = response.data?.data;
+
+          console.log("📊 Status atual:", updatedConnection?.status);
+
+          if (
+            updatedConnection &&
+            updatedConnection.status !== instance.status
+          ) {
+            console.log(
+              `✅ Status mudou: ${instance.status} -> ${updatedConnection.status}`,
+            );
+            setInstance(updatedConnection);
+
+            if (updatedConnection.status === "connected") {
+              toast.success("🎉 WhatsApp conectado com sucesso!");
+              setShowQRModal(false);
+              if (qrExpirationTimer) clearTimeout(qrExpirationTimer);
+              clearInterval(pollingInterval);
+            } else if (
+              updatedConnection.status === "qrcode" &&
+              updatedConnection.qrCode
+            ) {
+              setQrCode(updatedConnection.qrCode);
+              setQrLoading(false);
+            }
+          }
+        } catch (error) {
+          console.error("Erro no polling:", error);
+        }
+      }, 3000);
+    }
+
+    return () => {
+      if (pollingInterval) clearInterval(pollingInterval);
+    };
+  }, [instance]);
+
+  // 🔥 Timer de expiração do QR Code - AGORA DELETA A INSTÂNCIA AUTOMATICAMENTE
+  useEffect(() => {
+    if (qrCode && showQRModal && !qrLoading) {
+      // Limpa timer anterior se existir
+      if (qrExpirationTimer) clearTimeout(qrExpirationTimer);
+
+      // Configura novo timer para 60 segundos
+      const timer = setTimeout(async () => {
+        console.log("⏰ QR Code expirou! Deletando instância...");
+
+        // Fecha o modal do QR Code
+        setShowQRModal(false);
+        setQrCode(null);
+
+        // Deleta a instância automaticamente
+        const idNum = getValidInstanceId();
+        if (idNum) {
+          try {
+            await api.delete(`/whatsapp/instance/${idNum}`);
+            console.log("✅ Instância deletada automaticamente após expiração");
+            setInstance(null);
+          } catch (error) {
+            console.error(
+              "❌ Erro ao deletar instância automaticamente:",
+              error,
+            );
           }
         }
-      } catch (error) {
-        console.error('Erro no polling:', error);
-      }
-    }, 3000); // Verifica a cada 3 segundos
-  }
-  
-  return () => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      console.log('🛑 Polling parado');
+
+        // Mostra modal de expiração
+        setShowExpirationModal(true);
+
+        // Limpa o timer
+        setQrExpirationTimer(null);
+      }, 60000);
+
+      setQrExpirationTimer(timer);
+
+      return () => {
+        if (timer) clearTimeout(timer);
+      };
     }
-  };
-}, [instance]); // Dependência no instance
+  }, [qrCode, showQRModal, qrLoading]);
 
   // 🔥 Função auxiliar para obter o ID da instância de forma segura
   const getValidInstanceId = (): number | null => {
     const instanceId = instance?.instanceId || instance?.id;
-    
+
     if (!instanceId) {
       console.error("❌ Nenhum ID de instância encontrado");
       return null;
     }
 
-    // Converte para número
-    const idNum = typeof instanceId === "string" ? parseInt(instanceId, 10) : instanceId;
-    
-    // Valida se é um número válido
+    const idNum =
+      typeof instanceId === "string" ? parseInt(instanceId, 10) : instanceId;
+
     if (isNaN(idNum) || idNum <= 0) {
       console.error("❌ ID de instância inválido:", instanceId);
       return null;
@@ -330,8 +410,6 @@ useEffect(() => {
   const fetchExistingInstance = async () => {
     try {
       const response = await api.get("/whatsapp/connection");
-
-      // 🔥 NOVA LÓGICA: O backend retorna { success: true, data: connection }
       const connection = response.data?.data;
 
       if (connection) {
@@ -340,19 +418,16 @@ useEffect(() => {
         if (connection.status === "connected") {
           toast.success("WhatsApp já está conectado!");
         } else if (connection.status === "qrcode") {
-          // Se já existe QR Code pendente, mostra modal
           setShowQRModal(true);
           setQrCode(connection.qrCode);
         }
       } else {
-        // Nenhuma conexão encontrada - isso é NORMAL, não é erro
         console.log(
           "ℹ️ Nenhuma conexão WhatsApp encontrada - primeira vez do usuário",
         );
         setInstance(null);
       }
     } catch (error: any) {
-      // 🔥 Só mostra erro se não for relacionado à falta de configuração
       if (error.response?.status !== 404) {
         console.error("Erro ao buscar conexão:", error);
         toast.error("Erro ao carregar status do WhatsApp");
@@ -362,7 +437,6 @@ useEffect(() => {
   };
 
   const generateQRCode = async (instanceId: number, retryCount = 0) => {
-    // 🔥 VALIDAÇÃO ANTES DE FAZER A REQUISIÇÃO
     if (!instanceId || isNaN(instanceId)) {
       console.error("❌ generateQRCode: instanceId inválido:", instanceId);
       toast.error("ID da instância inválido. Tente novamente.");
@@ -371,8 +445,10 @@ useEffect(() => {
     }
 
     try {
-      console.log(`🔄 Gerando QR Code para instância ${instanceId} (tentativa ${retryCount + 1})`);
-      
+      console.log(
+        `🔄 Gerando QR Code para instância ${instanceId} (tentativa ${retryCount + 1})`,
+      );
+
       const response = await api.get(`/whatsapp/qrcode/${instanceId}`);
       const data = response.data;
 
@@ -382,12 +458,10 @@ useEffect(() => {
         setQrCode(data.qrcode);
         setQrLoading(false);
 
-        // Inicia polling para verificar conexão
         if (pollingRef.current) clearInterval(pollingRef.current);
 
         pollingRef.current = setInterval(async () => {
           try {
-            // 🔥 Verifica novamente com ID válido
             const currentId = getValidInstanceId();
             if (!currentId) {
               clearInterval(pollingRef.current!);
@@ -395,11 +469,14 @@ useEffect(() => {
               return;
             }
 
-            const statusResponse = await api.get(`/whatsapp/qrcode/${currentId}`);
+            const statusResponse = await api.get(
+              `/whatsapp/qrcode/${currentId}`,
+            );
             if (statusResponse.data.status === "CONNECTED") {
               clearInterval(pollingRef.current!);
               pollingRef.current = null;
               setShowQRModal(false);
+              if (qrExpirationTimer) clearTimeout(qrExpirationTimer);
               setInstance((prev) =>
                 prev ? { ...prev, status: "connected" } : null,
               );
@@ -418,9 +495,7 @@ useEffect(() => {
         setTimeout(() => generateQRCode(instanceId, retryCount + 1), 2000);
       } else {
         setQrLoading(false);
-        toast.error(
-          "QR Code não disponível. Tente 'Gerar QR Code' manualmente",
-        );
+        toast.error("QR Code não disponível. Tente novamente");
       }
 
       return false;
@@ -437,11 +512,11 @@ useEffect(() => {
     }
   };
 
-  const handleCreateInstance = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateInstance = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
     if (!formData.name.trim()) {
-      toast.error("Informe o nome da instância");
+      toast.error("Informe o nome da conexão");
       return;
     }
 
@@ -459,7 +534,8 @@ useEffect(() => {
       console.log("Instância criada:", response.data);
 
       toast.success(`✅ Instância "${formData.name}" criada!`);
-      setFormData({ name: "" });
+
+      // Não limpa o formData para manter o valor
 
       setTimeout(async () => {
         try {
@@ -468,9 +544,8 @@ useEffect(() => {
             const connectionData = conn.data.data;
             setInstance(connectionData);
 
-            // 🔥 OBTÉM O ID DE FORMA SEGURA
             const instanceId = connectionData.instanceId || connectionData.id;
-            
+
             if (!instanceId) {
               console.error("❌ Instância criada mas sem ID:", connectionData);
               toast.error("Instância criada, mas não foi possível obter o ID");
@@ -478,8 +553,11 @@ useEffect(() => {
               return;
             }
 
-            const idNum = typeof instanceId === "string" ? parseInt(instanceId, 10) : instanceId;
-            
+            const idNum =
+              typeof instanceId === "string"
+                ? parseInt(instanceId, 10)
+                : instanceId;
+
             if (isNaN(idNum)) {
               console.error("❌ ID inválido:", instanceId);
               toast.error("ID da instância inválido");
@@ -491,7 +569,9 @@ useEffect(() => {
             setQrLoading(true);
             await generateQRCode(idNum);
           } else {
-            toast.error("Instância criada, mas não foi possível obter os dados");
+            toast.error(
+              "Instância criada, mas não foi possível obter os dados",
+            );
           }
         } catch (err) {
           console.error("Erro ao buscar dados da instância:", err);
@@ -508,16 +588,17 @@ useEffect(() => {
   };
 
   const handleGenerateQR = async () => {
-    // 🔥 VALIDAÇÃO ANTES DE TUDO
     const idNum = getValidInstanceId();
-    
+
     if (!idNum) {
-      toast.error("Nenhuma instância válida encontrada. Crie uma instância primeiro.");
+      toast.error(
+        "Nenhuma instância válida encontrada. Crie uma instância primeiro.",
+      );
       return;
     }
 
     console.log(`🔍 Gerando QR Code manual para instância ${idNum}`);
-    
+
     setShowQRModal(true);
     setQrLoading(true);
     setQrCode(null);
@@ -526,9 +607,8 @@ useEffect(() => {
   };
 
   const handleRefreshQR = async () => {
-    // 🔥 VALIDAÇÃO ANTES DE TUDO
     const idNum = getValidInstanceId();
-    
+
     if (!idNum) {
       toast.error("ID da instância inválido");
       setShowQRModal(false);
@@ -536,7 +616,7 @@ useEffect(() => {
     }
 
     console.log(`🔄 Atualizando QR Code para instância ${idNum}`);
-    
+
     setQrCode(null);
     setQrLoading(true);
 
@@ -545,13 +625,16 @@ useEffect(() => {
       pollingRef.current = null;
     }
 
+    if (qrExpirationTimer) {
+      clearTimeout(qrExpirationTimer);
+    }
+
     await generateQRCode(idNum);
   };
 
   const handleDeleteInstance = async () => {
-    // 🔥 VALIDAÇÃO ANTES DE TUDO
     const idNum = getValidInstanceId();
-    
+
     if (!idNum) {
       toast.error("Nenhuma instância válida encontrada");
       return;
@@ -561,21 +644,15 @@ useEffect(() => {
 
     try {
       console.log(`🗑️ Deletando instância ${idNum}`);
-      
       await api.delete(`/whatsapp/instance/${idNum}`);
 
       setInstance(null);
       setQrCode(null);
       setShowQRModal(false);
+      if (qrExpirationTimer) clearTimeout(qrExpirationTimer);
 
-      if (statusPollingRef.current) {
-        clearInterval(statusPollingRef.current);
-        statusPollingRef.current = null;
-      }
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
+      if (statusPollingRef.current) clearInterval(statusPollingRef.current);
+      if (pollingRef.current) clearInterval(pollingRef.current);
 
       toast.success(`✅ Instância deletada com sucesso!`);
       setFormData({ name: "" });
@@ -586,6 +663,13 @@ useEffect(() => {
       setLoading(false);
       setShowDeleteConfirm(false);
     }
+  };
+
+  // Fechar modal de expiração e resetar formulário
+  const handleCloseExpirationModal = () => {
+    setShowExpirationModal(false);
+    setFormData({ name: "" });
+    setInstance(null);
   };
 
   return (
@@ -608,7 +692,7 @@ useEffect(() => {
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#2F80ED]/10 rounded-full mb-6">
             <Bell className="w-4 h-4 text-[#2F80ED]" />
             <span className="text-sm font-medium text-[#2F80ED]">
-              Sistema de Notificações Inteligentes
+              Sistema de Notificações
             </span>
           </div>
 
@@ -623,12 +707,12 @@ useEffect(() => {
             ,
             <span className="font-semibold text-yellow-600">
               {" "}
-              itens próximos ao vencimento
+              produtos próximos ao vencimento
             </span>{" "}
             e
             <span className="font-semibold text-red-600">
               {" "}
-              alertas de atraso
+              alertas de produtos em atraso
             </span>{" "}
             diretamente no seu WhatsApp
           </p>
@@ -657,11 +741,12 @@ useEffect(() => {
 
               <form onSubmit={handleCreateInstance} className="space-y-5">
                 <InputField
-                  label="Nome da Instância"
+                  label="Nome da Conexão"
                   value={formData.name}
                   onChange={(e: any) => setFormData({ name: e.target.value })}
-                  placeholder="Ex: Monitor de Produtos"
+                  placeholder="Ex: WhatsApp Suporte, Vendas ou Financeiro"
                   icon={Database}
+                  tooltip="Digite um nome para identificar esta conexão. Exemplo: WhatsApp Suporte, Vendas ou Financeiro."
                 />
 
                 <PremiumButton
@@ -670,7 +755,7 @@ useEffect(() => {
                   className="w-full"
                 >
                   <Bell className="w-4 h-4" />
-                  Criar Instância
+                  Criar Conexão
                 </PremiumButton>
               </form>
 
@@ -682,19 +767,19 @@ useEffect(() => {
                   {[
                     {
                       icon: Package,
-                      text: "Novos produtos",
+                      text: "Notifição de novos produtos",
                       color: "text-green-600",
                       bg: "bg-green-50",
                     },
                     {
                       icon: Calendar,
-                      text: "Vencimento próximo",
+                      text: "Notifição de produtos próximo ao vencimento",
                       color: "text-yellow-600",
                       bg: "bg-yellow-50",
                     },
                     {
                       icon: AlertTriangle,
-                      text: "Produtos atrasados",
+                      text: "notifição de Produtos atrasados",
                       color: "text-red-600",
                       bg: "bg-red-50",
                     },
@@ -732,7 +817,6 @@ useEffect(() => {
             className="mt-8"
           >
             <GlassCard className="p-6 relative overflow-hidden">
-              {/* Badge de status e botão deletar */}
               <div className="absolute top-4 right-4 flex items-center gap-2">
                 <div
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
@@ -761,7 +845,6 @@ useEffect(() => {
                   )}
                 </div>
 
-                {/* Botão de deletar */}
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
                   className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-all duration-200 group"
@@ -924,10 +1007,78 @@ useEffect(() => {
             </motion.div>
           )}
         </AnimatePresence>
+        {/* Modal de Expiração do QR Code */}
+        <AnimatePresence>
+          {showExpirationModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="relative max-w-md w-full"
+              >
+                <GlassCard className="p-6 md:p-8">
+                  <button
+                    onClick={() => setShowExpirationModal(false)}
+                    className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+                  </button>
+
+                  <div className="text-center">
+                    {/* Ícone central */}
+                    <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-orange-100 to-red-100 rounded-full flex items-center justify-center shadow-inner">
+                      <AlertTriangleIcon className="w-10 h-10 text-orange-500" />
+                    </div>
+
+                    {/* Título */}
+                    <h3 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent mb-3">
+                      QR Code Expirado!
+                    </h3>
+
+                    {/* Mensagem */}
+                    <p className="text-gray-600 mb-4">
+                      O tempo para escanear o QR Code expirou.
+                    </p>
+
+                    {/* Nome da instância em destaque */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-3 mb-6">
+                      <p className="text-sm text-gray-600">
+                        Instância:{" "}
+                        <strong className="text-[#2F80ED] text-base">
+                          {formData.name || instance?.name || ""}
+                        </strong>
+                      </p>
+                    </div>
+
+                    {/* Botão principal - chama handleCreateInstance */}
+                    <PremiumButton
+                      onClick={(e) => {
+                        setShowExpirationModal(false);
+                        setShowQRModal(false);
+                        handleCreateInstance(e as any);
+                      }}
+                      variant="primary"
+                      className="w-full"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Tentar novamente
+                    </PremiumButton>
+                  </div>
+                </GlassCard>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Modal do QR Code */}
         <AnimatePresence>
-          {showQRModal && (
+          {showQRModal && !showExpirationModal && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -939,6 +1090,7 @@ useEffect(() => {
                   clearInterval(statusPollingRef.current);
                   statusPollingRef.current = null;
                 }
+                if (qrExpirationTimer) clearTimeout(qrExpirationTimer);
               }}
             >
               <motion.div
@@ -950,11 +1102,46 @@ useEffect(() => {
               >
                 <GlassCard className="p-6 md:p-8">
                   <button
-                    onClick={() => {
+                    onClick={async () => {
+                      console.log(
+                        "❌ Usuário fechou o modal do QR Code manualmente",
+                      );
+
+                      // Fecha o modal
                       setShowQRModal(false);
+
+                      // Limpa o timer se existir
+                      if (qrExpirationTimer) {
+                        clearTimeout(qrExpirationTimer);
+                        setQrExpirationTimer(null);
+                      }
+
+                      // Para o polling
                       if (statusPollingRef.current) {
                         clearInterval(statusPollingRef.current);
                         statusPollingRef.current = null;
+                      }
+                      if (pollingRef.current) {
+                        clearInterval(pollingRef.current);
+                        pollingRef.current = null;
+                      }
+
+                      // Deleta a instância automaticamente
+                      const idNum = getValidInstanceId();
+                      if (idNum) {
+                        try {
+                          await api.delete(`/whatsapp/instance/${idNum}`);
+                          console.log(
+                            "✅ Instância deletada automaticamente ao fechar modal",
+                          );
+                          setInstance(null);
+                          setQrCode(null);
+                          toast.info(
+                            "Conexão cancelada. Você pode criar uma nova quando quiser.",
+                          );
+                        } catch (error) {
+                          console.error("❌ Erro ao deletar instância:", error);
+                        }
                       }
                     }}
                     className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-lg transition-colors"
@@ -989,24 +1176,23 @@ useEffect(() => {
                     </div>
                   ) : qrCode ? (
                     <div className="flex flex-col items-center">
-                      <div className="p-4 bg-white rounded-2xl shadow-xl mb-6">
+                      <div className="p-4 bg-white rounded-2xl shadow-xl mb-6 relative">
                         <img
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCode)}`}
                           alt="QR Code WhatsApp"
                           className="w-64 h-64"
                         />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-2xl opacity-0 hover:opacity-100 transition-opacity">
+                          <div className="text-white text-center">
+                            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                            <span className="text-xs">
+                              Aguardando leitura...
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="w-full space-y-3">
-                        <PremiumButton
-                          onClick={handleRefreshQR}
-                          variant="secondary"
-                          className="w-full"
-                        >
-                          <RefreshCw className="w-4 h-4" />
-                          Gerar Novo QR Code
-                        </PremiumButton>
-
                         <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
                           <div className="flex items-start gap-3">
                             <div className="p-1.5 bg-blue-100 rounded-lg">
