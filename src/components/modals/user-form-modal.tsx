@@ -422,16 +422,17 @@ export function UserFormModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl h-[90vh] flex flex-col p-0 bg-white">
-        <DialogHeader className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white">
+        {/* Header com cores atualizadas */}
+        <DialogHeader className="px-6 py-4 border-b bg-gradient-to-r from-[#F8FAFC] to-white">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-orange-100 rounded-lg text-orange-600">
+            <div className="p-2 bg-[#2F80ED]/10 rounded-lg text-[#2F80ED]">
               {isEditing ? <Edit size={20} /> : <Plus size={20} />}
             </div>
             <div>
-              <DialogTitle className="text-xl font-bold text-slate-800">
+              <DialogTitle className="text-xl font-bold text-[#353A40]">
                 {isEditing ? "Editar Usuário" : "Novo Usuário"}
               </DialogTitle>
-              <DialogDescription className="text-slate-500">
+              <DialogDescription className="text-[#7A7E83]">
                 {isEditing
                   ? "Atualize os dados do usuário"
                   : isMaster
@@ -442,7 +443,7 @@ export function UserFormModal({
             {isADM && !isEditing && (
               <Badge
                 variant="outline"
-                className="ml-auto bg-orange-50 text-orange-700 border-orange-200"
+                className="ml-auto bg-[#2F80ED]/10 text-[#2F80ED] border-[#2F80ED]/20"
               >
                 Cargo obrigatório
               </Badge>
@@ -458,20 +459,19 @@ export function UserFormModal({
                 className="space-y-6"
                 autoComplete="off"
               >
-                {/* Seleção de Empresa (Apenas para MASTER) - AGORA COM AUTOCOMPLETE */}
+                {/* Seleção de Empresa (Apenas para MASTER) */}
                 {isMaster && (
-                  <div className="space-y-4 p-4 bg-orange-50 border border-orange-100 rounded-lg">
-                    <h3 className="text-sm font-semibold text-orange-800 uppercase flex items-center gap-2">
-                      <Building2 className="h-4 w-4" /> Vínculo Empresarial
+                  <div className="space-y-4 p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
+                    <h3 className="text-sm font-semibold text-[#353A40] uppercase flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-[#2F80ED]" /> Vínculo Empresarial
                     </h3>
                     
-                    {/* 🔥 AUTOCOMPLETE PARA EMPRESA */}
                     <FormField
                       control={form.control}
                       name="companyId"
                       render={({ field }) => (
                         <FormItem className="flex flex-col">
-                          <FormLabel className="text-orange-800">
+                          <FormLabel className="text-[#353A40]">
                             Empresa *
                           </FormLabel>
                           <Popover open={companyOpen} onOpenChange={setCompanyOpen}>
@@ -481,15 +481,15 @@ export function UserFormModal({
                                   variant="outline"
                                   role="combobox"
                                   aria-expanded={companyOpen}
-                                  className="w-full justify-between bg-white border-orange-200 focus:border-orange-500 text-[#353A40]"
+                                  className="w-full justify-between bg-white border-[#E2E8F0] focus:border-[#2F80ED] text-[#353A40]"
                                 >
                                   {field.value && selectedCompany ? (
                                     <span className="flex items-center gap-2 truncate">
-                                      <Building2 className="h-4 w-4 text-[#D35400] shrink-0" />
+                                      <Building2 className="h-4 w-4 text-[#2F80ED] shrink-0" />
                                       <span className="truncate">{selectedCompany.name}</span>
                                     </span>
                                   ) : (
-                                    <span className="text-[#95A5A6]">
+                                    <span className="text-[#7A7E83]">
                                       Selecione uma empresa...
                                     </span>
                                   )}
@@ -525,9 +525,9 @@ export function UserFormModal({
                                           )}
                                         />
                                         <div className="flex flex-col">
-                                          <span className="font-medium">{company.name}</span>
+                                          <span className="font-medium text-[#353A40]">{company.name}</span>
                                           {company.cnpj && (
-                                            <span className="text-[10px] text-gray-400">
+                                            <span className="text-[10px] text-[#7A7E83]">
                                               CNPJ: {company.cnpj}
                                             </span>
                                           )}
@@ -548,8 +548,8 @@ export function UserFormModal({
 
                 {/* Dados Pessoais */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-slate-700 uppercase flex items-center gap-2">
-                    <UserIcon className="h-4 w-4 text-orange-500" />
+                  <h3 className="text-sm font-semibold text-[#353A40] uppercase flex items-center gap-2">
+                    <UserIcon className="h-4 w-4 text-[#2F80ED]" />
                     Dados Pessoais
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -558,12 +558,12 @@ export function UserFormModal({
                       name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nome Completo *</FormLabel>
+                          <FormLabel className="text-[#353A40]">Nome Completo *</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="Ex: Ana Silva"
                               {...field}
-                              className="focus:border-orange-500"
+                              className="focus:border-[#2F80ED] focus:ring-[#2F80ED]"
                             />
                           </FormControl>
                           <FormMessage />
@@ -575,7 +575,7 @@ export function UserFormModal({
                       name="document"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>CPF</FormLabel>
+                          <FormLabel className="text-[#353A40]">CPF</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="000.000.000-00"
@@ -584,7 +584,7 @@ export function UserFormModal({
                               onChange={(e) =>
                                 field.onChange(formatCPF(e.target.value))
                               }
-                              className="focus:border-orange-500"
+                              className="focus:border-[#2F80ED] focus:ring-[#2F80ED]"
                             />
                           </FormControl>
                           <FormMessage />
@@ -594,12 +594,12 @@ export function UserFormModal({
                   </div>
                 </div>
 
-                <Separator />
+                <Separator className="bg-[#E2E8F0]" />
 
                 {/* Contato */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-slate-700 uppercase flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-orange-500" />
+                  <h3 className="text-sm font-semibold text-[#353A40] uppercase flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-[#2F80ED]" />
                     Contato
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -608,13 +608,13 @@ export function UserFormModal({
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>E-mail *</FormLabel>
+                          <FormLabel className="text-[#353A40]">E-mail *</FormLabel>
                           <FormControl>
                             <Input
                               type="email"
                               placeholder="email@empresa.com"
                               {...field}
-                              className="focus:border-orange-500"
+                              className="focus:border-[#2F80ED] focus:ring-[#2F80ED]"
                             />
                           </FormControl>
                           <FormMessage />
@@ -626,7 +626,7 @@ export function UserFormModal({
                       name="contact"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Telefone *</FormLabel>
+                          <FormLabel className="text-[#353A40]">Telefone *</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="(00) 00000-0000"
@@ -639,7 +639,7 @@ export function UserFormModal({
                                 }
                                 field.onChange(formatPhone(value));
                               }}
-                              className="focus:border-orange-500"
+                              className="focus:border-[#2F80ED] focus:ring-[#2F80ED]"
                             />
                           </FormControl>
                           <FormMessage />
@@ -649,22 +649,22 @@ export function UserFormModal({
                   </div>
                 </div>
 
-                <Separator />
+                <Separator className="bg-[#E2E8F0]" />
 
                 {/* SEÇÃO DE CARGO PROFISSIONAL - APENAS PARA ADMIN */}
                 {isADM && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-slate-700 uppercase flex items-center gap-2">
-                      <Briefcase className="h-4 w-4 text-orange-500" />
+                    <h3 className="text-sm font-semibold text-[#353A40] uppercase flex items-center gap-2">
+                      <Briefcase className="h-4 w-4 text-[#2F80ED]" />
                       Cargo Profissional{" "}
                       <span className="text-red-500 text-base">*</span>
                     </h3>
 
-                    <div className="p-4 bg-slate-50 border border-slate-100 rounded-lg">
+                    <div className="p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
                       {loadingRoles ? (
                         <div className="flex items-center justify-center gap-2 p-4">
-                          <Loader2 className="h-5 w-5 animate-spin text-orange-600" />
-                          <span className="text-sm text-gray-500">
+                          <Loader2 className="h-5 w-5 animate-spin text-[#2F80ED]" />
+                          <span className="text-sm text-[#7A7E83]">
                             Carregando cargos...
                           </span>
                         </div>
@@ -675,7 +675,7 @@ export function UserFormModal({
                             name="companyRoleId"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel className="text-slate-700">
+                                <FormLabel className="text-[#353A40]">
                                   Selecione o cargo *
                                 </FormLabel>
                                 <Select
@@ -687,7 +687,7 @@ export function UserFormModal({
                                       className={`bg-white ${
                                         !isEditing && !field.value
                                           ? "border-red-300 focus:border-red-500"
-                                          : "focus:border-orange-500"
+                                          : "focus:border-[#2F80ED] focus:ring-[#2F80ED]"
                                       }`}
                                     >
                                       <SelectValue placeholder="Selecione um cargo">
@@ -701,15 +701,15 @@ export function UserFormModal({
                                     {companyRoles.map((role) => (
                                       <SelectItem key={role.id} value={role.id}>
                                         <div className="flex flex-col py-1">
-                                          <span className="font-medium text-slate-700">
+                                          <span className="font-medium text-[#353A40]">
                                             {role.name}
                                           </span>
                                           {role.description && (
-                                            <span className="text-xs text-gray-500">
+                                            <span className="text-xs text-[#7A7E83]">
                                               {role.description}
                                             </span>
                                           )}
-                                          <span className="text-xs text-gray-400">
+                                          <span className="text-xs text-[#7A7E83]">
                                             Nível: {role.level}
                                           </span>
                                         </div>
@@ -739,7 +739,7 @@ export function UserFormModal({
                                   onClick={() =>
                                     window.open("/company-roles", "_blank")
                                   }
-                                  className="text-orange-600 underline font-medium mt-2 hover:text-orange-700 transition-colors"
+                                  className="text-[#2F80ED] underline font-medium mt-2 hover:text-[#1E5CB8] transition-colors"
                                 >
                                   Clique aqui para criar cargos →
                                 </button>
@@ -763,12 +763,12 @@ export function UserFormModal({
                   </div>
                 )}
 
-                <Separator />
+                <Separator className="bg-[#E2E8F0]" />
 
                 {/* Segurança */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-slate-700 uppercase flex items-center gap-2">
-                    <Key className="h-4 w-4 text-orange-500" />
+                  <h3 className="text-sm font-semibold text-[#353A40] uppercase flex items-center gap-2">
+                    <Key className="h-4 w-4 text-[#2F80ED]" />
                     Segurança
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -777,18 +777,18 @@ export function UserFormModal({
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>
+                          <FormLabel className="text-[#353A40]">
                             {isEditing
                               ? "Nova Senha (opcional)"
                               : "Senha Inicial *"}
                           </FormLabel>
                           <div className="relative">
-                            <Key className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                            <Key className="absolute left-3 top-2.5 h-4 w-4 text-[#7A7E83]" />
                             <FormControl>
                               <Input
                                 type="password"
                                 placeholder="Mínimo 6 caracteres"
-                                className="pl-9 focus:border-orange-500"
+                                className="pl-9 focus:border-[#2F80ED] focus:ring-[#2F80ED]"
                                 {...field}
                                 autoComplete="new-password"
                               />
@@ -796,7 +796,7 @@ export function UserFormModal({
                           </div>
                           <FormMessage />
                           {isEditing && (
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-xs text-[#7A7E83] mt-1">
                               Deixe em branco para manter a senha atual
                             </p>
                           )}
@@ -808,18 +808,18 @@ export function UserFormModal({
                       name="confirmPassword"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>
+                          <FormLabel className="text-[#353A40]">
                             {isEditing
                               ? "Confirmar Nova Senha"
                               : "Confirmar Senha"}
                           </FormLabel>
                           <div className="relative">
-                            <Key className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                            <Key className="absolute left-3 top-2.5 h-4 w-4 text-[#7A7E83]" />
                             <FormControl>
                               <Input
                                 type="password"
                                 placeholder="Repita a senha"
-                                className="pl-9 focus:border-orange-500"
+                                className="pl-9 focus:border-[#2F80ED] focus:ring-[#2F80ED]"
                                 {...field}
                                 autoComplete="new-password"
                               />
@@ -837,19 +837,19 @@ export function UserFormModal({
         </div>
 
         {/* Footer com botões */}
-        <div className="px-6 py-4 border-t bg-slate-50 flex justify-end gap-3">
+        <div className="px-6 py-4 border-t border-[#E2E8F0] bg-[#F8FAFC] flex justify-end gap-3">
           <Button
             variant="outline"
             onClick={onClose}
             disabled={isLoading}
-            className="hover:bg-slate-100"
+            className="border-[#E2E8F0] text-[#353A40] hover:bg-[#F8FAFC]"
           >
             Cancelar
           </Button>
           <Button
             onClick={() => form.handleSubmit(handleSubmit)()}
             disabled={isLoading}
-            className="bg-orange-600 hover:bg-orange-700 text-white shadow-sm transition-all duration-200 min-w-[120px]"
+            className="bg-[#2F80ED] hover:bg-[#1E5CB8] text-white shadow-sm transition-all duration-200 min-w-[120px]"
           >
             {isLoading ? (
               <>

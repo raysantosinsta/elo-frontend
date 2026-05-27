@@ -41,21 +41,44 @@ interface Task {
   taskAddress?: { cidade: string };
 }
 
-// Função para obter o label do cargo
+// 🔥 CORREÇÃO: Função para obter o label do cargo baseado no role real
 const getRoleLabel = (role?: string) => {
-  if (role === "ADMIN" || role === "admin") {
+  // Verifica se é MASTER (super admin)
+  if (role === "MASTER") {
     return {
-      text: "Administrador",
+      text: "Master",
       color: "bg-purple-600 hover:bg-purple-700",
     };
   }
-  return { text: "Funcionário", color: "bg-[#2F80ED] hover:bg-[#1E5CB8]" };
+  // Verifica se é ADMIN
+  if (role === "ADMIN") {
+    return {
+      text: "Administrador",
+      color: "bg-[#2F80ED] hover:bg-[#1E5CB8]",
+    };
+  }
+  // Qualquer outro role (EMPLOYER, etc)
+  return {
+    text: "Funcionário",
+    color: "bg-gray-500 hover:bg-gray-600",
+  };
 };
 
 export default function EmployeeDashboard() {
   const { user, loading: authLoading } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+
+  // 🔥 DEBUG: Log para verificar o role do usuário
+  useEffect(() => {
+    if (user) {
+      console.log("👤 Usuário logado:", {
+        name: user.name,
+        role: user.role,
+        email: user.email,
+      });
+    }
+  }, [user]);
 
   // --- BUSCA AUTOMÁTICA DE DADOS ---
   const fetchDashboardData = useCallback(async () => {
@@ -130,7 +153,7 @@ export default function EmployeeDashboard() {
                 {user?.name?.split(" ")[0]}
               </span>
             </h1>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <p className="text-[#7A7E83] font-medium">
                 Você concluiu {stats.completed} tarefas até agora.
               </p>
