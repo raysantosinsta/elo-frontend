@@ -895,7 +895,7 @@ export default function WhatsAppIntegration() {
                       },
                       {
                         icon: Calendar,
-                        text: "Vencimento próximo",
+                        text: "Produtos próximo do vencimento",
                         color: "text-yellow-600",
                         bg: "bg-yellow-50",
                       },
