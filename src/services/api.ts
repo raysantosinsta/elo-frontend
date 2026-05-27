@@ -25,7 +25,7 @@ export const registerGlobalErrorListener = (fn: ErrorHandlerFn) => {
 export const api = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
-  timeout: 60000,
+  timeout: 120000,
 });
 
 // Interceptor de request para adicionar token
