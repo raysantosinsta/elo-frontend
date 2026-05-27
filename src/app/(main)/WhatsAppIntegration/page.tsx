@@ -230,7 +230,7 @@ const NotificationInfoCard = () => {
         </div>
         <div>
           <h3 className="text-lg font-bold text-gray-800">
-            Notificações Inteligentes
+            Notificações 
           </h3>
           <p className="text-sm text-gray-500">
             Receba alertas em tempo real no seu WhatsApp
@@ -663,7 +663,7 @@ export default function WhatsAppIntegration() {
     setInstance(null);
   };
 
-  return (
+ return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5F6FA] via-white to-[#F5F6FA] overflow-hidden">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-[#2F80ED]/10 rounded-full blur-3xl" />
@@ -687,9 +687,13 @@ export default function WhatsAppIntegration() {
             </span>
           </div>
 
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-[#353A40] to-[#2F80ED] bg-clip-text text-transparent mb-4">
-            Alertas WhatsApp
+          {/* 🔥 TÍTULO COM EFEITO SHIMMER */}
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-4">
+            <span className="bg-gradient-to-r from-[#353A40] via-[#2F80ED] to-[#353A40] bg-[length:200%_auto] bg-clip-text text-transparent animate-[shimmer_3s_linear_infinite]">
+              Alertas WhatsApp
+            </span>
           </h1>
+
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
             Receba notificações automáticas sobre{" "}
             <span className="font-semibold text-green-600">
@@ -752,43 +756,7 @@ export default function WhatsAppIntegration() {
                   </PremiumButton>
                 </form>
 
-                <div className="mt-8 pt-6 border-t border-gray-100">
-                  <p className="text-sm font-medium text-gray-700 mb-3">
-                    O que você vai receber:
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      {
-                        icon: Package,
-                        text: "Notificação de novos produtos",
-                        color: "text-green-600",
-                        bg: "bg-green-50",
-                      },
-                      {
-                        icon: Calendar,
-                        text: "Notificação de produtos próximo ao vencimento",
-                        color: "text-yellow-600",
-                        bg: "bg-yellow-50",
-                      },
-                      {
-                        icon: AlertTriangle,
-                        text: "Notificação de Produtos atrasados",
-                        color: "text-red-600",
-                        bg: "bg-red-50",
-                      },
-                    ].map((feature, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex items-center gap-2 p-2 rounded-lg ${feature.bg}`}
-                      >
-                        <feature.icon className={`w-4 h-4 ${feature.color}`} />
-                        <span className="text-xs text-gray-700">
-                          {feature.text}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+               
               </GlassCard>
             </motion.div>
 
