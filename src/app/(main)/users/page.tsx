@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
@@ -15,13 +16,14 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 // --- Imports de Serviços e Contextos ---
 import { useAuth } from "@/contexts/AuthContext";
 import { useError } from "@/contexts/error-context";
 import { api } from "@/services/api";
+import { useUsers } from "@/hooks/useUsers"; // 🔥 IMPORTE O HOOK
 
 // --- Imports de Componentes UI ---
 import {
@@ -87,43 +89,16 @@ interface CompanyOption {
 // Helpers
 const formatPhone = (v: string | undefined) => {
   if (!v) return "";
-
-  // Remove tudo que não é dígito
   let r = v.replace(/\D/g, "");
-
-  // 🔥 Garantir que tenha o código 55
-  if (!r.startsWith("55")) {
-    r = `55${r}`;
-  }
-
-  // 🔥 CORREÇÃO: Telefone brasileiro tem até 13 dígitos (55 + 11 = 13)
-  // 55 (2) + DDD (2) + 9 (1) + número (8) = 13 dígitos
+  if (!r.startsWith("55")) r = `55${r}`;
   if (r.length > 13) r = r.substring(0, 13);
-
-  // Log para debug
-  console.log("📱 Formatando telefone:", {
-    original: v,
-    cleaned: r,
-    length: r.length,
-  });
-
-  // Formatar para exibição: +55 (DD) XXXXX-XXXX
-  if (r.length === 13) {
-    // +55 (DD) 9XXXX-XXXX (celular com 9 dígitos)
+  if (r.length === 13)
     return r.replace(/^(\d{2})(\d{2})(\d{5})(\d{4})/, "+$1 ($2) $3-$4");
-  } else if (r.length === 12) {
-    // +55 (DD) XXXX-XXXX (telefone fixo com 8 dígitos)
+  if (r.length === 12)
     return r.replace(/^(\d{2})(\d{2})(\d{4})(\d{4})/, "+$1 ($2) $3-$4");
-  } else if (r.length >= 11) {
-    // (DD) 9XXXX-XXXX (celular sem código internacional)
-    return r.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-  } else if (r.length >= 10) {
-    // (DD) XXXX-XXXX (fixo sem código internacional)
-    return r.replace(/^(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
-  } else if (r.length >= 5) {
-    return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
-  }
-
+  if (r.length >= 11) return r.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+  if (r.length >= 10) return r.replace(/^(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
+  if (r.length >= 5) return r.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
   return r;
 };
 
@@ -148,9 +123,7 @@ export default function UserManagementPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
 
   // Estados
-  const [users, setUsers] = useState<User[]>([]);
   const [companiesList, setCompaniesList] = useState<CompanyOption[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Estados de Filtro e Paginação
   const [searchTerm, setSearchTerm] = useState("");
@@ -162,17 +135,22 @@ export default function UserManagementPage() {
   // Estados de UI
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [isFormLoading, setIsFormLoading] = useState(false);
 
   // Estado de Delete
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const isMaster = currentUser?.role === "MASTER";
   const canManage = isMaster || currentUser?.role === "ADMIN";
 
-  // --- 1. Carregar lista de empresas ---
+  // 🔥🔥🔥 USANDO O HOOK CORRETAMENTE 🔥🔥🔥
+  const { users, isLoading, createUser, updateUser, toggleStatus, deleteUser } =
+    useUsers({
+      companyId: filterCompanyId,
+      isMaster,
+    });
+
+  // --- Carregar lista de empresas (apenas para MASTER) ---
   useEffect(() => {
     if (isMaster) {
       api
@@ -191,71 +169,31 @@ export default function UserManagementPage() {
     }
   }, [isMaster]);
 
-  // --- 2. Carregar Usuários ---
-  const fetchUsers = useCallback(async () => {
-    if (!currentUser) return;
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      params.append("limit", "100");
-      params.append("page", "1");
-
-      if (isMaster && filterCompanyId) {
-        params.append("companyId", filterCompanyId);
-      }
-
-      const response = await api.get<{ data: User[]; total: number } | User[]>(
-        `/users?${params.toString()}`,
-      );
-
-      let data: User[] = [];
-      if (Array.isArray(response.data)) {
-        data = response.data;
-      } else if (response.data && Array.isArray(response.data.data)) {
-        data = response.data.data;
-      }
-
-      setUsers(data);
-    } catch (error: any) {
-      console.error("Erro ao buscar usuários:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser, isMaster, filterCompanyId]);
-
-  useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
-
-  // --- Filtro e Paginação ---
+  // Resetar página quando filtros mudarem
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterCompanyId]);
 
+  // Filtro e Paginação
   const filteredUsers = useMemo(() => {
     if (!users || users.length === 0) return [];
-
     const term = searchTerm.toLowerCase();
-    return users.filter((u) => {
-      // 🔥 Validação de segurança
+    return users.filter((u: any) => {
       const name = u?.name?.toLowerCase() || "";
       const email = u?.email?.toLowerCase() || "";
-
       return name.includes(term) || email.includes(term);
     });
   }, [users, searchTerm]);
 
   const paginatedUsers = useMemo(() => {
     if (!filteredUsers || filteredUsers.length === 0) return [];
-
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
-    return filteredUsers.slice(startIndex, endIndex);
+    return filteredUsers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredUsers, currentPage]);
 
   const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
 
-  // --- Handlers de Modal ---
+  // Handlers de Modal
   const handleOpenCreate = () => {
     const initialData =
       isMaster && filterCompanyId ? { companyId: filterCompanyId } : null;
@@ -273,10 +211,8 @@ export default function UserManagementPage() {
     setEditingUser(null);
   };
 
-  // 🔥 SUBMIT CORRIGIDO COM E-MAIL DE BOAS-VINDAS
+  // 🔥 SUBMIT USANDO AS MUTATIONS DO HOOK
   const handleFormSubmit = async (values: any) => {
-    setIsFormLoading(true);
-
     const payload: any = {
       ...values,
       contact: cleanMask(values.contact),
@@ -291,254 +227,186 @@ export default function UserManagementPage() {
 
     try {
       if (editingUser && editingUser.id) {
-        // EDIÇÃO - não envia e-mail
-        await api.patch(`/users/${editingUser.id}`, payload);
-        toast.success("✅ Usuário atualizado com sucesso!", {
-          duration: 4000,
-          icon: "✏️",
-        });
-        await fetchUsers();
+        await updateUser.mutateAsync({ id: editingUser.id, values: payload });
       } else {
-        // CRIAÇÃO - envia e-mail de boas-vindas
-        const response = await api.post<User>("/users", payload);
-
-        // 🔥 FEEDBACK SOBRE O E-MAIL DE BOAS-VINDAS
-        toast.success(
-          "✅ Usuário criado com sucesso! 📧 Um e-mail de boas-vindas foi enviado para o endereço informado com as credenciais de acesso.",
-          {
-            duration: 7000,
-            icon: "🎉",
-            style: {
-              background: "#10B981",
-              color: "#fff",
-              border: "none",
-            },
-          },
-        );
-
-        const newUser = response.data;
-        const shouldShow =
-          !isMaster ||
-          (isMaster && !filterCompanyId) ||
-          (isMaster && filterCompanyId === newUser.companyId);
-
-        if (shouldShow) {
-          setUsers((prev) => [newUser as any, ...prev]);
-        }
+        await createUser.mutateAsync(payload);
       }
       handleCloseModal();
-    } catch (error: any) {
-      console.error("Erro na requisição:", error);
-
-      // 🔥 TRATAMENTO DE ERRO ESPECÍFICO
-      const errorMessage =
-        error.response?.data?.message || "Erro ao processar requisição";
-
-      if (!editingUser?.id && errorMessage.includes("email")) {
-        toast.error(
-          "❌ Erro ao criar usuário. Verifique se o e-mail já está cadastrado.",
-          {
-            duration: 5000,
-          },
-        );
-      } else {
-        toast.error(`❌ ${errorMessage}`, {
-          duration: 5000,
-        });
-      }
-    } finally {
-      setIsFormLoading(false);
-    }
-  };
-
-  // --- Outras Ações ---
-  const handleToggleStatus = async (id: string, currentStatus: string) => {
-    const newStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, status: newStatus as any } : u)),
-    );
-    try {
-      await api.patch(`/users/${id}/status/${newStatus}`);
-      toast.success(
-        `Status alterado para ${newStatus === "ACTIVE" ? "Ativo" : "Inativo"}`,
-      );
-    } catch {
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === id ? { ...u, status: currentStatus as any } : u,
-        ),
-      );
-      toast.error("Erro ao alterar status");
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    setIsDeleting(true);
-    try {
-      await api.delete(`/users/${deleteId}`);
-      setUsers((prev) => prev.filter((u) => u.id !== deleteId));
-      toast.success("Usuário excluído com sucesso.");
-      setIsDeleteOpen(false);
     } catch (error) {
-      toast.error("Erro ao excluir usuário");
-    } finally {
-      setIsDeleting(false);
+      // Erro já tratado no hook
+      console.error("Erro:", error);
     }
   };
 
-  // 🔥 COLUNAS CORRIGIDAS COM VALIDAÇÕES
-  const columns: Column<User>[] = useMemo(() => {
-    const cols: Column<User>[] = [
-      {
-        header: "Usuário",
-        className: "w-[280px]",
-        cell: (user) => (
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-[#2F80ED]/10 text-[#2F80ED] flex items-center justify-center font-bold border border-[#2F80ED]/20">
-              {user?.name ? user.name.charAt(0).toUpperCase() : "?"}
-            </div>
-            <div className="flex flex-col">
-              <span className="font-semibold text-[#353A40]">
-                {user?.name || "Usuário sem nome"}
-              </span>
-              <span className="text-xs text-[#7A7E83] flex items-center gap-1">
-                <Mail className="h-3 w-3" />{" "}
-                {user?.email || "sem-email@exemplo.com"}
-              </span>
-            </div>
-          </div>
-        ),
-      },
-      {
-        header: "Permissão",
-        cell: (user) => (
-          <div className="flex flex-col gap-1">
-            <Badge
-              variant="outline"
-              className="w-fit text-[10px] uppercase border-[#CBD5E1] text-[#7A7E83]"
-            >
-              {user?.role || "N/A"}
-            </Badge>
-          </div>
-        ),
-      },
-      {
-        header: "Cargo na Empresa",
-        cell: (user) => (
-          <div className="flex items-center gap-1">
-            {user?.companyRole ? (
-              <Badge className="bg-[#2F80ED]/10 text-[#2F80ED] hover:bg-[#2F80ED]/20 border-[#2F80ED]/20">
-                <Briefcase className="h-3 w-3 mr-1" />
-                {user.companyRole.name}
-              </Badge>
-            ) : (
-              <span className="text-xs text-[#7A7E83]">Não definido</span>
-            )}
-          </div>
-        ),
-      },
-    ];
+  // Handler para deletar
+  const handleDeleteClick = async () => {
+    if (!deleteId) return;
+    await deleteUser.mutateAsync(deleteId);
+    setIsDeleteOpen(false);
+    setDeleteId(null);
+  };
 
-    if (isMaster) {
-      cols.push({
-        header: "Empresa",
-        cell: (user) => (
-          <div className="flex items-center gap-1 text-sm text-[#7A7E83]">
-            <Building2 className="h-3 w-3 text-[#7A7E83]" />
-            {user?.company?.name || "N/A"}
-          </div>
-        ),
-      });
-    }
+  // Handler para toggle status
+  const handleToggleStatus = (id: string, status: string) => {
+    toggleStatus.mutate({ id, currentStatus: status });
+  };
 
-    cols.push(
-      {
-        header: "Contato",
-        cell: (user) => (
-          <div className="flex flex-col text-sm text-[#353A40]">
-            <span className="flex items-center gap-1">
-              <Phone className="h-3 w-3 text-[#7A7E83]" />{" "}
-              {formatPhone(user?.contact) || "Não informado"}
+  const isFormLoading = createUser.isPending || updateUser.isPending;
+  const isDeleting = deleteUser.isPending;
+
+  // Colunas
+ // Colunas - com dependências corretas para o React Compiler
+const columns: Column<User>[] = useMemo(() => {
+  const cols: Column<User>[] = [
+    {
+      header: "Usuário",
+      className: "w-[280px]",
+      cell: (user) => (
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-full bg-[#2F80ED]/10 text-[#2F80ED] flex items-center justify-center font-bold border border-[#2F80ED]/20">
+            {user?.name ? user.name.charAt(0).toUpperCase() : "?"}
+          </div>
+          <div className="flex flex-col">
+            <span className="font-semibold text-[#353A40]">
+              {user?.name || "Usuário sem nome"}
             </span>
-            {user?.document && (
-              <span className="text-xs text-[#7A7E83] pl-4">
-                {formatCPF(user.document)}
-              </span>
-            )}
+            <span className="text-xs text-[#7A7E83] flex items-center gap-1">
+              <Mail className="h-3 w-3" />{" "}
+              {user?.email || "sem-email@exemplo.com"}
+            </span>
           </div>
-        ),
-      },
-      {
-        header: "Status",
-        cell: (user) => (
-          <Badge
-            className={
-              user?.status === "ACTIVE"
-                ? "bg-green-50 text-green-700 hover:bg-green-50 border-green-200"
-                : "bg-red-50 text-red-700 hover:bg-red-50 border-red-200"
-            }
-          >
-            {user?.status === "ACTIVE" ? "Ativo" : "Inativo"}
-          </Badge>
-        ),
-      },
-    );
+        </div>
+      ),
+    },
+    {
+      header: "Permissão",
+      cell: (user) => (
+        <Badge
+          variant="outline"
+          className="w-fit text-[10px] uppercase border-[#CBD5E1] text-[#7A7E83]"
+        >
+          {user?.role || "N/A"}
+        </Badge>
+      ),
+    },
+    {
+      header: "Cargo na Empresa",
+      cell: (user) => (
+        <div className="flex items-center gap-1">
+          {user?.companyRole ? (
+            <Badge className="bg-[#2F80ED]/10 text-[#2F80ED] hover:bg-[#2F80ED]/20 border-[#2F80ED]/20">
+              <Briefcase className="h-3 w-3 mr-1" />
+              {user.companyRole.name}
+            </Badge>
+          ) : (
+            <span className="text-xs text-[#7A7E83]">Não definido</span>
+          )}
+        </div>
+      ),
+    },
+  ];
 
-    if (canManage) {
-      cols.push({
-        header: "Ações",
-        className: "text-right",
-        cell: (user) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="h-8 w-8 p-0 text-[#7A7E83] hover:text-[#2F80ED]"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="bg-white border border-[#E2E8F0] rounded-xl shadow-lg"
+  if (isMaster) {
+    cols.push({
+      header: "Empresa",
+      cell: (user) => (
+        <div className="flex items-center gap-1 text-sm text-[#7A7E83]">
+          <Building2 className="h-3 w-3 text-[#7A7E83]" />
+          {user?.company?.name || "N/A"}
+        </div>
+      ),
+    });
+  }
+
+  cols.push(
+    {
+      header: "Contato",
+      cell: (user) => (
+        <div className="flex flex-col text-sm text-[#353A40]">
+          <span className="flex items-center gap-1">
+            <Phone className="h-3 w-3 text-[#7A7E83]" />{" "}
+            {formatPhone(user?.contact) || "Não informado"}
+          </span>
+          {user?.document && (
+            <span className="text-xs text-[#7A7E83] pl-4">
+              {formatCPF(user.document)}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: "Status",
+      cell: (user) => (
+        <Badge
+          className={
+            user?.status === "ACTIVE"
+              ? "bg-green-100 text-green-700 border-green-200"
+              : "bg-red-100 text-red-700 border-red-200"
+          }
+        >
+          {user?.status === "ACTIVE" ? "Ativo" : "Inativo"}
+        </Badge>
+      ),
+    },
+  );
+
+  if (canManage) {
+    cols.push({
+      header: "Ações",
+      className: "text-right",
+      cell: (user) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              className="h-8 w-8 p-0 text-[#7A7E83] hover:text-[#2F80ED]"
             >
-              <DropdownMenuLabel className="text-[#353A40]">
-                Ações
-              </DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => handleOpenEdit(user)}
-                className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
-              >
-                <Edit className="mr-2 h-4 w-4 text-[#2F80ED]" /> Editar
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleToggleStatus(user.id, user.status)}
-                className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
-              >
-                <Power className="mr-2 h-4 w-4 text-[#2F80ED]" />{" "}
-                {user?.status === "ACTIVE" ? "Desativar" : "Ativar"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-[#E2E8F0]" />
-              <DropdownMenuItem
-                className="text-red-600 focus:text-red-600 cursor-pointer hover:bg-red-50"
-                onClick={() => {
-                  setDeleteId(user.id);
-                  setIsDeleteOpen(true);
-                }}
-              >
-                <Trash2 className="mr-2 h-4 w-4" /> Excluir
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ),
-      });
-    }
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="bg-white border border-[#E2E8F0] rounded-xl shadow-lg"
+          >
+            <DropdownMenuLabel className="text-[#353A40]">
+              Ações
+            </DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => handleOpenEdit(user)}
+              className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
+            >
+              <Edit className="mr-2 h-4 w-4 text-[#2F80ED]" /> Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => handleToggleStatus(user.id, user.status)}
+              disabled={toggleStatus.isPending}
+              className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
+            >
+              <Power className="mr-2 h-4 w-4 text-[#2F80ED]" />{" "}
+              {user?.status === "ACTIVE" ? "Desativar" : "Ativar"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-[#E2E8F0]" />
+            <DropdownMenuItem
+              className="text-red-600 focus:text-red-600 cursor-pointer hover:bg-red-50"
+              onClick={() => {
+                setDeleteId(user.id);
+                setIsDeleteOpen(true);
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> Excluir
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    });
+  }
 
-    return cols;
-  }, [isMaster, canManage]);
+  return cols;
+}, [isMaster, canManage, toggleStatus.isPending, handleOpenEdit, handleToggleStatus, setDeleteId, setIsDeleteOpen]);
+//  ^^^ Adicione TODAS as dependências usadas dentro do useMemo
 
-  if (authLoading)
+  if (authLoading || isLoading)
     return (
       <div className="flex h-screen items-center justify-center bg-[#F5F6FA]">
         <Loader2 className="animate-spin text-[#2F80ED] h-8 w-8" />
@@ -561,7 +429,6 @@ export default function UserManagementPage() {
               onChange={setFilterCompanyId}
             />
           )}
-
           {canManage && (
             <TooltipProvider>
               <Tooltip>
@@ -587,7 +454,7 @@ export default function UserManagementPage() {
           title="Listagem"
           data={paginatedUsers}
           columns={columns}
-          isLoading={loading}
+          isLoading={isLoading}
           onSearchChange={undefined}
           emptyMessage="Nenhum usuário encontrado."
           pagination={{
@@ -630,7 +497,7 @@ export default function UserManagementPage() {
               <AlertDialogAction
                 onClick={(e) => {
                   e.preventDefault();
-                  handleDelete();
+                  handleDeleteClick();
                 }}
                 disabled={isDeleting}
                 className="bg-red-500 hover:bg-red-600 text-white"
