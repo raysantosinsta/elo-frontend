@@ -1042,7 +1042,7 @@ export default function WhatsAppIntegration() {
 
                     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-3 mb-6">
                       <p className="text-sm text-gray-600">
-                        Instância:{" "}
+                        Nome da conexão:{" "}
                         <strong className="text-[#2F80ED] text-base">
                           {formData.name || instance?.name || ""}
                         </strong>

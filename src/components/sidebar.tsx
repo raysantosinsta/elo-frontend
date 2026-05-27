@@ -218,9 +218,11 @@ function NotificationsPopover() {
 
 function SidebarContent({
   collapsed,
+  onToggleCollapse,
   onItemClick,
 }: {
   collapsed: boolean;
+  onToggleCollapse: () => void;
   onItemClick?: () => void;
 }) {
   const pathname = usePathname();
@@ -233,6 +235,9 @@ function SidebarContent({
   const toggleMenu = (title: string) => {
     setUserToggledMenus((prev) => ({ ...prev, [title]: !prev[title] }));
   };
+
+  // Pega o nome da empresa do usuário logado
+  const companyName = user?.company?.name  || "Dashboard";
 
   // --- 2. LÓGICA DE PERMISSÕES PARA MASTER ---
   const filteredMenuItems = useMemo(() => {
@@ -271,23 +276,25 @@ function SidebarContent({
   return (
     <div
       className={cn(
-        "flex flex-col h-full bg-[#353A40] text-white transition-all duration-300",
-        collapsed ? "w-20" : "w-full",
+        "flex flex-col h-full bg-[#353A40] text-white",
+        collapsed ? "w-20" : "w-full"
       )}
     >
-      {/* Header Sidebar */}
+      {/* Header Sidebar - FIXO */}
       <div
         className={cn(
-          "flex items-center justify-between p-5 border-b border-white/10 h-20",
-          collapsed && "justify-center px-2",
+          "flex-shrink-0 flex items-center justify-between p-5 border-b border-white/10 h-20",
+          collapsed && "justify-center px-2"
         )}
       >
         {!collapsed && (
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-[#2F80ED] rounded-xl flex items-center justify-center shadow-md">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-10 h-10 bg-[#2F80ED] rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
               <Home className="w-5 h-5 text-white" />
             </div>
-            <span className="font-bold text-xl tracking-tight">Highlander</span>
+            <span className="font-bold text-xl tracking-tight truncate">
+              {companyName}
+            </span>
           </div>
         )}
         <div
@@ -297,7 +304,8 @@ function SidebarContent({
         </div>
       </div>
 
-      <ScrollArea className="flex-1 px-4 py-6">
+      {/* Área de Scroll - INDEPENDENTE */}
+      <ScrollArea className="flex-1 min-h-0 px-4 py-6">
         <div className="space-y-1.5">
           {filteredMenuItems.map((item) => {
             const Icon = item.icon;
@@ -365,25 +373,25 @@ function SidebarContent({
                       isGroupActive ? "text-white" : "text-gray-200",
                     )}
                   >
-                    <div className="flex items-center">
+                    <div className="flex items-center min-w-0">
                       <Icon
                         className={cn(
-                          "w-5 h-5 mr-3 transition-transform",
+                          "w-5 h-5 mr-3 transition-transform flex-shrink-0",
                           isGroupActive ? "text-[#2F80ED]" : "text-gray-300",
                         )}
                       />
-                      <span>{item.title}</span>
+                      <span className="truncate">{item.title}</span>
                     </div>
                     <ChevronDown
                       className={cn(
-                        "w-4 h-4 transition-transform duration-200",
+                        "w-4 h-4 transition-transform duration-200 flex-shrink-0",
                         isOpen ? "transform rotate-180" : "",
                       )}
                     />
                   </button>
 
                   {isOpen && (
-                    <div className="ml-4 pl-4 border-l border-white/10 space-y-1 animate-in slide-in-from-top-2 duration-200">
+                    <div className="ml-4 pl-4 border-l border-white/10 space-y-1">
                       {item.subItems.map((sub) => {
                         const isSubActive = pathname === sub.href;
                         return (
@@ -400,7 +408,7 @@ function SidebarContent({
                                   : "text-gray-300 hover:text-white hover:bg-white/5",
                               )}
                             >
-                              <span>{sub.title}</span>
+                              <span className="truncate">{sub.title}</span>
                             </div>
                           </Link>
                         );
@@ -433,7 +441,7 @@ function SidebarContent({
                 >
                   <Icon
                     className={cn(
-                      "w-5 h-5 transition-transform duration-200 group-hover:scale-110",
+                      "w-5 h-5 transition-transform duration-200 group-hover:scale-110 flex-shrink-0",
                       collapsed ? "mr-0" : "mr-3",
                       isActive
                         ? "text-white"
@@ -447,6 +455,22 @@ function SidebarContent({
           })}
         </div>
       </ScrollArea>
+
+      {/* Botão de Collapse - FIXO */}
+      <div className="flex-shrink-0 bg-[#2A2F35] p-2 flex justify-center border-t border-white/10">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggleCollapse}
+          className="text-gray-300 hover:text-white hover:bg-white/10 w-full"
+        >
+          {collapsed ? (
+            <ChevronRight className="w-4 h-4" />
+          ) : (
+            <ChevronLeft className="w-4 h-4" />
+          )}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -455,43 +479,40 @@ export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { isOpen, close } = useSidebar();
 
+  const handleToggleCollapse = () => {
+    setCollapsed(!collapsed);
+  };
+
   return (
     <>
+      {/* Desktop Sidebar */}
       <div
         className={cn(
-          "hidden md:flex flex-col h-full border-r border-white/10 transition-all duration-300 bg-[#353A40]",
+          "hidden md:flex flex-col h-full border-r border-white/10 bg-[#353A40] transition-all duration-300",
           collapsed ? "w-20" : "w-72",
           className,
         )}
       >
-        <SidebarContent collapsed={collapsed} />
-        <div className="bg-[#2A2F35] p-2 flex justify-center border-t border-white/10">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setCollapsed(!collapsed)}
-            className="text-gray-300 hover:text-white hover:bg-white/10 w-full"
-          >
-            {collapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
-          </Button>
-        </div>
+        <SidebarContent 
+          collapsed={collapsed} 
+          onToggleCollapse={handleToggleCollapse}
+        />
       </div>
       
-      {/* Sheet Mobile com acessibilidade corrigida */}
+      {/* Mobile Sheet */}
       <Sheet open={isOpen} onOpenChange={close}>
         <SheetContent 
           side="left" 
           className="p-0 border-none w-72 bg-[#353A40] text-white"
         >
-          {/* SheetHeader com SheetTitle obrigatório para acessibilidade */}
           <SheetHeader className="sr-only">
             <SheetTitle>Menu de Navegação</SheetTitle>
           </SheetHeader>
-          <SidebarContent collapsed={false} onItemClick={close} />
+          <SidebarContent 
+            collapsed={false} 
+            onToggleCollapse={() => {}} // No mobile, o toggle não faz sentido
+            onItemClick={close} 
+          />
         </SheetContent>
       </Sheet>
     </>
