@@ -233,15 +233,21 @@ export default function UserManagementPage() {
   }, [searchTerm, filterCompanyId]);
 
   const filteredUsers = useMemo(() => {
+    if (!users || users.length === 0) return [];
+
     const term = searchTerm.toLowerCase();
-    return users.filter(
-      (u) =>
-        u.name.toLowerCase().includes(term) ||
-        u.email.toLowerCase().includes(term),
-    );
+    return users.filter((u) => {
+      // 🔥 Validação de segurança
+      const name = u?.name?.toLowerCase() || "";
+      const email = u?.email?.toLowerCase() || "";
+
+      return name.includes(term) || email.includes(term);
+    });
   }, [users, searchTerm]);
 
   const paginatedUsers = useMemo(() => {
+    if (!filteredUsers || filteredUsers.length === 0) return [];
+
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
     return filteredUsers.slice(startIndex, endIndex);
@@ -267,7 +273,7 @@ export default function UserManagementPage() {
     setEditingUser(null);
   };
 
-  // --- Submit do Formulário ---
+  // 🔥 SUBMIT CORRIGIDO COM E-MAIL DE BOAS-VINDAS
   const handleFormSubmit = async (values: any) => {
     setIsFormLoading(true);
 
@@ -285,25 +291,61 @@ export default function UserManagementPage() {
 
     try {
       if (editingUser && editingUser.id) {
+        // EDIÇÃO - não envia e-mail
         await api.patch(`/users/${editingUser.id}`, payload);
-        toast.success("Usuário atualizado!");
-        fetchUsers();
+        toast.success("✅ Usuário atualizado com sucesso!", {
+          duration: 4000,
+          icon: "✏️",
+        });
+        await fetchUsers();
       } else {
-        const { data: newUser } = await api.post<User>("/users", payload);
-        toast.success("Usuário criado!");
+        // CRIAÇÃO - envia e-mail de boas-vindas
+        const response = await api.post<User>("/users", payload);
 
+        // 🔥 FEEDBACK SOBRE O E-MAIL DE BOAS-VINDAS
+        toast.success(
+          "✅ Usuário criado com sucesso! 📧 Um e-mail de boas-vindas foi enviado para o endereço informado com as credenciais de acesso.",
+          {
+            duration: 7000,
+            icon: "🎉",
+            style: {
+              background: "#10B981",
+              color: "#fff",
+              border: "none",
+            },
+          },
+        );
+
+        const newUser = response.data;
         const shouldShow =
           !isMaster ||
           (isMaster && !filterCompanyId) ||
           (isMaster && filterCompanyId === newUser.companyId);
 
         if (shouldShow) {
-          setUsers((prev) => [newUser, ...prev]);
+          setUsers((prev) => [newUser as any, ...prev]);
         }
       }
       handleCloseModal();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro na requisição:", error);
+
+      // 🔥 TRATAMENTO DE ERRO ESPECÍFICO
+      const errorMessage =
+        error.response?.data?.message || "Erro ao processar requisição";
+
+      if (!editingUser?.id && errorMessage.includes("email")) {
+        toast.error(
+          "❌ Erro ao criar usuário. Verifique se o e-mail já está cadastrado.",
+          {
+            duration: 5000,
+          },
+        );
+      } else {
+        toast.error(`❌ ${errorMessage}`, {
+          duration: 5000,
+        });
+      }
     } finally {
       setIsFormLoading(false);
     }
@@ -336,15 +378,16 @@ export default function UserManagementPage() {
     try {
       await api.delete(`/users/${deleteId}`);
       setUsers((prev) => prev.filter((u) => u.id !== deleteId));
-      toast.success("Usuário excluído.");
+      toast.success("Usuário excluído com sucesso.");
       setIsDeleteOpen(false);
-    } catch {
+    } catch (error) {
+      toast.error("Erro ao excluir usuário");
     } finally {
       setIsDeleting(false);
     }
   };
 
-  // 🔥 COLUNAS ATUALIZADAS COM CORES ELO PRODUTIVO
+  // 🔥 COLUNAS CORRIGIDAS COM VALIDAÇÕES
   const columns: Column<User>[] = useMemo(() => {
     const cols: Column<User>[] = [
       {
@@ -353,12 +396,15 @@ export default function UserManagementPage() {
         cell: (user) => (
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-full bg-[#2F80ED]/10 text-[#2F80ED] flex items-center justify-center font-bold border border-[#2F80ED]/20">
-              {user.name.charAt(0).toUpperCase()}
+              {user?.name ? user.name.charAt(0).toUpperCase() : "?"}
             </div>
             <div className="flex flex-col">
-              <span className="font-semibold text-[#353A40]">{user.name}</span>
+              <span className="font-semibold text-[#353A40]">
+                {user?.name || "Usuário sem nome"}
+              </span>
               <span className="text-xs text-[#7A7E83] flex items-center gap-1">
-                <Mail className="h-3 w-3" /> {user.email}
+                <Mail className="h-3 w-3" />{" "}
+                {user?.email || "sem-email@exemplo.com"}
               </span>
             </div>
           </div>
@@ -372,7 +418,7 @@ export default function UserManagementPage() {
               variant="outline"
               className="w-fit text-[10px] uppercase border-[#CBD5E1] text-[#7A7E83]"
             >
-              {user.role}
+              {user?.role || "N/A"}
             </Badge>
           </div>
         ),
@@ -381,7 +427,7 @@ export default function UserManagementPage() {
         header: "Cargo na Empresa",
         cell: (user) => (
           <div className="flex items-center gap-1">
-            {user.companyRole ? (
+            {user?.companyRole ? (
               <Badge className="bg-[#2F80ED]/10 text-[#2F80ED] hover:bg-[#2F80ED]/20 border-[#2F80ED]/20">
                 <Briefcase className="h-3 w-3 mr-1" />
                 {user.companyRole.name}
@@ -400,7 +446,7 @@ export default function UserManagementPage() {
         cell: (user) => (
           <div className="flex items-center gap-1 text-sm text-[#7A7E83]">
             <Building2 className="h-3 w-3 text-[#7A7E83]" />
-            {user.company?.name || "N/A"}
+            {user?.company?.name || "N/A"}
           </div>
         ),
       });
@@ -413,9 +459,9 @@ export default function UserManagementPage() {
           <div className="flex flex-col text-sm text-[#353A40]">
             <span className="flex items-center gap-1">
               <Phone className="h-3 w-3 text-[#7A7E83]" />{" "}
-              {formatPhone(user.contact)}
+              {formatPhone(user?.contact) || "Não informado"}
             </span>
-            {user.document && (
+            {user?.document && (
               <span className="text-xs text-[#7A7E83] pl-4">
                 {formatCPF(user.document)}
               </span>
@@ -428,12 +474,12 @@ export default function UserManagementPage() {
         cell: (user) => (
           <Badge
             className={
-              user.status === "ACTIVE"
+              user?.status === "ACTIVE"
                 ? "bg-green-50 text-green-700 hover:bg-green-50 border-green-200"
                 : "bg-red-50 text-red-700 hover:bg-red-50 border-red-200"
             }
           >
-            {user.status === "ACTIVE" ? "Ativo" : "Inativo"}
+            {user?.status === "ACTIVE" ? "Ativo" : "Inativo"}
           </Badge>
         ),
       },
@@ -471,7 +517,7 @@ export default function UserManagementPage() {
                 className="cursor-pointer text-[#353A40] hover:bg-[#F5F6FA]"
               >
                 <Power className="mr-2 h-4 w-4 text-[#2F80ED]" />{" "}
-                {user.status === "ACTIVE" ? "Desativar" : "Ativar"}
+                {user?.status === "ACTIVE" ? "Desativar" : "Ativar"}
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-[#E2E8F0]" />
               <DropdownMenuItem

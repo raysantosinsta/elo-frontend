@@ -19,6 +19,8 @@ import {
   Mail,
   FileText,
   Shield,
+  ChevronsUpDown,
+  Check,
 } from "lucide-react";
 
 import {
@@ -45,12 +47,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/services/api";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 // --- Tipos e Enums ---
 export enum UserRole {
@@ -86,6 +102,7 @@ interface UserData {
 interface CompanyOption {
   id: string;
   name: string;
+  cnpj?: string;
 }
 
 interface UserFormModalProps {
@@ -102,28 +119,18 @@ interface UserFormModalProps {
 const cleanMask = (value: string | undefined) =>
   value ? value.replace(/\D/g, "") : "";
 
-/**
- * 🔥 FUNÇÃO CORRIGIDA: Remove o prefixo 55 do número vindo do backend
- */
 const removeCountryCode = (phone: string | undefined): string => {
   if (!phone) return "";
-  // Remove tudo que não é dígito
   let numbersOnly = phone.replace(/\D/g, "");
-  // Se começar com 55, remove
   if (numbersOnly.startsWith("55")) {
     numbersOnly = numbersOnly.substring(2);
   }
   return numbersOnly;
 };
 
-/**
- * 🔥 FUNÇÃO CORRIGIDA: Formata o telefone para exibição (sem 55)
- */
 const formatPhone = (v: string | undefined) => {
   if (!v) return "";
-  // Primeiro remove o código do país se existir
   let cleanNumber = removeCountryCode(v);
-  // Agora formata normalmente
   if (cleanNumber.length > 11) cleanNumber = cleanNumber.substring(0, 11);
   if (cleanNumber.length > 10) {
     return cleanNumber.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
@@ -166,7 +173,6 @@ const baseUserSchema = z.object({
 
 const createUserSchema = (isEditing: boolean, isADM: boolean) => {
   return baseUserSchema.superRefine((data, ctx) => {
-    // 🔥 REGRA: APENAS ADMIN (logado) precisa de cargo profissional
     if (!isEditing && isADM && !data.companyRoleId) {
       ctx.addIssue({
         code: "custom",
@@ -175,7 +181,6 @@ const createUserSchema = (isEditing: boolean, isADM: boolean) => {
       });
     }
 
-    // Validação de senha para novos usuários
     if (!isEditing && (!data.password || data.password.length < 6)) {
       ctx.addIssue({
         code: "custom",
@@ -184,7 +189,6 @@ const createUserSchema = (isEditing: boolean, isADM: boolean) => {
       });
     }
 
-    // Confirmação de senha
     if (data.password && data.password !== data.confirmPassword) {
       ctx.addIssue({
         code: "custom",
@@ -214,6 +218,7 @@ export function UserFormModal({
   const [companyRoles, setCompanyRoles] = useState<CompanyRole[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [selectedCompanyName, setSelectedCompanyName] = useState("");
+  const [companyOpen, setCompanyOpen] = React.useState(false);
 
   const userSchema = createUserSchema(isEditing, isADM);
 
@@ -297,21 +302,12 @@ export function UserFormModal({
     }
   }, [isOpen, isADM, isMaster, user?.companyId, form, companies, isEditing]);
 
-  // 🔥 Atualiza o formulário ao abrir - CORRIGIDO para remover o 55 do telefone
+  // Atualiza o formulário ao abrir
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
-        console.log(
-          "📞 [EDIT] Telefone original do backend:",
-          initialData.contact,
-        );
-
-        // 🔥 Remove o 55 do telefone antes de formatar
         const phoneWithoutCountryCode = removeCountryCode(initialData.contact);
         const formattedPhone = formatPhone(phoneWithoutCountryCode);
-
-        console.log("📞 [EDIT] Telefone sem 55:", phoneWithoutCountryCode);
-        console.log("📞 [EDIT] Telefone formatado:", formattedPhone);
 
         form.reset({
           name: initialData.name,
@@ -373,12 +369,9 @@ export function UserFormModal({
 
     const { confirmPassword, ...dataToSend } = values;
 
-    // 🔥 Montar payload final
     const payload = {
       ...dataToSend,
       professionalRole: professionalRoleName,
-      // 🔥 IMPORTANTE: Envia apenas os números (sem formatação e SEM o 55)
-      // O backend adicionará o 55 automaticamente
       contact: cleanMask(values.contact),
       document: values.document ? cleanMask(values.document) : undefined,
     };
@@ -424,6 +417,8 @@ export function UserFormModal({
     return role?.name || "";
   };
 
+  const selectedCompany = companies.find((c) => c.id === form.watch("companyId"));
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl h-[90vh] flex flex-col p-0 bg-white">
@@ -463,37 +458,87 @@ export function UserFormModal({
                 className="space-y-6"
                 autoComplete="off"
               >
-                {/* Seleção de Empresa (Apenas para MASTER) */}
+                {/* Seleção de Empresa (Apenas para MASTER) - AGORA COM AUTOCOMPLETE */}
                 {isMaster && (
                   <div className="space-y-4 p-4 bg-orange-50 border border-orange-100 rounded-lg">
                     <h3 className="text-sm font-semibold text-orange-800 uppercase flex items-center gap-2">
                       <Building2 className="h-4 w-4" /> Vínculo Empresarial
                     </h3>
+                    
+                    {/* 🔥 AUTOCOMPLETE PARA EMPRESA */}
                     <FormField
                       control={form.control}
                       name="companyId"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem className="flex flex-col">
                           <FormLabel className="text-orange-800">
                             Empresa *
                           </FormLabel>
-                          <Select
-                            onValueChange={handleCompanyChange}
-                            value={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger className="bg-white border-orange-200 focus:border-orange-500">
-                                <SelectValue placeholder="Selecione a empresa" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {companies.map((company) => (
-                                <SelectItem key={company.id} value={company.id}>
-                                  {company.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <Popover open={companyOpen} onOpenChange={setCompanyOpen}>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  aria-expanded={companyOpen}
+                                  className="w-full justify-between bg-white border-orange-200 focus:border-orange-500 text-[#353A40]"
+                                >
+                                  {field.value && selectedCompany ? (
+                                    <span className="flex items-center gap-2 truncate">
+                                      <Building2 className="h-4 w-4 text-[#D35400] shrink-0" />
+                                      <span className="truncate">{selectedCompany.name}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[#95A5A6]">
+                                      Selecione uma empresa...
+                                    </span>
+                                  )}
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-full min-w-[300px] p-0">
+                              <Command>
+                                <CommandInput placeholder="Buscar empresa..." />
+                                <CommandList>
+                                  <CommandEmpty>
+                                    Nenhuma empresa encontrada.
+                                  </CommandEmpty>
+                                  <CommandGroup>
+                                    {companies.map((company) => (
+                                      <CommandItem
+                                        key={company.id}
+                                        value={company.name}
+                                        onSelect={() => {
+                                          const newValue = company.id === field.value ? "" : company.id;
+                                          field.onChange(newValue);
+                                          setCompanyOpen(false);
+                                          if (newValue) {
+                                            handleCompanyChange(company.id);
+                                          }
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            field.value === company.id ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        <div className="flex flex-col">
+                                          <span className="font-medium">{company.name}</span>
+                                          {company.cnpj && (
+                                            <span className="text-[10px] text-gray-400">
+                                              CNPJ: {company.cnpj}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -588,7 +633,6 @@ export function UserFormModal({
                               {...field}
                               maxLength={15}
                               onChange={(e) => {
-                                // 🔥 Remove o 55 se o usuário tentar digitar
                                 let value = e.target.value;
                                 if (value.startsWith("55")) {
                                   value = value.substring(2);
