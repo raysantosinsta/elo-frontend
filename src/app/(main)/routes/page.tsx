@@ -56,6 +56,7 @@ import {
   EyeIcon,
   PencilIcon,
   Trash2Icon,
+  FuelIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -65,41 +66,6 @@ import { motion, AnimatePresence } from "framer-motion";
 
 // Import do GenericTable e tipos
 import { Column, GenericTable } from "@/components/generic-table";
-
-// ─── Tipagem da Rota (alinhada com o que a API retorna) ──────────────────────
-interface ApiRoute {
-  id: string;
-  title: string;
-  status: string;
-  routeDate?: string | null;
-  stops: any[];
-  formattedDistance: string;
-  formattedDuration: string;
-  userAssigned: { id: string; name: string } | null;
-  description: string | null;
-  createdAt: string;
-  orderBy?: string;
-  totalDistanceMeters?: number;
-  totalDurationSeconds?: number;
-}
-
-// Tipo para o componente (com valores normalizados)
-interface Route {
-  tasks: any;
-  id: string;
-  title: string;
-  status: string;
-  routeDate: string | null;
-  stops: any[];
-  formattedDistance: string;
-  formattedDuration: string;
-  userAssigned: { id: string; name: string } | null;
-  description: string | null;
-  createdAt: string;
-  orderBy?: string;
-  totalDistanceMeters?: number;
-  totalDurationSeconds?: number;
-}
 
 // ─── Paleta ELO PRODUTIVO ──────────────────────────────────────────────────────────
 const statusColors: Record<string, string> = {
@@ -624,6 +590,46 @@ export default function RoutesPage() {
     }
   }, [deleteId, deleteRoute, refetch]);
 
+  /* eslint-disable prefer-const */
+
+  interface ApiRoute {
+    id: string;
+    title: string;
+    status: string;
+    routeDate?: string | null;
+    stops: any[];
+    formattedDistance: string;
+    formattedDuration: string;
+    formattedFuelConsumption?: string; // 🔥 NOVO: consumo formatado
+    fuelConsumptionLitres?: number | null; // 🔥 NOVO: valor bruto
+    userAssigned: { id: string; name: string } | null;
+    description: string | null;
+    createdAt: string;
+    orderBy?: string;
+    totalDistanceMeters?: number;
+    totalDurationSeconds?: number;
+  }
+
+  // Tipo para o componente (com valores normalizados)
+  interface Route {
+    tasks: any;
+    id: string;
+    title: string;
+    status: string;
+    routeDate: string | null;
+    stops: any[];
+    formattedDistance: string;
+    formattedDuration: string;
+    formattedFuelConsumption?: string; // 🔥 NOVO
+    fuelConsumptionLitres?: number | null; // 🔥 NOVO
+    userAssigned: { id: string; name: string } | null;
+    description: string | null;
+    createdAt: string;
+    orderBy?: string;
+    totalDistanceMeters?: number;
+    totalDurationSeconds?: number;
+  }
+
   const getColumns = useCallback(
     (): Column<Route>[] => [
       {
@@ -698,6 +704,20 @@ export default function RoutesPage() {
         ),
       },
       {
+        header: "Combustível", // 🔥 NOVA COLUNA
+        cell: (route) => {
+          const fuel = route.formattedFuelConsumption;
+          return (
+            <div className="flex items-center gap-1.5">
+              <FuelIcon className="h-3.5 w-3.5 text-[#2F80ED]" />
+              <span className="text-[#353A40] font-medium">
+                {fuel || "Não calculado"}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
         header: "Duração",
         cell: (route) => (
           <span className="text-[#353A40] font-medium">
@@ -731,7 +751,6 @@ export default function RoutesPage() {
         header: "Total",
         cell: (route) => {
           const stopsCount = route.stops?.length || 0;
-
           if (stopsCount <= 1) {
             return (
               <div className="flex items-center gap-1">
@@ -739,11 +758,9 @@ export default function RoutesPage() {
               </div>
             );
           }
-
           const totalDuration = calculateTotalDuration(route);
           const totalIntervalTime = calculateTotalIntervalTime(route);
           const routeDuration = route.formattedDuration || "0min";
-
           return (
             <TooltipProvider>
               <Tooltip>
@@ -772,7 +789,7 @@ export default function RoutesPage() {
         },
       },
       {
-        header: "Responsavel",
+        header: "Responsável",
         cell: (route) => (
           <div className="flex items-center gap-1">
             <span className="text-[#353A40]">
