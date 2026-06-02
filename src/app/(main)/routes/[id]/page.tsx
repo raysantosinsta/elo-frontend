@@ -46,12 +46,13 @@ import {
   UserIcon,
   MoreHorizontalIcon,
   RefreshCcw,
+  FuelIcon,
+  GaugeIcon,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, memo, useCallback, useState } from "react";
 import { toast } from "sonner";
 
-// ─── Constantes de Status ─────────────────────────────────────────
 const statusColors: Record<string, string> = {
   SCHEDULED: "bg-blue-100 text-blue-700 border border-blue-200",
   IN_PROGRESS: "bg-[#2F80ED]/10 text-[#2F80ED] border border-[#2F80ED]/20",
@@ -71,7 +72,6 @@ const orderByText: Record<string, string> = {
   PRIORITY: "Prioridade",
 };
 
-// 🎯 Componente de Skeleton Loading (padrão dashboard)
 const DetailsSkeleton = () => (
   <div className="min-h-screen bg-[#F5F6FA] p-4 md:p-8">
     <div className="max-w-7xl mx-auto space-y-6">
@@ -82,7 +82,6 @@ const DetailsSkeleton = () => (
   </div>
 );
 
-// 🎯 Componente de Info Card (padrão dashboard)
 const InfoCard = memo(({ icon: Icon, title, value }: any) => (
   <Card className="bg-white shadow-lg rounded-xl border-0">
     <CardContent className="p-6">
@@ -99,7 +98,6 @@ const InfoCard = memo(({ icon: Icon, title, value }: any) => (
 
 InfoCard.displayName = "InfoCard";
 
-// 🎯 Componente de Stop Item (padrão lista do dashboard)
 const StopItem = memo(({ stop, index }: any) => {
   const isVisited = stop.visited;
 
@@ -110,7 +108,6 @@ const StopItem = memo(({ stop, index }: any) => {
       )}
     >
       <div className="flex items-start gap-4 p-4">
-        {/* Indicador numérico */}
         <div
           className={cn(
             "mt-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0",
@@ -126,7 +123,6 @@ const StopItem = memo(({ stop, index }: any) => {
           )}
         </div>
 
-        {/* Dados da parada */}
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold text-[#353A40] truncate">
@@ -173,13 +169,11 @@ export default function RouteDetailsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Memoização dos stops ordenados
   const orderedStops = useMemo(() => {
     if (!route?.stops) return [];
     return [...route.stops].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [route?.stops]);
 
-  // Estatísticas memoizadas
   const stats = useMemo(() => {
     if (!route) return { visitedCount: 0, totalStops: 0 };
     const visitedCount =
@@ -188,7 +182,6 @@ export default function RouteDetailsPage() {
     return { visitedCount, totalStops };
   }, [route]);
 
-  // Verificar se rota está atrasada
   const isOverdue = useMemo(() => {
     if (!route?.routeDate) return false;
     const today = new Date();
@@ -197,7 +190,28 @@ export default function RouteDetailsPage() {
     return routeDate < today && route.status !== "FINISHED";
   }, [route?.routeDate, route?.status]);
 
-  // Verificar se valores são válidos
+  const formatDurationFromSeconds = useCallback((seconds: number | null | undefined): string => {
+    if (!seconds || seconds === 0) return "-";
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0 && minutes > 0) return `${hours}h ${minutes}min`;
+    if (hours > 0) return `${hours}h`;
+    return `${minutes}min`;
+  }, []);
+
+  const getDifferenceColor = (difference: number | null): string => {
+    if (difference === null) return "text-[#7A7E83]";
+    if (difference > 0) return "text-red-500";
+    if (difference < 0) return "text-green-500";
+    return "text-[#7A7E83]";
+  };
+
+  const formatDifference = (difference: number | null, unit: string): string => {
+    if (difference === null) return "-";
+    const prefix = difference > 0 ? "+" : "";
+    return `${prefix}${difference.toFixed(1)}${unit}`;
+  };
+
   const hasValidDistance = useMemo(() => {
     if (!route?.formattedDistance) return false;
     const value = route.formattedDistance;
@@ -214,7 +228,6 @@ export default function RouteDetailsPage() {
     );
   }, [route?.formattedDuration]);
 
-  // Callback para atualizar dados
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await refetch();
@@ -222,7 +235,6 @@ export default function RouteDetailsPage() {
     toast.success("Dados atualizados", { duration: 1500 });
   }, [refetch]);
 
-  // Callback para iniciar navegação
   const handleStartNavigation = useCallback(async () => {
     if (route?.status === "SCHEDULED") {
       try {
@@ -238,7 +250,6 @@ export default function RouteDetailsPage() {
     router.push(`/driver?routeId=${routeId}`);
   }, [route?.status, updateRoute, router, routeId]);
 
-  // Callback para excluir rota
   const handleDelete = useCallback(async () => {
     setIsDeleting(true);
     try {
@@ -280,11 +291,32 @@ export default function RouteDetailsPage() {
   }
 
   const orderByType = route.orderBy || "DISTANCE";
+  const previstoCombustivel = route.estimatedFuel ? `${route.estimatedFuel.toFixed(1)} L` : "-";
+  const realizadoCombustivel = route.actualFuel ? `${route.actualFuel.toFixed(1)} L` : "-";
+  const combustivelDiff = route.actualFuel && route.estimatedFuel
+    ? route.actualFuel - route.estimatedFuel
+    : null;
+
+  const previstoDuracao = route.formattedDuration || "-";
+  const realizadoDuracao = route.actualTime ? formatDurationFromSeconds(route.actualTime) : "-";
+  const duracaoDiff = route.actualTime && route.totalDurationSeconds
+    ? route.actualTime - route.totalDurationSeconds
+    : null;
+  const duracaoDiffMinutes = duracaoDiff !== null ? Math.round(duracaoDiff / 60) : null;
+
+  const previstoDistancia = route.formattedDistance || "-";
+  const realizadoDistancia = route.actualDistance ? `${route.actualDistance.toFixed(1)} km` : "-";
+  const distanciaDiff = route.actualDistance && route.totalDistanceMeters
+    ? route.actualDistance - (route.totalDistanceMeters / 1000)
+    : null;
+
+  const eficiencia = route.actualDistance && route.actualFuel
+    ? (route.actualDistance / route.actualFuel).toFixed(1)
+    : null;
 
   return (
     <div className="min-h-screen bg-[#F5F6FA] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* ── HEADER (padrão dashboard) ─────────────────────────────────────── */}
         <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -394,22 +426,26 @@ export default function RouteDetailsPage() {
 
         <hr className="border-[#E2E8F0] mb-6" />
 
-        {/* ── CARDS DE INFORMAÇÕES (padrão dashboard) ─────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {hasValidDistance && (
             <InfoCard
               icon={RulerIcon}
-              title="Distância Total"
-              value={route.formattedDistance}
+              title="Distância"
+              value={previstoDistancia}
             />
           )}
           {hasValidDuration && (
             <InfoCard
               icon={ClockIcon}
-              title="Duração Estimada"
-              value={route.formattedDuration}
+              title="Duração"
+              value={previstoDuracao}
             />
           )}
+          <InfoCard
+            icon={FuelIcon}
+            title="Consumo"
+            value={previstoCombustivel}
+          />
           <InfoCard
             icon={CalendarIcon}
             title="Data Agendada"
@@ -426,9 +462,108 @@ export default function RouteDetailsPage() {
             title="Total de Paradas"
             value={stats.totalStops}
           />
+          {eficiencia && (
+            <InfoCard
+              icon={GaugeIcon}
+              title="Eficiência"
+              value={`${eficiencia} km/L`}
+            />
+          )}
         </div>
 
-        {/* ── RESPONSÁVEL ─────────────────────────────────────────────────────── */}
+        {/* ── CARDS DE COMPARAÇÃO (Previsto x Real) ─────────────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Distância */}
+          <Card className="bg-white shadow-lg rounded-xl border-0">
+            <CardHeader className="border-b pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg text-[#353A40]">
+                <RulerIcon className="h-5 w-5 text-[#2F80ED]" />
+                Distância
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#7A7E83]">Prevista:</span>
+                  <span className="font-semibold text-[#353A40]">{previstoDistancia}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#7A7E83]">Realizada:</span>
+                  <span className="font-semibold text-[#353A40]">{realizadoDistancia}</span>
+                </div>
+                {distanciaDiff !== null && (
+                  <div className="flex justify-between items-center pt-2 border-t border-[#E2E8F0]">
+                    <span className="text-sm text-[#7A7E83]">Diferença:</span>
+                    <span className={cn("font-semibold", getDifferenceColor(distanciaDiff))}>
+                      {distanciaDiff > 0 ? "+" : ""}{distanciaDiff.toFixed(1)} km
+                    </span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Duração */}
+          <Card className="bg-white shadow-lg rounded-xl border-0">
+            <CardHeader className="border-b pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg text-[#353A40]">
+                <ClockIcon className="h-5 w-5 text-[#2F80ED]" />
+                Duração
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#7A7E83]">Prevista:</span>
+                  <span className="font-semibold text-[#353A40]">{previstoDuracao}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#7A7E83]">Realizada:</span>
+                  <span className="font-semibold text-[#353A40]">{realizadoDuracao}</span>
+                </div>
+                {duracaoDiffMinutes !== null && (
+                  <div className="flex justify-between items-center pt-2 border-t border-[#E2E8F0]">
+                    <span className="text-sm text-[#7A7E83]">Diferença:</span>
+                    <span className={cn("font-semibold", getDifferenceColor(duracaoDiffMinutes))}>
+                      {duracaoDiffMinutes > 0 ? "+" : ""}{duracaoDiffMinutes} min
+                    </span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Consumo */}
+          <Card className="bg-white shadow-lg rounded-xl border-0">
+            <CardHeader className="border-b pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg text-[#353A40]">
+                <FuelIcon className="h-5 w-5 text-[#2F80ED]" />
+                Consumo
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#7A7E83]">Previsto:</span>
+                  <span className="font-semibold text-[#353A40]">{previstoCombustivel}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[#7A7E83]">Realizado:</span>
+                  <span className="font-semibold text-[#353A40]">{realizadoCombustivel}</span>
+                </div>
+                {combustivelDiff !== null && (
+                  <div className="flex justify-between items-center pt-2 border-t border-[#E2E8F0]">
+                    <span className="text-sm text-[#7A7E83]">Diferença:</span>
+                    <span className={cn("font-semibold", getDifferenceColor(combustivelDiff))}>
+                      {combustivelDiff > 0 ? "+" : ""}{combustivelDiff.toFixed(1)} L
+                    </span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         {route.userAssigned && (
           <Card className="bg-white shadow-lg rounded-xl border-0">
             <CardContent className="p-6">
@@ -449,7 +584,6 @@ export default function RouteDetailsPage() {
           </Card>
         )}
 
-        {/* ── DESCRIÇÃO ───────────────────────────────────────────────────────── */}
         {route.description && (
           <Card className="bg-white shadow-lg rounded-xl border-0">
             <CardHeader className="border-b pb-3">
@@ -466,7 +600,6 @@ export default function RouteDetailsPage() {
           </Card>
         )}
 
-        {/* ── PERCURSO (padrão lista do dashboard) ─────────────────────────────── */}
         <Card className="bg-white shadow-lg rounded-xl border-0">
           <CardHeader className="border-b pb-3">
             <CardTitle className="flex items-center gap-2 text-lg text-[#353A40]">
@@ -496,7 +629,6 @@ export default function RouteDetailsPage() {
           </CardContent>
         </Card>
 
-        {/* ── PROGRESSO DA ROTA ─────────────────────────────────────────────────── */}
         {stats.totalStops > 0 && (
           <Card className="bg-white shadow-lg rounded-xl border-0">
             <CardHeader className="border-b pb-3">
@@ -531,7 +663,6 @@ export default function RouteDetailsPage() {
         )}
       </div>
 
-      {/* ── DIALOG DE EXCLUSÃO ─────────────────────────────────────────────────── */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent className="bg-white border border-gray-200 rounded-xl">
           <AlertDialogHeader>

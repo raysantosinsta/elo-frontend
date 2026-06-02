@@ -13,6 +13,7 @@ import {
   Calendar,
   CalendarPlus,
   CheckCircle,
+  Fuel,
   LeafIcon,
   Loader2,
   MapPin,
@@ -26,7 +27,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocationWebSocket } from "@/hooks/useLocationWebSocket";
 
-// Importação dinâmica do mapa
 const RouteMap = dynamic(() => import("@/components/DriverMap"), {
   ssr: false,
   loading: () => (
@@ -37,7 +37,6 @@ const RouteMap = dynamic(() => import("@/components/DriverMap"), {
   ),
 });
 
-// 🎯 Componente de Skeleton Loading
 const DriverSkeleton = () => (
   <div className="h-screen w-full bg-slate-100">
     <div className="absolute top-4 left-4 right-4 z-[500]">
@@ -54,7 +53,6 @@ const DriverSkeleton = () => (
   </div>
 );
 
-// 🎯 Componente de Header memoizado
 const DriverHeader = memo(
   ({
     completedStops,
@@ -63,6 +61,8 @@ const DriverHeader = memo(
     currentStopIndex,
     isGPSActive,
     isSimulating,
+    totalDistanceReal,
+    totalFuelConsumed,
     onResumeGPS,
     onStartSimulation,
     onBack,
@@ -113,13 +113,27 @@ const DriverHeader = memo(
             <span className="truncate">{currentStop?.address}</span>
           </div>
 
-          <div className="flex gap-3 mt-2 text-xs text-slate-400">
+          {(totalDistanceReal > 0 || totalFuelConsumed > 0) && (
+            <div className="flex gap-3 mt-2 text-xs text-slate-400">
+              {totalDistanceReal > 0 && (
+                <span className="flex items-center gap-1">
+                  <MapPin size={12} /> {totalDistanceReal.toFixed(1)} km
+                </span>
+              )}
+              {totalFuelConsumed > 0 && (
+                <span className="flex items-center gap-1">
+                  <Fuel size={12} /> {totalFuelConsumed.toFixed(1)} L
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-3 mt-1 text-xs text-slate-400">
             <span className="flex items-center gap-1">
               <Calendar size={12} /> {currentStop?.city}/{currentStop?.state}
             </span>
           </div>
 
-          {/* Barra de progresso */}
           {totalStops > 0 && (
             <div className="mt-3">
               <div className="flex justify-between text-xs text-slate-400 mb-1">
@@ -142,7 +156,130 @@ const DriverHeader = memo(
 
 DriverHeader.displayName = "DriverHeader";
 
-// 🎯 COMPONENTE: Modal de criação de tarefa
+const RouteCompletionModal = memo(
+  ({
+    isOpen,
+    onClose,
+    onSubmit,
+    isSubmitting,
+    totalDistance,
+    defaultFuelConsumption,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (data: { distanciaReal: number; combustivelReal: number }) => Promise<void>;
+    isSubmitting: boolean;
+    totalDistance: number;
+    defaultFuelConsumption?: number;
+  }) => {
+    const [distanciaReal, setDistanciaReal] = useState(totalDistance);
+    const [combustivelReal, setCombustivelReal] = useState(defaultFuelConsumption || 0);
+
+    useEffect(() => {
+      if (isOpen) {
+        setDistanciaReal(totalDistance);
+        setCombustivelReal(defaultFuelConsumption || 0);
+      }
+    }, [isOpen, totalDistance, defaultFuelConsumption]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (distanciaReal <= 0) {
+        toast.warning("Informe a distância real percorrida");
+        return;
+      }
+      if (combustivelReal <= 0) {
+        toast.warning("Informe o consumo de combustível real");
+        return;
+      }
+      await onSubmit({ distanciaReal, combustivelReal });
+    };
+
+    return (
+      <div className="fixed inset-0 z-[1100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="bg-white w-full max-w-md rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
+          <div className="text-center mb-4">
+            <h3 className="text-xl font-bold text-emerald-600">🏁 Finalizar Rota</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Informe os dados reais da rota executada
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                📍 Distância Real Percorrida (km) *
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={distanciaReal}
+                onChange={(e) => setDistanciaReal(parseFloat(e.target.value) || 0)}
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                placeholder="Ex: 52.3"
+                required
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Distância total que você percorreu nesta rota
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
+                ⛽ Consumo de Combustível Real (litros) *
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={combustivelReal}
+                onChange={(e) => setCombustivelReal(parseFloat(e.target.value) || 0)}
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
+                placeholder="Ex: 12.5"
+                required
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Quantos litros de combustível foram consumidos
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="submit"
+                disabled={isSubmitting || distanciaReal <= 0 || combustivelReal <= 0}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="animate-spin" size={18} />
+                    Finalizando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={18} />
+                    Finalizar Rota
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  },
+);
+
+RouteCompletionModal.displayName = "RouteCompletionModal";
+
 const TaskCreationModal = memo(
   ({
     isOpen,
@@ -294,7 +431,6 @@ const TaskCreationModal = memo(
 
 TaskCreationModal.displayName = "TaskCreationModal";
 
-// 🎯 COMPONENTE: Modal de reagendamento de tarefa (para falha)
 const TaskRescheduleModal = memo(
   ({
     isOpen,
@@ -448,7 +584,6 @@ export default function DriverPage() {
     routeId || "",
   );
 
-  // Estados
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
   const [currentPosition, setCurrentPosition] = useState<
     [number, number] | null
@@ -464,14 +599,19 @@ export default function DriverPage() {
   const [isReschedulingTask, setIsReschedulingTask] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<
-    "main" | "confirm" | "create" | "reschedule" | null
+    "main" | "confirm" | "create" | "reschedule" | "completeRoute" | null
   >(null);
   const [optimizedStops, setOptimizedStops] = useState<any[]>([]);
   const [isReordering, setIsReordering] = useState(false);
+  const [totalDistanceReal, setTotalDistanceReal] = useState(0);
+  const [totalFuelConsumed, setTotalFuelConsumed] = useState(0);
+  const [isCompletingRoute, setIsCompletingRoute] = useState(false);
 
   const {
     sendLocation,
     emitRouteFinished,
+    emitRouteStarted,
+    emitRouteStatusChange,
     isConnected: wsConnected,
   } = useLocationWebSocket({
     routeId: routeId || "",
@@ -485,16 +625,21 @@ export default function DriverPage() {
     onRouteFinished: (data) => {
       console.log("🎉 [WS] Rota finalizada confirmada!", data);
     },
+    onRouteStarted: (data) => {
+      console.log("🚀 [WS] Rota iniciada!", data);
+    },
+    onRouteStatusChanged: (data) => {
+      console.log("📢 [WS] Status alterado:", data.status);
+    },
     isDriver: true,
   });
 
-  // Refs
   const lastReorderedRef = useRef<string>("");
   const watchIdRef = useRef<number | null>(null);
   const simulationInterval = useRef<NodeJS.Timeout | null>(null);
   const previousStopIdRef = useRef<string>("");
+  const lastPositionRef = useRef<[number, number] | null>(null);
 
-  // 🔥 Declarar displayStops e currentStop
   const displayStops = useMemo(
     () => (optimizedStops.length ? optimizedStops : route?.stops || []),
     [optimizedStops, route?.stops],
@@ -507,22 +652,18 @@ export default function DriverPage() {
     route?.status === "FINISHED" ||
     (completedStops === totalStops && totalStops > 0);
 
-  // 🔥 NOVO: Enviar localização sempre que currentPosition mudar
   const lastSentLocationRef = useRef<string>("");
   const lastSendTimeRef = useRef<number>(0);
 
   useEffect(() => {
     if (!currentPosition || !wsConnected) return;
 
-    // Limitar frequência de envio (máximo a cada 1 segundo)
     const now = Date.now();
     if (now - lastSendTimeRef.current < 1000) return;
 
-    // Verificar se a posição mudou significativamente (mais de 5 metros)
     const locationKey = `${currentPosition[0].toFixed(6)},${currentPosition[1].toFixed(6)}`;
     if (lastSentLocationRef.current === locationKey) return;
 
-    // Enviar via WebSocket (indicando se está em simulação ou GPS real)
     sendLocation(currentPosition[0], currentPosition[1], isSimulating);
 
     lastSentLocationRef.current = locationKey;
@@ -533,7 +674,6 @@ export default function DriverPage() {
     );
   }, [currentPosition, wsConnected, sendLocation, isSimulating]);
 
-  // Carregar estado salvo do localStorage
   useEffect(() => {
     if (routeId) {
       const savedIndex = localStorage.getItem(`driver_route_${routeId}_index`);
@@ -550,7 +690,6 @@ export default function DriverPage() {
     }
   }, [routeId]);
 
-  // Salvar estado no localStorage
   useEffect(() => {
     if (routeId && route) {
       localStorage.setItem(
@@ -568,7 +707,6 @@ export default function DriverPage() {
     }
   }, [routeId, currentStopIndex, visitedStops, failedStops, route]);
 
-  // 🔥 CORRIGIDO: Buscar task associada à parada atual - sem dependência problemática
   useEffect(() => {
     if (routeTasks && currentStop && currentStop.name) {
       const task = routeTasks.find((t: any) => t.title === currentStop.name);
@@ -577,17 +715,19 @@ export default function DriverPage() {
         setCurrentTaskId(newTaskId);
       }
     }
-  }, [routeTasks, currentStop]); // currentTaskId removido das dependências
+  }, [routeTasks, currentStop]);
 
-  // Função para fechar todos os modais
   const closeAllModals = useCallback(() => {
     setActiveModal(null);
     setComment("");
   }, []);
 
-  // Monitorar GPS
   useEffect(() => {
-    if (!navigator.geolocation || !isGPSActive) return;
+    if (!currentPosition || !isGPSActive) return;
+
+    if (watchIdRef.current) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
 
     navigator.geolocation.getCurrentPosition(
       (pos) => setCurrentPosition([pos.coords.latitude, pos.coords.longitude]),
@@ -606,7 +746,6 @@ export default function DriverPage() {
     };
   }, [isGPSActive]);
 
-  // Calcular distância
   const calculateDistance = useCallback(
     (lat1: number, lon1: number, lat2: number, lon2: number): number => {
       const R = 6371000;
@@ -624,7 +763,29 @@ export default function DriverPage() {
     [],
   );
 
-  // Reordenar paradas por proximidade
+  useEffect(() => {
+    if (!currentPosition || isSimulating) return;
+    
+    if (lastPositionRef.current) {
+      const distance = calculateDistance(
+        lastPositionRef.current[0],
+        lastPositionRef.current[1],
+        currentPosition[0],
+        currentPosition[1],
+      );
+      if (distance > 0.01) {
+        setTotalDistanceReal(prev => prev + distance);
+      }
+    }
+    lastPositionRef.current = currentPosition;
+  }, [currentPosition, isSimulating, calculateDistance]);
+
+  useEffect(() => {
+    if (route && route.status === 'IN_PROGRESS' && wsConnected) {
+      emitRouteStarted('Rota em andamento');
+    }
+  }, [route, wsConnected, emitRouteStarted]);
+
   const reorderStopsByProximity = useCallback(
     (stops: any[], currentLatLng: [number, number], visitedIds: string[]) => {
       if (!stops.length) return [];
@@ -669,7 +830,6 @@ export default function DriverPage() {
     [calculateDistance],
   );
 
-  // 🔥 CORRIGIDO: Efeito de reordenação - otimizado para evitar loops
   useEffect(() => {
     if (!route || !route.stops) {
       if (optimizedStops.length !== 0) setOptimizedStops([]);
@@ -713,7 +873,6 @@ export default function DriverPage() {
     }
   }, [route, currentPosition, visitedStops, reorderStopsByProximity]);
 
-  // 🔥 CORRIGIDO: Verificar chegada ao destino
   useEffect(() => {
     if (!currentPosition || !currentStop) return;
     if (previousStopIdRef.current === currentStop.id) return;
@@ -751,7 +910,6 @@ export default function DriverPage() {
     calculateDistance,
   ]);
 
-  // 🔥 FUNÇÃO COMPLETE TASK ONLY CORRIGIDA - com atualização da task
   const completeTaskOnly = useCallback(async () => {
     if (!currentStop) return;
 
@@ -761,11 +919,9 @@ export default function DriverPage() {
         ? `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED): ${comment}`
         : `✅ VISITA CONCLUÍDA COM SUCESSO (COMPLETED)`;
 
-      // 🔥 1. BUSCAR A TASK ASSOCIADA À PARADA
       let taskId: string | null = currentTaskId || null;
 
       if (!taskId && currentStop.name) {
-        // Tentar buscar a task pelo título
         const task = routeTasks?.find((t: any) => t.title === currentStop.name);
         taskId = task?.id || null;
         console.log(
@@ -773,11 +929,10 @@ export default function DriverPage() {
         );
       }
 
-      // 🔥 2. SE TEM TASK, FINALIZAR A TASK (mudar status para COMPLETED)
       if (taskId) {
         try {
           await finalizeTask.mutateAsync({
-            taskId: taskId, // ✅ Agora taskId é string garantida
+            taskId: taskId,
             data: {
               status: "COMPLETED",
               finalComment: successNote,
@@ -795,14 +950,12 @@ export default function DriverPage() {
         );
       }
 
-      // 🔥 3. MARCAR A PARADA COMO VISITADA NA ROTA
       await markStopVisited.mutateAsync({
         routeId: routeId!,
         stopId: currentStop.id!,
         notes: successNote,
       });
 
-      // Atualizar estado local
       const newVisitedStops = [...visitedStops, currentStop.id!];
       setVisitedStops(newVisitedStops);
       previousStopIdRef.current = "";
@@ -812,31 +965,9 @@ export default function DriverPage() {
 
       if (isLastStop) {
         console.log(
-          "🏁 [DriverPage] Última parada concluída! Finalizando rota...",
+          "🏁 [DriverPage] Última parada concluída! Abrindo modal de finalização...",
         );
-
-        // Atualizar status da rota
-        await updateRoute.mutateAsync({
-          id: routeId!,
-          data: { status: "FINISHED" as any },
-        });
-
-        if (wsConnected) {
-          emitRouteFinished();
-        }
-
-        // Limpar localStorage
-        localStorage.removeItem(`driver_route_${routeId}_index`);
-        localStorage.removeItem(`driver_route_${routeId}_visited`);
-        localStorage.removeItem(`driver_route_${routeId}_failed`);
-
-        toast.success("🎉 Rota finalizada com sucesso!", {
-          duration: 3000,
-          icon: "✅",
-        });
-
-        closeAllModals();
-        setTimeout(() => router.push("/routes"), 1500);
+        setActiveModal("completeRoute");
       } else {
         setCurrentStopIndex(nextIndex);
         window.dispatchEvent(new Event("route-updated"));
@@ -867,17 +998,12 @@ export default function DriverPage() {
     visitedStops,
     currentStopIndex,
     totalStops,
-    updateRoute,
-    router,
     refetch,
     refetchTasks,
     displayStops,
     closeAllModals,
-    wsConnected,
-    emitRouteFinished,
   ]);
 
-  // 🔥 CRIAR NOVA TAREFA - VERSÃO CORRIGIDA
   const handleCreateNewTask = useCallback(
     async (taskData: {
       title: string;
@@ -892,7 +1018,6 @@ export default function DriverPage() {
       });
 
       try {
-        // 🔥 1. FINALIZAR A TASK ATUAL COMO COMPLETED PRIMEIRO
         if (currentTaskId) {
           console.log(
             `📝 [DriverPage] Finalizando task atual: ${currentTaskId}`,
@@ -915,7 +1040,6 @@ export default function DriverPage() {
           );
         }
 
-        // 🔥 2. DEFINIR A COLUNA PADRÃO PARA A NOVA TAREFA
         let defaultColumnId = (route as any)?.columnId;
 
         if (!defaultColumnId) {
@@ -937,7 +1061,6 @@ export default function DriverPage() {
           }
         }
 
-        // 🔥 3. PREPARAR O ENDEREÇO DA NOVA TAREFA
         const taskAddress = {
           cep: currentStop.zipCode || "",
           endereco: currentStop.address || "",
@@ -960,11 +1083,9 @@ export default function DriverPage() {
           priority: 1,
         };
 
-        // 🔥 4. CRIAR A NOVA TAREFA
         await createTask.mutateAsync(createTaskPayload);
         console.log(`✅ [DriverPage] Nova tarefa criada: "${taskData.title}"`);
 
-        // 🔥 5. MARCAR A PARADA COMO VISITADA NA ROTA
         const successNote = comment
           ? `✅ VISITA CONCLUÍDA (COMPLETED). Nova tarefa criada: "${taskData.title}"\nObservações: ${comment}`
           : `✅ VISITA CONCLUÍDA (COMPLETED). Nova tarefa criada: "${taskData.title}"`;
@@ -975,7 +1096,6 @@ export default function DriverPage() {
           notes: successNote,
         });
 
-        // 🔥 6. ATUALIZAR ESTADO LOCAL
         const newVisitedStops = [...visitedStops, currentStop.id!];
         setVisitedStops(newVisitedStops);
         previousStopIdRef.current = "";
@@ -983,53 +1103,22 @@ export default function DriverPage() {
         const nextIndex = currentStopIndex + 1;
         const isLastStop = nextIndex >= totalStops;
 
-        // 🔥 7. VERIFICAR SE É A ÚLTIMA PARADA
         if (isLastStop) {
           console.log("🏁 [DriverPage] Última parada! Finalizando rota...");
-
-          // Atualizar status da rota
-          await updateRoute.mutateAsync({
-            id: routeId!,
-            data: { status: "FINISHED" as any },
-          });
-
-          // 🔥 Emitir evento WebSocket para observadores
-          if (wsConnected) {
-            emitRouteFinished();
-            console.log("📡 [DriverPage] Evento route-finished emitido");
-          }
-
-          // Limpar localStorage
-          localStorage.removeItem(`driver_route_${routeId}_index`);
-          localStorage.removeItem(`driver_route_${routeId}_visited`);
-          localStorage.removeItem(`driver_route_${routeId}_failed`);
-
-          toast.dismiss(loadingToast);
-          toast.success("🎉 Rota finalizada com sucesso!", {
-            duration: 3000,
-            icon: "✅",
-          });
-
-          closeAllModals();
-          setTimeout(() => router.push("/routes"), 1500);
+          setActiveModal("completeRoute");
         } else {
-          // 🔥 8. AVANÇAR PARA PRÓXIMA PARADA
           setCurrentStopIndex(nextIndex);
-
           toast.dismiss(loadingToast);
           toast.success(
             `✅ Tarefa "${taskData.title}" criada! Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
             { duration: 4000 },
           );
-
           closeAllModals();
         }
 
-        // 🔥 9. ATUALIZAR DADOS
         await refetch();
         await refetchTasks();
 
-        // 🔥 10. REORDENAR PARADAS SE NECESSÁRIO
         if (route?.orderBy === "DISTANCE" && currentPosition && !isLastStop) {
           const reordered = reorderStopsByProximity(
             route.stops,
@@ -1060,20 +1149,15 @@ export default function DriverPage() {
       displayStops,
       currentPosition,
       markStopVisited,
-      updateRoute,
       routeId,
       createTask,
       refetch,
       refetchTasks,
       reorderStopsByProximity,
-      router,
       closeAllModals,
-      wsConnected,
-      emitRouteFinished,
     ],
   );
 
-  // Reagendar tarefa em caso de falha
   const handleRescheduleTask = useCallback(
     async (data: { dueDate: string; observations: string }) => {
       if (!currentTaskId) {
@@ -1111,19 +1195,11 @@ export default function DriverPage() {
         const nextIndex = currentStopIndex + 1;
 
         if (nextIndex >= totalStops) {
-          await updateRoute.mutateAsync({
-            id: routeId!,
-            data: { status: "FINISHED" },
-          });
-          localStorage.removeItem(`driver_route_${routeId}_index`);
-          localStorage.removeItem(`driver_route_${routeId}_visited`);
-          localStorage.removeItem(`driver_route_${routeId}_failed`);
-          toast.success("🎉 Rota finalizada com sucesso!", { duration: 3000 });
-          setTimeout(() => router.push("/routes"), 1500);
+          setActiveModal("completeRoute");
         } else {
           setCurrentStopIndex(nextIndex);
           toast.warning(
-            `⚠️ Falha registrada (FAILED)! Tarefa reagendada. Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
+            `⚠️ Falha registrada! Tarefa reagendada. Próximo destino: ${displayStops[nextIndex]?.name || `Parada ${nextIndex + 1}`}`,
             { duration: 4000 },
           );
         }
@@ -1159,18 +1235,55 @@ export default function DriverPage() {
       totalStops,
       displayStops,
       markStopVisited,
-      updateRoute,
       finalizeTask,
       refetch,
       refetchTasks,
-      router,
       closeAllModals,
     ],
   );
 
-  // 🔥 FUNÇÃO DE SIMULAÇÃO CORRIGIDA - MAIS DEVAGAR
+  const handleFinalizeRoute = useCallback(async (data: { distanciaReal: number; combustivelReal: number }) => {
+    setIsCompletingRoute(true);
+    const loadingToast = toast.loading("Finalizando rota...", { duration: Infinity });
+
+    try {
+      await updateRoute.mutateAsync({
+        id: routeId!,
+        data: {
+          status: "FINISHED",
+          distanciaReal: data.distanciaReal,
+          combustivelReal: data.combustivelReal,
+        } as any,
+      });
+
+      if (wsConnected) {
+        emitRouteFinished(`Rota finalizada. ${data.distanciaReal} km percorridos, ${data.combustivelReal} L consumidos`);
+      }
+
+      localStorage.removeItem(`driver_route_${routeId}_index`);
+      localStorage.removeItem(`driver_route_${routeId}_visited`);
+      localStorage.removeItem(`driver_route_${routeId}_failed`);
+
+      toast.dismiss(loadingToast);
+      toast.success("🎉 Rota finalizada com sucesso!", {
+        duration: 4000,
+        icon: "✅",
+      });
+
+      setActiveModal(null);
+      setTimeout(() => router.push("/routes"), 1500);
+    } catch (error) {
+      console.error("Erro ao finalizar rota:", error);
+      toast.dismiss(loadingToast);
+      toast.error("❌ Erro ao finalizar rota", {
+        description: "Tente novamente ou contate o suporte.",
+      });
+    } finally {
+      setIsCompletingRoute(false);
+    }
+  }, [routeId, updateRoute, wsConnected, emitRouteFinished, router]);
+
   const startSimulation = useCallback(() => {
-    // Encontrar o PRÓXIMO destino NÃO VISITADO
     let nextPendingIndex = -1;
 
     for (let i = currentStopIndex; i < displayStops.length; i++) {
@@ -1217,24 +1330,12 @@ export default function DriverPage() {
     }
 
     console.log("🎮 Iniciando simulação para:", targetStop.name);
-    console.log(
-      "   Distância até o destino:",
-      calculateDistance(
-        currentPosition[0],
-        currentPosition[1],
-        targetStop.latitude,
-        targetStop.longitude,
-      ).toFixed(2),
-      "km",
-    );
 
     setIsGPSActive(false);
     setIsSimulating(true);
 
-    // Disparar evento de início da simulação
     window.dispatchEvent(new Event("simulation-start"));
 
-    // 🔥 CONFIGURAÇÕES MAIS DEVAGAR
     const totalDistance = calculateDistance(
       currentPosition[0],
       currentPosition[1],
@@ -1242,13 +1343,9 @@ export default function DriverPage() {
       targetStop.longitude,
     );
 
-    // 🔥 VELOCIDADE MUITO MAIS DEVAGAR (1-2 km/h para simulação)
-    // Queremos que a simulação demore entre 30 segundos a 2 minutos dependendo da distância
-    const DESIRED_SPEED_KMH = 2; // 2 km/h (bem devagar)
+    const DESIRED_SPEED_KMH = 2;
     const estimatedDurationSeconds = (totalDistance / DESIRED_SPEED_KMH) * 3600;
-
-    // Número de passos baseado no tempo desejado (atualização a cada 500ms)
-    const UPDATE_INTERVAL_MS = 500; // 500ms entre cada atualização
+    const UPDATE_INTERVAL_MS = 500;
     const steps = Math.max(
       30,
       Math.min(
@@ -1263,9 +1360,6 @@ export default function DriverPage() {
     console.log(
       `   Duração estimada: ${Math.round(estimatedDurationSeconds)} segundos`,
     );
-    console.log(
-      `   Passos: ${steps} (atualizações a cada ${UPDATE_INTERVAL_MS}ms)`,
-    );
 
     let step = 0;
     const startLat = currentPosition[0];
@@ -1273,24 +1367,20 @@ export default function DriverPage() {
     const endLat = targetStop.latitude;
     const endLng = targetStop.longitude;
 
-    // Limpar intervalo anterior
     if (simulationInterval.current) {
       clearInterval(simulationInterval.current);
       simulationInterval.current = null;
     }
 
-    // 🔥 USAR INTERVALO MAIS LONGO (500ms) PARA SIMULAÇÃO MAIS DEVAGAR
     simulationInterval.current = setInterval(() => {
       step++;
       const progress = Math.min(1, step / steps);
 
-      // Usar easing linear para movimento suave
       const newLat = startLat + (endLat - startLat) * progress;
       const newLng = startLng + (endLng - startLng) * progress;
 
       setCurrentPosition([newLat, newLng]);
 
-      // Log a cada 10 passos para não poluir o console
       if (step % 10 === 0 || step === steps) {
         console.log(`   Simulação: ${Math.round(progress * 100)}% concluída`);
       }
@@ -1301,11 +1391,9 @@ export default function DriverPage() {
           simulationInterval.current = null;
         }
 
-        // Posicionar exatamente no destino
         setCurrentPosition([endLat, endLng]);
         setIsSimulating(false);
 
-        // Disparar evento de fim da simulação
         window.dispatchEvent(new Event("simulation-end"));
 
         toast.success(
@@ -1313,9 +1401,7 @@ export default function DriverPage() {
           { duration: 4000 },
         );
 
-        // Pequeno delay para garantir que a posição final foi atualizada
         setTimeout(() => {
-          // Forçar verificação de chegada
           const distance = calculateDistance(
             endLat,
             endLng,
@@ -1347,71 +1433,10 @@ export default function DriverPage() {
     setIsSimulating(false);
     if (simulationInterval.current) clearInterval(simulationInterval.current);
 
-    // 🔥 Dispara evento para o mapa saber que a simulação terminou
     window.dispatchEvent(new Event("simulation-end"));
 
     toast.info("GPS em tempo real ativado", { duration: 2000 });
   }, []);
-
-  useEffect(() => {
-    const checkAndFinishRoute = async () => {
-      // Evitar execução múltipla
-      if (isFinishing || !route || (route.status as string) === "FINISHED")
-        return;
-
-      // Verificar se todas as paradas foram visitadas OU falharam
-      const allStopsProcessed = completedStops === totalStops && totalStops > 0;
-
-      if (allStopsProcessed) {
-        console.log(
-          "🏁 [DriverPage] Detecção automática: todas as paradas processadas!",
-        );
-        setIsFinishing(true);
-
-        try {
-          // Só atualiza se a rota já não estiver FINISHED
-          if (route.status !== "FINISHED") {
-            await updateRoute.mutateAsync({
-              id: routeId!,
-              data: { status: "FINISHED" },
-            });
-
-            // Emitir evento WebSocket
-            if (wsConnected) {
-              emitRouteFinished();
-            }
-          }
-
-          // Limpar localStorage
-          localStorage.removeItem(`driver_route_${routeId}_index`);
-          localStorage.removeItem(`driver_route_${routeId}_visited`);
-          localStorage.removeItem(`driver_route_${routeId}_failed`);
-
-          toast.success("🎉 Rota finalizada com sucesso!", {
-            duration: 4000,
-            icon: "✅",
-          });
-
-          setTimeout(() => router.push("/routes"), 2000);
-        } catch (error) {
-          console.error("Erro ao finalizar rota automaticamente:", error);
-          setIsFinishing(false);
-        }
-      }
-    };
-
-    checkAndFinishRoute();
-  }, [
-    completedStops,
-    totalStops,
-    route,
-    routeId,
-    updateRoute,
-    router,
-    isFinishing,
-    wsConnected,
-    emitRouteFinished,
-  ]);
 
   const prefetchRoutes = useCallback(
     () => router.prefetch("/routes"),
@@ -1419,7 +1444,11 @@ export default function DriverPage() {
   );
   const handleBack = useCallback(() => router.back(), [router]);
 
-  // Preparar endereço padrão
+  const plannedDistance = useMemo(() => {
+    if (!route?.totalDistanceMeters) return 0;
+    return route.totalDistanceMeters / 1000;
+  }, [route?.totalDistanceMeters]);
+
   const defaultTaskAddress = currentStop
     ? {
         address: currentStop.address,
@@ -1512,6 +1541,8 @@ export default function DriverPage() {
         currentStopIndex={currentStopIndex}
         isGPSActive={isGPSActive}
         isSimulating={isSimulating}
+        totalDistanceReal={totalDistanceReal}
+        totalFuelConsumed={totalFuelConsumed}
         onResumeGPS={resumeRealGPS}
         onStartSimulation={startSimulation}
         onBack={handleBack}
@@ -1534,7 +1565,6 @@ export default function DriverPage() {
         />
       </div>
 
-      {/* MODAL PRINCIPAL - Concluir ou Falha */}
       {activeModal === "main" && (
         <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
@@ -1593,7 +1623,6 @@ export default function DriverPage() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO: "Deseja criar nova tarefa?" */}
       {activeModal === "confirm" && (
         <div className="fixed inset-0 z-[1010] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl text-center">
@@ -1638,7 +1667,6 @@ export default function DriverPage() {
         </div>
       )}
 
-      {/* MODAL DE CRIAÇÃO DE TAREFA */}
       <TaskCreationModal
         isOpen={activeModal === "create"}
         onClose={() => setActiveModal("confirm")}
@@ -1647,13 +1675,21 @@ export default function DriverPage() {
         isSubmitting={isCreatingTask}
       />
 
-      {/* MODAL DE REAGENDAMENTO (FALHA) */}
       <TaskRescheduleModal
         isOpen={activeModal === "reschedule"}
         onClose={() => setActiveModal("main")}
         onSubmit={handleRescheduleTask}
         taskTitle={currentStop?.name || `Parada ${currentStopIndex + 1}`}
         isSubmitting={isReschedulingTask}
+      />
+
+      <RouteCompletionModal
+        isOpen={activeModal === "completeRoute"}
+        onClose={() => setActiveModal(null)}
+        onSubmit={handleFinalizeRoute}
+        isSubmitting={isCompletingRoute}
+        totalDistance={totalDistanceReal || plannedDistance}
+        defaultFuelConsumption={totalFuelConsumed || undefined}
       />
     </div>
   );
