@@ -149,20 +149,21 @@ export default function BillingPage() {
     load();
   };
 
-  const createSubscription = async (planId: string) => {
+  const openCheckout = async (planId: string) => {
     if (!user?.companyId) return;
     try {
-      await billingService.createSubscription({
+      const response = await billingService.createCheckout({
         companyId: user.companyId,
         planId,
         billingType: "UNDEFINED",
       });
-      toast.success("Assinatura criada no Asaas.");
+      window.open(response.data.checkoutUrl, "_blank", "noopener,noreferrer");
+      toast.success("Checkout do Asaas aberto.");
       load();
     } catch (error: any) {
       toast.error(
         error?.response?.data?.message ||
-          "Nao foi possivel criar a assinatura no Asaas.",
+          "Nao foi possivel abrir o checkout do Asaas.",
       );
     }
   };
@@ -377,10 +378,10 @@ export default function BillingPage() {
                   {isCompanyAdmin && user?.companyId && (
                     <Button
                       variant="outline"
-                      onClick={() => createSubscription(plan.id)}
+                      onClick={() => openCheckout(plan.id)}
                       className="w-full"
                     >
-                      Contratar no Asaas
+                      Contratar Plano
                     </Button>
                   )}
                   {isMaster && (

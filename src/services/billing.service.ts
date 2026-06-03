@@ -89,6 +89,17 @@ export const billingService = {
     billingType?: string;
   }) => api.post("/billing/subscriptions", data),
 
+  createCheckout: (data: {
+    companyId: string;
+    planId: string;
+    billingType?: string;
+  }) =>
+    api.post<{
+      subscriptionId: string;
+      paymentLinkId: string;
+      checkoutUrl: string;
+    }>("/billing/checkout", data),
+
   getPartners: () => api.get<Partner[]>("/billing/partners"),
 
   createPartner: (data: {
