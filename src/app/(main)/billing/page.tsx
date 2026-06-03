@@ -5,8 +5,10 @@ import {
   CreditCard,
   Loader2,
   Plus,
+  Power,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   Users,
   WalletCards,
 } from "lucide-react";
@@ -50,7 +52,7 @@ function statusLabel(status?: string) {
     PENDING: "Pendente",
     APPROVED: "Aprovado",
     REJECTED: "Reprovado",
-    AVAILABLE: "Disponível",
+    AVAILABLE: "DisponÃƒÂ­vel",
     PAID: "Pago",
     REVERSED: "Revertido",
   };
@@ -74,20 +76,22 @@ export default function BillingPage() {
     userLimit: "",
   });
 
-  const isAdmin = user?.role === "MASTER" || user?.role === "ADMIN";
+  const isMaster = user?.role === "MASTER";
+  const isCompanyAdmin = user?.role === "ADMIN";
+  const canAccessBilling = isMaster || isCompanyAdmin;
 
   const load = async () => {
     setLoading(true);
     try {
       const [plansResult, myBillingResult] = await Promise.all([
-        billingService.getPlans(true),
+        billingService.getPlans(isMaster),
         billingService.getMyBilling().catch(() => ({ data: null })),
       ]);
 
       setPlans(plansResult.data);
       setMyBilling(myBillingResult.data);
 
-      if (isAdmin) {
+      if (isMaster) {
         const [kpisResult, partnersResult, commissionsResult] =
           await Promise.all([
             billingService.getAdminKpis().catch(() => ({ data: null })),
@@ -105,7 +109,7 @@ export default function BillingPage() {
 
   useEffect(() => {
     load();
-  }, [isAdmin]);
+  }, [isMaster]);
 
   const statusTone = useMemo(() => {
     const status = myBilling?.billingStatus;
@@ -147,12 +151,33 @@ export default function BillingPage() {
 
   const createSubscription = async (planId: string) => {
     if (!user?.companyId) return;
-    await billingService.createSubscription({
-      companyId: user.companyId,
-      planId,
-      billingType: "UNDEFINED",
-    });
-    toast.success("Assinatura criada no Asaas.");
+    try {
+      await billingService.createSubscription({
+        companyId: user.companyId,
+        planId,
+        billingType: "UNDEFINED",
+      });
+      toast.success("Assinatura criada no Asaas.");
+      load();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message ||
+          "Nao foi possivel criar a assinatura no Asaas.",
+      );
+    }
+  };
+
+  const togglePlanStatus = async (plan: BillingPlan) => {
+    if (!isMaster) return;
+    await billingService.updatePlan(plan.id, { isActive: !plan.isActive });
+    toast.success(plan.isActive ? "Plano inativado." : "Plano ativado.");
+    load();
+  };
+
+  const deletePlan = async (plan: BillingPlan) => {
+    if (!isMaster) return;
+    await billingService.deletePlan(plan.id);
+    toast.success("Plano removido do catalogo ativo.");
     load();
   };
 
@@ -160,6 +185,22 @@ export default function BillingPage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-[#2F80ED]" />
+      </div>
+    );
+  }
+
+  if (!canAccessBilling) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center p-4">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle>Acesso bloqueado</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-slate-500">
+            Esta area esta disponivel apenas para usuarios MASTER ou ADMIN da
+            empresa.
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -172,7 +213,7 @@ export default function BillingPage() {
             Financeiro SaaS
           </h1>
           <p className="text-sm text-slate-500">
-            Asaas, trial, assinaturas, parceiros, comissões e saques.
+            Asaas, trial, assinaturas, parceiros, comissÃƒÂµes e saques.
           </p>
         </div>
         <Button variant="outline" onClick={load} className="gap-2">
@@ -194,7 +235,7 @@ export default function BillingPage() {
               {statusLabel(myBilling?.billingStatus)}
             </Badge>
             <p className="mt-2 text-xs text-slate-500">
-              Trial até{" "}
+              Trial ate{" "}
               {myBilling?.trialEnd
                 ? new Date(myBilling.trialEnd).toLocaleDateString("pt-BR")
                 : "-"}
@@ -202,7 +243,7 @@ export default function BillingPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        {isMaster && <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm text-slate-500">
               <WalletCards className="h-4 w-4" />
@@ -212,9 +253,9 @@ export default function BillingPage() {
           <CardContent className="text-2xl font-semibold">
             {money(kpis?.revenue.received)}
           </CardContent>
-        </Card>
+        </Card>}
 
-        <Card>
+        {isMaster && <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm text-slate-500">
               <Users className="h-4 w-4" />
@@ -224,9 +265,9 @@ export default function BillingPage() {
           <CardContent className="text-2xl font-semibold">
             {kpis?.partners.pendingApproval ?? 0}
           </CardContent>
-        </Card>
+        </Card>}
 
-        <Card>
+        {isMaster && <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm text-slate-500">
               <ShieldCheck className="h-4 w-4" />
@@ -236,18 +277,20 @@ export default function BillingPage() {
           <CardContent className="text-2xl font-semibold">
             {kpis?.webhooks.failed ?? 0}
           </CardContent>
-        </Card>
+        </Card>}
       </div>
 
       <Tabs defaultValue="plans">
         <TabsList>
-          <TabsTrigger value="plans">Planos</TabsTrigger>
-          <TabsTrigger value="partners">Parceiros</TabsTrigger>
-          <TabsTrigger value="commissions">Comissões</TabsTrigger>
+          <TabsTrigger value="plans">
+            {isMaster ? "Planos" : "Contratar plano"}
+          </TabsTrigger>
+          {isMaster && <TabsTrigger value="partners">Parceiros</TabsTrigger>}
+          {isMaster && <TabsTrigger value="commissions">Comissoes</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="plans" className="mt-4 space-y-4">
-          {isAdmin && (
+          {isMaster && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Novo plano</CardTitle>
@@ -328,10 +371,10 @@ export default function BillingPage() {
                     {money(plan.price)}
                   </div>
                   <p className="text-sm text-slate-500">
-                    {plan.period === "MONTHLY" ? "Mensal" : "Anual"} •{" "}
+                    {plan.period === "MONTHLY" ? "Mensal" : "Anual"} -{" "}
                     {plan.trialDays} dias de trial
                   </p>
-                  {user?.companyId && (
+                  {isCompanyAdmin && user?.companyId && (
                     <Button
                       variant="outline"
                       onClick={() => createSubscription(plan.id)}
@@ -339,6 +382,26 @@ export default function BillingPage() {
                     >
                       Contratar no Asaas
                     </Button>
+                  )}
+                  {isMaster && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => togglePlanStatus(plan)}
+                        className="gap-2"
+                      >
+                        <Power className="h-4 w-4" />
+                        {plan.isActive ? "Inativar" : "Ativar"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => deletePlan(plan)}
+                        className="gap-2 text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Excluir
+                      </Button>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -360,7 +423,7 @@ export default function BillingPage() {
                         {partner.company?.name || partner.code}
                       </div>
                       <div className="text-sm text-slate-500">
-                        Código {partner.code} • Comissão{" "}
+                        CÃƒÂ³digo {partner.code} Ã¢â‚¬Â¢ ComissÃƒÂ£o{" "}
                         {Number(partner.commissionRate)}%
                       </div>
                     </div>
@@ -391,7 +454,7 @@ export default function BillingPage() {
                         {commission.company?.name || "Empresa"}
                       </div>
                       <div className="text-sm text-slate-500">
-                        {statusLabel(commission.status)} • Base{" "}
+                        {statusLabel(commission.status)} Ã¢â‚¬Â¢ Base{" "}
                         {money(commission.baseValue)}
                       </div>
                     </div>
@@ -402,7 +465,7 @@ export default function BillingPage() {
                 ))}
                 {!commissions.length && (
                   <div className="p-6 text-sm text-slate-500">
-                    Nenhuma comissão encontrada.
+                    Nenhuma comissÃƒÂ£o encontrada.
                   </div>
                 )}
               </div>

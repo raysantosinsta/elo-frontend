@@ -57,6 +57,21 @@ export const billingService = {
     userLimit?: number;
   }) => api.post<BillingPlan>("/billing/plans", data),
 
+  updatePlan: (
+    id: string,
+    data: Partial<{
+      name: string;
+      description: string;
+      price: number;
+      period: "MONTHLY" | "YEARLY";
+      trialDays: number;
+      userLimit: number;
+      isActive: boolean;
+    }>,
+  ) => api.patch<BillingPlan>(`/billing/plans/${id}`, data),
+
+  deletePlan: (id: string) => api.delete<BillingPlan>(`/billing/plans/${id}`),
+
   getMyBilling: () => api.get("/billing/me"),
 
   getAdminKpis: () => api.get<BillingKpis>("/billing/admin/kpis"),
