@@ -22,32 +22,39 @@ const iconUrls = {
   red: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
 };
 
-const defaultIcon = L.icon({
-  iconUrl: iconUrls.default,
-  shadowUrl: iconUrls.shadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
+let defaultIcon: L.Icon | undefined;
+let activeIcon: L.Icon | undefined;
+let visitedIcon: L.Icon | undefined;
+let driverIcon: L.Icon | undefined;
 
-const activeIcon = L.icon({
-  iconUrl: iconUrls.red,
-  shadowUrl: iconUrls.shadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
+if (typeof window !== "undefined") {
+  defaultIcon = L.icon({
+    iconUrl: iconUrls.default,
+    shadowUrl: iconUrls.shadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+  });
 
-const visitedIcon = L.icon({
-  iconUrl: iconUrls.green,
-  shadowUrl: iconUrls.shadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
+  activeIcon = L.icon({
+    iconUrl: iconUrls.red,
+    shadowUrl: iconUrls.shadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+  });
 
-const driverIcon = L.icon({
-  iconUrl: iconUrls.car,
-  iconSize: [40, 40],
-  iconAnchor: [20, 20],
-});
+  visitedIcon = L.icon({
+    iconUrl: iconUrls.green,
+    shadowUrl: iconUrls.shadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+  });
+
+  driverIcon = L.icon({
+    iconUrl: iconUrls.car,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+  });
+}
 
 // 🔥 FALLBACK: Fortaleza - Centro
 const FALLBACK_LOCATION: [number, number] = [-3.7319, -38.5267];

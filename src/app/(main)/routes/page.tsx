@@ -700,11 +700,53 @@ export default function RoutesPage() {
       },
       {
         header: "Distância",
-        cell: (route) => (
-          <span className="text-[#353A40]">
-            {route.formattedDistance || "-"}
-          </span>
-        ),
+        cell: (route) => {
+          const previsto = route.formattedDistance || "-";
+          const realizado = route.actualDistance
+            ? `${route.actualDistance.toFixed(1)} km`
+            : "-";
+          
+          let previstoKm = route.totalDistanceMeters ? route.totalDistanceMeters / 1000 : null;
+          const diff =
+            route.actualDistance && previstoKm
+              ? route.actualDistance - previstoKm
+              : null;
+
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="cursor-help">
+                    <div className="text-[#353A40] text-sm">P: {previsto}</div>
+                    <div className="text-xs text-[#7A7E83]">
+                      R: {realizado}
+                      {diff !== null && (
+                        <span
+                          className={cn(
+                            "ml-1",
+                            getDifferenceColor(diff),
+                          )}
+                        >
+                          ({formatDifference(diff, " km")})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="bg-[#353A40] text-white border-0 shadow-lg p-2 rounded-lg">
+                  <p>Previsto: {previsto}</p>
+                  <p>Real: {realizado}</p>
+                  {diff !== null && (
+                    <p className={getDifferenceColor(diff)}>
+                      Diferença: {diff > 0 ? "+" : ""}
+                      {diff.toFixed(1)} km
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        },
       },
       {
         header: "Duração",

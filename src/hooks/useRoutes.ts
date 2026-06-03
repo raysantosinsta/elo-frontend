@@ -77,7 +77,6 @@ export const useRoutes = () => {
   // =============================================
   // GET TASKS BY ROUTE (DESABILITADO POR PADRÃO)
   // =============================================
-  // 🔥 IMPORTANTE: Este hook só será chamado se você passar enabled: true manualmente
   const useGetTasksByRoute = (routeId: string, enabled: boolean = false) =>
     useQuery({
       queryKey: ["tasks-by-route", routeId],
@@ -90,10 +89,10 @@ export const useRoutes = () => {
           return [];
         }
       },
-      enabled: !!routeId && enabled, // 🔥 Só executa se enabled = true
+      enabled: !!routeId && enabled,
       staleTime: 1000 * 60,
       gcTime: 1000 * 60 * 5,
-      retry: 0, // 🔥 Não tentar novamente em caso de erro
+      retry: 0,
       retryDelay: 1000,
     });
 
@@ -205,6 +204,28 @@ export const useRoutes = () => {
       },
     });
 
+  // 🔥 MUTATION CORRIGIDA - Aceita actualDistance, actualFuel, actualTime
+  const useCompleteRoute = () =>
+    useMutation({
+      mutationFn: ({
+        id,
+        data,
+      }: {
+        id: string;
+        data: {
+          actualDistance?: number;
+          actualFuel?: number;
+          actualTime?: number;
+          observations?: string;
+        };
+      }) => routesApi.completeRoute(id, data),
+      onSuccess: (_, { id }) => {
+        queryClient.invalidateQueries({ queryKey: ["routes"] });
+        queryClient.invalidateQueries({ queryKey: ["routes", id] });
+        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
+      },
+    });
+
   const useDeleteRoute = () =>
     useMutation({
       mutationFn: (id: string) => routesApi.delete(id),
@@ -253,6 +274,7 @@ export const useRoutes = () => {
     // Mutations
     useCreateRoute,
     useUpdateRoute,
+    useCompleteRoute,
     useDeleteRoute,
     useCreateTask,
     useUpdateTask,

@@ -20,6 +20,7 @@ import {
   Play,
   RotateCcw,
   XCircle,
+  Clock,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -63,11 +64,22 @@ const DriverHeader = memo(
     isSimulating,
     totalDistanceReal,
     totalFuelConsumed,
+    totalDurationReal,
     onResumeGPS,
     onStartSimulation,
     onBack,
   }: any) => {
     const progress = totalStops > 0 ? (completedStops / totalStops) * 100 : 0;
+
+    const formatDuration = (seconds: number) => {
+      if (!seconds || seconds === 0) return "";
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      if (hours > 0 && minutes > 0) return `${hours}h ${minutes}min`;
+      if (hours > 0) return `${hours}h`;
+      if (minutes > 0) return `${minutes}min`;
+      return `${seconds}s`;
+    };
 
     return (
       <div className="absolute top-4 left-4 right-4 z-[500] pointer-events-none">
@@ -113,11 +125,16 @@ const DriverHeader = memo(
             <span className="truncate">{currentStop?.address}</span>
           </div>
 
-          {(totalDistanceReal > 0 || totalFuelConsumed > 0) && (
-            <div className="flex gap-3 mt-2 text-xs text-slate-400">
+          {(totalDistanceReal > 0 || totalFuelConsumed > 0 || totalDurationReal > 0) && (
+            <div className="flex gap-3 mt-2 text-xs text-slate-400 flex-wrap">
               {totalDistanceReal > 0 && (
                 <span className="flex items-center gap-1">
                   <MapPin size={12} /> {totalDistanceReal.toFixed(1)} km
+                </span>
+              )}
+              {totalDurationReal > 0 && (
+                <span className="flex items-center gap-1">
+                  <Clock size={12} /> {formatDuration(totalDurationReal)}
                 </span>
               )}
               {totalFuelConsumed > 0 && (
@@ -163,115 +180,94 @@ const RouteCompletionModal = memo(
     onSubmit,
     isSubmitting,
     totalDistance,
-    defaultFuelConsumption,
+    totalFuel,
+    totalDuration,
   }: {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (data: { distanciaReal: number; combustivelReal: number }) => Promise<void>;
+    onSubmit: () => Promise<void>;
     isSubmitting: boolean;
     totalDistance: number;
-    defaultFuelConsumption?: number;
+    totalFuel: number;
+    totalDuration: number;
   }) => {
-    const [distanciaReal, setDistanciaReal] = useState(totalDistance);
-    const [combustivelReal, setCombustivelReal] = useState(defaultFuelConsumption || 0);
-
-    useEffect(() => {
-      if (isOpen) {
-        setDistanciaReal(totalDistance);
-        setCombustivelReal(defaultFuelConsumption || 0);
-      }
-    }, [isOpen, totalDistance, defaultFuelConsumption]);
+    const formatDuration = (seconds: number) => {
+      if (!seconds || seconds === 0) return "0 min";
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      if (hours > 0 && minutes > 0) return `${hours}h ${minutes}min`;
+      if (hours > 0) return `${hours}h`;
+      return `${minutes}min`;
+    };
 
     if (!isOpen) return null;
-
-    const handleSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (distanciaReal <= 0) {
-        toast.warning("Informe a distância real percorrida");
-        return;
-      }
-      if (combustivelReal <= 0) {
-        toast.warning("Informe o consumo de combustível real");
-        return;
-      }
-      await onSubmit({ distanciaReal, combustivelReal });
-    };
 
     return (
       <div className="fixed inset-0 z-[1100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
         <div className="bg-white w-full max-w-md rounded-2xl p-6 animate-in slide-in-from-bottom-10 shadow-2xl">
           <div className="text-center mb-4">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <CheckCircle className="text-emerald-600" size={32} />
+            </div>
             <h3 className="text-xl font-bold text-emerald-600">🏁 Finalizar Rota</h3>
             <p className="text-sm text-gray-500 mt-1">
-              Informe os dados reais da rota executada
+              Dados coletados automaticamente durante a rota
             </p>
           </div>
 
-          <form onSubmit={handleSubmit}>
-            <div className="mb-4">
-              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                📍 Distância Real Percorrida (km) *
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                value={distanciaReal}
-                onChange={(e) => setDistanciaReal(parseFloat(e.target.value) || 0)}
-                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                placeholder="Ex: 52.3"
-                required
-              />
+          <div className="space-y-3 mb-6">
+            <div className="bg-slate-50 rounded-xl p-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600">📍 Distância percorrida:</span>
+                <span className="text-lg font-bold text-slate-800">{totalDistance.toFixed(1)} km</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600">⏱️ Duração total:</span>
+                <span className="text-lg font-bold text-slate-800">{formatDuration(totalDuration)}</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600">⛽ Consumo total:</span>
+                <span className="text-lg font-bold text-slate-800">{totalFuel.toFixed(1)} L</span>
+              </div>
               <p className="text-xs text-slate-400 mt-1">
-                Distância total que você percorreu nesta rota
+                *Calculado automaticamente com base na distância percorrida
               </p>
             </div>
+          </div>
 
-            <div className="mb-4">
-              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase">
-                ⛽ Consumo de Combustível Real (litros) *
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                value={combustivelReal}
-                onChange={(e) => setCombustivelReal(parseFloat(e.target.value) || 0)}
-                className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#D35400] outline-none transition-all"
-                placeholder="Ex: 12.5"
-                required
-              />
-              <p className="text-xs text-slate-400 mt-1">
-                Quantos litros de combustível foram consumidos
-              </p>
-            </div>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={onSubmit}
+              disabled={isSubmitting}
+              className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="animate-spin" size={18} />
+                  Finalizando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={18} />
+                  Finalizar Rota
+                </>
+              )}
+            </button>
 
-            <div className="flex flex-col gap-2">
-              <button
-                type="submit"
-                disabled={isSubmitting || distanciaReal <= 0 || combustivelReal <= 0}
-                className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="animate-spin" size={18} />
-                    Finalizando...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle size={18} />
-                    Finalizar Rota
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-3 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -562,6 +558,7 @@ export default function DriverPage() {
     useGetRouteById,
     useMarkStopVisited,
     useUpdateRoute,
+    useCompleteRoute,
     useCreateTask,
     useUpdateTask,
     useGetTasksByRoute,
@@ -576,12 +573,14 @@ export default function DriverPage() {
 
   const markStopVisited = useMarkStopVisited();
   const updateRoute = useUpdateRoute();
+  const completeRoute = useCompleteRoute();
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
   const finalizeTask = useFinalizeTask();
 
   const { data: routeTasks, refetch: refetchTasks } = useGetTasksByRoute(
     routeId || "",
+    true,
   );
 
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
@@ -603,9 +602,15 @@ export default function DriverPage() {
   >(null);
   const [optimizedStops, setOptimizedStops] = useState<any[]>([]);
   const [isReordering, setIsReordering] = useState(false);
+
+  // 🔥 DADOS AUTOMÁTICOS
   const [totalDistanceReal, setTotalDistanceReal] = useState(0);
   const [totalFuelConsumed, setTotalFuelConsumed] = useState(0);
+  const [totalDurationReal, setTotalDurationReal] = useState(0);
   const [isCompletingRoute, setIsCompletingRoute] = useState(false);
+
+  // Configuração do veículo (km por litro)
+  const VEHICLE_AVG_CONSUMPTION = 8; // 8 km/L - ajuste conforme necessário
 
   const {
     sendLocation,
@@ -639,6 +644,7 @@ export default function DriverPage() {
   const simulationInterval = useRef<NodeJS.Timeout | null>(null);
   const previousStopIdRef = useRef<string>("");
   const lastPositionRef = useRef<[number, number] | null>(null);
+  const routeStartTimeRef = useRef<Date | null>(null);
 
   const displayStops = useMemo(
     () => (optimizedStops.length ? optimizedStops : route?.stops || []),
@@ -654,6 +660,32 @@ export default function DriverPage() {
 
   const lastSentLocationRef = useRef<string>("");
   const lastSendTimeRef = useRef<number>(0);
+
+  // 🔥 CALCULA CONSUMO AUTOMATICAMENTE BASEADO NA DISTÂNCIA
+  useEffect(() => {
+    if (totalDistanceReal > 0) {
+      const calculatedFuel = totalDistanceReal / VEHICLE_AVG_CONSUMPTION;
+      setTotalFuelConsumed(calculatedFuel);
+    }
+  }, [totalDistanceReal]);
+
+  // 🔥 TIMER PARA DURAÇÃO REAL
+  useEffect(() => {
+    if (route && route.status === 'IN_PROGRESS' && !routeStartTimeRef.current) {
+      const startTime = route.startedAt ? new Date(route.startedAt) : new Date();
+      routeStartTimeRef.current = startTime;
+
+      const interval = setInterval(() => {
+        if (routeStartTimeRef.current) {
+          const now = new Date();
+          const durationSeconds = Math.floor((now.getTime() - routeStartTimeRef.current.getTime()) / 1000);
+          setTotalDurationReal(durationSeconds);
+        }
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [route]);
 
   useEffect(() => {
     if (!currentPosition || !wsConnected) return;
@@ -723,7 +755,7 @@ export default function DriverPage() {
   }, []);
 
   useEffect(() => {
-    if (!currentPosition || !isGPSActive) return;
+    if (!isGPSActive) return;
 
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current);
@@ -754,18 +786,19 @@ export default function DriverPage() {
       const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos((lat1 * Math.PI) / 180) *
-          Math.cos((lat2 * Math.PI) / 180) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return R * c;
     },
     [],
   );
 
+  // 🔥 ACUMULA DISTÂNCIA REAL DO GPS
   useEffect(() => {
     if (!currentPosition || isSimulating) return;
-    
+
     if (lastPositionRef.current) {
       const distance = calculateDistance(
         lastPositionRef.current[0],
@@ -910,6 +943,210 @@ export default function DriverPage() {
     calculateDistance,
   ]);
 
+  // 🔥 FUNÇÃO PARA FINALIZAR ROTA AUTOMATICAMENTE
+  const finalizeRouteAutomatically = useCallback(async () => {
+    console.log("=".repeat(60));
+    console.log("🚀 [finalizeRouteAutomatically] INICIANDO FINALIZAÇÃO AUTOMÁTICA");
+    console.log("=".repeat(60));
+
+    // 🔥 LOG DOS VALORES ATUAIS
+    console.log("📊 VALORES ATUAIS DOS ESTADOS:");
+    console.log(`   totalDistanceReal: ${totalDistanceReal} km`);
+    console.log(`   totalFuelConsumed: ${totalFuelConsumed} L`);
+    console.log(`   totalDurationReal: ${totalDurationReal} segundos`);
+    console.log(`   routeStartTimeRef: ${routeStartTimeRef.current ? routeStartTimeRef.current.toISOString() : 'null'}`);
+    console.log(`   route?.startedAt: ${route?.startedAt || 'null'}`);
+    console.log(`   route?.status: ${route?.status}`);
+
+    // 🔥 CALCULA DURAÇÃO FINAL (em segundos)
+    let duracaoFinalSegundos = totalDurationReal;
+    if (!duracaoFinalSegundos || duracaoFinalSegundos === 0) {
+      if (routeStartTimeRef.current) {
+        const now = new Date();
+        duracaoFinalSegundos = Math.floor((now.getTime() - routeStartTimeRef.current.getTime()) / 1000);
+        console.log(`   Duração calculada pelo routeStartTimeRef: ${duracaoFinalSegundos} segundos`);
+      } else if (route?.startedAt) {
+        const now = new Date();
+        const startTime = new Date(route.startedAt);
+        duracaoFinalSegundos = Math.floor((now.getTime() - startTime.getTime()) / 1000);
+        console.log(`   Duração calculada pelo route.startedAt: ${duracaoFinalSegundos} segundos`);
+      }
+    }
+
+    // 🔥 DADOS FINAIS
+    const distanciaFinalKm = totalDistanceReal;
+    const combustivelFinalLitros = totalFuelConsumed;
+    const duracaoFinalMinutos = Math.floor(duracaoFinalSegundos / 60);
+
+    console.log("\n📦 DADOS PREPARADOS PARA ENVIO:");
+    console.log(`   📍 Distância real: ${distanciaFinalKm.toFixed(4)} km`);
+    console.log(`   ⏱️ Duração real: ${duracaoFinalMinutos} minutos (${duracaoFinalSegundos} segundos)`);
+    console.log(`   ⛽ Consumo real: ${combustivelFinalLitros.toFixed(4)} L`);
+
+    // 🔥 VALIDAÇÕES
+    let hasError = false;
+
+    if (distanciaFinalKm <= 0) {
+      console.error("❌ ERRO: Nenhuma distância foi coletada durante a simulação!");
+      console.error("   totalDistanceReal está com valor ZERO!");
+      console.error("   Verifique se a simulação está acumulando distância corretamente.");
+      toast.error("Erro: Nenhuma distância foi registrada. A simulação não coletou dados de movimento.");
+      hasError = true;
+    }
+
+    if (combustivelFinalLitros <= 0) {
+      console.error("❌ ERRO: Nenhum consumo foi calculado!");
+      console.error("   totalFuelConsumed está com valor ZERO!");
+      console.error("   Verifique se o VEHICLE_AVG_CONSUMPTION está configurado.");
+      toast.error("Erro: Nenhum consumo foi registrado.");
+      hasError = true;
+    }
+
+    if (duracaoFinalMinutos <= 0) {
+      console.error("❌ ERRO: Nenhuma duração foi registrada!");
+      console.error("   totalDurationReal está com valor ZERO!");
+      console.error("   Verifique se o timer está rodando corretamente.");
+      toast.error("Erro: Nenhuma duração foi registrada.");
+      hasError = true;
+    }
+
+    if (hasError) {
+      console.error("❌ Finalização abortada devido a erros nos dados!");
+      return;
+    }
+
+    // 🔥 VERIFICA SE A ROTA ESTÁ EM ANDAMENTO
+    if (route?.status !== 'IN_PROGRESS') {
+      console.warn(`⚠️ Rota não está em andamento. Status atual: ${route?.status}`);
+      console.log("   Tentando iniciar a rota antes de finalizar...");
+
+      try {
+
+        console.log("✅ Rota iniciada com sucesso!");
+
+        // Aguarda um pouco para o startedAt ser salvo
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Recalcula duração com o novo startedAt
+        if (routeStartTimeRef.current) {
+          const now = new Date();
+          const newDuracaoSegundos = Math.floor((now.getTime() - routeStartTimeRef.current.getTime()) / 1000);
+          const newDuracaoMinutos = Math.floor(newDuracaoSegundos / 60);
+          console.log(`   Nova duração calculada: ${newDuracaoMinutos} minutos`);
+        }
+      } catch (error) {
+        console.error("❌ Erro ao iniciar rota:", error);
+        toast.error("Erro: Não foi possível iniciar a rota.");
+        return;
+      }
+    }
+
+    setIsCompletingRoute(true);
+    const loadingToast = toast.loading("Finalizando rota...", { duration: Infinity });
+
+    try {
+      // 🔥 PREPARA O PAYLOAD
+      const payload = {
+        id: routeId!,
+        data: {
+          actualDistance: distanciaFinalKm,
+          actualFuelConsumed: combustivelFinalLitros,
+          actualTime: duracaoFinalMinutos,
+        }
+      };
+
+      console.log("\n📤 ENVIANDO PARA O BACKEND:");
+      console.log(JSON.stringify(payload, null, 2));
+
+      // 🔥 ENVIA PARA O BACKEND
+      const result = await completeRoute.mutateAsync(payload);
+
+      console.log("\n✅ RESPOSTA DO BACKEND:");
+      console.log(JSON.stringify(result, null, 2));
+
+      // 🔥 VERIFICA SE OS DADOS FORAM SALVOS
+      if (result?.data?.route) {
+        console.log("\n📊 DADOS SALVOS NO BANCO:");
+        console.log(`   actualDistance: ${result.data.route.actualDistance} km`);
+        console.log(`   actualTime: ${result.data.route.actualTime} minutos`);
+        console.log(`   actualFuel: ${result.data.route.actualFuel} L`);
+        console.log(`   status: ${result.data.route.status}`);
+        console.log(`   completedAt: ${result.data.route.completedAt}`);
+
+        if (result.data.route.actualDistance === null || result.data.route.actualDistance === undefined) {
+          console.error("⚠️ ATENÇÃO: actualDistance não foi salvo no banco!");
+        }
+        if (result.data.route.actualTime === null || result.data.route.actualTime === undefined) {
+          console.error("⚠️ ATENÇÃO: actualTime não foi salvo no banco!");
+        }
+        if (result.data.route.actualFuel === null || result.data.route.actualFuel === undefined) {
+          console.error("⚠️ ATENÇÃO: actualFuel não foi salvo no banco!");
+        }
+      }
+
+      // 🔥 NOTIFICA VIA WEBSOCKET
+      if (wsConnected) {
+        emitRouteFinished(
+          `Rota finalizada automaticamente. ${distanciaFinalKm.toFixed(1)} km percorridos, ` +
+          `${combustivelFinalLitros.toFixed(1)} L consumidos, ` +
+          `${duracaoFinalMinutos} min de duração`
+        );
+        console.log("📡 Notificação WebSocket enviada");
+      }
+
+      // 🔥 LIMPA STORAGE LOCAL
+      localStorage.removeItem(`driver_route_${routeId}_index`);
+      localStorage.removeItem(`driver_route_${routeId}_visited`);
+      localStorage.removeItem(`driver_route_${routeId}_failed`);
+      console.log("🗑️ Storage local limpo");
+
+      // 🔥 SUCESSO
+      toast.dismiss(loadingToast);
+      toast.success("🎉 Rota finalizada com sucesso!", {
+        duration: 4000,
+        icon: "✅",
+      });
+
+      console.log("\n✅✅✅ FINALIZAÇÃO CONCLUÍDA COM SUCESSO! ✅✅✅");
+      console.log("=".repeat(60));
+
+      // 🔥 REDIRECIONA PARA PÁGINA DE ROTAS
+      setTimeout(() => {
+        console.log("🔀 Redirecionando para página de rotas...");
+        router.push("/routes");
+      }, 1500);
+
+    } catch (error: any) {
+      console.error("\n❌❌❌ ERRO NA FINALIZAÇÃO DA ROTA ❌❌❌");
+      console.error("Erro:", error);
+      console.error("Mensagem:", error?.message);
+      console.error("Resposta do backend:", error?.response?.data);
+      console.error("Status do erro:", error?.response?.status);
+
+      toast.dismiss(loadingToast);
+      toast.error("❌ Erro ao finalizar rota", {
+        description: error?.response?.data?.message || error?.message || "Tente novamente.",
+        duration: 5000,
+      });
+    } finally {
+      setIsCompletingRoute(false);
+      console.log("🏁 [finalizeRouteAutomatically] Finalizado\n");
+    }
+  }, [
+    routeId,
+    completeRoute,
+    updateRoute,
+    wsConnected,
+    emitRouteFinished,
+    router,
+    totalDistanceReal,
+    totalFuelConsumed,
+    totalDurationReal,
+    route,
+    setIsCompletingRoute
+  ]);
+
+  // 🔥 COMPLETAR TAREFA (quando chega no destino)
   const completeTaskOnly = useCallback(async () => {
     if (!currentStop) return;
 
@@ -924,9 +1161,7 @@ export default function DriverPage() {
       if (!taskId && currentStop.name) {
         const task = routeTasks?.find((t: any) => t.title === currentStop.name);
         taskId = task?.id || null;
-        console.log(
-          `🔍 [DriverPage] Task encontrada: ${taskId} para parada: ${currentStop.name}`,
-        );
+        console.log(`🔍 Task encontrada: ${taskId} para parada: ${currentStop.name}`);
       }
 
       if (taskId) {
@@ -938,16 +1173,12 @@ export default function DriverPage() {
               finalComment: successNote,
             },
           });
-          console.log(
-            `✅ [DriverPage] Task ${taskId} atualizada para COMPLETED`,
-          );
+          console.log(`✅ Task ${taskId} atualizada para COMPLETED`);
         } catch (taskError) {
           console.error("❌ Erro ao finalizar task:", taskError);
         }
       } else {
-        console.warn(
-          `⚠️ [DriverPage] Nenhuma task encontrada para a parada: ${currentStop.name}`,
-        );
+        console.warn(`⚠️ Nenhuma task encontrada para a parada: ${currentStop.name}`);
       }
 
       await markStopVisited.mutateAsync({
@@ -964,10 +1195,13 @@ export default function DriverPage() {
       const isLastStop = nextIndex >= totalStops;
 
       if (isLastStop) {
-        console.log(
-          "🏁 [DriverPage] Última parada concluída! Abrindo modal de finalização...",
-        );
-        setActiveModal("completeRoute");
+        console.log("🏁 ÚLTIMA PARADA CONCLUÍDA! Finalizando rota automaticamente...");
+
+        // 🔥 FECHA O MODAL SE ESTIVER ABERTO
+        closeAllModals();
+
+        // 🔥 CHAMA A FINALIZAÇÃO AUTOMÁTICA DA ROTA
+        await finalizeRouteAutomatically();
       } else {
         setCurrentStopIndex(nextIndex);
         window.dispatchEvent(new Event("route-updated"));
@@ -987,22 +1221,7 @@ export default function DriverPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [
-    currentStop,
-    currentTaskId,
-    routeTasks,
-    finalizeTask,
-    markStopVisited,
-    routeId,
-    comment,
-    visitedStops,
-    currentStopIndex,
-    totalStops,
-    refetch,
-    refetchTasks,
-    displayStops,
-    closeAllModals,
-  ]);
+  }, [currentStop, currentTaskId, routeTasks, finalizeTask, markStopVisited, routeId, comment, visitedStops, currentStopIndex, totalStops, refetch, refetchTasks, displayStops, closeAllModals, finalizeRouteAutomatically]);
 
   const handleCreateNewTask = useCallback(
     async (taskData: {
@@ -1158,6 +1377,7 @@ export default function DriverPage() {
     ],
   );
 
+  // 🔥 FUNÇÃO PARA FALHA NA TAREFA (reagendamento)
   const handleRescheduleTask = useCallback(
     async (data: { dueDate: string; observations: string }) => {
       if (!currentTaskId) {
@@ -1193,9 +1413,16 @@ export default function DriverPage() {
         previousStopIdRef.current = "";
 
         const nextIndex = currentStopIndex + 1;
+        const isLastStop = nextIndex >= totalStops;
 
-        if (nextIndex >= totalStops) {
-          setActiveModal("completeRoute");
+        if (isLastStop) {
+          console.log("🏁 ÚLTIMA PARADA COM FALHA! Finalizando rota automaticamente...");
+
+          // 🔥 FECHA O MODAL SE ESTIVER ABERTO
+          closeAllModals();
+
+          // 🔥 CHAMA A FINALIZAÇÃO AUTOMÁTICA DA ROTA
+          await finalizeRouteAutomatically();
         } else {
           setCurrentStopIndex(nextIndex);
           toast.warning(
@@ -1205,12 +1432,9 @@ export default function DriverPage() {
         }
 
         toast.dismiss(loadingToast);
-        toast.warning(
-          "⚠️ Falha registrada! Tarefa marcada como FAILED e reagendada.",
-          {
-            duration: 4000,
-          },
-        );
+        toast.warning("⚠️ Falha registrada! Tarefa marcada como FAILED e reagendada.", {
+          duration: 4000,
+        });
 
         closeAllModals();
         await refetch();
@@ -1225,64 +1449,108 @@ export default function DriverPage() {
         setIsReschedulingTask(false);
       }
     },
-    [
-      currentTaskId,
-      currentStop,
-      comment,
-      routeId,
-      failedStops,
-      currentStopIndex,
-      totalStops,
-      displayStops,
-      markStopVisited,
-      finalizeTask,
-      refetch,
-      refetchTasks,
-      closeAllModals,
-    ],
+    [currentTaskId, currentStop, comment, routeId, failedStops, currentStopIndex, totalStops, displayStops, markStopVisited, finalizeTask, refetch, refetchTasks, closeAllModals, finalizeRouteAutomatically],
   );
 
-  const handleFinalizeRoute = useCallback(async (data: { distanciaReal: number; combustivelReal: number }) => {
+  // 🔥 FINALIZAR ROTA COM DADOS AUTOMÁTICOS
+  const handleFinalizeRoute = useCallback(async () => {
     setIsCompletingRoute(true);
     const loadingToast = toast.loading("Finalizando rota...", { duration: Infinity });
 
     try {
-      await updateRoute.mutateAsync({
-        id: routeId!,
-        data: {
-          status: "FINISHED",
-          distanciaReal: data.distanciaReal,
-          combustivelReal: data.combustivelReal,
-        } as any,
-      });
-
-      if (wsConnected) {
-        emitRouteFinished(`Rota finalizada. ${data.distanciaReal} km percorridos, ${data.combustivelReal} L consumidos`);
+      // 🔥 CALCULA DURAÇÃO FINAL (em segundos)
+      let duracaoFinalSegundos = totalDurationReal;
+      if (!duracaoFinalSegundos && routeStartTimeRef.current) {
+        const now = new Date();
+        duracaoFinalSegundos = Math.floor((now.getTime() - routeStartTimeRef.current.getTime()) / 1000);
       }
 
+      // 🔥 DADOS COLETADOS AUTOMATICAMENTE
+      const distanciaFinalKm = totalDistanceReal; // já está em km
+      const combustivelFinalLitros = totalFuelConsumed; // já calculado automaticamente
+      const duracaoFinalMinutos = Math.floor(duracaoFinalSegundos / 60); // converte para minutos
+
+      // 🔥 LOG PARA DEBUG
+      console.log('🚀 [handleFinalizeRoute] Enviando dados para o backend:');
+      console.log(`   📍 Distância real: ${distanciaFinalKm.toFixed(2)} km`);
+      console.log(`   ⏱️ Duração real: ${duracaoFinalMinutos} minutos (${duracaoFinalSegundos} segundos)`);
+      console.log(`   ⛽ Consumo real: ${combustivelFinalLitros.toFixed(2)} L`);
+
+      // 🔥 VALIDAÇÕES
+      if (distanciaFinalKm <= 0) {
+        toast.warning("Nenhuma distância percorrida registrada");
+        setIsCompletingRoute(false);
+        toast.dismiss(loadingToast);
+        return;
+      }
+
+      if (combustivelFinalLitros <= 0) {
+        toast.warning("Nenhum consumo registrado");
+        setIsCompletingRoute(false);
+        toast.dismiss(loadingToast);
+        return;
+      }
+
+      if (duracaoFinalMinutos <= 0) {
+        toast.warning("Nenhuma duração registrada");
+        setIsCompletingRoute(false);
+        toast.dismiss(loadingToast);
+        return;
+      }
+
+      // 🔥 ENVIA PARA O BACKEND (USANDO APENAS OS CAMPOS PERMITIDOS PELO TIPO)
+      const result = await completeRoute.mutateAsync({
+        id: routeId!,
+        data: {
+          actualDistance: distanciaFinalKm,     // ✅ km
+          actualFuel: combustivelFinalLitros,   // ✅ litros
+          actualTime: duracaoFinalMinutos,      // ✅ minutos
+          observations: `Rota finalizada automaticamente`,
+        },
+      });
+
+      console.log('✅ [handleFinalizeRoute] Resposta do backend:', result);
+
+      // 🔥 NOTIFICA VIA WEBSOCKET
+      if (wsConnected) {
+        emitRouteFinished(
+          `Rota finalizada. ${distanciaFinalKm.toFixed(1)} km percorridos, ` +
+          `${combustivelFinalLitros.toFixed(1)} L consumidos, ` +
+          `${duracaoFinalMinutos} min de duração`
+        );
+      }
+
+      // 🔥 LIMPA STORAGE LOCAL
       localStorage.removeItem(`driver_route_${routeId}_index`);
       localStorage.removeItem(`driver_route_${routeId}_visited`);
       localStorage.removeItem(`driver_route_${routeId}_failed`);
 
+      // 🔥 SUCESSO
       toast.dismiss(loadingToast);
       toast.success("🎉 Rota finalizada com sucesso!", {
         duration: 4000,
         icon: "✅",
       });
 
+      // 🔥 FECHA MODAL E REDIRECIONA
       setActiveModal(null);
       setTimeout(() => router.push("/routes"), 1500);
-    } catch (error) {
-      console.error("Erro ao finalizar rota:", error);
+
+    } catch (error: any) {
+      console.error("❌ Erro ao finalizar rota:", error);
+      console.error("   Detalhes do erro:", error?.response?.data || error?.message);
+
       toast.dismiss(loadingToast);
       toast.error("❌ Erro ao finalizar rota", {
-        description: "Tente novamente ou contate o suporte.",
+        description: error?.response?.data?.message || "Tente novamente ou contate o suporte.",
+        duration: 5000,
       });
     } finally {
       setIsCompletingRoute(false);
     }
-  }, [routeId, updateRoute, wsConnected, emitRouteFinished, router]);
+  }, [routeId, completeRoute, wsConnected, emitRouteFinished, router, totalDistanceReal, totalFuelConsumed, totalDurationReal]);
 
+  // 🔥 SIMULAÇÃO
   const startSimulation = useCallback(() => {
     let nextPendingIndex = -1;
 
@@ -1366,6 +1634,7 @@ export default function DriverPage() {
     const startLng = currentPosition[1];
     const endLat = targetStop.latitude;
     const endLng = targetStop.longitude;
+    const simulationStartTime = new Date();
 
     if (simulationInterval.current) {
       clearInterval(simulationInterval.current);
@@ -1381,6 +1650,9 @@ export default function DriverPage() {
 
       setCurrentPosition([newLat, newLng]);
 
+      const elapsedSeconds = Math.floor((new Date().getTime() - simulationStartTime.getTime()) / 1000);
+      setTotalDurationReal(prev => Math.max(prev, elapsedSeconds));
+
       if (step % 10 === 0 || step === steps) {
         console.log(`   Simulação: ${Math.round(progress * 100)}% concluída`);
       }
@@ -1393,6 +1665,16 @@ export default function DriverPage() {
 
         setCurrentPosition([endLat, endLng]);
         setIsSimulating(false);
+
+        // 🔥 CALCULA A DISTÂNCIA SIMULADA PRIMEIRO
+        const simulatedDistance = calculateDistance(startLat, startLng, endLat, endLng);
+
+        // 🔥 DEPOIS USA A VARIÁVEL
+        const finalDuration = Math.floor((new Date().getTime() - simulationStartTime.getTime()) / 1000);
+        const newTotalDistance = totalDistanceReal + simulatedDistance;
+
+        setTotalDurationReal(finalDuration);
+        setTotalDistanceReal(newTotalDistance);
 
         window.dispatchEvent(new Event("simulation-end"));
 
@@ -1451,15 +1733,15 @@ export default function DriverPage() {
 
   const defaultTaskAddress = currentStop
     ? {
-        address: currentStop.address,
-        city: currentStop.city,
-        state: currentStop.state,
-        zipCode: currentStop.zipCode,
-        neighborhood: currentStop.neighborhood,
-        complement: currentStop.complement,
-        latitude: currentStop.latitude,
-        longitude: currentStop.longitude,
-      }
+      address: currentStop.address,
+      city: currentStop.city,
+      state: currentStop.state,
+      zipCode: currentStop.zipCode,
+      neighborhood: currentStop.neighborhood,
+      complement: currentStop.complement,
+      latitude: currentStop.latitude,
+      longitude: currentStop.longitude,
+    }
     : null;
 
   if (isLoadingRoute) return <DriverSkeleton />;
@@ -1543,6 +1825,7 @@ export default function DriverPage() {
         isSimulating={isSimulating}
         totalDistanceReal={totalDistanceReal}
         totalFuelConsumed={totalFuelConsumed}
+        totalDurationReal={totalDurationReal}
         onResumeGPS={resumeRealGPS}
         onStartSimulation={startSimulation}
         onBack={handleBack}
@@ -1683,14 +1966,18 @@ export default function DriverPage() {
         isSubmitting={isReschedulingTask}
       />
 
-      <RouteCompletionModal
-        isOpen={activeModal === "completeRoute"}
-        onClose={() => setActiveModal(null)}
-        onSubmit={handleFinalizeRoute}
-        isSubmitting={isCompletingRoute}
-        totalDistance={totalDistanceReal || plannedDistance}
-        defaultFuelConsumption={totalFuelConsumed || undefined}
-      />
+      {/* Opcional: manter apenas como fallback se algo der errado */}
+      {activeModal === "completeRoute" && (
+        <RouteCompletionModal
+          isOpen={activeModal === "completeRoute"}
+          onClose={() => setActiveModal(null)}
+          onSubmit={finalizeRouteAutomatically}
+          isSubmitting={isCompletingRoute}
+          totalDistance={totalDistanceReal}
+          totalFuel={totalFuelConsumed}
+          totalDuration={totalDurationReal}
+        />
+      )}
     </div>
   );
 }
