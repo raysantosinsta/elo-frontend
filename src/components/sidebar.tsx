@@ -27,6 +27,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
   Factory,
   Home,
   KanbanSquare,
@@ -77,6 +78,7 @@ const menuItems = [
     ],
   },
   { title: "Empresas", href: "/empresas", icon: Home },
+  { title: "Financeiro SaaS", href: "/billing", icon: CreditCard },
   { title: "Cargos", href: "/company-roles", icon: Briefcase },
   { title: "Rotas", href: "/routes", icon: CarFront },
   { title: "Fornecedores", href: "/suppliers", icon: Factory },
@@ -248,7 +250,7 @@ function SidebarContent({
     // 👇 SE FOR MASTER, MOSTRA APENAS OS ITENS ESPECÍFICOS
     if (user.role === "MASTER") {
       const masterItems = menuItems.filter((item) => {
-        const allowedTitles = ["Empresas", "Usuários", "Dashboard", "Audit"];
+        const allowedTitles = ["Empresas", "Usuários", "Dashboard", "Audit", "Financeiro SaaS"];
         if (allowedTitles.includes(item.title)) {
           return true;
         }

@@ -3,8 +3,7 @@
 import {
   useMutation,
   useQuery,
-  useQueryClient,
-  QueryClient,
+  useQueryClient
 } from "@tanstack/react-query";
 import {
   AvailableTask,
@@ -24,92 +23,11 @@ import {
 // =============================================
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// =============================================
-// 🚀 HELPER: buscar tasks com rate limiting
-// =============================================
-const createTaskFetcher = () => {
-  const pendingRequests = new Map<string, Promise<TaskInfo[]>>();
-  const lastRequestTime = new Map<string, number>();
-  const MIN_DELAY_MS = 500; // Delay mínimo entre requisições para a mesma rota
-
-  return async (
-    routeId: string,
-    queryClient: QueryClient,
-  ): Promise<TaskInfo[]> => {
-    const cacheKey: string[] = ["tasks-by-route", routeId];
-
-    // Verifica cache primeiro
-    const cached = queryClient.getQueryData<TaskInfo[]>(cacheKey);
-    if (cached) return cached;
-
-    // Verifica se já existe uma requisição em andamento
-    if (pendingRequests.has(routeId)) {
-      const pending = pendingRequests.get(routeId);
-      if (pending) return pending;
-    }
-
-    // Rate limiting: garantir delay entre requisições
-    const now = Date.now();
-    const lastRequest = lastRequestTime.get(routeId) || 0;
-    const timeSinceLastRequest = now - lastRequest;
-
-    if (timeSinceLastRequest < MIN_DELAY_MS) {
-      await delay(MIN_DELAY_MS - timeSinceLastRequest);
-    }
-
-    // Criar nova requisição
-    const request = (async () => {
-      try {
-        const { data } = await routesApi.getRouteTasks(routeId);
-        lastRequestTime.set(routeId, Date.now());
-        queryClient.setQueryData(cacheKey, data);
-        return data as TaskInfo[];
-      } finally {
-        pendingRequests.delete(routeId);
-      }
-    })();
-
-    pendingRequests.set(routeId, request);
-    return request;
-  };
-};
-
 export const useRoutes = () => {
   const queryClient = useQueryClient();
-  const fetchTasksWithRateLimit = createTaskFetcher();
 
   // =============================================
-  // 🚀 HELPER: buscar tasks com cache (ANTI-FLOOD)
-  // =============================================
-  const getTasksWithCache = async (routeId: string) => {
-    return fetchTasksWithRateLimit(routeId, queryClient);
-  };
-
-  const useMarkStopVisited = () =>
-    useMutation({
-      mutationFn: ({
-        routeId,
-        stopId,
-        notes,
-      }: {
-        routeId: string;
-        stopId: string;
-        notes?: string;
-      }) => routesApi.markStopVisited(routeId, stopId, notes),
-
-      onSuccess: (_, variables) => {
-        // Atualiza apenas o necessário
-        queryClient.invalidateQueries({
-          queryKey: ["routes", variables.routeId],
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["tasks-by-route", variables.routeId],
-        });
-      },
-    });
-
-  // =============================================
-  // 🚀 GET ALL ROUTES (OTIMIZADO - SEM FLOOD)
+  // 🚀 GET ALL ROUTES (SEM TASKS PARA EVITAR FLOOD)
   // =============================================
   const useGetAllRoutes = (params?: {
     status?: string;
@@ -121,25 +39,23 @@ export const useRoutes = () => {
       queryFn: async () => {
         const { data } = await routesApi.getAll(params);
         const routes = data as Route[];
-
-        // 🔥 NÃO buscar tasks automaticamente - deixar para quando necessário
         // Retornar rotas sem tasks para evitar flood
         return routes.map((route) => ({
           ...route,
-          tasks: [], // Tasks vazias inicialmente
+          tasks: [],
         }));
       },
-      staleTime: 1000 * 30, // 30 segundos
-      gcTime: 1000 * 60 * 5, // 5 minutos
+      staleTime: 1000 * 30,
+      gcTime: 1000 * 60 * 5,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
       refetchOnMount: true,
-      retry: 1, // Tentar apenas 1 vez em caso de erro
-      retryDelay: 1000, // Esperar 1 segundo antes de tentar novamente
+      retry: 1,
+      retryDelay: 1000,
     });
 
   // =============================================
-  // GET ROUTE BY ID (COM TASKS SOB DEMANDA)
+  // GET ROUTE BY ID (SEM TASKS AUTOMÁTICAS)
   // =============================================
   const useGetRouteById = (id: string) =>
     useQuery({
@@ -147,44 +63,36 @@ export const useRoutes = () => {
       queryFn: async () => {
         const { data } = await routesApi.getById(id);
         const route = data as Route;
-
-        // Buscar tasks apenas para a rota específica
-        try {
-          const tasks = await getTasksWithCache(id);
-          return {
-            ...route,
-            tasks,
-          };
-        } catch (error) {
-          console.error(`Erro ao buscar tasks da rota ${id}`, error);
-          return {
-            ...route,
-            tasks: [],
-          };
-        }
+        return {
+          ...route,
+          tasks: [], // Não buscar tasks automaticamente para evitar erro 404
+        };
       },
       enabled: !!id,
-      staleTime: 1000 * 30, // 30 segundos
+      staleTime: 1000 * 30,
       gcTime: 1000 * 60 * 5,
       retry: 1,
     });
 
   // =============================================
-  // GET TASKS BY ROUTE (CARREGAMENTO SOB DEMANDA)
+  // GET TASKS BY ROUTE (DESABILITADO POR PADRÃO)
   // =============================================
-  const useGetTasksByRoute = (routeId: string, enabled: boolean = true) =>
+  const useGetTasksByRoute = (routeId: string, enabled: boolean = false) =>
     useQuery({
       queryKey: ["tasks-by-route", routeId],
       queryFn: async () => {
-        // Pequeno delay para evitar múltiplas chamadas simultâneas
-        await delay(100);
-        const { data } = await routesApi.getRouteTasks(routeId);
-        return data as TaskInfo[];
+        try {
+          const { data } = await routesApi.getRouteTasks(routeId);
+          return data as TaskInfo[];
+        } catch (error) {
+          console.error(`Erro ao buscar tasks da rota ${routeId}:`, error);
+          return [];
+        }
       },
       enabled: !!routeId && enabled,
-      staleTime: 1000 * 60, // 1 minuto
+      staleTime: 1000 * 60,
       gcTime: 1000 * 60 * 5,
-      retry: 1,
+      retry: 0,
       retryDelay: 1000,
     });
 
@@ -198,7 +106,7 @@ export const useRoutes = () => {
         const { data } = await routesApi.getSummary();
         return data as RouteStats;
       },
-      staleTime: 1000 * 60 * 2, // 2 minutos
+      staleTime: 1000 * 60 * 2,
       gcTime: 1000 * 60 * 5,
       refetchOnWindowFocus: false,
     });
@@ -210,7 +118,7 @@ export const useRoutes = () => {
         const { data } = await routesApi.getAvailableTasks(params);
         return data as AvailableTask[];
       },
-      staleTime: 1000 * 30, // 30 segundos
+      staleTime: 1000 * 30,
       gcTime: 1000 * 60 * 2,
       refetchOnWindowFocus: false,
     });
@@ -239,6 +147,29 @@ export const useRoutes = () => {
       gcTime: 1000 * 60 * 5,
     });
 
+  // =============================================
+  // MUTATIONS
+  // =============================================
+
+  const useMarkStopVisited = () =>
+    useMutation({
+      mutationFn: ({
+        routeId,
+        stopId,
+        notes,
+      }: {
+        routeId: string;
+        stopId: string;
+        notes?: string;
+      }) => routesApi.markStopVisited(routeId, stopId, notes),
+
+      onSuccess: (_, variables) => {
+        queryClient.invalidateQueries({
+          queryKey: ["routes", variables.routeId],
+        });
+      },
+    });
+
   const useFinalizeTask = () =>
     useMutation({
       mutationFn: ({
@@ -249,16 +180,10 @@ export const useRoutes = () => {
         data: FinalizeTaskDto;
       }) => routesApi.finalizeTask(taskId, data),
 
-      onSuccess: (_, variables) => {
-        // Invalidar apenas o necessário
+      onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
-        queryClient.invalidateQueries({ queryKey: ["tasks-by-route"] });
       },
     });
-
-  // =============================================
-  // MUTATIONS
-  // =============================================
 
   const useCreateRoute = () =>
     useMutation({
@@ -276,6 +201,28 @@ export const useRoutes = () => {
       onSuccess: (_, { id }) => {
         queryClient.invalidateQueries({ queryKey: ["routes"] });
         queryClient.invalidateQueries({ queryKey: ["routes", id] });
+      },
+    });
+
+  // 🔥 MUTATION CORRIGIDA - Aceita actualDistance, actualFuel, actualTime
+  const useCompleteRoute = () =>
+    useMutation({
+      mutationFn: ({
+        id,
+        data,
+      }: {
+        id: string;
+        data: {
+          actualDistance?: number;
+          actualFuel?: number;
+          actualTime?: number;
+          observations?: string;
+        };
+      }) => routesApi.completeRoute(id, data),
+      onSuccess: (_, { id }) => {
+        queryClient.invalidateQueries({ queryKey: ["routes"] });
+        queryClient.invalidateQueries({ queryKey: ["routes", id] });
+        queryClient.invalidateQueries({ queryKey: ["routes-summary"] });
       },
     });
 
@@ -316,6 +263,7 @@ export const useRoutes = () => {
     });
 
   return {
+    // Gets
     useGetAllRoutes,
     useGetRouteById,
     useGetSummary,
@@ -323,8 +271,10 @@ export const useRoutes = () => {
     useGetTasksByRoute,
     useGetAllTasks,
     useGetTaskById,
+    // Mutations
     useCreateRoute,
     useUpdateRoute,
+    useCompleteRoute,
     useDeleteRoute,
     useCreateTask,
     useUpdateTask,

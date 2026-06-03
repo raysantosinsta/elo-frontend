@@ -196,6 +196,12 @@ export interface Route {
   updatedAt: string;
   formattedDistance?: string;
   formattedDuration?: string;
+  actualDistance?: number | null;
+  actualTime?: number | null;
+  actualFuel?: number | null;
+  estimatedFuel?: number | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
   _count?: {
     stops: number;
   };
@@ -438,6 +444,20 @@ export const routesApi = {
    */
   update: (id: string, data: UpdateRouteDto) =>
     api.patch(`/routes/${id}`, data),
+
+  // No arquivo services/api.ts
+  completeRoute: (
+    id: string,
+    data: {
+      distanciaReal?: number;
+      combustivelReal?: number;
+      duracaoReal?: number;  // 🔥 NOVO
+      actualDistance?: number;
+      actualFuel?: number;
+      actualTime?: number;
+      observacoes?: string;
+    },
+  ) => api.post(`/routes/${id}/complete`, data),
 
   /**
    * Remove uma rota

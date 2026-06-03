@@ -64,10 +64,57 @@ import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Import do GenericTable e tipos
 import { Column, GenericTable } from "@/components/generic-table";
 
-// ─── Paleta ELO PRODUTIVO ──────────────────────────────────────────────────────────
+interface ApiRoute {
+  id: string;
+  title: string;
+  status: string;
+  routeDate?: string | null;
+  stops: any[];
+  formattedDistance: string;
+  formattedDuration: string;
+  formattedFuelConsumption?: string;
+  fuelConsumptionLitres?: number | null;
+  userAssigned: { id: string; name: string } | null;
+  description: string | null;
+  createdAt: string;
+  orderBy?: string;
+  totalDistanceMeters?: number;
+  totalDurationSeconds?: number;
+  actualDistance?: number | null;
+  actualTime?: number | null;
+  actualFuel?: number | null;
+  estimatedFuel?: number | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+interface Route {
+  tasks: any;
+  id: string;
+  title: string;
+  status: string;
+  routeDate: string | null;
+  stops: any[];
+  formattedDistance: string;
+  formattedDuration: string;
+  formattedFuelConsumption?: string;
+  fuelConsumptionLitres?: number | null;
+  userAssigned: { id: string; name: string } | null;
+  description: string | null;
+  createdAt: string;
+  orderBy?: string;
+  totalDistanceMeters?: number;
+  totalDurationSeconds?: number;
+  actualDistance?: number | null;
+  actualTime?: number | null;
+  actualFuel?: number | null;
+  estimatedFuel?: number | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
 const statusColors: Record<string, string> = {
   SCHEDULED: "bg-blue-50 text-blue-700 border border-blue-200",
   IN_PROGRESS: "bg-[#2F80ED]/10 text-[#2F80ED] border border-[#2F80ED]/20",
@@ -82,7 +129,6 @@ const statusText: Record<string, string> = {
   CANCELED: "Cancelada",
 };
 
-// Opções de status incluindo "Atrasadas"
 const statusOptions = [
   { value: "all", label: "Todas" },
   { value: "SCHEDULED", label: "Agendadas" },
@@ -91,7 +137,6 @@ const statusOptions = [
   { value: "OVERDUE", label: "Atrasadas" },
 ];
 
-// Componente de Autocomplete
 interface AutocompleteOption {
   value: string;
   label: string;
@@ -197,7 +242,6 @@ const Autocomplete = ({
   );
 };
 
-// Componente Ripple Button
 const RippleButton = ({ children, onClick, className, ...props }: any) => {
   const [ripple, setRipple] = useState<{
     x: number;
@@ -242,7 +286,6 @@ const RippleButton = ({ children, onClick, className, ...props }: any) => {
   );
 };
 
-// Componente de toast customizado
 const CustomToast = ({
   message,
   type = "success",
@@ -276,23 +319,26 @@ export default function RoutesPage() {
   const { data: apiRoutes, isLoading, refetch } = useGetAllRoutes();
   const deleteRoute = useDeleteRoute();
 
-  // Normalizar os dados da API para o formato esperado pelo componente
   const routes: Route[] = useMemo(() => {
     if (!apiRoutes) return [];
     return apiRoutes.map(
       (route: any): Route => ({
         ...route,
         routeDate: route.routeDate ?? null,
+        actualDistance: route.actualDistance ?? null,
+        actualTime: route.actualTime ?? null,
+        actualFuel: route.actualFuel ?? null,
+        estimatedFuel: route.estimatedFuel ?? null,
+        startedAt: route.startedAt ?? null,
+        completedAt: route.completedAt ?? null,
       }),
     );
   }, [apiRoutes]);
 
-  // Estados de busca e filtros
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // VALORES TEMPORÁRIOS
   const [tempStatusFilter, setTempStatusFilter] = useState<string>("all");
   const [tempStartDate, setTempStartDate] = useState<Date | undefined>(
     undefined,
@@ -301,7 +347,6 @@ export default function RoutesPage() {
   const [tempUserAssignedFilter, setTempUserAssignedFilter] =
     useState<string>("all");
 
-  // VALORES APLICADOS
   const [appliedStatusFilter, setAppliedStatusFilter] = useState<string>("all");
   const [appliedStartDate, setAppliedStartDate] = useState<Date | undefined>(
     undefined,
@@ -317,7 +362,6 @@ export default function RoutesPage() {
 
   const calculateTotalIntervalTime = useCallback((route: any): number => {
     if (!route.tasks || route.tasks.length === 0) return 0;
-
     return route.tasks.reduce((total: number, task: any) => {
       const intervalValue = task.intervalTime || 0;
       return (
@@ -331,29 +375,36 @@ export default function RoutesPage() {
 
   const formatMinutes = useCallback((minutes: number): string => {
     if (!minutes || minutes === 0) return "-";
-
     const totalMinutes = Number(minutes);
     if (isNaN(totalMinutes) || totalMinutes === 0) return "-";
-
     if (totalMinutes >= 60) {
       const hours = Math.floor(totalMinutes / 60);
       const mins = totalMinutes % 60;
       if (mins > 0) return `${hours}h ${mins}min`;
       return `${hours}h`;
     }
-
     return `${totalMinutes}min`;
   }, []);
 
+  const formatDurationFromSeconds = useCallback(
+    (seconds: number | null | undefined): string => {
+      if (!seconds || seconds === 0) return "-";
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      if (hours > 0 && minutes > 0) return `${hours}h ${minutes}min`;
+      if (hours > 0) return `${hours}h`;
+      return `${minutes}min`;
+    },
+    [],
+  );
+
   const parseDurationToMinutes = useCallback((durationStr: string): number => {
     if (!durationStr || durationStr === "-") return 0;
-
     let totalMinutes = 0;
     const hoursMatch = durationStr.match(/(\d+)h/);
     if (hoursMatch) totalMinutes += parseInt(hoursMatch[1], 10) * 60;
     const minutesMatch = durationStr.match(/(\d+)min/);
     if (minutesMatch) totalMinutes += parseInt(minutesMatch[1], 10);
-
     return totalMinutes;
   }, []);
 
@@ -369,7 +420,22 @@ export default function RoutesPage() {
     [calculateTotalIntervalTime, parseDurationToMinutes, formatMinutes],
   );
 
-  // Contagem de filtros ativos
+  const getDifferenceColor = (difference: number | null): string => {
+    if (difference === null) return "text-[#7A7E83]";
+    if (difference > 0) return "text-red-500";
+    if (difference < 0) return "text-green-500";
+    return "text-[#7A7E83]";
+  };
+
+  const formatDifference = (
+    difference: number | null,
+    unit: string,
+  ): string => {
+    if (difference === null) return "-";
+    const prefix = difference > 0 ? "+" : "";
+    return `${prefix}${difference.toFixed(1)}${unit}`;
+  };
+
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (appliedStatusFilter !== "all") count++;
@@ -384,7 +450,6 @@ export default function RoutesPage() {
     appliedUserAssignedFilter,
   ]);
 
-  // Resetar página quando filtros mudam
   useEffect(() => {
     setCurrentPage(1);
   }, [
@@ -394,21 +459,18 @@ export default function RoutesPage() {
     appliedUserAssignedFilter,
   ]);
 
-  // Função para obter data atual às 00:00:00
   const getTodayDate = useCallback(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return today;
   }, []);
 
-  // Função para obter data daqui a 7 dias às 23:59:59
   const getDatePlus7Days = useCallback(() => {
     const date = addDays(new Date(), 7);
     date.setHours(23, 59, 59, 999);
     return date;
   }, []);
 
-  // Função para aplicar filtro com datas padrão
   const handleFilterButtonClick = useCallback(async () => {
     const today = getTodayDate();
     const sevenDaysLater = getDatePlus7Days();
@@ -426,7 +488,7 @@ export default function RoutesPage() {
     toast.custom(
       (t) => (
         <CustomToast
-          message={`Filtro aplicado: ${format(today, "dd/MM/yyyy")} até ${format(sevenDaysLater, "dd/MM/yyyy")}`}
+          message={`Filtro aplicado: ${format(today, "dd/MM/yyyy")} atÃ© ${format(sevenDaysLater, "dd/MM/yyyy")}`}
           type="success"
         />
       ),
@@ -438,12 +500,11 @@ export default function RoutesPage() {
     setShowFilters(!showFilters);
   }, [showFilters]);
 
-  // Lista de Responsaveis para autocomplete
   const driverOptions = useMemo(() => {
     if (!routes)
       return [
         { value: "all", label: "Todos" },
-        { value: "none", label: "Não atribuído" },
+        { value: "none", label: "NÃ£o atribuÃ­do" },
       ];
     const driverMap = new Map();
     routes.forEach((route) => {
@@ -454,7 +515,7 @@ export default function RoutesPage() {
     const drivers = Array.from(driverMap.values());
     return [
       { value: "all", label: "Todos" },
-      { value: "none", label: "Não atribuído" },
+      { value: "none", label: "NÃ£o atribuÃ­do" },
       ...drivers.map((driver) => ({ value: driver.id, label: driver.name })),
     ];
   }, [routes]);
@@ -478,14 +539,11 @@ export default function RoutesPage() {
 
   const handleApplyFilters = async () => {
     if (isFiltering) return;
-
     setIsFiltering(true);
-
     setAppliedStatusFilter(tempStatusFilter);
     setAppliedStartDate(tempStartDate);
     setAppliedEndDate(tempEndDate);
     setAppliedUserAssignedFilter(tempUserAssignedFilter);
-
     try {
       await refetch();
       toast.custom(
@@ -515,10 +573,8 @@ export default function RoutesPage() {
 
   const filteredRoutes = useMemo(() => {
     if (!routes) return [];
-
     let filtered = routes.filter((route) => {
       let matchesStatus = true;
-
       if (appliedStatusFilter === "OVERDUE") {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -531,7 +587,6 @@ export default function RoutesPage() {
         matchesStatus =
           appliedStatusFilter === "all" || route.status === appliedStatusFilter;
       }
-
       let matchesDate = true;
       if (appliedStartDate && route.routeDate) {
         const routeDate = new Date(route.routeDate);
@@ -543,15 +598,12 @@ export default function RoutesPage() {
         const endOfDayDate = endOfDay(appliedEndDate);
         if (routeDate > endOfDayDate) matchesDate = false;
       }
-
       const matchesDriver =
         appliedUserAssignedFilter === "all" ||
         (appliedUserAssignedFilter === "none" && !route.userAssigned) ||
         route.userAssigned?.id === appliedUserAssignedFilter;
-
       return matchesStatus && matchesDate && matchesDriver;
     });
-
     return filtered;
   }, [
     routes,
@@ -561,7 +613,6 @@ export default function RoutesPage() {
     appliedUserAssignedFilter,
   ]);
 
-  // Paginação
   const paginatedRoutes = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
@@ -572,13 +623,12 @@ export default function RoutesPage() {
 
   const handleDelete = useCallback(async () => {
     if (!deleteId) return;
-
     setIsDeleting(true);
     try {
       await deleteRoute.mutateAsync(deleteId);
       setDeleteId(null);
       toast.custom((t) => (
-        <CustomToast message="Rota excluída com sucesso" type="success" />
+        <CustomToast message="Rota excluÃ­da com sucesso" type="success" />
       ));
       refetch();
     } catch {
@@ -590,50 +640,10 @@ export default function RoutesPage() {
     }
   }, [deleteId, deleteRoute, refetch]);
 
-  /* eslint-disable prefer-const */
-
-  interface ApiRoute {
-    id: string;
-    title: string;
-    status: string;
-    routeDate?: string | null;
-    stops: any[];
-    formattedDistance: string;
-    formattedDuration: string;
-    formattedFuelConsumption?: string; // 🔥 NOVO: consumo formatado
-    fuelConsumptionLitres?: number | null; // 🔥 NOVO: valor bruto
-    userAssigned: { id: string; name: string } | null;
-    description: string | null;
-    createdAt: string;
-    orderBy?: string;
-    totalDistanceMeters?: number;
-    totalDurationSeconds?: number;
-  }
-
-  // Tipo para o componente (com valores normalizados)
-  interface Route {
-    tasks: any;
-    id: string;
-    title: string;
-    status: string;
-    routeDate: string | null;
-    stops: any[];
-    formattedDistance: string;
-    formattedDuration: string;
-    formattedFuelConsumption?: string; // 🔥 NOVO
-    fuelConsumptionLitres?: number | null; // 🔥 NOVO
-    userAssigned: { id: string; name: string } | null;
-    description: string | null;
-    createdAt: string;
-    orderBy?: string;
-    totalDistanceMeters?: number;
-    totalDurationSeconds?: number;
-  }
-
   const getColumns = useCallback(
     (): Column<Route>[] => [
       {
-        header: "Título",
+        header: "TÃ­tulo",
         className: "font-semibold",
         cell: (route) => (
           <Link
@@ -656,7 +666,6 @@ export default function RoutesPage() {
             routeDate !== null &&
             routeDate < today &&
             route.status !== "FINISHED";
-
           if (isOverdue && route.status !== "FINISHED") {
             return (
               <Badge className="bg-red-50 text-red-700 border border-red-200 text-xs font-medium shadow-none">
@@ -664,7 +673,6 @@ export default function RoutesPage() {
               </Badge>
             );
           }
-
           return (
             <Badge
               className={`${statusColors[route.status]} text-xs font-medium shadow-none`}
@@ -696,34 +704,117 @@ export default function RoutesPage() {
         ),
       },
       {
-        header: "Distância",
-        cell: (route) => (
-          <span className="text-[#353A40]">
-            {route.formattedDistance || "-"}
-          </span>
-        ),
+        header: "DistÃ¢ncia",
+        cell: (route) => {
+          const previsto = route.formattedDistance || "-";
+          const realizado = route.actualDistance
+            ? `${route.actualDistance.toFixed(1)} km`
+            : "-";
+
+          let previstoKm = route.totalDistanceMeters ? route.totalDistanceMeters / 1000 : null;
+          const diff =
+            route.actualDistance && previstoKm
+              ? route.actualDistance - previstoKm
+              : null;
+
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="cursor-help">
+                    <div className="text-[#353A40] text-sm">P: {previsto}</div>
+                    <div className="text-xs text-[#7A7E83]">
+                      R: {realizado}
+                      {diff !== null && (
+                        <span
+                          className={cn(
+                            "ml-1",
+                            getDifferenceColor(diff),
+                          )}
+                        >
+                          ({formatDifference(diff, " km")})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="bg-[#353A40] text-white border-0 shadow-lg p-2 rounded-lg">
+                  <p>Previsto: {previsto}</p>
+                  <p>Real: {realizado}</p>
+                  {diff !== null && (
+                    <p className={getDifferenceColor(diff)}>
+                      DiferenÃ§a: {diff > 0 ? "+" : ""}
+                      {diff.toFixed(1)} km
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        },
       },
       {
-        header: "Combustível", // 🔥 NOVA COLUNA
+        header: "CombustÃ­vel", // ðŸ”¥ NOVA COLUNA
         cell: (route) => {
           const fuel = route.formattedFuelConsumption;
           return (
             <div className="flex items-center gap-1.5">
               <FuelIcon className="h-3.5 w-3.5 text-[#2F80ED]" />
               <span className="text-[#353A40] font-medium">
-                {fuel || "Não calculado"}
+                {fuel || "NÃ£o calculado"}
               </span>
             </div>
           );
         },
       },
       {
-        header: "Duração",
-        cell: (route) => (
-          <span className="text-[#353A40] font-medium">
-            {route.formattedDuration || "-"}
-          </span>
-        ),
+        header: "DuraÃ§Ã£o",
+        cell: (route) => {
+          const previsto = route.formattedDuration || "-";
+          const realizado = route.actualTime
+            ? formatDurationFromSeconds(route.actualTime)
+            : "-";
+          const diff =
+            route.actualTime && route.totalDurationSeconds
+              ? route.actualTime - route.totalDurationSeconds
+              : null;
+          const diffMinutes = diff !== null ? Math.round(diff / 60) : null;
+
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="cursor-help">
+                    <div className="text-[#353A40] text-sm">P: {previsto}</div>
+                    <div className="text-xs text-[#7A7E83]">
+                      R: {realizado}
+                      {diffMinutes !== null && (
+                        <span
+                          className={cn(
+                            "ml-1",
+                            getDifferenceColor(diffMinutes),
+                          )}
+                        >
+                          ({formatDifference(diffMinutes, "min")})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="bg-[#353A40] text-white">
+                  <p>Previsto: {previsto}</p>
+                  <p>Real: {realizado}</p>
+                  {diffMinutes !== null && (
+                    <p className={getDifferenceColor(diffMinutes)}>
+                      DiferenÃ§a: {diffMinutes > 0 ? "+" : ""}
+                      {diffMinutes} min
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        },
       },
       {
         header: "Tempo de visita",
@@ -773,13 +864,13 @@ export default function RoutesPage() {
                 </TooltipTrigger>
                 <TooltipContent className="bg-[#353A40] text-white border-0">
                   <div className="space-y-1 text-sm p-1">
-                    <p>🚗 Duração da rota: {routeDuration}</p>
+                    <p>ðŸš— DuraÃ§Ã£o da rota: {routeDuration}</p>
                     <p>
-                      ⏱️ Intervalo de tempo: {formatMinutes(totalIntervalTime)}
+                      â±ï¸ Intervalo de tempo: {formatMinutes(totalIntervalTime)}
                     </p>
                     <div className="border-t border-gray-600 my-1"></div>
                     <p className="font-bold">
-                      ✨ Total da rota: {totalDuration}
+                      âœ¨ Total da rota: {totalDuration}
                     </p>
                   </div>
                 </TooltipContent>
@@ -789,52 +880,87 @@ export default function RoutesPage() {
         },
       },
       {
-        header: "Responsável",
+        header: "Consumo",
+        cell: (route) => {
+          const previsto = route.estimatedFuel
+            ? `${route.estimatedFuel.toFixed(1)} L`
+            : "-";
+          const realizado = route.actualFuel
+            ? `${route.actualFuel.toFixed(1)} L`
+            : "-";
+          const diff =
+            route.actualFuel && route.estimatedFuel
+              ? route.actualFuel - route.estimatedFuel
+              : null;
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="cursor-help">
+                    <div className="text-[#353A40] text-sm">P: {previsto}</div>
+                    <div className="text-xs text-[#7A7E83]">
+                      R: {realizado}
+                      {diff !== null && (
+                        <span className={cn("ml-1", getDifferenceColor(diff))}>
+                          ({formatDifference(diff, "L")})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="bg-[#353A40] text-white">
+                  <p>Previsto: {previsto}</p>
+                  <p>Real: {realizado}</p>
+                  {diff !== null && (
+                    <p className={getDifferenceColor(diff)}>
+                      DiferenÃ§a: {diff > 0 ? "+" : ""}
+                      {diff.toFixed(1)} L
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        },
+      },
+      {
+        header: "EficiÃªncia",
+        cell: (route) => {
+          if (!route.actualDistance || !route.actualFuel) {
+            return <span className="text-[#7A7E83]">-</span>;
+          }
+          const eficiencia = route.actualDistance / route.actualFuel;
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="cursor-help font-medium text-[#353A40]">
+                    {eficiencia.toFixed(1)} km/L
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="bg-[#353A40] text-white">
+                  <p>
+                    {route.actualDistance.toFixed(1)} km /{" "}
+                    {route.actualFuel.toFixed(1)} L
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        },
+      },
+      {
+        header: "Responsavel",
         cell: (route) => (
           <div className="flex items-center gap-1">
             <span className="text-[#353A40]">
-              {route.userAssigned?.name || "Não atribuído"}
+              {route.userAssigned?.name || "NÃ£o atribuÃ­do"}
             </span>
           </div>
         ),
       },
       {
-        header: "Descrição",
-        className: "min-w-[200px]",
-        cell: (route) =>
-          route.description ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="truncate text-[#7A7E83] cursor-help max-w-[200px]">
-                    {route.description.length > 50
-                      ? `${route.description.substring(0, 50)}...`
-                      : route.description}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent className="bg-[#353A40] text-white">
-                  <p className="max-w-xs">{route.description}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            <span className="text-[#7A7E83] text-sm">-</span>
-          ),
-      },
-      {
-        header: "Criado em",
-        cell: (route) => (
-          <span className="text-[#7A7E83] whitespace-nowrap">
-            {route.createdAt
-              ? format(new Date(route.createdAt), "dd/MM/yyyy HH:mm", {
-                  locale: ptBR,
-                })
-              : "-"}
-          </span>
-        ),
-      },
-      {
-        header: "Ações",
+        header: "AÃ§Ãµes",
         className: "text-right",
         cell: (route) => (
           <DropdownMenu>
@@ -851,7 +977,7 @@ export default function RoutesPage() {
               className="w-48 bg-white border border-[#E2E8F0] rounded-xl shadow-lg"
             >
               <DropdownMenuLabel className="text-[#7A7E83] text-xs">
-                Ações
+                AÃ§Ãµes
               </DropdownMenuLabel>
               <DropdownMenuItem
                 onClick={() => router.push(`/routes/${route.id}`)}
@@ -880,7 +1006,15 @@ export default function RoutesPage() {
         ),
       },
     ],
-    [router, calculateTotalIntervalTime, calculateTotalDuration, formatMinutes],
+    [
+      router,
+      calculateTotalIntervalTime,
+      calculateTotalDuration,
+      formatMinutes,
+      formatDurationFromSeconds,
+      getDifferenceColor,
+      formatDifference,
+    ],
   );
 
   const columns = useMemo(() => getColumns(), [getColumns]);
@@ -901,7 +1035,6 @@ export default function RoutesPage() {
   return (
     <div className="min-h-screen w-full bg-[#F5F6FA] font-sans">
       <div className="w-full space-y-6">
-        {/* Header */}
         <div className="px-4 md:px-8">
           <PageHeader title="Rotas" description="Gerencie as rotas do sistema.">
             <div className="flex gap-2">
@@ -952,7 +1085,7 @@ export default function RoutesPage() {
             </div>
           </PageHeader>
         </div>
-        {/* Painel de Filtros */}
+
         <div className="px-4 md:px-8">
           <AnimatePresence>
             {showFilters && (
@@ -1008,7 +1141,6 @@ export default function RoutesPage() {
                             </PopoverContent>
                           </Popover>
                         </div>
-
                         <div className="space-y-2">
                           <label className="text-xs font-medium text-[#7A7E83]">
                             Data final
@@ -1087,7 +1219,7 @@ export default function RoutesPage() {
             )}
           </AnimatePresence>
         </div>
-        {/* Resultados encontrados */}
+
         {filteredRoutes.length > 0 && (
           <div className="px-4 md:px-8">
             <div className="text-right text-xs text-[#7A7E83]">
@@ -1098,7 +1230,6 @@ export default function RoutesPage() {
           </div>
         )}
 
-        {/* GenericTable - SEM padding lateral */}
         <GenericTable
           title="Listagem"
           data={paginatedRoutes}
@@ -1112,10 +1243,9 @@ export default function RoutesPage() {
             totalItems: filteredRoutes.length,
             itemsPerPage: ITEMS_PER_PAGE,
           }}
-          className="!mx-0 !w-full rounded-none" // Remove bordas arredondadas também
+          className="!mx-0 !w-full rounded-none"
         />
 
-        {/* Dialog de exclusão */}
         <div className="px-4 md:px-8">
           <AlertDialog
             open={!!deleteId}
@@ -1127,8 +1257,8 @@ export default function RoutesPage() {
                   Excluir Rota
                 </AlertDialogTitle>
                 <AlertDialogDescription className="text-[#7A7E83]">
-                  Esta ação removerá todos os dados da rota do sistema. Esta
-                  ação não pode ser desfeita.
+                  Esta aÃ§Ã£o removerÃ¡ todos os dados da rota do sistema. Esta
+                  aÃ§Ã£o nÃ£o pode ser desfeita.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -1149,7 +1279,7 @@ export default function RoutesPage() {
                       Excluindo...
                     </>
                   ) : (
-                    "Confirmar Exclusão"
+                    "Confirmar ExclusÃ£o"
                   )}
                 </AlertDialogAction>
               </AlertDialogFooter>
