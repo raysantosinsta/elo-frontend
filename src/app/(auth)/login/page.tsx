@@ -1,5 +1,4 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { ForgotPasswordModal } from "@/components/auth/forgot-password-modal";
@@ -7,17 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
-import { motion, Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ArrowRight,
+  CheckCircle2,
   Eye,
   EyeOff,
   Loader2,
   Lock,
   Mail,
   Network,
+  WifiOff,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 // ============================================
@@ -40,6 +40,8 @@ interface Connection {
   distance: number;
   strength: number;
 }
+
+type ApiHealthState = "checking" | "online" | "offline";
 
 const NeuralNetworkBackground = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -155,9 +157,9 @@ const NeuralNetworkBackground = () => {
         const dy = mouseRef.current.y - node.y;
         const dist = Math.hypot(dx, dy);
 
-        if (dist < 250 && dist > 5) {
+        if (dist < MOUSE_RADIUS && dist > 5) {
           const angle = Math.atan2(dy, dx);
-          const force = ((250 - dist) / 250) * 1.5;
+          const force = ((MOUSE_RADIUS - dist) / MOUSE_RADIUS) * 1.5;
           node.x -= Math.cos(angle) * force;
           node.y -= Math.sin(angle) * force;
         }
@@ -232,7 +234,7 @@ const NeuralNetworkBackground = () => {
         const dx = mouseRef.current.x - node.x;
         const dy = mouseRef.current.y - node.y;
         const distToMouse = Math.hypot(dx, dy);
-        const isNearMouse = distToMouse < 250;
+        const isNearMouse = distToMouse < MOUSE_RADIUS;
         
         ctx.shadowBlur = isNearMouse ? 12 : 6;
         ctx.shadowColor = `rgba(0, 200, 255, ${isNearMouse ? 0.6 : 0.3})`;
@@ -299,12 +301,30 @@ const LoginCard = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [apiHealth, setApiHealth] = useState<ApiHealthState>("checking");
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const { login } = useAuth();
-  const router = useRouter();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetch("/api/backend-health", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!isMounted) return;
+        setApiHealth(data?.status === "ok" ? "online" : "offline");
+      })
+      .catch(() => {
+        if (isMounted) setApiHealth("offline");
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -312,7 +332,7 @@ const LoginCard = () => {
 
     try {
       await login(email, password);
-    } catch (err: any) {
+    } catch {
       setPassword("");
     } finally {
       setLoading(false);
@@ -326,15 +346,6 @@ const LoginCard = () => {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     });
-  };
-
-  const itemVariants: Variants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: {
-      y: 0,
-      opacity: 1,
-      transition: { type: "spring", stiffness: 300, damping: 24 },
-    },
   };
 
   return (
@@ -515,6 +526,23 @@ const LoginCard = () => {
             <p className="text-white/30 text-xs">
               Rede inteligente com criptografia de ponta a ponta
             </p>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/50">
+              {apiHealth === "online" ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
+              ) : apiHealth === "offline" ? (
+                <WifiOff className="h-3.5 w-3.5 text-rose-300" />
+              ) : (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-300" />
+              )}
+              <span>
+                API{" "}
+                {apiHealth === "checking"
+                  ? "verificando"
+                  : apiHealth === "online"
+                    ? "online"
+                    : "offline"}
+              </span>
+            </div>
             <p className="text-white/20 text-xs mt-2">
               © 2024 | Ecossistema Industrial 4.0
             </p>
