@@ -265,7 +265,11 @@ function SidebarContent({
         return true;
       }
       if (user.role === "EMPLOYER") {
-        if (item.href === "/empresas" || item.href === "/users") {
+        if (
+          item.href === "/empresas" ||
+          item.href === "/users" ||
+          item.href === "/billing"
+        ) {
           return false;
         }
       }

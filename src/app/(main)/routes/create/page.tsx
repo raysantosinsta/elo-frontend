@@ -1,4 +1,3 @@
-/* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
@@ -25,6 +24,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { TaskFormModal } from "@/components/modals/task-form-modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { api } from "@/services/api";
@@ -41,14 +41,14 @@ import {
   MapPin,
   MapPinIcon,
   PlusIcon,
-  RefreshCcw,
   Search,
   Trash2Icon,
   UserIcon,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -61,9 +61,13 @@ interface Task {
   id: string;
   title: string;
   description?: string;
+  finalComment?: string;
   status?: string;
+  priority?: number;
+  columnId?: string | null;
   scheduledDate?: string;
   dueDate?: string;
+  intervalTime?: number | null;
   userAssigned?: { id: string; name: string };
   taskAddress?: {
     endereco: string;
@@ -75,6 +79,29 @@ interface Task {
     latitude?: number;
     longitude?: number;
   };
+  taskImages?: any[];
+  taskAudios?: any[];
+  taskVideos?: any[];
+}
+
+interface Column {
+  id: string;
+  title: string;
+  order?: number;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  zipCode?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  complement?: string;
+  numero?: string;
+  bairro?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 // --- Schema de Validação ---
@@ -104,12 +131,6 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 // --- Funções Auxiliares ---
-const getEffectiveDueDate = (task: Task): Date | null => {
-  if (task.dueDate) return new Date(task.dueDate);
-  if (task.scheduledDate) return new Date(task.scheduledDate);
-  return null;
-};
-
 const formatDate = (dateString?: string) => {
   if (!dateString) return "";
   return new Date(dateString).toLocaleDateString("pt-BR", {
@@ -126,15 +147,16 @@ export default function CreateRoutePage() {
 
   const [users, setUsers] = useState<User[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
-  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
-  const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
     new Set(),
   );
-  const [hasLoadedTasks, setHasLoadedTasks] = useState(false);
   const [activeTab, setActiveTab] = useState("tasks");
   const [search, setSearch] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const [columns, setColumns] = useState<Column[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isSubmittingTask, setIsSubmittingTask] = useState(false);
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -177,12 +199,44 @@ export default function CreateRoutePage() {
     loadUsers();
   }, []);
 
-  // Carregar tarefas disponíveis
-  const loadAvailableTasks = useCallback(async () => {
-    if (isLoadingTasks || hasLoadedTasks) return;
+  useEffect(() => {
+    async function loadTaskFormData() {
+      try {
+        const [columnsRes, suppliersRes] = await Promise.all([
+          api.get("/kanban-columns"),
+          api.get("/suppliers"),
+        ]);
 
-    setIsLoadingTasks(true);
-    try {
+        const columnsData = Array.isArray(columnsRes.data)
+          ? columnsRes.data
+          : columnsRes.data?.columns || [];
+        const suppliersData = Array.isArray(suppliersRes.data)
+          ? suppliersRes.data
+          : suppliersRes.data?.data || [];
+
+        setColumns(columnsData);
+        setSuppliers(suppliersData);
+      } catch (error) {
+        console.error("Erro ao carregar dados do formulário de tarefa:", error);
+        toast.error("Erro ao carregar dados para criar tarefa");
+      }
+    }
+
+    loadTaskFormData();
+  }, []);
+
+  // Carregar tarefas disponíveis
+  const availableTasksQueryKey = useMemo(
+    () => ["route-create-available-tasks", search.trim()],
+    [search],
+  );
+
+  const {
+    data: availableTasks = [],
+    isFetching: isLoadingTasks,
+  } = useQuery<Task[]>({
+    queryKey: availableTasksQueryKey,
+    queryFn: async () => {
       const params: any = {
         hasLocation: "true",
         status: "PENDING,RESCHEDULED",
@@ -194,23 +248,13 @@ export default function CreateRoutePage() {
       }
 
       const response = await api.get("/tasks", { params });
-      const tasks = response.data?.data || [];
-      setAvailableTasks(tasks);
-      setHasLoadedTasks(true);
-    } catch (error) {
-      console.error("Erro ao carregar tasks:", error);
-      toast.error("Erro ao carregar lista de tarefas");
-      setHasLoadedTasks(true);
-    } finally {
-      setIsLoadingTasks(false);
-    }
-  }, [isLoadingTasks, hasLoadedTasks, search]);
-
-  useEffect(() => {
-    if (activeTab === "tasks" && !hasLoadedTasks && !isLoadingTasks) {
-      loadAvailableTasks();
-    }
-  }, [activeTab, hasLoadedTasks, isLoadingTasks, loadAvailableTasks]);
+      return response.data?.data || [];
+    },
+    enabled: activeTab === "tasks",
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  });
 
   const convertTaskToStop = useCallback((task: Task) => {
     const address = task.taskAddress;
@@ -228,6 +272,80 @@ export default function CreateRoutePage() {
       dueDate: task.dueDate || null,
     };
   }, []);
+
+  const getDefaultColumnId = useCallback(() => {
+    const pendingColumn = columns.find((column) => {
+      const normalized = column.title
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+      return normalized.includes("pendente") || normalized.includes("todo");
+    });
+
+    return pendingColumn?.id || columns[0]?.id;
+  }, [columns]);
+
+  const handleTaskSubmit = useCallback(
+    async (values: any, files: any, removedMedia: any) => {
+      const defaultColumnId = getDefaultColumnId();
+      if (!defaultColumnId) {
+        toast.error("Crie uma coluna no Kanban antes de criar tarefas.");
+        return;
+      }
+
+      setIsSubmittingTask(true);
+      const formData = new FormData();
+
+      Object.keys(values).forEach((key) => {
+        if (
+          key !== "taskAddress" &&
+          key !== "address" &&
+          key !== "id" &&
+          values[key] !== undefined &&
+          values[key] !== null &&
+          values[key] !== ""
+        ) {
+          formData.append(key, values[key]);
+        }
+      });
+
+      formData.set("columnId", values.columnId || defaultColumnId);
+
+      const addressData = values.address || values.taskAddress;
+      if (addressData) {
+        formData.append("address", JSON.stringify(addressData));
+      }
+
+      files.images.forEach((file: File) => formData.append("images", file));
+      files.audios.forEach((file: File) => formData.append("audios", file));
+      files.videos.forEach((file: File) => formData.append("videos", file));
+
+      if (removedMedia.images.length) {
+        formData.append("removeImageIds", JSON.stringify(removedMedia.images));
+      }
+      if (removedMedia.audios.length) {
+        formData.append("removeAudioIds", JSON.stringify(removedMedia.audios));
+      }
+      if (removedMedia.videos.length) {
+        formData.append("removeVideoIds", JSON.stringify(removedMedia.videos));
+      }
+
+      try {
+        await api.post("/tasks", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        setIsTaskModalOpen(false);
+        window.location.reload();
+      } catch (error) {
+        console.error("Erro ao criar tarefa pela rota:", error);
+        toast.error("Erro ao criar tarefa");
+      } finally {
+        setIsSubmittingTask(false);
+      }
+    },
+    [getDefaultColumnId],
+  );
 
   const addSelectedTasks = useCallback(() => {
     const selectedTasks = availableTasks.filter((task) =>
@@ -340,7 +458,7 @@ export default function CreateRoutePage() {
         toast.dismiss(loadingToast);
         toast.success("Rota criada com sucesso!");
         router.push("/routes");
-      } catch (err: any) {
+      } catch {
         toast.dismiss(loadingToast);
         toast.error("Erro ao salvar rota.");
       }
@@ -579,17 +697,27 @@ export default function CreateRoutePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-5 sm:p-8">
-                <div className="relative mb-5 sm:mb-6">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#7A7E83]" />
-                  <Input
-                    placeholder="Buscar tarefas por título..."
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setHasLoadedTasks(false);
-                    }}
-                    className="pl-10 bg-[#F8F9FC] border-gray-200 rounded-xl h-11 sm:h-12 text-sm sm:text-base transition-all focus:border-[#2F80ED] focus:ring-2 focus:ring-[#2F80ED]/20"
-                  />
+                <div className="flex flex-col sm:flex-row gap-3 mb-5 sm:mb-6">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#7A7E83]" />
+                    <Input
+                      placeholder="Buscar tarefas por título..."
+                      value={search}
+                      onChange={(e) => {
+                        setSearch(e.target.value);
+                      }}
+                      className="pl-10 bg-[#F8F9FC] border-gray-200 rounded-xl h-11 sm:h-12 text-sm sm:text-base transition-all focus:border-[#2F80ED] focus:ring-2 focus:ring-[#2F80ED]/20"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => setIsTaskModalOpen(true)}
+                    disabled={columns.length === 0}
+                    className="bg-[#353A40] text-white hover:bg-[#2A2F35] rounded-full px-5 h-11 sm:h-12 shadow-md"
+                  >
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    Nova Tarefa
+                  </Button>
                 </div>
 
                 {isLoadingTasks ? (
@@ -884,6 +1012,18 @@ export default function CreateRoutePage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <TaskFormModal
+        isOpen={isTaskModalOpen}
+        onClose={() => setIsTaskModalOpen(false)}
+        initialData={null}
+        initialColumnId={getDefaultColumnId()}
+        onSubmit={handleTaskSubmit}
+        isLoading={isSubmittingTask}
+        users={users.map((user) => ({ id: user.id, name: user.name }))}
+        columns={columns}
+        suppliers={suppliers}
+      />
 
       <style jsx global>{`
         @keyframes fadeInUp {

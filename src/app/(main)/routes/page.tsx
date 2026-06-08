@@ -488,7 +488,7 @@ export default function RoutesPage() {
     toast.custom(
       (t) => (
         <CustomToast
-          message={`Filtro aplicado: ${format(today, "dd/MM/yyyy")} atÃ© ${format(sevenDaysLater, "dd/MM/yyyy")}`}
+          message={`Filtro aplicado: ${format(today, "dd/MM/yyyy")} até ${format(sevenDaysLater, "dd/MM/yyyy")}`}
           type="success"
         />
       ),
@@ -504,7 +504,7 @@ export default function RoutesPage() {
     if (!routes)
       return [
         { value: "all", label: "Todos" },
-        { value: "none", label: "NÃ£o atribuÃ­do" },
+        { value: "none", label: "Não atribuído" },
       ];
     const driverMap = new Map();
     routes.forEach((route) => {
@@ -515,7 +515,7 @@ export default function RoutesPage() {
     const drivers = Array.from(driverMap.values());
     return [
       { value: "all", label: "Todos" },
-      { value: "none", label: "NÃ£o atribuÃ­do" },
+      { value: "none", label: "Não atribuído" },
       ...drivers.map((driver) => ({ value: driver.id, label: driver.name })),
     ];
   }, [routes]);
@@ -628,7 +628,7 @@ export default function RoutesPage() {
       await deleteRoute.mutateAsync(deleteId);
       setDeleteId(null);
       toast.custom((t) => (
-        <CustomToast message="Rota excluÃ­da com sucesso" type="success" />
+        <CustomToast message="Rota excluída com sucesso" type="success" />
       ));
       refetch();
     } catch {
@@ -643,7 +643,7 @@ export default function RoutesPage() {
   const getColumns = useCallback(
     (): Column<Route>[] => [
       {
-        header: "TÃ­tulo",
+        header: "Título",
         className: "font-semibold",
         cell: (route) => (
           <Link
@@ -704,7 +704,7 @@ export default function RoutesPage() {
         ),
       },
       {
-        header: "DistÃ¢ncia",
+        header: "Distância",
         cell: (route) => {
           const previsto = route.formattedDistance || "-";
           const realizado = route.actualDistance
@@ -743,7 +743,7 @@ export default function RoutesPage() {
                   <p>Real: {realizado}</p>
                   {diff !== null && (
                     <p className={getDifferenceColor(diff)}>
-                      DiferenÃ§a: {diff > 0 ? "+" : ""}
+                      Diferença: {diff > 0 ? "+" : ""}
                       {diff.toFixed(1)} km
                     </p>
                   )}
@@ -754,21 +754,21 @@ export default function RoutesPage() {
         },
       },
       {
-        header: "CombustÃ­vel", // ðŸ”¥ NOVA COLUNA
+        header: "Combustível",
         cell: (route) => {
           const fuel = route.formattedFuelConsumption;
           return (
             <div className="flex items-center gap-1.5">
               <FuelIcon className="h-3.5 w-3.5 text-[#2F80ED]" />
               <span className="text-[#353A40] font-medium">
-                {fuel || "NÃ£o calculado"}
+                {fuel || "Não calculado"}
               </span>
             </div>
           );
         },
       },
       {
-        header: "DuraÃ§Ã£o",
+        header: "Duração",
         cell: (route) => {
           const previsto = route.formattedDuration || "-";
           const realizado = route.actualTime
@@ -806,7 +806,7 @@ export default function RoutesPage() {
                   <p>Real: {realizado}</p>
                   {diffMinutes !== null && (
                     <p className={getDifferenceColor(diffMinutes)}>
-                      DiferenÃ§a: {diffMinutes > 0 ? "+" : ""}
+                      Diferença: {diffMinutes > 0 ? "+" : ""}
                       {diffMinutes} min
                     </p>
                   )}
@@ -864,13 +864,13 @@ export default function RoutesPage() {
                 </TooltipTrigger>
                 <TooltipContent className="bg-[#353A40] text-white border-0">
                   <div className="space-y-1 text-sm p-1">
-                    <p>ðŸš— DuraÃ§Ã£o da rota: {routeDuration}</p>
+                    <p>Duração da rota: {routeDuration}</p>
                     <p>
-                      â±ï¸ Intervalo de tempo: {formatMinutes(totalIntervalTime)}
+                      Intervalo de tempo: {formatMinutes(totalIntervalTime)}
                     </p>
                     <div className="border-t border-gray-600 my-1"></div>
                     <p className="font-bold">
-                      âœ¨ Total da rota: {totalDuration}
+                      Total da rota: {totalDuration}
                     </p>
                   </div>
                 </TooltipContent>
@@ -913,7 +913,7 @@ export default function RoutesPage() {
                   <p>Real: {realizado}</p>
                   {diff !== null && (
                     <p className={getDifferenceColor(diff)}>
-                      DiferenÃ§a: {diff > 0 ? "+" : ""}
+                      Diferença: {diff > 0 ? "+" : ""}
                       {diff.toFixed(1)} L
                     </p>
                   )}
@@ -924,7 +924,7 @@ export default function RoutesPage() {
         },
       },
       {
-        header: "EficiÃªncia",
+        header: "Eficiência",
         cell: (route) => {
           if (!route.actualDistance || !route.actualFuel) {
             return <span className="text-[#7A7E83]">-</span>;
@@ -950,17 +950,17 @@ export default function RoutesPage() {
         },
       },
       {
-        header: "Responsavel",
+        header: "Responsável",
         cell: (route) => (
           <div className="flex items-center gap-1">
             <span className="text-[#353A40]">
-              {route.userAssigned?.name || "NÃ£o atribuÃ­do"}
+              {route.userAssigned?.name || "Não atribuído"}
             </span>
           </div>
         ),
       },
       {
-        header: "AÃ§Ãµes",
+        header: "Ações",
         className: "text-right",
         cell: (route) => (
           <DropdownMenu>
@@ -977,7 +977,7 @@ export default function RoutesPage() {
               className="w-48 bg-white border border-[#E2E8F0] rounded-xl shadow-lg"
             >
               <DropdownMenuLabel className="text-[#7A7E83] text-xs">
-                AÃ§Ãµes
+                Ações
               </DropdownMenuLabel>
               <DropdownMenuItem
                 onClick={() => router.push(`/routes/${route.id}`)}
@@ -1178,10 +1178,10 @@ export default function RoutesPage() {
                         options={driverOptions}
                         value={tempUserAssignedFilter}
                         onChange={setTempUserAssignedFilter}
-                        label="Responsavel"
+                        label="Responsável"
                         icon={<UsersIcon className="h-3 w-3" />}
-                        placeholder="Selecionar Responsavel..."
-                        emptyMessage="Nenhum Responsavel encontrado."
+                        placeholder="Selecionar Responsável..."
+                        emptyMessage="Nenhum Responsável encontrado."
                       />
                     </div>
 
@@ -1257,8 +1257,8 @@ export default function RoutesPage() {
                   Excluir Rota
                 </AlertDialogTitle>
                 <AlertDialogDescription className="text-[#7A7E83]">
-                  Esta aÃ§Ã£o removerÃ¡ todos os dados da rota do sistema. Esta
-                  aÃ§Ã£o nÃ£o pode ser desfeita.
+                  Esta ação removerá todos os dados da rota do sistema. Esta
+                  ação não pode ser desfeita.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -1279,7 +1279,7 @@ export default function RoutesPage() {
                       Excluindo...
                     </>
                   ) : (
-                    "Confirmar ExclusÃ£o"
+                    "Confirmar Exclusão"
                   )}
                 </AlertDialogAction>
               </AlertDialogFooter>

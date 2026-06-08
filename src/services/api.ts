@@ -65,8 +65,19 @@ api.interceptors.response.use(
   async (error: AxiosError<any>) => {
     const originalRequest = error.config as CustomAxiosRequestConfig;
     const status = error.response?.status;
+    const errorData = error.response?.data;
 
     // Lógica de Refresh Token
+    if (
+      status === 402 &&
+      errorData?.code === "BILLING_ACCESS_BLOCKED" &&
+      typeof window !== "undefined" &&
+      window.location.pathname !== "/billing"
+    ) {
+      window.location.href = "/billing";
+      return Promise.reject(error);
+    }
+
     if (status === 401 && !originalRequest._retry) {
       if (
         originalRequest.url?.includes("/auth/login") ||
@@ -130,11 +141,10 @@ api.interceptors.response.use(
 
     // Captura Genérica de Erros para o Dialog
     if (globalErrorHandler) {
-      const errorData = error.response?.data;
-
       let title = "Erro Inesperado";
       if (status === 400) title = "Dados Inválidos";
       if (status === 401) title = "Acesso Negado";
+      if (status === 402) title = "Financeiro pendente";
       if (status === 403) title = "Sem Permissão";
       if (status === 404) title = "Não Encontrado";
       if (status === 409) title = "Conflito";
